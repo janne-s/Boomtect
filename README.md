@@ -39,9 +39,11 @@ emitter's pulse, delayed by its travel time and shaped by the path.
 | Speed of sound | `c = sqrt(γRT)` | A |
 | Travel time and spreading | straight path, `1/R` per point emitter | A |
 | Channel segment directivity | uniform line element, `sinc(πfℓ·cosψ/c)` | A |
-| Lightning pulse | N-wave peaking at `κ·c/R₀`, `R₀ = sqrt(E/(πp))` (Few) | B |
+| Lightning pulse | N-wave with period `τ₀ = 2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
+| Weak shock | period grows as `x^¼`, extra decay `x^-¼` with distance (ReVelle) | B |
 | Lightning level | acoustic share of channel energy | C |
-| Channel shape | seeded tortuous walk with branches | C |
+| Channel shape | seeded two-scale zigzag with branches of branches | C |
+| Strokes | lognormal intervals, new ground points on later strokes | B/C |
 | Segment radiation | straight element shorter than the segment | C |
 | Energy along the channel | seeded lognormal variation | C |
 | Storm | seeded flash positions, onsets, types, strokes, energies | B/C |

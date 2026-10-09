@@ -30,7 +30,7 @@ function handles(scene) {
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: emitter.positionMetres });
     else if (emitter.kind === 'storm') list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true });
     else {
-      list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres });
+      list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres, onGround: emitter.flashType === 'cloud-to-ground' });
       list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres });
     }
   }
@@ -92,8 +92,8 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
     const { toScreen } = frame;
     context.lineJoin = 'round';
     cachedFlashes(emitter).forEach((flash, flashIndex) => {
-      const level = intensities?.[flashIndex] ?? 0;
-      for (const channel of flash.channels) {
+      flash.channels.forEach((channel, channelIndex) => {
+        const level = intensities?.[flashIndex]?.[channelIndex] ?? 0;
         const points = channel.points.map(toScreen);
         if (level > 0) {
           context.shadowColor = colors.accent;
@@ -104,9 +104,9 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
           context.shadowBlur = 0;
         }
         context.strokeStyle = selected ? colors.accent : colors.muted;
-        context.lineWidth = channel.main ? (selected ? 1.5 : 1.1) : .6;
+        context.lineWidth = channel.main ? (selected ? 1.5 : 1.1) : Math.max(.35, .7 - .15 * channel.level);
         strokePolyline(context, points);
-      }
+      });
     });
   }
 
@@ -131,7 +131,7 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
   function drawBlast(context, emitter, colors, selected, state, alpha) {
     const { toScreen, scale } = frame;
     const centre = toScreen(emitter.positionMetres);
-    const level = state?.flashes.get(emitter.id)?.[0] ?? 0;
+    const level = state?.flashes.get(emitter.id)?.[0]?.[0] ?? 0;
     if (level > 0) {
       context.fillStyle = colors.ink;
       context.shadowColor = colors.accent;
@@ -175,7 +175,7 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
           drawHandle(context, centre, color, true);
           label(context, emitter.name, centre, colors.faint);
         } else {
-          drawHandle(context, toScreen(emitter.baseMetres), color, false);
+          drawSquareHandle(context, toScreen(emitter.baseMetres), color);
           drawHandle(context, toScreen(emitter.topMetres), color, false);
           label(context, emitter.name, toScreen(emitter.topMetres), colors.faint);
         }
@@ -305,6 +305,14 @@ function drawHandle(context, point, color, filled) {
   context.strokeStyle = color;
   context.fillStyle = color;
   if (filled) context.fill(); else context.stroke();
+}
+
+/** The start of a channel: a square, so it never reads as the circular end. */
+function drawSquareHandle(context, point, color) {
+  context.lineWidth = 1.5;
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  context.fillRect(point.x - HANDLE_RADIUS, point.y - HANDLE_RADIUS, 2 * HANDLE_RADIUS, 2 * HANDLE_RADIUS);
 }
 
 function label(context, text, point, color) {

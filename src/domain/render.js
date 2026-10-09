@@ -3,6 +3,7 @@ import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './consta
 import { emitterSources } from './emitters.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { sphericalReflectionCoefficient } from './ground.js';
+import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 
 /** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
@@ -51,7 +52,9 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     seconds: new Float64Array(count),
     metres: new Float64Array(count),
     directivityCos: new Float64Array(count),
-    cosIncidence: new Float64Array(count)
+    cosIncidence: new Float64Array(count),
+    duration: new Float64Array(count),
+    amplitudeScale: new Float64Array(count)
   };
   const r = receiver.positionMetres;
   let index = 0;
@@ -72,6 +75,15 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
         paths.seconds[index] = source.emissionSeconds + metres / speed;
         paths.directivityCos[index] = d && metres > 0 ? (d.x * dx + d.y * dy + sign * d.z * dz) / metres : 0;
         paths.cosIncidence[index] = metres > 0 ? (p.z + r.z) / metres : 1;
+        if (source.weakShock) {
+          const { relaxationRadius, sourcePeriodSeconds, limitRadii } = source.weakShock;
+          const pulse = weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii);
+          paths.duration[index] = pulse.durationSeconds;
+          paths.amplitudeScale[index] = pulse.amplitudeScale;
+        } else {
+          paths.duration[index] = source.durationSeconds;
+          paths.amplitudeScale[index] = 1;
+        }
         index += 1;
       }
     });
@@ -87,18 +99,23 @@ export function arrivalTable(preparedEmitters, receiver, scene) {
   for (let index = 0; index < paths.count; index += 1) {
     const source = preparedEmitters[paths.emitter[index]].sources[paths.source[index]];
     heights[index] = source.positionMetres.z;
-    levels[index] = 20 * Math.log10(source.amplitudePaMetres / Math.max(paths.metres[index], 1e-3));
+    levels[index] = 20 * Math.log10(source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.metres[index], 1e-3));
   }
   return { count: paths.count, seconds: paths.seconds, heights, levels, kinds: paths.kind };
 }
 
-/** Frame layout of one emitter: hop H and block 2H hold any of its paths with pre-roll and tail. */
-function framePlan(prepared, sampleRate, speed, scene) {
+/**
+ * Frame layout of one emitter at one receiver: hop H and block 2H hold any of its paths with
+ * pre-roll and tail. It depends on all of the emitter's paths, so every time range shares it.
+ */
+function framePlan(prepared, emitterIndex, paths, sampleRate, speed, scene) {
   let longestElement = 0;
   let longestSpan = 0;
-  for (const source of prepared.sources) {
-    longestElement = Math.max(longestElement, source.elementMetres);
-    longestSpan = Math.max(longestSpan, source.spanSeconds);
+  for (const source of prepared.sources) longestElement = Math.max(longestElement, source.elementMetres);
+  for (let index = 0; index < paths.count; index += 1) {
+    if (paths.emitter[index] !== emitterIndex) continue;
+    const source = prepared.sources[paths.source[index]];
+    longestSpan = Math.max(longestSpan, source.weakShock ? paths.duration[index] : source.spanSeconds);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
   const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES);
@@ -141,7 +158,7 @@ function accumulatePath(real, imaginary, plan, source, paths, index, offsetSampl
   const limit = absorptionLimit(plan, metres);
   if (limit < 2) return;
   const { absorption, smoothing, gridPosition, binHz, size } = plan;
-  const gain = source.amplitudePaMetres / Math.max(metres, Number.MIN_VALUE);
+  const gain = source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(metres, Number.MIN_VALUE);
   const ground = paths.kind[index] === PATH_GROUND && scene.ground.type !== 'rigid';
   if (ground) {
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
@@ -165,7 +182,7 @@ function accumulatePath(real, imaginary, plan, source, paths, index, offsetSampl
 
   const omegaStep = 2 * Math.PI * binHz;
   const nWave = source.pulse === 'n-wave';
-  const duration = source.durationSeconds;
+  const duration = paths.duration[index];
   const pulseStep = omegaStep * duration;
   const pulseStepRe = Math.cos(pulseStep);
   const pulseStepIm = Math.sin(pulseStep);
@@ -248,7 +265,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const sampleRate = scene.render.sampleRate;
   const speed = speedOfSoundMetresPerSecond(scene.air.temperatureCelsius);
   const paths = receiverPaths(preparedEmitters, receiver, scene);
-  const plans = preparedEmitters.map(prepared => framePlan(prepared, sampleRate, speed, scene));
+  const plans = preparedEmitters.map((prepared, emitterIndex) => framePlan(prepared, emitterIndex, paths, sampleRate, speed, scene));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);

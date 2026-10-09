@@ -34,7 +34,13 @@ export const PARAMETERS = Object.freeze({
   energyJoulesPerMetre: { minimum: 1e3, maximum: 1e7, unit: 'J/m', label: 'Energy per metre', reliability: 'B' },
   energyVariation: { minimum: 0, maximum: 1.5, unit: '', label: 'Energy variation σ', reliability: 'C' },
   acousticEfficiency: { minimum: 1e-4, maximum: .2, unit: '', label: 'Acoustic efficiency', reliability: 'C' },
-  frequencyCoefficient: { minimum: .2, maximum: 1, unit: '', label: 'Peak coefficient κ', reliability: 'B' },
+  periodCoefficient: { minimum: 1.5, maximum: 5, unit: '', label: 'Period coefficient k', reliability: 'B' },
+  weakShockLimitRadii: { minimum: 10, maximum: 1e6, unit: 'R₀', label: 'Weak-shock range', reliability: 'C' },
+  macroStepMetres: { minimum: 20, maximum: 2000, unit: 'm', label: 'Zigzag step', reliability: 'C' },
+  macroTortuosityDegrees: { minimum: 0, maximum: 60, unit: '°', label: 'Zigzag angle', reliability: 'C' },
+  branchDepth: { minimum: 0, maximum: 3, unit: '', label: 'Branch levels', reliability: 'C', integer: true },
+  newTerminationProbability: { minimum: 0, maximum: 1, unit: '', label: 'New ground point', reliability: 'C' },
+  strokeIntervalSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Interval spread σ', reliability: 'C' },
   channelSpeedMetresPerSecond: { minimum: 1e4, maximum: 3e8, unit: 'm/s', label: 'Channel speed', reliability: 'B' },
   strokeCount: { minimum: 1, maximum: 20, unit: '', label: 'Strokes', reliability: 'B', integer: true },
   strokeIntervalSeconds: { minimum: .005, maximum: .5, unit: 's', label: 'Stroke interval', reliability: 'B' },
@@ -54,15 +60,18 @@ export const PARAMETERS = Object.freeze({
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null }
 });
 
+const CHANNEL_NUMBERS = Object.freeze([
+  'segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees',
+  'branchCount', 'branchDepth', 'branchEnergyRatio', 'energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency',
+  'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds'
+]);
 const LIGHTNING_NUMBERS = Object.freeze([
-  'startSeconds', 'segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchLengthRatio',
-  'branchEnergyRatio', 'energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient',
-  'channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'subsequentStrokeEnergyRatio', 'riseTimeSeconds'
+  'startSeconds', ...CHANNEL_NUMBERS, 'branchLengthRatio', 'channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds',
+  'strokeIntervalSpread', 'subsequentStrokeEnergyRatio', 'newTerminationProbability'
 ]);
 const STORM_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres',
-  'energyJoulesPerMetre', 'energySpread', 'energyVariation', 'segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees',
-  'branchCount', 'branchEnergyRatio', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds'
+  'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS
 ]);
 const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
 
@@ -70,11 +79,14 @@ export class SceneError extends Error {}
 
 const LIGHTNING_PHYSICS = Object.freeze({
   segmentLengthMetres: 10,
-  straightLengthMetres: 3,
+  straightLengthMetres: .5,
   tortuosityDegrees: 16,
+  macroStepMetres: 150,
+  macroTortuosityDegrees: 30,
   energyVariation: .5,
   acousticEfficiency: .01,
-  frequencyCoefficient: 1 / 2.6,
+  periodCoefficient: 2.81,
+  weakShockLimitRadii: 1e4,
   riseTimeSeconds: 4e-5
 });
 
@@ -86,14 +98,17 @@ export function defaultLightning(id = 'lightning-1', name = 'Ground flash', seed
     baseMetres: { x: 0, y: 0, z: 0 },
     topMetres: { x: 600, y: 0, z: 4000 },
     ...LIGHTNING_PHYSICS,
-    branchCount: 8,
+    branchCount: 10,
+    branchDepth: 2,
     branchLengthRatio: .35,
-    branchEnergyRatio: .1,
-    energyJoulesPerMetre: 5e5,
+    branchEnergyRatio: .2,
+    energyJoulesPerMetre: 1e5,
     channelSpeedMetresPerSecond: 1e8,
-    strokeCount: 3,
+    strokeCount: 4,
     strokeIntervalSeconds: .06,
-    subsequentStrokeEnergyRatio: .5
+    strokeIntervalSpread: .5,
+    subsequentStrokeEnergyRatio: .5,
+    newTerminationProbability: .3
   };
 }
 
@@ -103,13 +118,14 @@ export function defaultCloudFlash(id = 'cloud-1', name = 'Cloud flash', seed = 2
     flashType: 'intra-cloud',
     baseMetres: { x: -2500, y: 0, z: 5000 },
     topMetres: { x: 2500, y: 1000, z: 6000 },
-    branchCount: 10,
-    branchLengthRatio: .2,
-    energyJoulesPerMetre: 1e5,
+    branchCount: 12,
+    branchLengthRatio: .25,
+    energyJoulesPerMetre: 3e4,
     channelSpeedMetresPerSecond: 3e5,
     strokeCount: 4,
     strokeIntervalSeconds: .04,
-    subsequentStrokeEnergyRatio: .6
+    subsequentStrokeEnergyRatio: .6,
+    newTerminationProbability: 0
   };
 }
 
@@ -124,11 +140,13 @@ export function defaultStorm(id = 'storm-1', name = 'Storm', seed = 20261011) {
     groundFlashShare: .3,
     cloudBaseMetres: 1500,
     cloudTopMetres: 10000,
-    energyJoulesPerMetre: 3e5,
+    energyJoulesPerMetre: 1e5,
     energySpread: .5,
+    newTerminationProbability: .3,
     ...LIGHTNING_PHYSICS,
-    branchCount: 6,
-    branchEnergyRatio: .1
+    branchCount: 8,
+    branchDepth: 2,
+    branchEnergyRatio: .2
   };
 }
 
@@ -218,6 +236,7 @@ function emitter(value, index) {
     ...numbers(value, LIGHTNING_NUMBERS, path)
   };
   const { baseMetres: base, topMetres: top } = lightning;
+  check(lightning.flashType !== 'cloud-to-ground' || base.z === 0, `${path}.baseMetres of a ground flash must lie on the ground.`);
   check(Math.hypot(top.x - base.x, top.y - base.y, top.z - base.z) >= lightning.segmentLengthMetres,
     `${path} must be at least one segment long.`);
   check(lightning.straightLengthMetres <= lightning.segmentLengthMetres, `${path}.straightLengthMetres must not exceed the segment length.`);

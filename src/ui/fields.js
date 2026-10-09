@@ -8,6 +8,7 @@ const DISPLAY = Object.freeze({
   branchLengthRatio: { scale: 100, unit: '% of channel' },
   branchEnergyRatio: { scale: 100, unit: '%' },
   groundFlashShare: { scale: 100, unit: '%' },
+  newTerminationProbability: { scale: 100, unit: '% of strokes' },
   radiusMetres: { scale: 1e-3, unit: 'km' },
   cloudBaseMetres: { scale: 1e-3, unit: 'km' },
   cloudTopMetres: { scale: 1e-3, unit: 'km' },

@@ -7,9 +7,9 @@ import { createRandom, normalDeviate } from './random.js';
  * need verification against primary sources; values marked C are synthetic choices.
  */
 const STORM = Object.freeze({
-  groundStrokeMean: 3.5,                      // B: strokes per ground flash
+  groundStrokeMean: 3.5,                      // B: strokes per ground flash, typically 3–5 (CIGRÉ C4.407)
   groundStrokeMaximum: 10,
-  groundStrokeIntervalMedianSeconds: .05,     // B
+  groundStrokeIntervalMedianSeconds: .06,     // B: geometric mean interstroke interval (CIGRÉ C4.407)
   strokeIntervalSpread: .6,                   // C: lognormal σ
   laterStrokeEnergy: [.3, .7],                // C
   returnStrokeSpeed: [5e7, 2e8],              // B: m/s, log-uniform
@@ -52,8 +52,13 @@ export function stormFlashes(storm) {
       seed, startSeconds,
       segmentLengthMetres: storm.segmentLengthMetres,
       tortuosityDegrees: storm.tortuosityDegrees,
+      macroStepMetres: storm.macroStepMetres,
+      macroTortuosityDegrees: storm.macroTortuosityDegrees,
+      branchDepth: storm.branchDepth,
       branchEnergyRatio: storm.branchEnergyRatio,
       energyVariation: storm.energyVariation,
+      strokeIntervalSpread: STORM.strokeIntervalSpread,
+      subsequentStrokeEnergyRatio: uniform(random, STORM.laterStrokeEnergy),
       branchCount: Math.round(storm.branchCount * (.5 + random()))
     };
     if (ground) {
@@ -61,14 +66,7 @@ export function stormFlashes(storm) {
       const lean = height * STORM.groundLean * random();
       const leanAngle = 2 * Math.PI * random();
       let strokeCount = 1;
-      while (strokeCount < STORM.groundStrokeMaximum && random() < 1 - 1 / (STORM.groundStrokeMean)) strokeCount += 1;
-      const strokes = [{ offsetSeconds: 0, energyScale: 1 }];
-      for (let stroke = 1; stroke < strokeCount; stroke += 1) {
-        strokes.push({
-          offsetSeconds: strokes.at(-1).offsetSeconds + STORM.groundStrokeIntervalMedianSeconds * lognormal(random, STORM.strokeIntervalSpread) * Math.exp(STORM.strokeIntervalSpread ** 2 / 2),
-          energyScale: uniform(random, STORM.laterStrokeEnergy)
-        });
-      }
+      while (strokeCount < STORM.groundStrokeMaximum && random() < 1 - 1 / STORM.groundStrokeMean) strokeCount += 1;
       specs.push({
         ...shared,
         type: 'cloud-to-ground',
@@ -77,7 +75,9 @@ export function stormFlashes(storm) {
         branchLengthRatio: STORM.groundBranchLengthRatio,
         energyJoulesPerMetre: energy,
         channelSpeedMetresPerSecond: logUniform(random, STORM.returnStrokeSpeed),
-        strokes
+        strokeCount,
+        strokeIntervalSeconds: STORM.groundStrokeIntervalMedianSeconds,
+        newTerminationProbability: storm.newTerminationProbability
       });
     } else {
       const [low, high] = STORM.cloudLayer;
@@ -85,14 +85,6 @@ export function stormFlashes(storm) {
       const channelLength = uniform(random, STORM.cloudChannelLength);
       const heading = 2 * Math.PI * random();
       const rise = (2 * random() - 1) * STORM.cloudChannelRise * channelLength;
-      const pulseCount = Math.round(uniform(random, STORM.cloudPulseCount));
-      const strokes = [{ offsetSeconds: 0, energyScale: 1 }];
-      for (let pulse = 1; pulse < pulseCount; pulse += 1) {
-        strokes.push({
-          offsetSeconds: strokes.at(-1).offsetSeconds + STORM.cloudPulseIntervalMedianSeconds * lognormal(random, STORM.strokeIntervalSpread) * Math.exp(STORM.strokeIntervalSpread ** 2 / 2),
-          energyScale: uniform(random, STORM.laterStrokeEnergy)
-        });
-      }
       const half = channelLength / 2;
       const clampZ = value => Math.min(storm.cloudTopMetres, Math.max(storm.cloudBaseMetres, value));
       specs.push({
@@ -103,7 +95,9 @@ export function stormFlashes(storm) {
         branchLengthRatio: STORM.cloudBranchLengthRatio,
         energyJoulesPerMetre: energy * STORM.cloudEnergyScale,
         channelSpeedMetresPerSecond: logUniform(random, STORM.cloudChannelSpeed),
-        strokes
+        strokeCount: Math.round(uniform(random, STORM.cloudPulseCount)),
+        strokeIntervalSeconds: STORM.cloudPulseIntervalMedianSeconds,
+        newTerminationProbability: 0
       });
     }
   }

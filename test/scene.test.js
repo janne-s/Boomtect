@@ -27,6 +27,7 @@ test('invalid scenes are rejected with a reason', () => {
     scene => { scene.emitters[0].seed = -1; },
     scene => { scene.receivers[0].positionMetres.z = -1; },
     scene => { scene.emitters[0].strokeCount = 1.5; },
+    scene => { scene.emitters[0].baseMetres = { x: 0, y: 0, z: 100 }; },
     scene => { scene.emitters[0].topMetres = { ...scene.emitters[0].baseMetres }; },
     scene => { scene.receivers = []; }
   ];

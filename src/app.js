@@ -286,23 +286,35 @@ function buildEmitterFields(container, emitter) {
   if (emitter.kind !== 'blast') seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
   numbers(['startSeconds']);
   if (emitter.kind === 'lightning') {
-    selectField(container, { label: 'Type', value: emitter.flashType, options: Object.entries(FLASH_TYPE_LABELS), onCommit: set('flashType') });
-    fields.baseMetres = pointFields(container, { label: 'Channel start (m)', point: emitter.baseMetres, onCommit: set('baseMetres') });
-    fields.topMetres = pointFields(container, { label: 'Channel end (m)', point: emitter.topMetres, onCommit: set('topMetres') });
+    const ground = emitter.flashType === 'cloud-to-ground';
+    selectField(container, {
+      label: 'Type', value: emitter.flashType, options: Object.entries(FLASH_TYPE_LABELS),
+      onCommit: value => updateEmitter(emitter.id, item => {
+        item.flashType = value;
+        if (value === 'cloud-to-ground') item.baseMetres = { ...item.baseMetres, z: 0 };
+        else item.newTerminationProbability = 0;
+      })
+    });
+    fields.baseMetres = pointFields(container, {
+      label: ground ? 'Ground point ■ (m)' : 'Start ■ (m)', point: emitter.baseMetres, axes: ground ? ['x', 'y'] : ['x', 'y', 'z'], onCommit: set('baseMetres')
+    });
+    fields.topMetres = pointFields(container, { label: ground ? 'Cloud end ● (m)' : 'End ● (m)', point: emitter.topMetres, onCommit: set('topMetres') });
     heading(container, 'Channel');
-    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchLengthRatio', 'branchEnergyRatio']);
+    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees',
+      'branchCount', 'branchDepth', 'branchLengthRatio', 'branchEnergyRatio']);
     heading(container, 'Source');
-    numbers(['energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds']);
+    numbers(['energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds']);
     heading(container, 'Strokes');
-    numbers(['channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'subsequentStrokeEnergyRatio']);
+    numbers(['channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'strokeIntervalSpread', 'subsequentStrokeEnergyRatio']);
+    if (ground) numbers(['newTerminationProbability']);
   } else if (emitter.kind === 'storm') {
     fields.centreMetres = pointFields(container, { label: 'Centre (m)', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
     heading(container, 'Extent');
-    numbers(['radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres']);
+    numbers(['radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres', 'newTerminationProbability']);
     heading(container, 'Source');
-    numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds']);
+    numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds']);
     heading(container, 'Channel');
-    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchEnergyRatio']);
+    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees', 'branchCount', 'branchDepth', 'branchEnergyRatio']);
   } else {
     fields.positionMetres = pointFields(container, { label: 'Position (m)', point: emitter.positionMetres, onCommit: set('positionMetres') });
     heading(container, 'Source');
@@ -446,10 +458,13 @@ function drawResults(playheadSeconds = null) {
 
 /* Playback */
 
-/** Scene times at which each flash of an emitter lights up, one list per flash. */
-function flashTimes(emitter) {
-  if (emitter.kind === 'blast') return [[emitter.startSeconds]];
-  return cachedFlashes(emitter).map(flash => flash.strokes.map(stroke => flash.startSeconds + stroke.offsetSeconds));
+/** Every flash of an emitter as its channel count and strokes: when each lights and which channels. */
+function flashTimeline(emitter) {
+  if (emitter.kind === 'blast') return [{ channels: 1, strokes: [{ time: emitter.startSeconds, route: [0] }] }];
+  return cachedFlashes(emitter).map(flash => ({
+    channels: flash.channels.length,
+    strokes: flash.strokes.map(stroke => ({ time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route.map(step => step.channel) }))
+  }));
 }
 
 function animationState() {
@@ -462,8 +477,16 @@ function animationState() {
   const result = state.results?.get(listenReceiver().id);
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
-    flashes.set(emitter.id, flashTimes(emitter).map(times => Math.min(1, times.reduce(
-      (sum, time) => sum + (now >= shown(time) ? Math.exp(-(now - shown(time)) / FLASH_DECAY_SECONDS) : 0), 0))));
+    flashes.set(emitter.id, flashTimeline(emitter).map(flash => {
+      const levels = new Float32Array(flash.channels);
+      for (const stroke of flash.strokes) {
+        const time = shown(stroke.time);
+        if (now < time) continue;
+        const level = Math.exp(-(now - time) / FLASH_DECAY_SECONDS);
+        for (const channel of stroke.route) levels[channel] = Math.min(1, levels[channel] + level);
+      }
+      return levels;
+    }));
     if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && !clock.skippedSeconds) {
       fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
     }

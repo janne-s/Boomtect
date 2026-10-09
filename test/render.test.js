@@ -38,7 +38,7 @@ test('a point blast arrives at R/c and falls off as 1/R', () => {
 });
 
 test('a vertical channel arrives along t(z) = t_emit + sqrt(d² + z²)/c', () => {
-  const emitter = { ...defaultLightning(), topMetres: { x: 0, y: 0, z: 3000 }, tortuosityDegrees: 0, branchCount: 0, strokeCount: 1 };
+  const emitter = { ...defaultLightning(), topMetres: { x: 0, y: 0, z: 3000 }, tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, strokeCount: 1 };
   const value = scene({ emitter, receivers: [receiverAt('mic', { x: 800, y: 0, z: 0 })] });
   const speed = speedOfSoundMetresPerSecond(value.air.temperatureCelsius);
   const result = render(value);
@@ -52,8 +52,8 @@ test('a vertical channel arrives along t(z) = t_emit + sqrt(d² + z²)/c', () =>
   assert.ok(result.startSeconds <= 800 / speed && result.startSeconds + result.samples.length / result.sampleRate >= Math.hypot(800, 3000) / speed);
 });
 
-test('a long dense channel falls off as a line source, 1/sqrt(d)', () => {
-  const emitter = { ...defaultLightning(), baseMetres: { x: 0, y: 0, z: 0 }, topMetres: { x: 0, y: 0, z: 8000 }, tortuosityDegrees: 0, branchCount: 0, energyVariation: 0, straightLengthMetres: 10, riseTimeSeconds: 1e-4, strokeCount: 1 };
+test('with the weak shock off, a long dense channel falls off as a line source, 1/sqrt(d)', () => {
+  const emitter = { ...defaultLightning(), baseMetres: { x: 0, y: 0, z: 0 }, topMetres: { x: 0, y: 0, z: 8000 }, tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, energyVariation: 0, segmentLengthMetres: 2, straightLengthMetres: 2, weakShockLimitRadii: 10, riseTimeSeconds: 1e-4, strokeCount: 1 };
   const value = scene({ emitter, receivers: [receiverAt('near', { x: 100, y: 0, z: 4000 }), receiverAt('far', { x: 400, y: 0, z: 4000 })] });
   const ratio = Math.abs(peak(render(value, 0)).value / peak(render(value, 1)).value);
   assert.ok(Math.abs(ratio - 2) < .1, `ratio ${ratio}`);
@@ -123,7 +123,7 @@ test('an onset delays every arrival by exactly that time', () => {
 });
 
 test('a render split by arrival time sums to the single-thread render', () => {
-  const lightning = { ...defaultLightning(), topMetres: { x: 200, y: 0, z: 1200 }, strokeCount: 2 };
+  const lightning = { ...defaultLightning(), topMetres: { x: 200, y: 0, z: 1200 }, branchDepth: 1, strokeCount: 2 };
   const value = scene({ emitter: lightning, receivers: [receiverAt('mic', { x: 700, y: 100, z: 2 })], ground: { enabled: true, type: 'grass' }, absorption: true });
   const prepared = prepareScene(value);
   const whole = render(value);

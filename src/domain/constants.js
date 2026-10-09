@@ -3,7 +3,7 @@
  * x east, y north, z up, with the ground plane at z = 0.
  */
 
-export const MODEL_VERSION = '2.0.0';
+export const MODEL_VERSION = '3.0.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 

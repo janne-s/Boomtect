@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
 import { blastSources, emitterSources, kinneyGrahamOverpressureRatio } from '../src/domain/emitters.js';
-import { lightningEmitterFlashes, relaxationRadiusMetres, segmentsFromPoints, tortuousPath } from '../src/domain/lightning.js';
+import { lightningEmitterFlashes, relaxationRadiusMetres, segmentsFromPoints, tortuousPath, weakShockPulse } from '../src/domain/lightning.js';
 import { createRandom } from '../src/domain/random.js';
 import { defaultBlast, defaultCloudFlash, defaultLightning, defaultScene, defaultStorm } from '../src/domain/scene.js';
 import { stormFlashes } from '../src/domain/storm.js';
@@ -18,49 +18,62 @@ test('a straight path divides evenly from start to end', () => {
   assert.deepEqual(segments[0].direction, { x: 0, y: 0, z: 1 });
 });
 
-test('a ground flash is deterministic, reaches its top, and branches downward above the ground', () => {
-  const emitter = defaultLightning();
+test('a ground flash is deterministic, reaches its top, and branches in levels above the ground', () => {
+  const emitter = { ...defaultLightning(), strokeCount: 1 };
   const [flash] = lightningEmitterFlashes(emitter);
   assert.deepEqual(lightningEmitterFlashes(emitter), [flash]);
   assert.notDeepEqual(lightningEmitterFlashes({ ...emitter, seed: emitter.seed + 1 }), [flash]);
   const [main, ...branches] = flash.channels;
   assert.deepEqual(main.points.at(-1), emitter.topMetres);
-  assert.ok(channelLength(main) < 1.3 * Math.hypot(600, 4000));
-  assert.ok(branches.length > 0 && branches.length <= emitter.branchCount);
+  assert.ok(branches.some(branch => branch.level === 1) && branches.some(branch => branch.level === 2));
   for (const branch of branches) {
     assert.ok(branch.points.every(point => point.z >= 0));
-    assert.ok(branch.points.at(-1).z < branch.points[0].z);
-    assert.equal(branch.energyScale, emitter.branchEnergyRatio);
+    assert.ok(Math.abs(branch.energyScale - emitter.branchEnergyRatio ** branch.level) < 1e-12);
   }
+  assert.ok(lightningEmitterFlashes({ ...emitter, branchDepth: 0 })[0].channels.length === 1);
 });
 
-test('later strokes follow the main channel only and start at their interval', () => {
-  const emitter = { ...defaultLightning(), strokeCount: 2, strokeIntervalSeconds: .05 };
+test('later strokes follow one route to ground, sometimes through a new ground point', () => {
+  const emitter = { ...defaultLightning(), strokeCount: 6, newTerminationProbability: 1 };
+  const [flash] = lightningEmitterFlashes(emitter);
+  const terminations = flash.channels.filter(channel => channel.termination);
+  assert.equal(terminations.length, 5);
+  for (const termination of terminations) assert.equal(termination.points[0].z, 0);
+  for (const stroke of flash.strokes.slice(1)) assert.equal(stroke.route.length, 2);
+  const fixed = lightningEmitterFlashes({ ...emitter, newTerminationProbability: 0, strokeIntervalSpread: 0 })[0];
+  assert.ok(fixed.strokes.slice(1).every(stroke => stroke.route.length === 1 && stroke.route[0].channel === 0));
+  fixed.strokes.forEach((stroke, index) => assert.ok(Math.abs(stroke.offsetSeconds - index * emitter.strokeIntervalSeconds) < 1e-12));
+});
+
+test('the first stroke lights every channel and later strokes only their route', () => {
+  const emitter = { ...defaultLightning(), strokeCount: 2, newTerminationProbability: 0, strokeIntervalSpread: 0, strokeIntervalSeconds: .05 };
   const { flashes, sources } = emitterSources(emitter, air);
   const [flash] = flashes;
   const all = flash.channels.reduce((sum, channel) => sum + channel.segments.length, 0);
-  const main = flash.channels[0].segments.length;
-  assert.equal(sources.length, all + main);
-  const firstMain = sources[0];
-  const secondMain = sources[all];
-  assert.ok(Math.abs(secondMain.emissionSeconds - firstMain.emissionSeconds - .05) < 1e-12);
+  assert.equal(sources.length, all + flash.channels[0].segments.length);
+  assert.ok(Math.abs(sources[all].emissionSeconds - sources[0].emissionSeconds - .05) < 1e-12);
 });
 
 test('a cloud flash spreads its emission over its length at the channel speed', () => {
-  const emitter = { ...defaultCloudFlash(), branchCount: 0, strokeCount: 1, tortuosityDegrees: 0 };
+  const emitter = { ...defaultCloudFlash(), branchCount: 0, strokeCount: 1, tortuosityDegrees: 0, macroTortuosityDegrees: 0 };
   const { sources } = emitterSources(emitter, air);
   const spread = Math.max(...sources.map(source => source.emissionSeconds)) - Math.min(...sources.map(source => source.emissionSeconds));
   const length = Math.hypot(5000, 1000, 1000);
   assert.ok(Math.abs(spread - (length - emitter.segmentLengthMetres) / emitter.channelSpeedMetresPerSecond) < 1e-3);
 });
 
-test('lower energy and higher altitude change the pulse as Few predicts', () => {
-  const emitter = { ...defaultLightning(), tortuosityDegrees: 0, branchCount: 0, energyVariation: 0, strokeCount: 1 };
+test('the source period follows Few and ReVelle, grows with distance, and freezes at the weak-shock limit', () => {
+  const emitter = { ...defaultLightning(), tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, energyVariation: 0, strokeCount: 1 };
   const { sources } = emitterSources(emitter, air);
-  assert.ok(sources.at(-1).durationSeconds > sources[0].durationSeconds);
-  const weaker = emitterSources({ ...emitter, energyJoulesPerMetre: emitter.energyJoulesPerMetre / 4 }, air).sources;
-  assert.ok(Math.abs(weaker[0].durationSeconds / sources[0].durationSeconds - .5) < 1e-9);
+  const low = sources[0].weakShock;
+  assert.ok(sources.at(-1).weakShock.relaxationRadius > low.relaxationRadius);
   assert.ok(Math.abs(relaxationRadiusMetres(Math.PI * 101325, 101325) - 1) < 1e-12);
+  const near = weakShockPulse(1, .01, 10, 1e4);
+  const far = weakShockPulse(1, .01, 160, 1e4);
+  assert.ok(Math.abs(far.durationSeconds / near.durationSeconds - 2) < 1e-3);
+  assert.ok(Math.abs(far.amplitudeScale - .5) < 1e-9);
+  assert.deepEqual(weakShockPulse(1, .01, 1e6, 1e4), weakShockPulse(1, .01, 1e4, 1e4));
+  assert.deepEqual(weakShockPulse(1, .01, 2, 1e4), near);
 });
 
 test('a storm is deterministic and keeps its flashes inside its disc, window, and cloud layer', () => {
