@@ -189,7 +189,7 @@ export function defaultScene(mode = 'thunder') {
     ground: { enabled: true, type: 'grass' },
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
-    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1 }
+    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false }
   };
 }
 
@@ -294,6 +294,7 @@ export function parseScene(value) {
   const render = value.render ?? {};
   check(render.sampleRate === SAMPLE_RATE_HZ, `render.sampleRate must be ${SAMPLE_RATE_HZ}.`);
   check(LEVEL_MODES.includes(render.levelMode), 'render.levelMode is not supported.');
+  check(typeof render.earReflex === 'boolean' && typeof render.earLoudness === 'boolean', 'render.earReflex and render.earLoudness must be true or false.');
   const scene = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
@@ -314,7 +315,9 @@ export function parseScene(value) {
       sampleRate: render.sampleRate,
       levelMode: render.levelMode,
       fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa'),
-      ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder')
+      ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder'),
+      earReflex: render.earReflex,
+      earLoudness: render.earLoudness
     }
   };
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));

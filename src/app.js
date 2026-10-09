@@ -6,6 +6,7 @@ import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, pre
 import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene
 } from './domain/scene.js';
+import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatMetres, formatSeconds } from './ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
@@ -244,6 +245,7 @@ function finishRender(scene, prepared, parts, info) {
     return;
   }
   state.envelopes = new Map([...state.results.values()].map(result => [result.receiverId, envelope(result)]));
+  earCache.clear();
   setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
   $('play').disabled = false;
   $('export').disabled = false;
@@ -279,12 +281,38 @@ function outputGainForPeak(peakPa) {
   return peakPa > 0 ? PEAK_TARGET / peakPa : 1;
 }
 
+const earCache = new Map();
+
+/**
+ * The composition as the optional ear model hears it: each listener's channels processed by the
+ * reflex and loudness model, driven by its own pressure. Cached per render and setting.
+ */
+function earApplied(composition) {
+  const { earReflex: reflex, earLoudness: loudness } = state.scene.render;
+  if (!composition || (!reflex && !loudness)) return composition;
+  const key = part => `${part.receiverId}:${reflex}:${loudness}:${composition.startSeconds}:${composition.length}`;
+  const processed = (part, channels) => {
+    const cached = earCache.get(key(part));
+    if (cached?.results === state.results) return cached.channels;
+    const result = applyEar(channels, composition.sampleRate, { reflex, loudness });
+    earCache.set(key(part), { results: state.results, channels: result });
+    return result;
+  };
+  const heads = composition.heads.map(head => ({ ...head, channels: processed(head, head.channels) }));
+  const omnis = composition.omnis.map(omni => ({ ...omni, channel: processed(omni, [omni.channel])[0] }));
+  let peakPa = 0;
+  for (const channel of [...heads.map(head => head.channels[0]), ...omnis.map(omni => omni.channel)]) {
+    for (const value of channel) peakPa = Math.max(peakPa, Math.abs(value));
+  }
+  return { ...composition, heads, omnis, peakPa };
+}
+
 /**
  * What Play and Export use: the composition of the listening microphones and its gain. Binaural
  * decoding gets 3 dB more room; a mix of several parts is scaled by 1/sqrt of their number.
  */
 function listening() {
-  const composition = composeListening(state.scene, state.results);
+  const composition = earApplied(composeListening(state.scene, state.results));
   if (!composition) return null;
   let gain = outputGainForPeak(composition.peakPa);
   if (composition.heads.length) gain *= BINAURAL_HEADROOM;
@@ -663,6 +691,8 @@ function refreshPanel() {
   if (scene.render.levelMode === 'fixed') {
     numberField(output, { key: 'fullScalePa', value: scene.render.fullScalePa, onCommit: value => commit(next => { next.render.fullScalePa = value; }) });
   }
+  checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
+  checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
   selectField(output, {
     label: 'Spatial', value: String(scene.render.ambisonicOrder),
     options: [['0', 'Off'], ['1', '1st order'], ['2', '2nd order'], ['3', '3rd order']],

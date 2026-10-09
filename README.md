@@ -60,6 +60,11 @@ Thunder and Blast are separate modes, each with its own scene.
   plays one channel per speaker when the output has them, and otherwise as a
   stereo preview.
 - **Spatial** — The Ambisonic order of the render, or Off.
+- **Ear reflex** — The middle-ear reflex: after a loud onset, the low
+  frequencies are turned down with a short delay, and the effect fades while
+  the sound continues.
+- **Loudness** — Compresses level differences the way perceived loudness
+  grows with pressure.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
 
 ## Export
@@ -92,10 +97,13 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient | B |
 | Turbulence | phase fluctuation of the ground reflection | B/C |
 | Ambisonics | spherical harmonics, AmbiX | A |
+| Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
+| Loudness | Stevens' power law on the level envelope | B/C |
 
 Not modelled: terrain and buildings, diffraction, temperature stratification
 and refraction, wind, nonlinear propagation beyond the linearization radius.
-Levels are model values in pascals and are not calibrated.
+Levels are model values in pascals and are not calibrated, so the ear model's
+response to level is only as reliable as the model's level.
 
 ## Running locally
 
