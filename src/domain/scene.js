@@ -29,7 +29,7 @@ export const PARAMETERS = Object.freeze({
   heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
   startSeconds: { minimum: 0, maximum: 120, unit: 's', label: 'Onset', reliability: null },
   segmentLengthMetres: { minimum: 1, maximum: 100, unit: 'm', label: 'Segment length', reliability: 'C' },
-  straightLengthMetres: { minimum: .5, maximum: 100, unit: 'm', label: 'Straight element', reliability: 'C' },
+  straightLengthMetres: { minimum: .1, maximum: 100, unit: 'm', label: 'Straight element', reliability: 'C' },
   tortuosityDegrees: { minimum: 0, maximum: 60, unit: '°', label: 'Tortuosity', reliability: 'C' },
   branchCount: { minimum: 0, maximum: 50, unit: '', label: 'Branches', reliability: 'C', integer: true },
   branchLengthRatio: { minimum: .02, maximum: 1, unit: '', label: 'Branch length', reliability: 'C' },

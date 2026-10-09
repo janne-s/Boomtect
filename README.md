@@ -26,8 +26,14 @@ of sources at different heights — rather than as one point.
   microseconds.
   With **Real delay** the sound arrives as late as it would outdoors; without
   it, the silence before the first sound is skipped.
-- **Variant** copies the selected emitter with a new seed, so two flashes or
-  storms with the same parameters but a different shape can be compared.
+- The selected emitter opens with a few **macro** sliders — energy, height,
+  branching, zigzag, crack, strokes; for a storm also size, duration, and
+  flash count — that each set several parameters at once. **Details…** opens
+  every parameter, grouped and marked with its reliability class.
+- **New shape** draws a new seed. **Variant** copies the emitter with a new
+  seed and switches the original off, so two shapes can be compared.
+- Several microphones are several listening positions; choose which one to
+  hear next to Play.
 - **Export WAV** writes the selected microphone as a mono 32-bit float WAV and a
   JSON document with the full scene, the time of the first sample after the
   flash, and the pascals that correspond to full scale. That JSON opens as a

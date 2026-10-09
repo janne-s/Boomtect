@@ -30,39 +30,37 @@
     <main class="layout">
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene box: drag points or their shadows, drag empty space to turn, wheel to zoom, double-click to reset"></canvas>
+        <div class="overlay overlay-top" id="cube-selected"></div>
+        <div class="overlay overlay-bottom" id="cube-listen"></div>
+        <p class="overlay overlay-hint">Drag a point or its shadow · drag empty space to turn · wheel to zoom · double-click to reset</p>
       </figure>
       <div class="splitter splitter-column" id="split-column" role="separator" aria-orientation="vertical" aria-label="Resize parameters" tabindex="0"></div>
       <aside class="panel" aria-label="Parameters">
         <section>
           <h2>Emitters</h2>
-          <div class="list" id="emitter-list"></div>
-          <div class="row-buttons">
+          <div class="row-buttons add-row">
             <button type="button" id="add-lightning" data-mode="thunder">+ Ground flash</button>
             <button type="button" id="add-cloud" data-mode="thunder">+ Cloud flash</button>
             <button type="button" id="add-storm" data-mode="thunder">+ Storm</button>
             <button type="button" id="add-blast" data-mode="blast">+ Blast</button>
-            <button type="button" id="duplicate-emitter">Variant</button>
-            <button type="button" id="remove-emitter">Remove</button>
           </div>
-          <div class="fields" id="emitter-fields"></div>
+          <div class="list" id="emitter-list"></div>
         </section>
         <section>
           <h2>Receivers</h2>
-          <div class="list" id="receiver-list"></div>
           <div class="row-buttons">
             <button type="button" id="add-receiver">+ Mic</button>
-            <button type="button" id="remove-receiver">Remove</button>
           </div>
-          <div class="fields" id="receiver-fields"></div>
+          <div class="list" id="receiver-list"></div>
         </section>
-        <section>
-          <h2>Air and ground</h2>
+        <details class="group">
+          <summary>Air and ground</summary>
           <div class="fields" id="environment-fields"></div>
-        </section>
-        <section>
-          <h2>Output</h2>
+        </details>
+        <details class="group">
+          <summary>Output</summary>
           <div class="fields" id="output-fields"></div>
-        </section>
+        </details>
       </aside>
 
       <div class="splitter splitter-row" id="split-row" role="separator" aria-orientation="horizontal" aria-label="Resize results" tabindex="0"></div>
@@ -87,5 +85,14 @@
         </section>
       </section>
     </main>
+
+    <dialog id="details" aria-labelledby="details-title">
+      <header class="details-header">
+        <h2 id="details-title"></h2>
+        <span class="legend"><b>A</b> first principles · <b>B</b> literature · <b>C</b> heuristic or synthetic</span>
+        <button type="button" id="details-close" class="primary">Done</button>
+      </header>
+      <div class="details-body" id="details-body"></div>
+    </dialog>
   </body>
 </html>

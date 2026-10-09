@@ -43,7 +43,8 @@ function frontArc(step, elapsed, routeLength) {
 /**
  * The scene in an orthographic, rotatable box with equal metres on every axis. The floor is the
  * ground and carries the plan; the two far walls carry the elevations. Every point can be dragged
- * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane).
+ * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
+ * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
 export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
   let scene = null;
@@ -124,7 +125,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     return { ...point, [plane.fixed]: plane.value };
   }
 
-  /** Solves the screen point back to the plane's two free coordinates. */
+  /**
+   * Solves a screen point back to the two free coordinates of a plane through `base`. The
+   * plane's fixed coordinate comes from `base`, so pass the point already placed on the plane.
+   */
   function fromScreen(plane, base, x, y) {
     const origin = frame.project({ ...base, [plane.free[0]]: 0, [plane.free[1]]: 0 });
     const first = frame.project({ ...base, [plane.free[0]]: 1, [plane.free[1]]: 0 });
@@ -409,7 +413,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     event.preventDefault();
     if (target) {
       onSelect({ type: target.type, id: target.id });
-      drag = { kind: 'point', ...target };
+      const grabbed = fromScreen(target.plane, onPlane(target.point, target.plane), x, y);
+      if (grabbed) drag = { kind: 'point', ...target, origin: { ...target.point }, grabbed };
+      else drag = null;
     } else {
       drag = { kind: 'rotate', x, y, view: { ...view } };
     }
@@ -432,14 +438,15 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       draw();
       return;
     }
-    const solved = fromScreen(drag.plane, drag.point, x, y);
+    const solved = fromScreen(drag.plane, onPlane(drag.origin, drag.plane), x, y);
     if (!solved) return;
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
-    const point = { ...drag.point };
+    const point = { ...drag.origin };
     for (const axis of drag.plane.free) {
+      const moved = drag.origin[axis] + solved[axis] - drag.grabbed[axis];
       if (axis === 'z') {
-        if (!drag.onGround) point.z = Math.round(clamp(solved.z, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10;
-      } else point[axis] = Math.round(clamp(solved[axis], SCENE_EXTENT_METRES));
+        if (!drag.onGround) point.z = Math.round(clamp(moved, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10;
+      } else point[axis] = Math.round(clamp(moved, SCENE_EXTENT_METRES));
     }
     drag.point = point;
     onMove(drag, point);
