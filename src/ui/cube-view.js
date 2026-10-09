@@ -21,6 +21,8 @@ export const FLASH_TRAVERSE_SECONDS = .12;
 const FLASH_FADE_SECONDS = .2;
 
 export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panX: 0, panY: 0 });
+/** Length of a receiver's facing arrow, as a share of the box. */
+const FACING_LENGTH_SHARE = .05;
 /** While the sound plays without the real delay, a point glows from its arrival for this long. */
 const SOUND_GLOW_SECONDS = .25;
 
@@ -440,6 +442,25 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
         context.beginPath(); context.arc(p.x, p.y, 6 + 14 * level, 0, 2 * Math.PI); context.fill();
         context.globalAlpha = 1;
       }
+    }
+    const span = Math.max(frame.box.x1 - frame.box.x0, frame.box.y1 - frame.box.y0);
+    context.strokeStyle = colors.receiver;
+    context.lineWidth = 1.5;
+    for (const receiver of scene.receivers) {
+      const heading = receiver.headingDegrees * Math.PI / 180;
+      const length = span * FACING_LENGTH_SHARE;
+      const base = receiver.positionMetres;
+      const tip = { x: base.x + Math.sin(heading) * length, y: base.y + Math.cos(heading) * length, z: base.z };
+      const a = frame.project(base);
+      const b = frame.project(tip);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      context.beginPath();
+      context.moveTo(a.x, a.y);
+      context.lineTo(b.x, b.y);
+      context.lineTo(b.x - 6 * Math.cos(angle - .5), b.y - 6 * Math.sin(angle - .5));
+      context.moveTo(b.x, b.y);
+      context.lineTo(b.x - 6 * Math.cos(angle + .5), b.y - 6 * Math.sin(angle + .5));
+      context.stroke();
     }
     for (const handle of handles(scene)) {
       const selected = selection?.type === handle.type && selection.id === handle.id;

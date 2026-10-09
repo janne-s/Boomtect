@@ -1,4 +1,5 @@
 import { atmosphericAbsorptionNepersPerMetre, speedOfSoundMetresPerSecond } from './air.js';
+import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { fft, nextPowerOfTwo } from './fft.js';
@@ -57,7 +58,8 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     directivityCos: new Float64Array(count),
     cosIncidence: new Float64Array(count),
     duration: new Float64Array(count),
-    amplitudeScale: new Float64Array(count)
+    amplitudeScale: new Float64Array(count),
+    direction: new Float64Array(3 * count)
   };
   const r = receiver.positionMetres;
   let index = 0;
@@ -78,6 +80,8 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
         paths.seconds[index] = source.emissionSeconds + metres / speed;
         paths.directivityCos[index] = d && metres > 0 ? (d.x * dx + d.y * dy + sign * d.z * dz) / metres : 0;
         paths.cosIncidence[index] = metres > 0 ? (p.z + r.z) / metres : 1;
+        const toward = metres > 0 ? ambisonicDirection(-dx / metres, -dy / metres, -dz / metres) : [1, 0, 0];
+        paths.direction.set(toward, 3 * index);
         if (source.weakShock) {
           const { relaxationRadius, sourcePeriodSeconds, limitRadii } = source.weakShock;
           const pulse = weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii);
@@ -181,7 +185,8 @@ function absorptionLimit(plan, metres) {
  * × line-element directivity × ground reflection × e^(−iωτ) for the exact fractional offset τ.
  * Trigonometric terms advance by rotation from bin to bin.
  */
-function accumulatePath(real, imaginary, plan, source, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
+function accumulatePath(spectra, gains, plan, source, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
+  const channels = spectra.length;
   const metres = paths.metres[index];
   const limit = absorptionLimit(plan, metres);
   if (limit < 2) return;
@@ -270,8 +275,12 @@ function accumulatePath(real, imaginary, plan, source, paths, index, offsetSampl
       im = re * qIm + im * qRe;
       re = nextRe;
     }
-    real[bin] += re * phaseRe - im * phaseIm;
-    imaginary[bin] += re * phaseIm + im * phaseRe;
+    const outRe = re * phaseRe - im * phaseIm;
+    const outIm = re * phaseIm + im * phaseRe;
+    for (let channel = 0; channel < channels; channel += 1) {
+      spectra[channel].real[bin] += gains[channel] * outRe;
+      spectra[channel].imaginary[bin] += gains[channel] * outIm;
+    }
     const nextPhaseRe = phaseRe * phaseStepRe - phaseIm * phaseStepIm;
     phaseIm = phaseRe * phaseStepIm + phaseIm * phaseStepRe;
     phaseRe = nextPhaseRe;
@@ -320,11 +329,14 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const source = preparedEmitters[paths.emitter[index]].sources[paths.source[index]];
     if (paths.metres[index] < source.linearRadiusMetres) nonlinearPaths += 1;
   }
-  if (!selected.length) return { startSample: 0, samples: new Float64Array(0), nonlinearPaths: 0, pathCount: 0 };
+  const order = scene.render.ambisonicOrder;
+  const channels = channelCount(order);
+  if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0 };
   if ((last - first) / sampleRate > MAXIMUM_RENDER_SECONDS) {
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
   }
-  const output = new Float64Array(last - first);
+  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first));
+  const gains = new Float64Array(channels);
   selected.sort((a, b) => paths.emitter[a] - paths.emitter[b] || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
@@ -333,46 +345,55 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const emitterIndex = paths.emitter[selected[cursor]];
     const frame = frameOf[selected[cursor]];
     const plan = plans[emitterIndex];
-    const real = new Float64Array(plan.size);
-    const imaginary = new Float64Array(plan.size);
+    const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     while (cursor < selected.length && paths.emitter[selected[cursor]] === emitterIndex && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
       const source = preparedEmitters[emitterIndex].sources[paths.source[index]];
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
-      accumulatePath(real, imaginary, plan, source, paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);
+      encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
+      accumulatePath(spectra, gains, plan, source, paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);
       cursor += 1;
     }
-    const block = synthesizeFrame(real, imaginary, plan.size, sampleRate);
     const at = frame * plan.hop - first;
-    for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
+    spectra.forEach(({ real, imaginary }, channel) => {
+      const block = synthesizeFrame(real, imaginary, plan.size, sampleRate);
+      const output = outputs[channel];
+      for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
+    });
     onProgress?.(cursor, selected.length);
   }
-  return { startSample: first, samples: output, nonlinearPaths, pathCount: selected.length };
+  return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }
 
 /**
- * Sums rendered segments in the given order into one Float32 signal, checking every sample.
- * Returns the signal, its start time, and its peak in pascals.
+ * Sums rendered segments in the given order into Float32 channels, checking every sample. Channel 0
+ * is the omnidirectional pressure W. Returns the channels, their start time, and the peak of W in
+ * pascals.
  */
 export function combineSegments(segments, sampleRate) {
-  const present = segments.filter(segment => segment.samples.length);
-  if (!present.length) return { startSeconds: 0, samples: new Float32Array(0), peakPa: 0 };
+  const present = segments.filter(segment => segment.channels[0].length);
+  const count = segments[0]?.channels.length ?? 1;
+  if (!present.length) return { startSeconds: 0, channels: Array.from({ length: count }, () => new Float32Array(0)), peakPa: 0 };
   const start = Math.min(...present.map(segment => segment.startSample));
-  const end = Math.max(...present.map(segment => segment.startSample + segment.samples.length));
+  const end = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length));
   if ((end - start) / sampleRate > MAXIMUM_RENDER_SECONDS) throw new RangeError(`The arrivals span ${((end - start) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
-  const sum = new Float64Array(end - start);
-  for (const segment of present) {
-    const offset = segment.startSample - start;
-    for (let index = 0; index < segment.samples.length; index += 1) sum[offset + index] += segment.samples[index];
-  }
-  const samples = new Float32Array(sum.length);
   let peakPa = 0;
-  for (let index = 0; index < sum.length; index += 1) {
-    if (!Number.isFinite(sum[index])) throw new RangeError('The render produced a non-finite sample.');
-    samples[index] = sum[index];
-    peakPa = Math.max(peakPa, Math.abs(sum[index]));
-  }
-  return { startSeconds: start / sampleRate, samples, peakPa };
+  const channels = Array.from({ length: count }, (_, channel) => {
+    const sum = new Float64Array(end - start);
+    for (const segment of present) {
+      const offset = segment.startSample - start;
+      const samples = segment.channels[channel];
+      for (let index = 0; index < samples.length; index += 1) sum[offset + index] += samples[index];
+    }
+    const result = new Float32Array(sum.length);
+    for (let index = 0; index < sum.length; index += 1) {
+      if (!Number.isFinite(sum[index])) throw new RangeError('The render produced a non-finite sample.');
+      result[index] = sum[index];
+      if (channel === 0) peakPa = Math.max(peakPa, Math.abs(sum[index]));
+    }
+    return result;
+  });
+  return { startSeconds: start / sampleRate, channels, peakPa };
 }
 
 /** Time boundaries that split all arrivals at every receiver into `count` parts of equal size. */
@@ -397,6 +418,7 @@ export function renderReceiver(preparedEmitters, receiver, scene) {
     receiverId: receiver.id,
     sampleRate: scene.render.sampleRate,
     ...combined,
+    samples: combined.channels[0],
     speedOfSound: speedOfSoundMetresPerSecond(scene.air.temperatureCelsius),
     arrivals: arrivalTable(preparedEmitters, receiver, scene),
     nonlinearPaths: segment.nonlinearPaths,

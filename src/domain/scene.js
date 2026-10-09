@@ -62,7 +62,9 @@ export const PARAMETERS = Object.freeze({
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
-  fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null }
+  fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
+  ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
+  headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -169,7 +171,7 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
 }
 
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1') {
-  return { id, name, positionMetres: { x: 2000, y: 0, z: 1.7 } };
+  return { id, name, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270 };
 }
 
 export function defaultScene(mode = 'thunder') {
@@ -185,7 +187,7 @@ export function defaultScene(mode = 'thunder') {
     ground: { enabled: true, type: 'grass' },
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
-    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20 }
+    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1 }
   };
 }
 
@@ -255,7 +257,12 @@ function emitter(value, index) {
 function receiver(value, index) {
   const path = `receivers[${index}]`;
   check(value && typeof value === 'object', `${path} is missing.`);
-  return { id: text(value.id, `${path}.id`), name: text(value.name, `${path}.name`), positionMetres: point(value.positionMetres, `${path}.positionMetres`) };
+  return {
+    id: text(value.id, `${path}.id`),
+    name: text(value.name, `${path}.name`),
+    positionMetres: point(value.positionMetres, `${path}.positionMetres`),
+    headingDegrees: number(value.headingDegrees, 'headingDegrees', `${path}.headingDegrees`)
+  };
 }
 
 function uniqueIds(items, path) {
@@ -296,7 +303,12 @@ export function parseScene(value) {
     ground: { enabled: ground.enabled, type: ground.type },
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),
-    render: { sampleRate: render.sampleRate, levelMode: render.levelMode, fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa') }
+    render: {
+      sampleRate: render.sampleRate,
+      levelMode: render.levelMode,
+      fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa'),
+      ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder')
+    }
   };
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));
   uniqueIds(scene.emitters, 'Emitter');

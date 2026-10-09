@@ -12,7 +12,7 @@ import { checkboxField, numberField, pointFields, seedField, selectField, textFi
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes } from './ui/geometry-cache.js';
 import { macrosFor } from './ui/macros.js';
-import { createPlayer } from './ui/player.js';
+import { createPlayer, LISTEN_MODES, renderListening } from './ui/player.js';
 import { drawArrivals, drawWaveform } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
 
@@ -21,6 +21,9 @@ const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const RENDER_DEBOUNCE_MILLISECONDS = 200;
 /** Peak normalization leaves 3 dB of headroom for resampling and inter-sample peaks. */
 const PEAK_TARGET = 10 ** (-3 / 20);
+/** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
+const BINAURAL_HEADROOM = 10 ** (-3 / 20);
+const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 /** How long a stroke stays on screen after it has run its route. */
 const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
@@ -51,7 +54,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, listenReceiverId: null, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
+  realDelay: true, listenReceiverId: null, pairReceiverId: null, listenMode: 'binaural', mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -215,6 +218,7 @@ function finishRender(scene, prepared, parts, info) {
         receiverId: receiver.id,
         sampleRate: scene.render.sampleRate,
         ...combined,
+        samples: combined.channels[0],
         speedOfSound,
         arrivals: arrivalTable(prepared, receiver, scene),
         nonlinearPaths: segments.reduce((sum, segment) => sum + segment.nonlinearPaths, 0),
@@ -255,10 +259,57 @@ function listenReceiver() {
   return receivers.find(receiver => receiver.id === state.preferences.listenReceiverId) ?? receivers[0];
 }
 
-function outputGain(result) {
+function outputGainForPeak(peakPa) {
   const { levelMode, fullScalePa } = state.scene.render;
   if (levelMode === 'fixed') return 1 / fullScalePa;
-  return result.peakPa > 0 ? PEAK_TARGET / result.peakPa : 1;
+  return peakPa > 0 ? PEAK_TARGET / peakPa : 1;
+}
+
+const outputGain = result => outputGainForPeak(result.peakPa);
+
+function pairReceiver() {
+  const { receivers } = state.scene;
+  const primary = listenReceiver();
+  return receivers.find(receiver => receiver.id === state.preferences.pairReceiverId && receiver.id !== primary.id)
+    ?? receivers.find(receiver => receiver.id !== primary.id) ?? null;
+}
+
+/** The listening mode in effect: binaural needs an ambisonic render, a pair needs a second microphone. */
+function listenMode() {
+  const mode = LISTEN_MODES.includes(state.preferences.listenMode) ? state.preferences.listenMode : 'mono';
+  if (mode === 'binaural' && state.scene.render.ambisonicOrder === 0) return 'mono';
+  if (mode === 'pair' && !pairReceiver()) return 'mono';
+  return mode;
+}
+
+/** Two receivers' pressure on one timeline as left and right. */
+function pairSound(left, right) {
+  const startSeconds = Math.min(left.startSeconds, right.startSeconds);
+  const end = Math.max(left.startSeconds + left.samples.length / left.sampleRate, right.startSeconds + right.samples.length / right.sampleRate);
+  const length = Math.ceil((end - startSeconds) * left.sampleRate);
+  const channels = [left, right].map(result => {
+    const channel = new Float32Array(length);
+    channel.set(result.samples, Math.round((result.startSeconds - startSeconds) * result.sampleRate));
+    return channel;
+  });
+  return { sampleRate: left.sampleRate, startSeconds, channels, peakPa: Math.max(left.peakPa, right.peakPa) };
+}
+
+/** What Play and Export use: the sound, its gain, and how it is heard. */
+function listening() {
+  const mode = listenMode();
+  const receiver = listenReceiver();
+  const result = state.results?.get(receiver.id);
+  if (!result?.samples.length) return null;
+  const options = { mode, order: state.scene.render.ambisonicOrder, heading: receiver.headingDegrees };
+  if (mode === 'pair') {
+    const second = pairReceiver();
+    const other = state.results.get(second.id);
+    const sound = pairSound(result, other);
+    return { sound, gain: outputGainForPeak(sound.peakPa), options, name: `${receiver.name}-${second.name}` };
+  }
+  const gain = outputGain(result) * (mode === 'binaural' ? BINAURAL_HEADROOM : 1);
+  return { sound: result, gain, options, name: receiver.name };
 }
 
 function savePreferences() {
@@ -426,6 +477,27 @@ function receiverCard(container, receiver, selected) {
       })
     };
     card.append(fields);
+    const facing = element('div', 'macros');
+    const label = element('label', '', 'Facing');
+    const slider = element('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '360';
+    slider.step = '1';
+    slider.value = String(receiver.headingDegrees);
+    slider.id = `facing-${receiver.id}`;
+    label.htmlFor = slider.id;
+    const value = element('span', 'macro-value', compassLabel(receiver.headingDegrees));
+    slider.addEventListener('input', () => {
+      const item = state.scene.receivers.find(candidate => candidate.id === receiver.id);
+      item.headingDegrees = Number(slider.value);
+      value.textContent = compassLabel(item.headingDegrees);
+      if (item.id === listenReceiver().id) player.setHeading(item.headingDegrees);
+      redrawViews();
+    });
+    slider.addEventListener('change', () => storage.write(sceneStorageKey(state.scene.mode), state.scene));
+    facing.append(label, slider, value);
+    card.append(facing);
     const actions = element('div', 'card-actions');
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
@@ -553,9 +625,24 @@ function refreshPanel() {
   if (scene.render.levelMode === 'fixed') {
     numberField(output, { key: 'fullScalePa', value: scene.render.fullScalePa, onCommit: value => commit(next => { next.render.fullScalePa = value; }) });
   }
+  selectField(output, {
+    label: 'Spatial', value: String(scene.render.ambisonicOrder),
+    options: [['0', 'Off'], ['1', '1st order'], ['2', '2nd order'], ['3', '3rd order']],
+    onCommit: value => commit(next => { next.render.ambisonicOrder = Number(value); })
+  });
 
-  const receiverSelect = $('receiver-select');
-  receiverSelect.replaceChildren(...scene.receivers.map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === listenReceiver().id)));
+  const mode = listenMode();
+  const listenSelect = $('listen-mode');
+  listenSelect.replaceChildren(...[['mono', 'Mono'], ['binaural', 'Binaural'], ['pair', 'Stereo pair']].map(([value, label]) => {
+    const option = new Option(label, value, false, value === mode);
+    option.disabled = (value === 'binaural' && scene.render.ambisonicOrder === 0) || (value === 'pair' && scene.receivers.length < 2);
+    return option;
+  }));
+  $('receiver-select').replaceChildren(...scene.receivers.map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === listenReceiver().id)));
+  const second = pairReceiver();
+  $('pair-select').hidden = mode !== 'pair';
+  $('pair-select').replaceChildren(...scene.receivers.filter(receiver => receiver.id !== listenReceiver().id)
+    .map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === second?.id)));
 
   const full = scene.emitters.length >= MAXIMUM_EMITTERS;
   document.querySelectorAll('.add-row [data-mode]').forEach(item => { item.hidden = item.dataset.mode !== scene.mode; item.disabled = full; });
@@ -568,6 +655,11 @@ function refreshPanel() {
 }
 
 const COMPASS = Object.freeze(['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']);
+
+/** A heading as degrees and the nearest compass direction. */
+function compassLabel(degrees) {
+  return `${Math.round(degrees)}° ${COMPASS[Math.round(degrees / 45) % 8]}`;
+}
 
 /** Distance and compass direction from one point to another, along the ground. */
 function bearing(from, to) {
@@ -731,9 +823,9 @@ $('play').addEventListener('click', async () => {
     showStopped();
     return;
   }
-  const result = state.results?.get(listenReceiver().id);
-  if (!result?.samples.length) return;
-  await player.play(result, outputGain(result), { realDelay: state.preferences.realDelay, onEnded: showStopped });
+  const current = listening();
+  if (!current) return;
+  await player.play(current.sound, current.gain, { ...current.options, realDelay: state.preferences.realDelay, onEnded: showStopped });
   $('play').textContent = 'Stop';
   $('play').setAttribute('aria-pressed', 'true');
   requestAnimationFrame(animate);
@@ -777,27 +869,46 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
-$('export').addEventListener('click', () => {
-  const receiver = listenReceiver();
-  const result = state.results?.get(receiver.id);
-  if (!result) return;
-  const gain = outputGain(result);
-  const samples = result.samples.map(value => value * gain);
-  const base = `boomtect-${slug(receiver.name)}`;
-  download(`${base}.wav`, new Blob([encodeFloat32Wav([samples], result.sampleRate)], { type: 'audio/wav' }));
+$('export').addEventListener('click', async () => {
+  const current = listening();
+  if (!current) return;
+  const { sound, gain, options, name } = current;
+  const base = `boomtect-${slug(name)}`;
+  const files = [];
+  const wav = (suffix, channels) => {
+    const file = `${base}${suffix}.wav`;
+    download(file, new Blob([encodeFloat32Wav(channels, sound.sampleRate)], { type: 'audio/wav' }));
+    files.push({ file, channels: channels.length });
+  };
+  try {
+    if (options.mode === 'binaural') {
+      wav('-binaural', await renderListening(sound, gain, options));
+      wav(`-ambix-${options.order}`, sound.channels.map(channel => channel.map(value => value * gain)));
+    } else if (options.mode === 'pair') {
+      wav('-pair', sound.channels.map(channel => channel.map(value => value * gain)));
+    } else {
+      wav('', [sound.channels[0].map(value => value * gain)]);
+    }
+  } catch (error) {
+    setStatus(`Export failed: ${error.message}`, true);
+    return;
+  }
   const exportDocument = {
     ...parseScene(state.scene),
     export: {
-      receiverId: receiver.id,
-      file: `${base}.wav`,
-      sampleRate: result.sampleRate,
-      channels: 1,
+      listening: options.mode,
+      receiverId: listenReceiver().id,
+      pairReceiverId: options.mode === 'pair' ? pairReceiver().id : null,
+      headingDegrees: options.mode === 'binaural' ? options.heading : null,
+      ambisonicConvention: AMBISONIC_CONVENTION,
+      files,
+      sampleRate: sound.sampleRate,
       sampleFormat: 'ieee-float32',
-      startSeconds: result.startSeconds,
+      startSeconds: sound.startSeconds,
       fullScalePa: 1 / gain,
-      peakPa: result.peakPa,
-      speedOfSoundMetresPerSecond: result.speedOfSound,
-      modelVersion: result.modelVersion,
+      peakPa: sound.peakPa,
+      speedOfSoundMetresPerSecond: state.results.get(listenReceiver().id).speedOfSound,
+      modelVersion: MODEL_VERSION,
       exportedAt: new Date().toISOString()
     }
   };
@@ -823,13 +934,15 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
 
 $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
-$('receiver-select').addEventListener('change', () => {
+function listeningChanged() {
   player.stop();
   showStopped();
-  state.preferences.listenReceiverId = $('receiver-select').value;
   savePreferences();
-  drawResults();
-});
+  refreshPanel();
+}
+$('receiver-select').addEventListener('change', () => { state.preferences.listenReceiverId = $('receiver-select').value; listeningChanged(); });
+$('pair-select').addEventListener('change', () => { state.preferences.pairReceiverId = $('pair-select').value; listeningChanged(); });
+$('listen-mode').addEventListener('change', () => { state.preferences.listenMode = $('listen-mode').value; listeningChanged(); });
 
 const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
 $('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));

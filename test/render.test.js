@@ -130,6 +130,7 @@ test('a render split by arrival time sums to the single-thread render', () => {
   const boundaries = partitionSeconds(prepared, value, 3);
   const parts = boundaries.slice(0, -1).map((from, index) => renderReceiverRange(prepared, value.receivers[0], value, { fromSeconds: from, toSeconds: boundaries[index + 1] }));
   const split = combineSegments(parts, value.render.sampleRate);
+  split.samples = split.channels[0];
   assert.equal(split.startSeconds, whole.startSeconds);
   assert.equal(split.samples.length, whole.samples.length);
   let largest = 0;
@@ -155,4 +156,15 @@ test('turbulence fills the grazing ground dip of a distant blast', () => {
   const windy = render(turbulentScene);
   const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
   assert.ok(energy(windy.samples) > energy(calm.samples));
+});
+
+test('the omnidirectional channel is the pressure and a source in the east sounds from the east', () => {
+  const value = scene({ emitter: smallBlast({ x: 500, y: 0, z: 10 }), receivers: [receiverAt('mic', { x: 0, y: 0, z: 10 })] });
+  value.render.ambisonicOrder = 1;
+  const result = render(value);
+  const index = result.samples.reduce((best, sample, at, all) => (Math.abs(sample) > Math.abs(all[best]) ? at : best), 0);
+  const [w, y, z, x] = result.channels.map(channel => channel[index]);
+  assert.equal(result.channels.length, 4);
+  assert.ok(Math.abs(y / w + 1) < 1e-6, `east is to the right of north: ${y / w}`);
+  assert.ok(Math.abs(x / w) < 1e-6 && Math.abs(z / w) < 1e-6);
 });

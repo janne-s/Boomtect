@@ -14,7 +14,7 @@ self.addEventListener('message', ({ data }) => {
       });
       return { receiverId: receiver.id, ...segment };
     });
-    self.postMessage({ revision, type: 'result', segments }, segments.map(segment => segment.samples.buffer));
+    self.postMessage({ revision, type: 'result', segments }, segments.flatMap(segment => segment.channels.map(channel => channel.buffer)));
   } catch (error) {
     self.postMessage({ revision, type: 'error', message: error instanceof Error ? error.message : String(error) });
   }
