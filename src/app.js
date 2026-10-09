@@ -12,7 +12,9 @@ import { checkboxField, numberField, pointFields, seedField, selectField, textFi
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes } from './ui/geometry-cache.js';
 import { macrosFor } from './ui/macros.js';
-import { createPlayer, LISTEN_MODES, renderListening } from './ui/player.js';
+import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
+import { createOrientationBall } from './ui/orientation-ball.js';
+import { createPlayer, renderComposition } from './ui/player.js';
 import { drawArrivals, drawWaveform } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
 
@@ -54,7 +56,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, listenReceiverId: null, pairReceiverId: null, listenMode: 'binaural', mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
+  realDelay: true, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -74,13 +76,17 @@ const state = {
 state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 
 const player = createPlayer();
-const liveFields = { receiver: null };
+const liveFields = { receiver: null, orientation: null };
 
 const views = [createCubeView($('cube'), {
   onView: next => { state.preferences.cubeView = next; savePreferences(); },
   onSelect: selection => { state.selection = selection; refreshPanel(); },
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
+    if (handle.field === 'headingDegrees') {
+      orient(item.id, Math.round((Math.atan2(point.x - item.positionMetres.x, point.y - item.positionMetres.y) * 180 / Math.PI + 360) % 360), item.pitchDegrees);
+      return;
+    }
     if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else item[handle.field] = point;
@@ -89,7 +95,7 @@ const views = [createCubeView($('cube'), {
     redrawViews();
     drawInfo();
   },
-  onCommit: () => commit(() => {})
+  onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {}))
 })];
 views[0].setView(state.preferences.cubeView);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
@@ -254,9 +260,10 @@ function envelope(result) {
   return { window: ENVELOPE_SECONDS, values };
 }
 
+/** The receiver the scene view and the plots follow: the first listening one, heads first. */
 function listenReceiver() {
-  const { receivers } = state.scene;
-  return receivers.find(receiver => receiver.id === state.preferences.listenReceiverId) ?? receivers[0];
+  const { heads, omnis } = listeningKind(state.scene.receivers, state.scene.render.ambisonicOrder);
+  return heads[0] ?? omnis[0] ?? state.scene.receivers[0];
 }
 
 function outputGainForPeak(peakPa) {
@@ -265,51 +272,17 @@ function outputGainForPeak(peakPa) {
   return peakPa > 0 ? PEAK_TARGET / peakPa : 1;
 }
 
-const outputGain = result => outputGainForPeak(result.peakPa);
-
-function pairReceiver() {
-  const { receivers } = state.scene;
-  const primary = listenReceiver();
-  return receivers.find(receiver => receiver.id === state.preferences.pairReceiverId && receiver.id !== primary.id)
-    ?? receivers.find(receiver => receiver.id !== primary.id) ?? null;
-}
-
-/** The listening mode in effect: binaural needs an ambisonic render, a pair needs a second microphone. */
-function listenMode() {
-  const mode = LISTEN_MODES.includes(state.preferences.listenMode) ? state.preferences.listenMode : 'mono';
-  if (mode === 'binaural' && state.scene.render.ambisonicOrder === 0) return 'mono';
-  if (mode === 'pair' && !pairReceiver()) return 'mono';
-  return mode;
-}
-
-/** Two receivers' pressure on one timeline as left and right. */
-function pairSound(left, right) {
-  const startSeconds = Math.min(left.startSeconds, right.startSeconds);
-  const end = Math.max(left.startSeconds + left.samples.length / left.sampleRate, right.startSeconds + right.samples.length / right.sampleRate);
-  const length = Math.ceil((end - startSeconds) * left.sampleRate);
-  const channels = [left, right].map(result => {
-    const channel = new Float32Array(length);
-    channel.set(result.samples, Math.round((result.startSeconds - startSeconds) * result.sampleRate));
-    return channel;
-  });
-  return { sampleRate: left.sampleRate, startSeconds, channels, peakPa: Math.max(left.peakPa, right.peakPa) };
-}
-
-/** What Play and Export use: the sound, its gain, and how it is heard. */
+/**
+ * What Play and Export use: the composition of the listening microphones and its gain. Binaural
+ * decoding gets 3 dB more room; a mix of several parts is scaled by 1/sqrt of their number.
+ */
 function listening() {
-  const mode = listenMode();
-  const receiver = listenReceiver();
-  const result = state.results?.get(receiver.id);
-  if (!result?.samples.length) return null;
-  const options = { mode, order: state.scene.render.ambisonicOrder, heading: receiver.headingDegrees };
-  if (mode === 'pair') {
-    const second = pairReceiver();
-    const other = state.results.get(second.id);
-    const sound = pairSound(result, other);
-    return { sound, gain: outputGainForPeak(sound.peakPa), options, name: `${receiver.name}-${second.name}` };
-  }
-  const gain = outputGain(result) * (mode === 'binaural' ? BINAURAL_HEADROOM : 1);
-  return { sound: result, gain, options, name: receiver.name };
+  const composition = composeListening(state.scene, state.results);
+  if (!composition) return null;
+  let gain = outputGainForPeak(composition.peakPa);
+  if (composition.heads.length) gain *= BINAURAL_HEADROOM;
+  if (composition.kind === 'mix') gain /= Math.sqrt(composition.parts);
+  return { composition, gain };
 }
 
 function savePreferences() {
@@ -455,6 +428,85 @@ function emitterCard(container, emitter, selected) {
   container.append(card);
 }
 
+/**
+ * Applies a listening change — which microphones listen, their type, or their orientation — and
+ * keeps the render, since every microphone is rendered as a full field.
+ */
+function commitListening(change) {
+  const next = structuredClone(state.scene);
+  change(next);
+  try {
+    state.scene = parseScene(next);
+  } catch (error) {
+    setStatus(error.message, true);
+    refreshPanel();
+    return;
+  }
+  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  player.stop();
+  showStopped();
+  refreshPanel();
+}
+
+/** Live orientation while a control moves; stored when it ends. */
+function orient(receiverId, headingDegrees, pitchDegrees) {
+  const item = state.scene.receivers.find(candidate => candidate.id === receiverId);
+  item.headingDegrees = headingDegrees;
+  item.pitchDegrees = pitchDegrees;
+  player.setOrientation(receiverId, headingDegrees, pitchDegrees);
+  liveFields.orientation?.set(item);
+  redrawViews();
+}
+
+function storeScene() {
+  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+}
+
+const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
+
+function orientationSection(container, receiver) {
+  const section = element('details', 'orientation');
+  section.open = true;
+  section.append(element('summary', '', 'Orientation'));
+  const ball = element('canvas', 'orientation-ball');
+  ball.setAttribute('aria-label', 'Orientation');
+  section.append(ball);
+  const controls = element('div', 'macros');
+  const label = element('label', '', 'Facing');
+  const slider = element('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '360';
+  slider.step = '1';
+  slider.id = `facing-${receiver.id}`;
+  label.htmlFor = slider.id;
+  const value = element('span', 'macro-value');
+  controls.append(label, slider, value);
+  section.append(controls);
+  const fields = element('div', 'fields');
+  const elevation = numberField(fields, {
+    key: 'pitchDegrees', value: receiver.pitchDegrees,
+    onCommit: pitch => commitListening(next => { next.receivers.find(item => item.id === receiver.id).pitchDegrees = pitch; })
+  });
+  section.append(fields);
+  const sphere = createOrientationBall(ball, {
+    headingDegrees: receiver.headingDegrees, pitchDegrees: receiver.pitchDegrees,
+    onChange: (heading, pitch) => orient(receiver.id, heading, pitch),
+    onCommit: storeScene
+  });
+  const show = item => {
+    slider.value = String(item.headingDegrees);
+    value.textContent = compassLabel(item.headingDegrees);
+    elevation.set(item.pitchDegrees);
+    sphere.set({ headingDegrees: item.headingDegrees, pitchDegrees: item.pitchDegrees });
+  };
+  show(receiver);
+  slider.addEventListener('input', () => orient(receiver.id, Number(slider.value), receiver.pitchDegrees));
+  slider.addEventListener('change', storeScene);
+  liveFields.orientation = { set: show };
+  container.append(section);
+}
+
 function receiverCard(container, receiver, selected) {
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected));
@@ -462,7 +514,13 @@ function receiverCard(container, receiver, selected) {
   header.tabIndex = 0;
   header.setAttribute('role', 'button');
   header.setAttribute('aria-expanded', String(selected));
-  header.append(element('span', 'name', receiver.name), element('span', 'kind', `${formatMetres(receiver.positionMetres.z)} high`));
+  const checkbox = element('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = receiver.listen;
+  checkbox.title = 'Listen';
+  checkbox.addEventListener('click', event => event.stopPropagation());
+  checkbox.addEventListener('change', () => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = checkbox.checked; }));
+  header.append(checkbox, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`));
   const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }; refreshPanel(); };
   header.addEventListener('click', select);
   header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
@@ -470,6 +528,10 @@ function receiverCard(container, receiver, selected) {
   if (selected) {
     const fields = element('div', 'fields');
     textField(fields, { label: 'Name', value: receiver.name, onCommit: value => updateReceiver(receiver.id, item => { item.name = value; }) });
+    selectField(fields, {
+      label: 'Type', value: receiver.type, options: Object.entries(RECEIVER_TYPE_LABELS),
+      onCommit: value => commitListening(next => { next.receivers.find(item => item.id === receiver.id).type = value; })
+    });
     liveFields.receiver = {
       positionMetres: pointFields(fields, {
         label: 'Position (m)', point: receiver.positionMetres,
@@ -477,27 +539,7 @@ function receiverCard(container, receiver, selected) {
       })
     };
     card.append(fields);
-    const facing = element('div', 'macros');
-    const label = element('label', '', 'Facing');
-    const slider = element('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = '360';
-    slider.step = '1';
-    slider.value = String(receiver.headingDegrees);
-    slider.id = `facing-${receiver.id}`;
-    label.htmlFor = slider.id;
-    const value = element('span', 'macro-value', compassLabel(receiver.headingDegrees));
-    slider.addEventListener('input', () => {
-      const item = state.scene.receivers.find(candidate => candidate.id === receiver.id);
-      item.headingDegrees = Number(slider.value);
-      value.textContent = compassLabel(item.headingDegrees);
-      if (item.id === listenReceiver().id) player.setHeading(item.headingDegrees);
-      redrawViews();
-    });
-    slider.addEventListener('change', () => storage.write(sceneStorageKey(state.scene.mode), state.scene));
-    facing.append(label, slider, value);
-    card.append(facing);
+    if (receiver.type === 'binaural') orientationSection(card, receiver);
     const actions = element('div', 'card-actions');
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
@@ -601,6 +643,7 @@ function refreshPanel() {
   const receiverList = $('receiver-list');
   receiverList.replaceChildren();
   liveFields.receiver = null;
+  liveFields.orientation = null;
   scene.receivers.forEach(receiver => receiverCard(receiverList, receiver, selection.type === 'receiver' && selection.id === receiver.id));
 
   const environment = $('environment-fields');
@@ -631,19 +674,10 @@ function refreshPanel() {
     onCommit: value => commit(next => { next.render.ambisonicOrder = Number(value); })
   });
 
-  const mode = listenMode();
-  const listenSelect = $('listen-mode');
-  listenSelect.replaceChildren(...[['mono', 'Mono'], ['binaural', 'Binaural'], ['pair', 'Stereo pair']].map(([value, label]) => {
-    const option = new Option(label, value, false, value === mode);
-    option.disabled = (value === 'binaural' && scene.render.ambisonicOrder === 0) || (value === 'pair' && scene.receivers.length < 2);
-    return option;
-  }));
-  $('receiver-select').replaceChildren(...scene.receivers.map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === listenReceiver().id)));
-  const second = pairReceiver();
-  $('pair-select').hidden = mode !== 'pair';
-  $('pair-select').replaceChildren(...scene.receivers.filter(receiver => receiver.id !== listenReceiver().id)
-    .map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === second?.id)));
-
+  const { kind, heads, omnis } = listeningKind(scene.receivers, scene.render.ambisonicOrder);
+  const names = [...heads, ...omnis].map(receiver => receiver.name).join(', ');
+  const kindLabel = kind === 'surround' ? `Surround ${omnis.length} ch` : LISTENING_LABELS[kind];
+  $('listen-label').textContent = names ? `${kindLabel} · ${names}` : kindLabel;
   const full = scene.emitters.length >= MAXIMUM_EMITTERS;
   document.querySelectorAll('.add-row [data-mode]').forEach(item => { item.hidden = item.dataset.mode !== scene.mode; item.disabled = full; });
   document.querySelectorAll('.modes [data-mode]').forEach(item => item.setAttribute('aria-checked', String(item.dataset.mode === scene.mode)));
@@ -825,7 +859,7 @@ $('play').addEventListener('click', async () => {
   }
   const current = listening();
   if (!current) return;
-  await player.play(current.sound, current.gain, { ...current.options, realDelay: state.preferences.realDelay, onEnded: showStopped });
+  await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped });
   $('play').textContent = 'Stop';
   $('play').setAttribute('aria-pressed', 'true');
   requestAnimationFrame(animate);
@@ -872,22 +906,23 @@ $('open-file').addEventListener('change', async () => {
 $('export').addEventListener('click', async () => {
   const current = listening();
   if (!current) return;
-  const { sound, gain, options, name } = current;
-  const base = `boomtect-${slug(name)}`;
+  const { composition, gain } = current;
+  const base = `boomtect-${slug(composition.kind)}`;
   const files = [];
-  const wav = (suffix, channels) => {
+  const wav = (suffix, channels, description) => {
     const file = `${base}${suffix}.wav`;
-    download(file, new Blob([encodeFloat32Wav(channels, sound.sampleRate)], { type: 'audio/wav' }));
-    files.push({ file, channels: channels.length });
+    download(file, new Blob([encodeFloat32Wav(channels, composition.sampleRate)], { type: 'audio/wav' }));
+    files.push({ file, channels: channels.length, description });
   };
+  const scaled = channel => channel.map(value => value * gain);
   try {
-    if (options.mode === 'binaural') {
-      wav('-binaural', await renderListening(sound, gain, options));
-      wav(`-ambix-${options.order}`, sound.channels.map(channel => channel.map(value => value * gain)));
-    } else if (options.mode === 'pair') {
-      wav('-pair', sound.channels.map(channel => channel.map(value => value * gain)));
+    if (composition.heads.length) {
+      wav('', await renderComposition(composition, gain), composition.kind === 'mix' ? 'Binaural mix, left and right' : 'Binaural, left and right');
+      for (const head of composition.heads) {
+        wav(`-${slug(head.name)}-ambix`, head.channels.map(scaled), `${head.name}: ${AMBISONIC_CONVENTION}, order ${composition.order}`);
+      }
     } else {
-      wav('', [sound.channels[0].map(value => value * gain)]);
+      wav('', composition.omnis.map(omni => scaled(omni.channel)), `One channel per microphone: ${composition.omnis.map(omni => omni.name).join(', ')}`);
     }
   } catch (error) {
     setStatus(`Export failed: ${error.message}`, true);
@@ -896,18 +931,16 @@ $('export').addEventListener('click', async () => {
   const exportDocument = {
     ...parseScene(state.scene),
     export: {
-      listening: options.mode,
-      receiverId: listenReceiver().id,
-      pairReceiverId: options.mode === 'pair' ? pairReceiver().id : null,
-      headingDegrees: options.mode === 'binaural' ? options.heading : null,
-      ambisonicConvention: AMBISONIC_CONVENTION,
+      listening: composition.kind,
+      heads: composition.heads.map(head => ({ receiverId: head.receiverId, headingDegrees: head.headingDegrees, pitchDegrees: head.pitchDegrees })),
+      omnis: composition.omnis.map(omni => omni.receiverId),
       files,
-      sampleRate: sound.sampleRate,
+      sampleRate: composition.sampleRate,
       sampleFormat: 'ieee-float32',
-      startSeconds: sound.startSeconds,
+      startSeconds: composition.startSeconds,
       fullScalePa: 1 / gain,
-      peakPa: sound.peakPa,
-      speedOfSoundMetresPerSecond: state.results.get(listenReceiver().id).speedOfSound,
+      peakPa: composition.peakPa,
+      speedOfSoundMetresPerSecond: speedOfSoundMetresPerSecond(state.scene.air.temperatureCelsius),
       modelVersion: MODEL_VERSION,
       exportedAt: new Date().toISOString()
     }
@@ -934,23 +967,13 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
 
 $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
-function listeningChanged() {
-  player.stop();
-  showStopped();
-  savePreferences();
-  refreshPanel();
-}
-$('receiver-select').addEventListener('change', () => { state.preferences.listenReceiverId = $('receiver-select').value; listeningChanged(); });
-$('pair-select').addEventListener('change', () => { state.preferences.pairReceiverId = $('pair-select').value; listeningChanged(); });
-$('listen-mode').addEventListener('change', () => { state.preferences.listenMode = $('listen-mode').value; listeningChanged(); });
-
 const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
 $('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));
 $('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudFlash(uniqueId('cloud', scene.emitters), nextName(scene, 'Cloud flash'), newSeed())));
 $('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(uniqueId('storm', scene.emitters), nextName(scene, 'Storm'), newSeed())));
 $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
 $('add-receiver').addEventListener('click', () => commit(scene => {
-  const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`);
+  const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`, { type: 'omni', listen: false });
   receiver.positionMetres = { ...receiver.positionMetres, x: receiver.positionMetres.x + 1000 * scene.receivers.length };
   scene.receivers.push(receiver);
   state.selection = { type: 'receiver', id: receiver.id };

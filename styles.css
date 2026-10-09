@@ -120,6 +120,10 @@ figcaption {
   gap: 5px;
   color: var(--muted);
 }
+.listen-label {
+  color: var(--ink);
+  white-space: nowrap;
+}
 .status {
   min-width: 0;
   overflow: hidden;
@@ -537,4 +541,26 @@ details summary {
 }
 .details-limits p {
   margin: 0;
+}
+
+.orientation {
+  margin: 10px 8px 0;
+}
+.orientation summary {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.orientation-ball {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 8px;
+}
+.orientation .macros,
+.orientation .fields {
+  margin: 0 0 6px;
 }

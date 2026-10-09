@@ -45,24 +45,30 @@ Thunder and Blast are separate modes, each with its own scene.
 
 ## Listening
 
-- **Play** — Flashes the sources and plays the sound at the microphone.
+- **Play** — Flashes the sources and plays what the listening microphones hear.
 - **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
   silence before the first sound is skipped, and the channel glows where the
   sound being heard comes from.
-- **Mono** — The pressure at one microphone.
-- **Binaural** — The sound field at one microphone, turned to its **Facing**
-  direction and decoded for headphones.
-- **Stereo pair** — Two microphones as left and right.
+- **Listen** — The checkbox on a microphone adds it to what plays.
+- **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
+  its orientation and decoded for headphones.
+- **Orientation** — Facing and elevation of a binaural microphone. Drag the
+  arrow's tip on the sphere or in the scene.
+- **Combinations** — One omni microphone is mono, two are a stereo pair, more
+  are one channel each. One binaural microphone is binaural; binaural and omni
+  together are a stereo mix with the omni microphones in the centre. Surround
+  plays one channel per speaker when the output has them, and otherwise as a
+  stereo preview.
 - **Spatial** — The Ambisonic order of the render, or Off.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
 
 ## Export
 
-**Export WAV** writes 32-bit float WAV files for the current listening mode —
-mono, the stereo pair, or binaural stereo with an AmbiX file (ACN, SN3D; front
-is north, left is west) — and a JSON file with the full scene, the time of the
-first sample after the flash, and the pascals at full scale. The JSON opens as
-a scene.
+**Export WAV** writes 32-bit float WAV files of what plays — mono, a pair, one
+channel per omni microphone, or binaural stereo with an AmbiX file per binaural
+microphone (ACN, SN3D; front is north, left is west) — and a JSON file with the
+full scene, the time of the first sample after the flash, and the pascals at
+full scale. The JSON opens as a scene.
 
 ## Echotect
 

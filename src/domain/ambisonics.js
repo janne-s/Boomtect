@@ -46,24 +46,79 @@ export function encodeDirection(x, y, z, order, target = new Float64Array(channe
   return target;
 }
 
+/** Directions spread evenly over the sphere (Fibonacci lattice), for fitting rotations. */
+const FIT_DIRECTIONS = (() => {
+  const count = 96;
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  return Array.from({ length: count }, (_, index) => {
+    const z = 1 - 2 * (index + .5) / count;
+    const radius = Math.sqrt(1 - z * z);
+    return [radius * Math.cos(golden * index), radius * Math.sin(golden * index), z];
+  });
+})();
+
+/** Solves the square system a·x = b in place by Gaussian elimination with partial pivoting. */
+function solve(a, b) {
+  const size = b.length;
+  for (let column = 0; column < size; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row += 1) if (Math.abs(a[row][column]) > Math.abs(a[pivot][column])) pivot = row;
+    [a[column], a[pivot]] = [a[pivot], a[column]];
+    [b[column], b[pivot]] = [b[pivot], b[column]];
+    for (let row = column + 1; row < size; row += 1) {
+      const factor = a[row][column] / a[column][column];
+      for (let k = column; k < size; k += 1) a[row][k] -= factor * a[column][k];
+      b[row] -= factor * b[column];
+    }
+  }
+  const x = new Float64Array(size);
+  for (let row = size - 1; row >= 0; row -= 1) {
+    let sum = b[row];
+    for (let k = row + 1; k < size; k += 1) sum -= a[row][k] * x[k];
+    x[row] = sum / a[row][row];
+  }
+  return x;
+}
+
 /**
- * The yaw rotation of a field for a listener facing `headingDegrees` (compass, clockwise from
- * north), as a list of { from, to, gain } terms. Each degree n mixes its cos(mφ) and sin(mφ)
- * components by the angle m·θ; the m = 0 components pass unchanged.
+ * The field rotation for a listener facing `headingDegrees` (compass, clockwise from north) and
+ * looking `pitchDegrees` up, so that the look direction becomes the front. As a list of
+ * { from, to, gain } terms. Each degree's (2n + 1)² block is fitted by least squares from encoded
+ * directions and their rotated encodings; spherical harmonics of one degree rotate among
+ * themselves, so the fit is exact up to rounding.
  */
-export function headingRotation(headingDegrees, order) {
-  const theta = headingDegrees * Math.PI / 180;
-  const terms = [];
-  for (let n = 0; n <= order; n += 1) {
-    const centre = n * n + n;
-    terms.push({ from: centre, to: centre, gain: 1 });
-    for (let m = 1; m <= n; m += 1) {
-      const cosine = centre + m;
-      const sine = centre - m;
-      const c = Math.cos(m * theta);
-      const s = Math.sin(m * theta);
-      terms.push({ from: cosine, to: cosine, gain: c }, { from: sine, to: cosine, gain: -s });
-      terms.push({ from: cosine, to: sine, gain: s }, { from: sine, to: sine, gain: c });
+export function orientationRotation(headingDegrees, pitchDegrees, order) {
+  const heading = headingDegrees * Math.PI / 180;
+  const pitch = pitchDegrees * Math.PI / 180;
+  const rotate = ([x, y, z]) => {
+    const xh = Math.cos(heading) * x - Math.sin(heading) * y;
+    const yh = Math.sin(heading) * x + Math.cos(heading) * y;
+    return [xh * Math.cos(pitch) + z * Math.sin(pitch), yh, -xh * Math.sin(pitch) + z * Math.cos(pitch)];
+  };
+  const before = FIT_DIRECTIONS.map(direction => encodeDirection(...direction, order));
+  const after = FIT_DIRECTIONS.map(direction => encodeDirection(...rotate(direction), order));
+  const terms = [{ from: 0, to: 0, gain: 1 }];
+  for (let n = 1; n <= order; n += 1) {
+    const first = n * n;
+    const size = 2 * n + 1;
+    const normal = Array.from({ length: size }, (_, row) => Float64Array.from({ length: size }, (__, column) =>
+      before.reduce((sum, gains) => sum + gains[first + row] * gains[first + column], 0)));
+    for (let output = 0; output < size; output += 1) {
+      const right = Float64Array.from({ length: size }, (_, row) =>
+        before.reduce((sum, gains, index) => sum + gains[first + row] * after[index][first + output], 0));
+      const weights = solve(normal.map(row => Float64Array.from(row)), right);
+      weights.forEach((gain, input) => { if (Math.abs(gain) > 1e-12) terms.push({ from: first + input, to: first + output, gain }); });
+    }
+  }
+  return terms;
+}
+
+/** Every term an orientation rotation of an order can use, for building a fixed gain network. */
+export function rotationTerms(order) {
+  const terms = [{ from: 0, to: 0 }];
+  for (let n = 1; n <= order; n += 1) {
+    for (let output = 0; output < 2 * n + 1; output += 1) {
+      for (let input = 0; input < 2 * n + 1; input += 1) terms.push({ from: n * n + input, to: n * n + output });
     }
   }
   return terms;

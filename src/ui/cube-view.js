@@ -26,8 +26,21 @@ const FACING_LENGTH_SHARE = .05;
 /** While the sound plays without the real delay, a point glows from its arrival for this long. */
 const SOUND_GLOW_SECONDS = .25;
 
-/** Draggable points: blast positions, channel ends, storm centres, and receivers. */
-function handles(scene) {
+/** The tip of a binaural receiver's look arrow, at a length relative to the box. */
+function facingTip(receiver, box) {
+  const length = Math.max(box.x1 - box.x0, box.y1 - box.y0) * FACING_LENGTH_SHARE;
+  const heading = receiver.headingDegrees * Math.PI / 180;
+  const pitch = receiver.pitchDegrees * Math.PI / 180;
+  const base = receiver.positionMetres;
+  return {
+    x: base.x + Math.sin(heading) * Math.cos(pitch) * length,
+    y: base.y + Math.cos(heading) * Math.cos(pitch) * length,
+    z: Math.max(0, base.z + Math.sin(pitch) * length)
+  };
+}
+
+/** Draggable points: blast positions, channel ends, storm edges, receivers, and look arrows. */
+function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: emitter.positionMetres, role: 'source' });
@@ -40,7 +53,12 @@ function handles(scene) {
       list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres, role: 'end' });
     }
   }
-  for (const receiver of scene.receivers) list.push({ type: 'receiver', id: receiver.id, field: 'positionMetres', point: receiver.positionMetres, role: 'receiver' });
+  for (const receiver of scene.receivers) {
+    list.push({ type: 'receiver', id: receiver.id, field: 'positionMetres', point: receiver.positionMetres, role: 'receiver', listening: receiver.listen });
+    if (receiver.type === 'binaural' && box) {
+      list.push({ type: 'receiver', id: receiver.id, field: 'headingDegrees', point: facingTip(receiver, box), role: 'facing', ownPlaneOnly: true, listening: receiver.listen });
+    }
+  }
   return list;
 }
 
@@ -376,7 +394,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
   }
 
   function drawHandle(context, handle, colors, selected, usable) {
-    const shadowPlanes = planes().filter(plane => usable.has(plane.name) && !(handle.onGround && plane.fixed === 'z'));
+    const shadowPlanes = handle.ownPlaneOnly ? [] : planes().filter(plane => usable.has(plane.name) && !(handle.onGround && plane.fixed === 'z'));
     const shadowColor = handle.role === 'receiver' ? colors.receiver : colors.end;
     context.globalAlpha *= selected ? .7 : .4;
     for (const plane of shadowPlanes) {
@@ -393,6 +411,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       context.fillStyle = colors.receiver;
       context.fill();
       if (selected) { context.strokeStyle = colors.accent; context.stroke(); }
+      return;
+    }
+    if (handle.role === 'facing') {
+      context.arc(p.x, p.y, 3.5, 0, 2 * Math.PI);
+      context.fillStyle = selected ? colors.accent : colors.receiver;
+      context.fill();
       return;
     }
     const radius = handle.role === 'radius' ? HANDLE_RADIUS - 1.5 : HANDLE_RADIUS;
@@ -443,29 +467,20 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
         context.globalAlpha = 1;
       }
     }
-    const span = Math.max(frame.box.x1 - frame.box.x0, frame.box.y1 - frame.box.y0);
     context.strokeStyle = colors.receiver;
     context.lineWidth = 1.5;
     for (const receiver of scene.receivers) {
-      const heading = receiver.headingDegrees * Math.PI / 180;
-      const length = span * FACING_LENGTH_SHARE;
-      const base = receiver.positionMetres;
-      const tip = { x: base.x + Math.sin(heading) * length, y: base.y + Math.cos(heading) * length, z: base.z };
-      const a = frame.project(base);
-      const b = frame.project(tip);
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      context.beginPath();
-      context.moveTo(a.x, a.y);
-      context.lineTo(b.x, b.y);
-      context.lineTo(b.x - 6 * Math.cos(angle - .5), b.y - 6 * Math.sin(angle - .5));
-      context.moveTo(b.x, b.y);
-      context.lineTo(b.x - 6 * Math.cos(angle + .5), b.y - 6 * Math.sin(angle + .5));
-      context.stroke();
+      if (receiver.type !== 'binaural') continue;
+      const a = frame.project(receiver.positionMetres);
+      const b = frame.project(facingTip(receiver, frame.box));
+      context.globalAlpha = receiver.listen ? 1 : .35;
+      context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
     }
-    for (const handle of handles(scene)) {
+    context.globalAlpha = 1;
+    for (const handle of handles(scene, frame.box)) {
       const selected = selection?.type === handle.type && selection.id === handle.id;
       const owner = handle.type === 'emitter' ? scene.emitters.find(emitter => emitter.id === handle.id) : null;
-      context.globalAlpha = owner && !owner.enabled ? .35 : 1;
+      context.globalAlpha = (owner && !owner.enabled) || handle.listening === false ? .35 : 1;
       drawHandle(context, handle, colors, selected, usable);
       context.globalAlpha = 1;
     }
@@ -486,9 +501,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
   function hit(x, y) {
     let best = null;
     const usable = planes().filter(planeUsable);
-    for (const handle of handles(scene)) {
+    for (const handle of handles(scene, frame.box)) {
       const candidates = [{ point: handle.point, plane: { name: 'own', fixed: 'z', value: handle.point.z, free: ['x', 'y'] } }];
-      for (const plane of usable) {
+      for (const plane of handle.ownPlaneOnly ? [] : usable) {
         if (handle.onGround && plane.fixed === 'z') continue;
         candidates.push({ point: onPlane(handle.point, plane), plane });
       }

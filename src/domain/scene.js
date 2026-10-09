@@ -7,7 +7,8 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 3;
+export const SCENE_VERSION = 4;
+export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
 export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast']) });
@@ -64,7 +65,8 @@ export const PARAMETERS = Object.freeze({
   riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
-  headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null }
+  headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
+  pitchDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Elevation', reliability: null }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -170,8 +172,8 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
   };
 }
 
-export function defaultReceiver(id = 'receiver-1', name = 'Mic 1') {
-  return { id, name, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270 };
+export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'binaural', listen = true } = {}) {
+  return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
 
 export function defaultScene(mode = 'thunder') {
@@ -257,11 +259,16 @@ function emitter(value, index) {
 function receiver(value, index) {
   const path = `receivers[${index}]`;
   check(value && typeof value === 'object', `${path} is missing.`);
+  check(RECEIVER_TYPES.includes(value.type), `${path}.type is not supported.`);
+  check(typeof value.listen === 'boolean', `${path}.listen must be true or false.`);
   return {
     id: text(value.id, `${path}.id`),
     name: text(value.name, `${path}.name`),
+    type: value.type,
+    listen: value.listen,
     positionMetres: point(value.positionMetres, `${path}.positionMetres`),
-    headingDegrees: number(value.headingDegrees, 'headingDegrees', `${path}.headingDegrees`)
+    headingDegrees: number(value.headingDegrees, 'headingDegrees', `${path}.headingDegrees`),
+    pitchDegrees: number(value.pitchDegrees, 'pitchDegrees', `${path}.pitchDegrees`)
   };
 }
 
