@@ -170,8 +170,8 @@ figcaption {
   opacity: .55;
 }
 .plot-tabs button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--raised);
+  box-shadow: inset 0 -2px 0 var(--mic);
 }
 
 .bar {
@@ -479,7 +479,7 @@ input[type="range"]:hover::-moz-range-thumb {
   display: none;
 }
 .cube-orientation canvas {
-  width: 120px;
+  width: 150px;
   height: 120px;
   cursor: grab;
 }

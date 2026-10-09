@@ -31,29 +31,12 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
-const VEIL_FILL_ALPHA = .07;
-const VEIL_EDGE_ALPHA = .5;
+const WAVEFRONT_FILL_ALPHA = .05;
+const WAVEFRONT_EDGE_ALPHA = .4;
 const BOUNDARY_EDGE_ALPHA = .7;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
 const SEAM_PIXELS = 1;
-
-/** Convex hull of screen points, counterclockwise (monotone chain). */
-function convexHull(points) {
-  if (points.length < 3) return points;
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const half = list => {
-    const chain = [];
-    for (const point of list) {
-      while (chain.length >= 2 && cross(chain[chain.length - 2], chain[chain.length - 1], point) <= 0) chain.pop();
-      chain.push(point);
-    }
-    chain.pop();
-    return chain;
-  };
-  return [...half(sorted), ...half([...sorted].reverse())];
-}
 
 function addPolygon(path, points) {
   points.forEach((point, index) => (index ? path.lineTo(point.x, point.y) : path.moveTo(point.x, point.y)));
@@ -479,36 +462,63 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   /**
-   * The wavefronts as a veil: every sampled source's sphere above the ground, cut where refraction
-   * keeps rays from the ground, outlined as one union with a brighter edge.
+   * The wavefronts where they cross the floor and the two far walls: each sampled source's sphere
+   * meets a plane in a circle, and the union of those circles is drawn faintly with its edge, only
+   * within the face. On the floor the circle stops at the shadow boundary.
    */
-  function drawVeil(context, colors, veil) {
-    const { profile, spheres } = veil;
-    const shadowed = profile.gradient < 0;
-    const path = new Path2D();
-    for (const { source, centre, radiusMetres } of spheres) {
-      const fromSource = grazingRange(profile, source.z);
-      const lit = point => !shadowed || Math.hypot(point.x - source.x, point.y - source.y) <= fromSource + grazingRange(profile, point.z);
-      const outline = [];
-      for (let step = 0; step < OUTLINE_STEPS; step += 1) {
-        const angle = 2 * Math.PI * step / OUTLINE_STEPS;
-        const cos = Math.cos(angle) * radiusMetres;
-        const sin = Math.sin(angle) * radiusMetres;
-        const point = { x: centre.x + cos * frame.right.x + sin * frame.up.x, y: centre.y + cos * frame.right.y + sin * frame.up.y, z: centre.z + sin * frame.up.z };
-        if (point.z >= 0 && lit(point)) outline.push(frame.project(point));
-      }
-      if (Math.abs(centre.z) < radiusMetres) {
-        // The centre stays above the source; on the ground the lit disc reaches its grazing range.
-        const cut = Math.min(Math.sqrt(radiusMetres ** 2 - centre.z ** 2), shadowed ? fromSource : Infinity);
-        for (let step = 0; step < OUTLINE_STEPS; step += 1) {
+  function drawWavefronts(context, colors, wavefronts) {
+    const { profile, spheres } = wavefronts;
+    const { box, farX, farY } = frame;
+    const faces = [
+      { fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] },
+      { fixed: 'x', value: farX, axes: ['y', 'z'], corners: [[box.y0, 0], [box.y1, 0], [box.y1, box.z1], [box.y0, box.z1]] },
+      { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
+    ];
+    for (const face of faces) {
+      const [u, v] = face.axes;
+      const place = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
+      const path = new Path2D();
+      let any = false;
+      for (const { source, centre, radiusMetres } of spheres) {
+        const offset = face.value - centre[face.fixed];
+        if (Math.abs(offset) >= radiusMetres) continue;
+        let radius = Math.sqrt(radiusMetres ** 2 - offset ** 2);
+        if (face.fixed === 'z' && profile.gradient < 0) radius = Math.min(radius, grazingRange(profile, source.z));
+        if (!(radius > 0)) continue;
+        any = true;
+        addPolygon(path, Array.from({ length: OUTLINE_STEPS }, (_, step) => {
           const angle = 2 * Math.PI * step / OUTLINE_STEPS;
-          outline.push(frame.project({ x: centre.x + cut * Math.cos(angle), y: centre.y + cut * Math.sin(angle), z: 0 }));
-        }
+          return place(centre[u] + radius * Math.cos(angle), centre[v] + radius * Math.sin(angle));
+        }));
       }
-      const hull = convexHull(outline);
-      if (hull.length >= 3) addPolygon(path, hull);
+      if (!any) continue;
+      const outline = new Path2D();
+      addPolygon(outline, face.corners.map(([a, b]) => place(a, b)));
+      context.save();
+      context.clip(outline);
+      unionOutline(context, path, colors.glow, { fillAlpha: WAVEFRONT_FILL_ALPHA, edgeAlpha: WAVEFRONT_EDGE_ALPHA });
+      context.restore();
     }
-    unionOutline(context, path, colors.glow, { fillAlpha: VEIL_FILL_ALPHA, edgeAlpha: VEIL_EDGE_ALPHA });
+  }
+
+  /** Dashed lines from a selected microphone down to the floor and across to the walls, to its shadows there. */
+  function drawProjectionLines(context, colors, point) {
+    const { farX, farY } = frame;
+    const floor = { ...point, z: 0 };
+    const line = points => {
+      context.beginPath();
+      points.map(frame.project).forEach((p, index) => (index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)));
+      context.stroke();
+    };
+    context.save();
+    context.setLineDash([3, 4]);
+    context.lineWidth = 1;
+    context.strokeStyle = colors.receiver;
+    context.globalAlpha = .45;
+    line([point, floor]);
+    line([floor, { ...floor, x: farX }, { ...point, x: farX }]);
+    line([floor, { ...floor, y: farY }, { ...point, y: farY }]);
+    context.restore();
   }
 
   function drawStorm(context, emitter, colors, selected) {
@@ -539,7 +549,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.globalAlpha = 1;
     }
     const front = state?.fronts.get(emitter.id);
-    if (front && !state.veil) {
+    if (front && !state.wavefronts) {
       const middle = frame.project(front.centre);
       context.strokeStyle = colors.accent;
       context.globalAlpha = .5;
@@ -614,6 +624,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
     drawBox(context, colors);
     drawShadowBoundary(context, colors);
+    if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);
     for (const emitter of scene.emitters) {
       const selected = selection?.type === 'emitter' && selection.id === emitter.id;
       context.globalAlpha = emitter.enabled ? 1 : .35;
@@ -625,7 +636,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       context.globalAlpha = 1;
     }
-    if (state?.veil) drawVeil(context, colors, state.veil);
+    const selectedReceiver = selection?.type === 'receiver' ? scene.receivers.find(receiver => receiver.id === selection.id) : null;
+    if (selectedReceiver) drawProjectionLines(context, colors, selectedReceiver.positionMetres);
     for (const receiver of scene.receivers) {
       const level = state?.receivers.get(receiver.id) ?? 0;
       if (level > 0) {

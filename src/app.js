@@ -27,16 +27,22 @@ const PEAK_TARGET = 10 ** (-3 / 20);
 /** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
 const BINAURAL_HEADROOM = 10 ** (-3 / 20);
 const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
-/** Source points whose wavefronts make up the veil, at most. */
-const VEIL_SPHERES = 360;
+/** Source points whose wavefronts are drawn on the box's faces, at most. */
+const WAVEFRONT_SPHERES = 360;
 /** How long a stroke stays on screen after it has run its route. */
 const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
 /** Level range of the microphone rings in the scene, below the loudest microphone's peak. */
 const ENVELOPE_RANGE_DB = 40;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
-/** Every worker holds the whole scene, so very large scenes use fewer of them to bound memory. */
-const SOURCE_COPIES_BUDGET = 2000000;
+/**
+ * Every worker holds the whole scene, so very large scenes use fewer of them to bound memory: a
+ * worker was measured at about 1.8 kB per point source (230 MB for 130 912 sources), and the
+ * budget keeps all workers together near 800 MB.
+ */
+const SOURCE_COPIES_BUDGET = 450000;
+/** A render whose workers have sent nothing for this long has failed, for example out of memory. */
+const RENDER_STALL_SECONDS = 60;
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -75,6 +81,7 @@ const state = {
   revision: 0,
   workers: [],
   renderTimer: null,
+  watchdog: null,
   detailsId: null,
   /** The microphone the plots and scene facts follow; null follows the first listening one. */
   soloId: null,
@@ -170,6 +177,7 @@ function scheduleRender() {
 function stopWorkers() {
   state.workers.forEach(worker => worker.terminate());
   state.workers = [];
+  clearInterval(state.watchdog);
 }
 
 /**
@@ -204,12 +212,21 @@ function startRender() {
   const progress = new Array(workerCount).fill(0);
   const parts = new Array(workerCount);
   let remaining = workerCount;
+  let heard = performance.now();
   setStatus('Rendering…');
+  // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
+  state.watchdog = setInterval(() => {
+    if (revision !== state.revision || performance.now() - heard < RENDER_STALL_SECONDS * 1000) return;
+    stopWorkers();
+    setStatus(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`, true);
+    drawResults();
+  }, 5000);
   for (let index = 0; index < workerCount; index += 1) {
     const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
     state.workers.push(worker);
     worker.addEventListener('message', ({ data }) => {
       if (data.revision !== state.revision) return;
+      heard = performance.now();
       if (data.type === 'progress') {
         progress[index] = data.fraction;
         setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / workerCount * 100)} %`);
@@ -237,6 +254,7 @@ function startRender() {
 
 function finishRender(scene, prepared, parts, info) {
   state.workers = [];
+  clearInterval(state.watchdog);
   const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
     state.results = new Map(scene.receivers.map(receiver => {
@@ -442,8 +460,9 @@ function macroRow(container, emitter, macro) {
       const b = Number(upper.value);
       return [Math.min(a, b) / steps, Math.max(a, b) / steps];
     };
-    // Both inputs inherit the fill from the holder; the upper one's track is transparent.
-    const paint = () => { const [from, to] = read(); paintTrack(holder, from, to); };
+    // The lower input's track shows the fill between the handles; the upper one's is transparent.
+    // Safari does not pass custom properties from a parent on to a slider's track, so both inputs carry them.
+    const paint = () => { const [from, to] = read(); paintTrack(lower, from, to); paintTrack(upper, from, to); };
     paint();
     for (const input of [lower, upper]) {
       input.addEventListener('input', () => { paint(); apply(read); });
@@ -826,7 +845,8 @@ function drawInfo() {
       if (result.arrivals.kinds[index] === PATH_SHADOW) shadowed += 1;
       if (result.arrivals.kinds[index] !== 1) sources += 1;
     }
-    if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${Math.round(shadowed / sources * 100)} % of sources in the refraction shadow`));
+    const share = shadowed / sources * 100;
+    if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${share < 1 ? '<1' : Math.round(share)} % of sources in the refraction shadow`));
     if (result.nonlinearPaths) listenInfo.append(element('span', 'warning', `${result.nonlinearPaths} paths start in the nonlinear zone`));
     if (scene.render.levelMode === 'fixed' && result.peakPa > scene.render.fullScalePa) listenInfo.append(element('span', 'warning', 'Peak above full scale: clips'));
   }
@@ -932,18 +952,18 @@ function animationState() {
   for (const [id, envelopeData] of state.envelopes) {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
-  const veil = state.preferences.wavefront ? { profile, spheres: veilSpheres(now, profile) } : null;
-  return { strokes, fronts, receivers, sound, veil };
+  const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile) } : null;
+  return { strokes, fronts, receivers, sound, wavefronts };
 }
 
-const veilSources = new WeakMap();
+const wavefrontSources = new WeakMap();
 
 /**
  * Every enabled emitter's sampled source points with their emission times: a blast's point, and
  * the channel points of each flash's first stroke, which lead the later strokes' nested fronts.
  */
-function veilCandidates(scene) {
-  if (veilSources.has(scene)) return veilSources.get(scene);
+function wavefrontCandidates(scene) {
+  if (wavefrontSources.has(scene)) return wavefrontSources.get(scene);
   const candidates = [];
   for (const emitter of scene.emitters) {
     if (!emitter.enabled) continue;
@@ -960,14 +980,14 @@ function veilCandidates(scene) {
       }
     }
   }
-  const stride = Math.max(1, Math.ceil(candidates.length / VEIL_SPHERES));
+  const stride = Math.max(1, Math.ceil(candidates.length / WAVEFRONT_SPHERES));
   const sampled = candidates.filter((_, index) => index % stride === 0);
-  veilSources.set(scene, sampled);
+  wavefrontSources.set(scene, sampled);
   return sampled;
 }
 
-function veilSpheres(now, profile) {
-  return veilCandidates(state.scene)
+function wavefrontSpheres(now, profile) {
+  return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
     .map(({ point, emitted }) => ({ source: point, ...wavefront(profile, point, now - emitted) }));
 }

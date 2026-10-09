@@ -24,6 +24,8 @@ Thunder and Blast are separate modes, each with its own scene.
   Shift-drag, or the right button to pan, double-click to reset.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
   one. A storm's edge handle sets its size.
+- **Selected microphone** — Dashed lines lead from it to its shadows on the
+  floor and walls.
 - **Shadow boundary** — The line on the floor beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 
@@ -51,15 +53,16 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
   silence before the first sound is skipped, and the channel glows where the
   sound being heard comes from.
-- **Wavefront** — Shows the spreading wavefronts as a veil while the sound
-  plays.
+- **Wavefront** — While the sound plays, shows where the wavefronts cross the
+  floor and the walls.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
 - **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
   its orientation and decoded for headphones.
-- **Orientation** — Facing and elevation of a binaural microphone. Drag across
-  the sphere beside the scene, or drag the arrowhead in the scene.
+- **Orientation** — Facing and elevation of a binaural microphone. On the
+  sphere beside the scene, drag the handle on the horizon to face and the one
+  on the scale beside it to tilt, or drag the arrowhead in the scene.
 - **Combinations** — One omni microphone is mono, two are a stereo pair, more
   are one channel each. One binaural microphone is binaural; binaural and omni
   together are a stereo mix with the omni microphones in the centre. Surround

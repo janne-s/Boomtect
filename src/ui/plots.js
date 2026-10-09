@@ -5,9 +5,10 @@ const RIGHT = 8;
 const TOP = 22;
 const BOTTOM = 20;
 /** Opacity of microphones other than the solo one, of muted ones, and of the rest, which may overlap. */
-const DIMMED = .2;
-const MUTED = .4;
-const OVERLAPPING = .8;
+const DIMMED = .4;
+const MUTED = .35;
+const OVERLAPPING = .6;
+const SOLO = .85;
 
 /** Scene-time window of a result: from its first rendered sample to its last. */
 function resultWindow(result) {
@@ -50,7 +51,7 @@ function traceStyles(traces, soloId, colors) {
   return traces
     .map(trace => {
       const emphasized = soloId ? trace.id === soloId : trace.listening;
-      const alpha = single ? 1 : soloId ? (emphasized ? 1 : DIMMED) : emphasized ? OVERLAPPING : MUTED;
+      const alpha = single ? 1 : soloId ? (emphasized ? SOLO : DIMMED) : emphasized ? OVERLAPPING : MUTED;
       return { trace, emphasized, single, color: single ? colors.ink : colors.mics[trace.index % colors.mics.length], alpha };
     })
     .sort((a, b) => Number(a.emphasized) - Number(b.emphasized));
@@ -101,6 +102,8 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
     context.strokeStyle = colors.line;
     context.beginPath(); context.moveTo(LEFT, middle); context.lineTo(width - RIGHT, middle); context.stroke();
+    // Overlapping microphones add up like light, so one stays visible through another.
+    context.globalCompositeOperation = live.length > 1 ? 'screen' : 'source-over';
     for (const { trace, color, alpha } of traceStyles(live, soloId, colors)) {
       const { samples, sampleRate, startSeconds } = trace.result;
       context.strokeStyle = color;
@@ -122,6 +125,7 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
       }
       context.stroke();
     }
+    context.globalCompositeOperation = 'source-over';
     context.globalAlpha = 1;
     context.fillStyle = colors.faint;
     context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - RIGHT - 70, TOP - 6);
