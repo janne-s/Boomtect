@@ -11,10 +11,12 @@ of sources at different heights — rather than as one point.
 
 - **Thunder** and **Blast** are separate modes, each with its own scene.
 - The scene sits in a box whose floor is the ground and whose two far walls
-  show the scene from the side. Drag a point to move it horizontally, or drag
-  its shadow on the floor or a wall to move it in that plane. Drag empty space
-  to turn the box, use the wheel to zoom, and double-click to reset. A channel
-  starts at the orange square and ends at the cyan circle.
+  show the scene from the side; the cross on the floor is the origin. Drag a
+  point to move it horizontally, or drag its shadow on the floor or a wall to
+  move it in that plane. Drag empty space to turn the box; pinch or the mouse
+  wheel zooms toward the pointer; two fingers, Shift-drag, or the right button
+  pan; double-click resets. A channel starts at the dark circle and ends at the
+  white one; a storm's edge handle sets its size.
 - The borders between the scene, the parameters, and the results can be
   dragged to resize them.
 - **+ Ground flash** and **+ Cloud flash** add one flash you shape yourself.
@@ -24,8 +26,10 @@ of sources at different heights — rather than as one point.
 - **Play** flashes the source and plays the sound at the selected microphone.
   The flash runs along the channel figuratively; a real return stroke takes
   microseconds.
-  With **Real delay** the sound arrives as late as it would outdoors; without
-  it, the silence before the first sound is skipped.
+  With **Real delay** the sound arrives as late as it would outdoors and the
+  light leaves the channel at the moment of the flash. Without it, the silence
+  before the first sound is skipped, and the channel glows where the sound
+  being heard comes from.
 - The selected emitter opens with a few **macro** sliders — energy, height,
   branching, zigzag, crack, strokes; for a storm also size, duration, and
   flash count — that each set several parameters at once. **Details…** opens
@@ -65,6 +69,7 @@ emitter's pulse, delayed by its travel time and shaped by the path.
 | Blast duration | cube-root scaling from a reference duration | C |
 | Air absorption | ISO 9613-1 | B |
 | Ground reflection | image source with Delany–Bazley impedance and spherical-wave coefficient | B |
+| Turbulence | seeded phase fluctuation of the ground reflection (Clifford & Lataitis) | B/C |
 
 **A** — first principles, **B** — literature, **C** — heuristic or synthetic.
 The panel marks each parameter with its class.

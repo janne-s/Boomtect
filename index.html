@@ -29,10 +29,9 @@
 
     <main class="layout">
       <figure class="view" aria-label="Scene">
-        <canvas id="cube" aria-label="Scene box: drag points or their shadows, drag empty space to turn, wheel to zoom, double-click to reset"></canvas>
+        <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
         <div class="overlay overlay-bottom" id="cube-listen"></div>
-        <p class="overlay overlay-hint">Drag a point or its shadow · drag empty space to turn · wheel to zoom · double-click to reset</p>
       </figure>
       <div class="splitter splitter-column" id="split-column" role="separator" aria-orientation="vertical" aria-label="Resize parameters" tabindex="0"></div>
       <aside class="panel" aria-label="Parameters">
@@ -73,16 +72,6 @@
           <canvas id="arrivals" aria-label="Arrival time by source height"></canvas>
           <figcaption>Arrival · height</figcaption>
         </figure>
-        <section class="notes">
-          <p id="summary" class="summary"></p>
-          <ul id="warnings" class="warnings"></ul>
-          <details>
-            <summary>Model</summary>
-            <p class="legend"><b>A</b> first principles · <b>B</b> literature · <b>C</b> heuristic or synthetic</p>
-            <p class="legend">Not modelled:</p>
-            <ul id="missing" class="missing"></ul>
-          </details>
-        </section>
       </section>
     </main>
 

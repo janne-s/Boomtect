@@ -15,9 +15,11 @@ export const KELVIN_OFFSET = 273.15;
 export const ISA_LAPSE_RATE_KELVIN_PER_METRE = .0065;
 export const ISA_PRESSURE_EXPONENT = 5.25588;
 
-export const MAXIMUM_RENDER_SECONDS = 180;
-export const MAXIMUM_SEGMENTS_PER_EMITTER = 20000;
-export const MAXIMUM_SOURCES = 400000;
+export const MAXIMUM_RENDER_SECONDS = 300;
+/** Segments of one flash's main channel and branches; a storm shares STORM_SEGMENT_BUDGET among its branches. */
+export const MAXIMUM_SEGMENTS_PER_EMITTER = 100000;
+export const STORM_SEGMENT_BUDGET = 600000;
+export const MAXIMUM_SOURCES = 1500000;
 export const MAXIMUM_EMITTERS = 8;
 export const MAXIMUM_RECEIVERS = 8;
 export const SCENE_EXTENT_METRES = 50000;

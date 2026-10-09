@@ -110,13 +110,17 @@ const stormGround = {
   show: item => percent(item.groundFlashShare)
 };
 
+/** The cloud layer: one slider with two handles, base and top. */
+const CLOUD_RANGE = Object.freeze([200, 18000]);
 const stormCloud = {
-  label: 'Cloud base',
-  read: item => clamp01(logPosition(item.cloudBaseMetres, [200, 6000])),
-  write: (item, t) => {
-    const depth = item.cloudTopMetres - item.cloudBaseMetres;
-    item.cloudBaseMetres = Math.round(logValue(t, [200, 6000]));
-    item.cloudTopMetres = Math.min(PARAMETERS.cloudTopMetres.maximum, item.cloudBaseMetres + depth);
+  label: 'Cloud layer',
+  dual: true,
+  read: item => [clamp01(logPosition(item.cloudBaseMetres, CLOUD_RANGE)), clamp01(logPosition(item.cloudTopMetres, CLOUD_RANGE))],
+  write: (item, low, high) => {
+    const base = Math.min(PARAMETERS.cloudBaseMetres.maximum, Math.max(PARAMETERS.cloudBaseMetres.minimum, Math.round(logValue(low, CLOUD_RANGE))));
+    const top = Math.max(PARAMETERS.cloudTopMetres.minimum, Math.round(logValue(high, CLOUD_RANGE)));
+    item.cloudBaseMetres = base;
+    item.cloudTopMetres = Math.max(top, base + 100);
   },
   show: item => `${metres(item.cloudBaseMetres)}–${metres(item.cloudTopMetres)}`
 };

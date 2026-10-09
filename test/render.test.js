@@ -7,7 +7,7 @@ import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseSce
 
 function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false }) {
   const base = defaultScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
-  return parseScene({ ...base, air: { ...base.air, absorption }, ground, emitters: [emitter], receivers });
+  return parseScene({ ...base, air: { ...base.air, absorption, turbulenceStrength: 0 }, ground, emitters: [emitter], receivers });
 }
 
 const receiverAt = (id, positionMetres) => ({ ...defaultReceiver(id, id), positionMetres });
@@ -135,4 +135,24 @@ test('a render split by arrival time sums to the single-thread render', () => {
   let largest = 0;
   split.samples.forEach((sample, index) => { largest = Math.max(largest, Math.abs(sample - whole.samples[index])); });
   assert.ok(largest < whole.peakPa * 1e-6, `difference ${largest}`);
+});
+
+test('turbulence leaves low frequencies coherent and decorrelates high ones', async () => {
+  const { turbulentPhaseVariance } = await import('../src/domain/render.js');
+  const air = { turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1 };
+  const low = turbulentPhaseVariance(100, 1000, 1, 1.7, air, 340);
+  const high = turbulentPhaseVariance(4000, 1000, 1, 1.7, air, 340);
+  assert.ok(low < .01 && high > 1, `${low} ${high}`);
+  assert.equal(turbulentPhaseVariance(1000, 1000, 1, 1.7, { ...air, turbulenceStrength: 0 }, 340), 0);
+});
+
+test('turbulence fills the grazing ground dip of a distant blast', () => {
+  const receivers = [receiverAt('mic', { x: 1000, y: 0, z: 1.7 })];
+  const base = { emitter: { ...defaultBlast(), positionMetres: { x: 0, y: 0, z: 1 } }, receivers, ground: { enabled: true, type: 'grass' } };
+  const calm = render(scene(base));
+  const turbulentScene = scene(base);
+  turbulentScene.air.turbulenceStrength = 1e-6;
+  const windy = render(turbulentScene);
+  const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
+  assert.ok(energy(windy.samples) > energy(calm.samples));
 });

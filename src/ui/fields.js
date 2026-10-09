@@ -9,6 +9,7 @@ const DISPLAY = Object.freeze({
   branchEnergyRatio: { scale: 100, unit: '%' },
   groundFlashShare: { scale: 100, unit: '%' },
   newTerminationProbability: { scale: 100, unit: '% of strokes' },
+  turbulenceStrength: { scale: 1e6, unit: '×10⁻⁶ ⟨μ²⟩' },
   radiusMetres: { scale: 1e-3, unit: 'km' },
   cloudBaseMetres: { scale: 1e-3, unit: 'km' },
   cloudTopMetres: { scale: 1e-3, unit: 'km' },

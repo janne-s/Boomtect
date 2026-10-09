@@ -51,7 +51,7 @@ export function tortuousPath(random, start, end, stepMetres, tortuosityDegrees, 
   const total = distance(start, end);
   if (tortuosityDegrees === 0) {
     const count = Math.max(1, Math.ceil(total / stepMetres - STEP_TOLERANCE));
-    if (count > budget) throw new RangeError('The lightning needs more segments than the supported limit.');
+    if (count > budget) throw new RangeError(`A lightning channel needs more than ${budget} segments. Lengthen the segments or shorten the channel.`);
     return Array.from({ length: count + 1 }, (_, index) => add(start, scaled(subtract(end, start), index / count)));
   }
   const sigma = toRadians(tortuosityDegrees) * Math.sqrt(Math.PI / 2);
@@ -71,7 +71,7 @@ export function tortuousPath(random, start, end, stepMetres, tortuosityDegrees, 
     if (position.z < 0) position.z = -position.z;
     points.push({ ...position });
   }
-  throw new RangeError('The lightning needs more segments than the supported limit.');
+  throw new RangeError(`A lightning channel needs more than ${budget} segments. Lengthen the segments or shorten the channel.`);
 }
 
 /**
@@ -173,8 +173,9 @@ function growBranches(random, spec, budget, parent, level, channels) {
  */
 export function lightningFlash(spec) {
   const random = createRandom(spec.seed);
-  const budget = { remaining: spec.segmentBudget ?? MAXIMUM_SEGMENTS_PER_EMITTER };
+  const budget = { remaining: MAXIMUM_SEGMENTS_PER_EMITTER };
   const mainPoints = channelPath(random, spec.baseMetres, spec.topMetres, spec, budget);
+  if (spec.branchBudget !== undefined) budget.remaining = Math.min(budget.remaining, spec.branchBudget);
   const mainLength = pathLength(mainPoints);
   const main = { points: mainPoints, main: true, level: 0, energyScale: 1, emissionOffsetMetres: 0, mainLength };
   const channels = [main];

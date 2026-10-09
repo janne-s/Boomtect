@@ -4,7 +4,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { newSeed } from './domain/random.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, parseScene, serializeScene
+  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene
 } from './domain/scene.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatMetres, formatSeconds } from './ui/canvas.js';
@@ -25,6 +25,8 @@ const PEAK_TARGET = 10 ** (-3 / 20);
 const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
+/** Every worker holds the whole scene, so very large scenes use fewer of them to bound memory. */
+const SOURCE_COPIES_BUDGET = 2000000;
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -75,7 +77,10 @@ const views = [createCubeView($('cube'), {
   onView: next => { state.preferences.cubeView = next; savePreferences(); },
   onSelect: selection => { state.selection = selection; refreshPanel(); },
   onMove: (handle, point) => {
-    findItem(handle.type, handle.id)[handle.field] = point;
+    const item = findItem(handle.type, handle.id);
+    if (handle.field === 'radiusMetres') {
+      item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
+    } else item[handle.field] = point;
     liveFields[handle.type]?.[handle.field]?.set(point);
     invalidateResults();
     redrawViews();
@@ -90,6 +95,7 @@ attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: 
 });
 
 function findItem(type, id) {
+  if (!type) return null;
   return (type === 'emitter' ? state.scene.emitters : state.scene.receivers).find(item => item.id === id);
 }
 
@@ -110,7 +116,7 @@ function commit(change) {
     return;
   }
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
-  if (!findItem(state.selection?.type, state.selection?.id)) state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
+  if (state.selection.type && !findItem(state.selection.type, state.selection.id)) state.selection = { type: null, id: null };
   invalidateResults();
   refreshPanel();
   scheduleRender();
@@ -151,9 +157,12 @@ function startRender() {
   }
   let prepared;
   let boundaries;
+  let workerCount = WORKER_COUNT;
   try {
     prepared = prepareScene(scene);
-    boundaries = partitionSeconds(prepared, scene, WORKER_COUNT);
+    const total = prepared.reduce((sum, item) => sum + item.sources.length, 0);
+    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(SOURCE_COPIES_BUDGET / Math.max(1, total))));
+    boundaries = partitionSeconds(prepared, scene, workerCount);
   } catch (error) {
     setStatus(error.message, true);
     drawResults();
@@ -161,18 +170,18 @@ function startRender() {
   }
   const sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   const started = performance.now();
-  const progress = new Array(WORKER_COUNT).fill(0);
-  const parts = new Array(WORKER_COUNT);
-  let remaining = WORKER_COUNT;
+  const progress = new Array(workerCount).fill(0);
+  const parts = new Array(workerCount);
+  let remaining = workerCount;
   setStatus('Rendering…');
-  for (let index = 0; index < WORKER_COUNT; index += 1) {
+  for (let index = 0; index < workerCount; index += 1) {
     const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
     state.workers.push(worker);
     worker.addEventListener('message', ({ data }) => {
       if (data.revision !== state.revision) return;
       if (data.type === 'progress') {
         progress[index] = data.fraction;
-        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / WORKER_COUNT * 100)} %`);
+        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / workerCount * 100)} %`);
         return;
       }
       if (data.type === 'error') {
@@ -184,7 +193,7 @@ function startRender() {
       parts[index] = data.segments;
       worker.terminate();
       remaining -= 1;
-      if (remaining === 0) finishRender(scene, prepared, parts, { sources, milliseconds: performance.now() - started });
+      if (remaining === 0) finishRender(scene, prepared, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
     });
     worker.addEventListener('error', event => {
       if (revision !== state.revision) return;
@@ -218,7 +227,7 @@ function finishRender(scene, prepared, parts, info) {
     return;
   }
   state.envelopes = new Map([...state.results.values()].map(result => [result.receiverId, envelope(result)]));
-  setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${WORKER_COUNT} threads`);
+  setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
   $('play').disabled = false;
   $('export').disabled = false;
   drawResults();
@@ -312,21 +321,47 @@ function macroRow(container, emitter, macro) {
   const label = element('label', '', macro.label);
   label.htmlFor = id;
   const steps = macro.steps ?? MACRO_STEPS;
-  const slider = element('input');
-  slider.type = 'range';
-  slider.id = id;
-  slider.min = '0';
-  slider.max = String(steps);
-  slider.step = '1';
-  slider.value = String(Math.round(macro.read(emitter) * steps));
   const value = element('span', 'macro-value', macro.show(emitter));
-  slider.addEventListener('input', () => preview(scene => {
+  const slider = position => {
+    const input = element('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = String(steps);
+    input.step = '1';
+    input.value = String(Math.round(position * steps));
+    return input;
+  };
+  const apply = read => preview(scene => {
     const item = scene.emitters.find(candidate => candidate.id === emitter.id);
-    macro.write(item, Number(slider.value) / steps);
+    macro.write(item, ...read());
     value.textContent = macro.show(item);
-  }));
-  slider.addEventListener('change', () => commit(() => {}));
-  container.append(label, slider, value);
+  });
+  if (macro.dual) {
+    const [low, high] = macro.read(emitter);
+    const holder = element('div', 'dual');
+    const lower = slider(low);
+    const upper = slider(high);
+    lower.id = id;
+    lower.setAttribute('aria-label', `${macro.label} lower`);
+    upper.setAttribute('aria-label', `${macro.label} upper`);
+    const read = () => {
+      const a = Number(lower.value);
+      const b = Number(upper.value);
+      return [Math.min(a, b) / steps, Math.max(a, b) / steps];
+    };
+    for (const input of [lower, upper]) {
+      input.addEventListener('input', () => apply(read));
+      input.addEventListener('change', () => commit(() => {}));
+    }
+    holder.append(lower, upper);
+    container.append(label, holder, value);
+    return;
+  }
+  const input = slider(macro.read(emitter));
+  input.id = id;
+  input.addEventListener('input', () => apply(() => [Number(input.value) / steps]));
+  input.addEventListener('change', () => commit(() => {}));
+  container.append(label, input, value);
 }
 
 function emitterCard(container, emitter, selected) {
@@ -344,7 +379,7 @@ function emitterCard(container, emitter, selected) {
   checkbox.addEventListener('click', event => event.stopPropagation());
   checkbox.addEventListener('change', () => updateEmitter(emitter.id, item => { item.enabled = checkbox.checked; }));
   header.append(checkbox, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)));
-  const select = () => { state.selection = { type: 'emitter', id: emitter.id }; refreshPanel(); };
+  const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); };
   header.addEventListener('click', select);
   header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
   card.append(header);
@@ -377,7 +412,7 @@ function receiverCard(container, receiver, selected) {
   header.setAttribute('role', 'button');
   header.setAttribute('aria-expanded', String(selected));
   header.append(element('span', 'name', receiver.name), element('span', 'kind', `${formatMetres(receiver.positionMetres.z)} high`));
-  const select = () => { state.selection = { type: 'receiver', id: receiver.id }; refreshPanel(); };
+  const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }; refreshPanel(); };
   header.addEventListener('click', select);
   header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
   card.append(header);
@@ -421,8 +456,8 @@ function detailSections(emitter) {
             else item.newTerminationProbability = 0;
           })
         });
-        pointFields(container, { label: ground ? 'Ground point ■' : 'Start ■', point: emitter.baseMetres, axes: ground ? ['x', 'y'] : ['x', 'y', 'z'], onCommit: set('baseMetres') });
-        pointFields(container, { label: ground ? 'Cloud end ●' : 'End ●', point: emitter.topMetres, onCommit: set('topMetres') });
+        pointFields(container, { label: ground ? 'Ground point' : 'Start', point: emitter.baseMetres, axes: ground ? ['x', 'y'] : ['x', 'y', 'z'], onCommit: set('baseMetres') });
+        pointFields(container, { label: ground ? 'Cloud end' : 'End', point: emitter.topMetres, onCommit: set('topMetres') });
       }),
       section('Channel', numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees',
         'branchCount', 'branchDepth', 'branchLengthRatio', 'branchEnergyRatio'])),
@@ -472,7 +507,17 @@ function renderDetails() {
     group.append(fields);
     return group;
   }));
+  const limits = element('section', 'details-section details-limits');
+  limits.append(element('h3', '', 'Not modelled'), element('p', '', missingPhenomena().join(' · ')));
+  body.append(limits);
   body.scrollTop = scroll;
+}
+
+function missingPhenomena() {
+  const missing = [...MISSING_PHENOMENA];
+  if (!state.scene.air.absorption) missing.unshift('Air absorption');
+  if (!state.scene.ground.enabled) missing.unshift('Ground reflection');
+  return missing;
 }
 
 function refreshPanel() {
@@ -488,7 +533,7 @@ function refreshPanel() {
 
   const environment = $('environment-fields');
   environment.replaceChildren();
-  ['temperatureCelsius', 'relativeHumidityPercent', 'pressureKpa'].forEach(key =>
+  ['temperatureCelsius', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres'].forEach(key =>
     numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) }));
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
@@ -522,22 +567,45 @@ function refreshPanel() {
   drawInfo();
 }
 
-/** Short facts around the scene box: the selected emitter and the listening position. */
+const COMPASS = Object.freeze(['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']);
+
+/** Distance and compass direction from one point to another, along the ground. */
+function bearing(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const angle = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  return { metres: Math.hypot(dx, dy), direction: COMPASS[Math.round(angle / 45) % 8] };
+}
+
+function emitterAnchor(emitter) {
+  if (emitter.kind === 'blast') return emitter.positionMetres;
+  if (emitter.kind === 'storm') return emitter.centreMetres;
+  return emitter.baseMetres;
+}
+
+/** Short facts around the scene box: the selection, the listening position, and warnings. */
 function drawInfo() {
   const { scene, selection } = state;
-  const emitter = scene.emitters.find(item => item.id === selection.id && selection.type === 'emitter');
+  const receiver = listenReceiver();
+  const selected = findItem(selection.type, selection.id);
   const selectedInfo = $('cube-selected');
   selectedInfo.replaceChildren();
-  if (emitter) {
-    const kind = emitterKindLabel(emitter);
-    selectedInfo.append(element('strong', '', emitter.name));
-    if (kind !== emitter.name || !emitter.enabled) selectedInfo.append(element('span', '', kind + (emitter.enabled ? '' : ' · off')));
-    selectedInfo.append(element('span', '', emitterSummary(emitter)));
-    if (emitter.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(emitter.startSeconds)}`));
+  if (selected && selection.type === 'emitter') {
+    const kind = emitterKindLabel(selected);
+    selectedInfo.append(element('strong', '', selected.name));
+    if (kind !== selected.name || !selected.enabled) selectedInfo.append(element('span', '', kind + (selected.enabled ? '' : ' · off')));
+    selectedInfo.append(element('span', '', emitterSummary(selected)));
+    const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
+    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' ? 'centre' : 'blast';
+    selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
+    if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
+  } else if (selected) {
+    selectedInfo.append(element('strong', '', selected.name), element('span', '', `${formatMetres(selected.positionMetres.z)} above ground`));
+    const { metres, direction } = bearing({ x: 0, y: 0 }, selected.positionMetres);
+    selectedInfo.append(element('span', '', metres < 1 ? 'At the origin' : `${formatMetres(metres)} ${direction} of the origin`));
   }
-  const receiver = listenReceiver();
   const listenInfo = $('cube-listen');
-  listenInfo.replaceChildren(element('strong', '', `Listening at ${receiver.name}`), element('span', '', `${formatMetres(receiver.positionMetres.z)} above ground`));
+  listenInfo.replaceChildren(element('strong', '', `Listening at ${receiver.name}`));
   let nearest = Infinity;
   const measure = point => { nearest = Math.min(nearest, Math.hypot(point.x - receiver.positionMetres.x, point.y - receiver.positionMetres.y, point.z - receiver.positionMetres.z)); };
   for (const item of scene.emitters) {
@@ -549,9 +617,17 @@ function drawInfo() {
   const result = state.results?.get(receiver.id);
   if (result?.arrivals.count) {
     let first = Infinity;
-    for (let index = 0; index < result.arrivals.count; index += 1) first = Math.min(first, result.arrivals.seconds[index]);
-    listenInfo.append(element('span', '', `First sound ${formatSeconds(first)} after the flash`));
+    let last = -Infinity;
+    for (let index = 0; index < result.arrivals.count; index += 1) {
+      first = Math.min(first, result.arrivals.seconds[index]);
+      last = Math.max(last, result.arrivals.seconds[index]);
+    }
+    listenInfo.append(element('span', '', last > first ? `Sound ${formatSeconds(first)}–${formatSeconds(last)} after the flash` : `Sound ${formatSeconds(first)} after the flash`));
+    listenInfo.append(element('span', '', `Peak ${result.peakPa.toPrecision(3)} Pa · c ${result.speedOfSound.toFixed(1)} m/s`));
+    if (result.nonlinearPaths) listenInfo.append(element('span', 'warning', `${result.nonlinearPaths} paths start in the nonlinear zone`));
+    if (scene.render.levelMode === 'fixed' && result.peakPa > scene.render.fullScalePa) listenInfo.append(element('span', 'warning', 'Peak above full scale: clips'));
   }
+  if (scene.emitters.filter(item => item.enabled).length > 1) listenInfo.append(element('span', 'warning', 'Several emitters sound together'));
 }
 
 function redrawViews() {
@@ -579,37 +655,19 @@ function drawResults(playheadSeconds = null) {
   const result = state.results?.get(receiver.id) ?? null;
   drawWaveform($('waveform'), result, playheadSeconds);
   drawArrivals($('arrivals'), result, playheadSeconds);
-  if (playheadSeconds !== null) return;
-  $('waveform-caption').textContent = result ? `Pressure · ${receiver.name}` : 'Pressure';
-  const summary = $('summary');
-  const warnings = $('warnings');
-  warnings.replaceChildren();
-  const warn = text => warnings.append(Object.assign(document.createElement('li'), { textContent: text }));
-  if (!result?.arrivals.count) {
-    summary.textContent = state.workers.length ? 'Rendering…' : '';
-  } else {
-    let first = Infinity;
-    let last = -Infinity;
-    for (let index = 0; index < result.arrivals.count; index += 1) {
-      first = Math.min(first, result.arrivals.seconds[index]);
-      last = Math.max(last, result.arrivals.seconds[index]);
-    }
-    const fullScale = 1 / outputGain(result);
-    const span = last > first ? `from ${formatSeconds(first)} to ${formatSeconds(last)}` : `at ${formatSeconds(first)}`;
-    summary.textContent = `${receiver.name}: sound ${span} after the first flash. `
-      + `Model peak ${result.peakPa.toPrecision(3)} Pa (uncalibrated), c = ${result.speedOfSound.toFixed(1)} m/s. `
-      + `Full scale ${fullScale.toPrecision(3)} Pa.`;
-    if (result.nonlinearPaths) warn(`${result.nonlinearPaths} paths start inside the nonlinear zone; their level is not reliable.`);
-    if (state.scene.render.levelMode === 'fixed' && result.peakPa > state.scene.render.fullScalePa) warn('The peak exceeds the fixed full scale and will clip on playback.');
-  }
-  if (state.scene.emitters.filter(emitter => emitter.enabled).length > 1) warn('Several emitters are enabled; they sound together.');
-  const missing = [...MISSING_PHENOMENA];
-  if (!state.scene.air.absorption) missing.unshift('Air absorption');
-  if (!state.scene.ground.enabled) missing.unshift('Ground reflection');
-  $('missing').replaceChildren(...missing.map(text => Object.assign(document.createElement('li'), { textContent: text })));
+  if (playheadSeconds === null) $('waveform-caption').textContent = result ? `Pressure · ${receiver.name}` : 'Pressure';
 }
 
 /* Playback */
+
+/** Travel time of a blast's direct sound to the listening receiver. */
+function arrivalDelay(emitter) {
+  const result = state.results?.get(listenReceiver().id);
+  if (emitter.kind !== 'blast' || !result) return 0;
+  const { positionMetres: a } = emitter;
+  const b = listenReceiver().positionMetres;
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) / result.speedOfSound;
+}
 
 /** Every stroke of an emitter as its flash, scene time, and route. */
 function strokeTimeline(emitter) {
@@ -626,27 +684,30 @@ function animationState() {
   const clock = player.clock();
   if (!clock) return null;
   const now = clock.sceneSeconds();
-  const shown = time => Math.max(time, clock.skippedSeconds);
   const strokes = new Map();
   const fronts = new Map();
   const result = state.results?.get(listenReceiver().id);
+  const realDelay = !clock.skippedSeconds && state.preferences.realDelay;
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
-    const active = strokeTimeline(emitter)
-      .map(stroke => ({ ...stroke, elapsed: now - shown(stroke.time) }))
-      .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS);
-    strokes.set(emitter.id, active);
-    if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && !clock.skippedSeconds) {
+    const timeline = strokeTimeline(emitter);
+    if (realDelay || emitter.kind === 'blast') {
+      strokes.set(emitter.id, timeline
+        .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(emitter) }))
+        .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS));
+    }
+    if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && realDelay) {
       fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
     }
   }
+  const sound = !realDelay && result ? { seconds: now, receiver: listenReceiver().positionMetres, speed: result.speedOfSound } : null;
   const receivers = new Map();
   const envelopeData = state.envelopes.get(listenReceiver().id);
   if (envelopeData && result) {
     const index = Math.floor((now - result.startSeconds) / envelopeData.window);
     receivers.set(listenReceiver().id, envelopeData.values[index] ?? 0);
   }
-  return { strokes, fronts, receivers };
+  return { strokes, fronts, receivers, sound };
 }
 
 views.forEach(view => view.setAnimation(animationState));

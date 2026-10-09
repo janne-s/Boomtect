@@ -9,8 +9,10 @@ const MINIMUM_SPAN_METRES = 100;
 const BOX_PADDING = .08;
 const ROTATE_RADIANS_PER_PIXEL = .008;
 const PITCH_RANGE = Object.freeze([.12, 1.45]);
-const ZOOM_RANGE = Object.freeze([.3, 8]);
-const ZOOM_PER_WHEEL = 1.0015;
+const ZOOM_RANGE = Object.freeze([.2, 40]);
+/** Zoom per pixel of pinch or wheel travel; a mouse wheel notch is about 100 pixels. */
+const ZOOM_PER_PIXEL = .006;
+const LINE_PIXELS = 16;
 /** Below this screen-space area a plane is seen edge-on and offers no handles. */
 const DEGENERATE_AREA = .08;
 const DISC_POINTS = 64;
@@ -18,14 +20,19 @@ const DISC_POINTS = 64;
 export const FLASH_TRAVERSE_SECONDS = .12;
 const FLASH_FADE_SECONDS = .2;
 
-export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1 });
+export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panX: 0, panY: 0 });
+/** While the sound plays without the real delay, a point glows from its arrival for this long. */
+const SOUND_GLOW_SECONDS = .25;
 
 /** Draggable points: blast positions, channel ends, storm centres, and receivers. */
 function handles(scene) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: emitter.positionMetres, role: 'source' });
-    else if (emitter.kind === 'storm') list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true, role: 'start' });
+    else if (emitter.kind === 'storm') {
+      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true, role: 'start' });
+      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: { x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }, onGround: true, role: 'radius' });
+    }
     else {
       list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres, onGround: emitter.flashType === 'cloud-to-ground', role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres, role: 'end' });
@@ -72,6 +79,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
     }
     scene.receivers.forEach(receiver => include(receiver.positionMetres));
+    include({ x: 0, y: 0, z: 0 });
     const span = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ);
     const pad = span * BOX_PADDING;
     const grow = (low, high) => {
@@ -104,7 +112,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     const scale = zoom * Math.min((width / 2 - MARGIN) / extentX, (height / 2 - MARGIN) / extentY);
     const project = point => {
       const p = raw(point);
-      return { x: width / 2 + p.x * scale, y: height / 2 - p.y * scale, depth: p.depth };
+      return { x: width / 2 + (p.x + view.panX) * scale, y: height / 2 - (p.y + view.panY) * scale, depth: p.depth };
     };
     const farX = sinYaw > 0 ? box.x1 : box.x0;
     const farY = cosYaw > 0 ? box.y1 : box.y0;
@@ -194,6 +202,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: 0 }, -6, 12);
     context.textAlign = 'left';
     for (let z = step; z <= box.z1; z += step) label(formatMetres(z), { x: farX, y: farY, z }, 4, -2);
+    const origin = frame.project({ x: 0, y: 0, z: 0 });
+    context.strokeStyle = colors.muted;
+    context.beginPath();
+    context.moveTo(origin.x - 6, origin.y); context.lineTo(origin.x + 6, origin.y);
+    context.moveTo(origin.x, origin.y - 6); context.lineTo(origin.x, origin.y + 6);
+    context.stroke();
     label('E', { x: box.x1, y: nearY, z: 0 }, 6, 24);
     label('N', { x: nearX, y: box.y1, z: 0 }, 6, 24);
   }
@@ -272,6 +286,57 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     }
   }
 
+  /**
+   * Lights every channel point whose direct sound is arriving at the listening receiver now: the
+   * flash drawn where the sound comes from instead of when the light left.
+   */
+  function drawSoundGlow(context, emitter, colors, sound) {
+    const levels = [[], [], [], []];
+    const { seconds, receiver, speed } = sound;
+    const glow = arrival => {
+      const age = seconds - arrival;
+      return age >= 0 && age < SOUND_GLOW_SECONDS ? 1 - age / SOUND_GLOW_SECONDS : 0;
+    };
+    for (const flash of cachedFlashes(emitter)) {
+      const speedOfChannel = flash.channelSpeedMetresPerSecond;
+      for (const stroke of flash.strokes) {
+        const start = flash.startSeconds + stroke.offsetSeconds;
+        if (seconds < start) continue;
+        for (const step of stroke.route) {
+          const channel = flash.channels[step.channel];
+          let previous = null;
+          channel.points.forEach((point, index) => {
+            const arc = channel.arcs[index];
+            if (arc < step.fromArc) return;
+            const arrival = start + (step.offsetMetres + arc - step.fromArc) / speedOfChannel
+              + Math.hypot(point.x - receiver.x, point.y - receiver.y, point.z - receiver.z) / speed;
+            const level = glow(arrival);
+            if (previous && level > .02) levels[Math.min(3, Math.floor(level * 4))].push(previous, point);
+            previous = point;
+          });
+        }
+      }
+    }
+    context.strokeStyle = colors.flash;
+    context.shadowColor = colors.glow;
+    levels.forEach((pairs, level) => {
+      if (!pairs.length) return;
+      context.globalAlpha = (level + 1) / 4;
+      context.shadowBlur = 6 + 4 * level;
+      context.lineWidth = 1.2 + .6 * level;
+      context.beginPath();
+      for (let index = 0; index < pairs.length; index += 2) {
+        const a = frame.project(pairs[index]);
+        const b = frame.project(pairs[index + 1]);
+        context.moveTo(a.x, a.y);
+        context.lineTo(b.x, b.y);
+      }
+      context.stroke();
+    });
+    context.shadowBlur = 0;
+    context.globalAlpha = 1;
+  }
+
   function drawStorm(context, emitter, colors, selected) {
     const { x, y } = emitter.centreMetres;
     const ring = z => Array.from({ length: DISC_POINTS }, (_, index) => {
@@ -309,29 +374,41 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
   }
 
   function drawHandle(context, handle, colors, selected, usable) {
-    const color = { start: colors.start, end: colors.end, source: colors.start, receiver: colors.receiver }[handle.role];
     const shadowPlanes = planes().filter(plane => usable.has(plane.name) && !(handle.onGround && plane.fixed === 'z'));
-    context.globalAlpha = selected ? .7 : .4;
+    const shadowColor = handle.role === 'receiver' ? colors.receiver : colors.end;
+    context.globalAlpha *= selected ? .7 : .4;
     for (const plane of shadowPlanes) {
       const p = frame.project(onPlane(handle.point, plane));
-      context.fillStyle = color;
+      context.fillStyle = shadowColor;
       context.beginPath(); context.arc(p.x, p.y, 2.5, 0, 2 * Math.PI); context.fill();
     }
-    context.globalAlpha = 1;
+    context.globalAlpha /= selected ? .7 : .4;
     const p = frame.project(handle.point);
-    context.fillStyle = color;
-    context.strokeStyle = selected ? colors.ink : color;
-    context.lineWidth = selected ? 1.5 : 1;
+    context.lineWidth = selected ? 2 : 1.5;
     context.beginPath();
     if (handle.role === 'receiver') {
       context.moveTo(p.x, p.y - 7); context.lineTo(p.x + 6, p.y + 4); context.lineTo(p.x - 6, p.y + 4); context.closePath();
-    } else if (handle.role === 'start') {
-      context.rect(p.x - HANDLE_RADIUS, p.y - HANDLE_RADIUS, 2 * HANDLE_RADIUS, 2 * HANDLE_RADIUS);
-    } else {
-      context.arc(p.x, p.y, HANDLE_RADIUS, 0, 2 * Math.PI);
+      context.fillStyle = colors.receiver;
+      context.fill();
+      if (selected) { context.strokeStyle = colors.accent; context.stroke(); }
+      return;
     }
-    context.fill();
-    if (selected) context.stroke();
+    const radius = handle.role === 'radius' ? HANDLE_RADIUS - 1.5 : HANDLE_RADIUS;
+    context.arc(p.x, p.y, radius, 0, 2 * Math.PI);
+    if (handle.role === 'end') {
+      context.fillStyle = colors.end;
+      context.fill();
+      context.strokeStyle = selected ? colors.accent : colors.end;
+      context.stroke();
+    } else if (handle.role === 'radius') {
+      context.strokeStyle = selected ? colors.accent : colors.end;
+      context.stroke();
+    } else {
+      context.fillStyle = colors.start;
+      context.fill();
+      context.strokeStyle = selected ? colors.accent : colors.end;
+      context.stroke();
+    }
   }
 
   function draw() {
@@ -348,7 +425,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       context.globalAlpha = emitter.enabled ? 1 : .35;
       if (emitter.kind === 'storm') drawStorm(context, emitter, colors, selected);
       if (emitter.kind === 'blast') drawBlast(context, emitter, colors, state);
-      else drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
+      else {
+        drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
+        if (state?.sound && emitter.enabled) drawSoundGlow(context, emitter, colors, state.sound);
+      }
       context.globalAlpha = 1;
     }
     for (const receiver of scene.receivers) {
@@ -405,17 +485,58 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
+  function changeView(next) {
+    view = next;
+    frame = null;
+    draw();
+  }
+
+  /** Zooms by a factor about a screen point, keeping the scene under that point in place. */
+  function zoomAt(factor, x, y) {
+    if (!frame) return;
+    const [low, high] = ZOOM_RANGE;
+    const zoom = Math.min(high, Math.max(low, view.zoom * factor));
+    const before = frame.scale;
+    const after = before * zoom / view.zoom;
+    const u = (x - frame.width / 2) / before - view.panX;
+    const v = (frame.height / 2 - y) / before - view.panY;
+    changeView({ ...view, zoom, panX: (x - frame.width / 2) / after - u, panY: (frame.height / 2 - y) / after - v });
+  }
+
+  function panBy(dx, dy) {
+    if (!frame) return;
+    changeView({ ...view, panX: view.panX + dx / frame.scale, panY: view.panY - dy / frame.scale });
+  }
+
+  const touches = new Map();
+  let pinch = null;
+
+  function pinchState() {
+    const [a, b] = [...touches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
+  }
+
   canvas.addEventListener('pointerdown', event => {
     if (!scene || !frame) return;
     const { x, y } = localPoint(event);
-    const target = hit(x, y);
     canvas.setPointerCapture(event.pointerId);
     event.preventDefault();
+    if (event.pointerType === 'touch') {
+      touches.set(event.pointerId, { x, y });
+      if (touches.size === 2) {
+        drag = null;
+        pinch = pinchState();
+        return;
+      }
+      if (touches.size > 2) return;
+    }
+    const target = event.button === 0 && !event.shiftKey ? hit(x, y) : null;
     if (target) {
       onSelect({ type: target.type, id: target.id });
       const grabbed = fromScreen(target.plane, onPlane(target.point, target.plane), x, y);
-      if (grabbed) drag = { kind: 'point', ...target, origin: { ...target.point }, grabbed };
-      else drag = null;
+      drag = grabbed ? { kind: 'point', ...target, origin: { ...target.point }, grabbed } : null;
+    } else if (event.button === 1 || event.button === 2 || event.shiftKey) {
+      drag = { kind: 'pan', x, y };
     } else {
       drag = { kind: 'rotate', x, y, view: { ...view } };
     }
@@ -423,19 +544,32 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
   canvas.addEventListener('pointermove', event => {
     if (!scene || !frame) return;
     const { x, y } = localPoint(event);
+    if (event.pointerType === 'touch' && touches.has(event.pointerId)) {
+      touches.set(event.pointerId, { x, y });
+      if (pinch && touches.size === 2) {
+        const next = pinchState();
+        if (pinch.distance > 0) zoomAt(next.distance / pinch.distance, next.x, next.y);
+        panBy(next.x - pinch.x, next.y - pinch.y);
+        pinch = next;
+        return;
+      }
+    }
     if (!drag) {
-      canvas.style.cursor = hit(x, y) ? 'grab' : 'move';
+      canvas.style.cursor = hit(x, y) ? 'grab' : 'default';
       return;
     }
     if (drag.kind === 'rotate') {
       const [low, high] = PITCH_RANGE;
-      view = {
+      changeView({
         ...view,
         yaw: drag.view.yaw - (x - drag.x) * ROTATE_RADIANS_PER_PIXEL,
         pitch: Math.min(high, Math.max(low, drag.view.pitch + (y - drag.y) * ROTATE_RADIANS_PER_PIXEL))
-      };
-      frame = null;
-      draw();
+      });
+      return;
+    }
+    if (drag.kind === 'pan') {
+      panBy(x - drag.x, y - drag.y);
+      drag = { ...drag, x, y };
       return;
     }
     const solved = fromScreen(drag.plane, onPlane(drag.origin, drag.plane), x, y);
@@ -451,26 +585,42 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     drag.point = point;
     onMove(drag, point);
   });
-  const finish = () => {
+  const finish = event => {
+    if (event.pointerType === 'touch') {
+      touches.delete(event.pointerId);
+      if (pinch && touches.size < 2) { pinch = null; onView(view); }
+    }
     if (!drag) return;
     const finished = drag;
     drag = null;
-    if (finished.kind === 'rotate') { onView(view); frame = null; draw(); } else onCommit(finished);
+    if (finished.kind === 'point') onCommit(finished);
+    else { onView(view); frame = null; draw(); }
   };
   canvas.addEventListener('pointerup', finish);
   canvas.addEventListener('pointercancel', finish);
+  canvas.addEventListener('contextmenu', event => event.preventDefault());
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    const [low, high] = ZOOM_RANGE;
-    view = { ...view, zoom: Math.min(high, Math.max(low, view.zoom * ZOOM_PER_WHEEL ** -event.deltaY)) };
-    frame = null;
-    draw();
+    const { x, y } = localPoint(event);
+    const scale = event.deltaMode === 1 ? LINE_PIXELS : 1;
+    const deltaX = event.deltaX * scale;
+    const deltaY = event.deltaY * scale;
+    const mouseWheel = event.deltaMode === 1 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 40 && Number.isInteger(event.deltaY));
+    if (event.ctrlKey || mouseWheel) zoomAt(Math.exp(-deltaY * ZOOM_PER_PIXEL * (event.ctrlKey ? 2 : 1)), x, y);
+    else panBy(-deltaX, -deltaY);
     onView(view);
   }, { passive: false });
+  let gestureScale = 1;
+  canvas.addEventListener('gesturestart', event => { event.preventDefault(); gestureScale = 1; });
+  canvas.addEventListener('gesturechange', event => {
+    event.preventDefault();
+    const { x, y } = localPoint(event);
+    zoomAt(event.scale / gestureScale, x, y);
+    gestureScale = event.scale;
+  });
+  canvas.addEventListener('gestureend', event => { event.preventDefault(); onView(view); });
   canvas.addEventListener('dblclick', () => {
-    view = { ...DEFAULT_CUBE_VIEW };
-    frame = null;
-    draw();
+    changeView({ ...DEFAULT_CUBE_VIEW });
     onView(view);
   });
   new ResizeObserver(() => { frame = null; draw(); }).observe(canvas);
@@ -482,7 +632,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       if (!drag) frame = null;
       draw();
     },
-    setView(next) { view = { ...DEFAULT_CUBE_VIEW, ...next }; frame = null; draw(); },
+    setView(next) { changeView({ ...DEFAULT_CUBE_VIEW, ...next }); },
     draw,
     setAnimation(source) { animation = source; }
   };

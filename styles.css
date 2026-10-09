@@ -17,8 +17,8 @@
   --lightning: #8fb6e6;
   --flash: #f2f8ff;
   --glow: #9cc9ff;
-  --start: #f2a465;
-  --end: #8fdbe3;
+  --start: #0c1015;
+  --end: #f3f6fa;
   --receiver: #dfe6ee;
   --direct: #8fb6e6;
   --reflected: #6c7c8e;
@@ -260,6 +260,24 @@ canvas {
   width: 100%;
   accent-color: var(--accent);
 }
+.dual {
+  position: relative;
+  height: 18px;
+}
+.dual input[type="range"] {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  accent-color: var(--accent);
+}
+.dual input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+.dual input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+}
 .macro-value {
   overflow: hidden;
   color: var(--ink);
@@ -300,6 +318,9 @@ canvas {
   font-size: 11px;
   line-height: 1.4;
   pointer-events: none;
+}
+.overlay .warning {
+  color: var(--accent);
 }
 .overlay strong {
   color: var(--ink);
@@ -456,7 +477,7 @@ dialog::backdrop {
   display: grid;
   grid-area: results;
   min-height: 0;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr) minmax(220px, 1.4fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
 }
@@ -503,9 +524,17 @@ details summary {
   }
   .results {
     grid-template-columns: 1fr;
-    grid-template-rows: 180px 160px auto;
+    grid-template-rows: 180px 160px;
   }
   .bar {
     flex-wrap: wrap;
   }
+}
+
+.details-limits {
+  grid-column: 1 / -1;
+  color: var(--faint);
+}
+.details-limits p {
+  margin: 0;
 }

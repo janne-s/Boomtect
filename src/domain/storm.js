@@ -1,4 +1,4 @@
-import { MAXIMUM_SEGMENTS_PER_EMITTER } from './constants.js';
+import { STORM_SEGMENT_BUDGET } from './constants.js';
 import { lightningFlash } from './lightning.js';
 import { createRandom, normalDeviate } from './random.js';
 
@@ -102,9 +102,9 @@ export function stormFlashes(storm) {
     }
   }
   specs.sort((a, b) => a.startSeconds - b.startSeconds);
-  let budget = MAXIMUM_SEGMENTS_PER_EMITTER * 4;
+  let budget = STORM_SEGMENT_BUDGET;
   return specs.map(spec => {
-    const flash = lightningFlash({ ...spec, segmentBudget: budget });
+    const flash = lightningFlash({ ...spec, branchBudget: Math.max(0, budget) });
     budget -= flash.channels.reduce((sum, channel) => sum + channel.segments.length, 0);
     return flash;
   });

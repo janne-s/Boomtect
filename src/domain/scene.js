@@ -25,9 +25,11 @@ export const PARAMETERS = Object.freeze({
   temperatureCelsius: { minimum: -40, maximum: 50, unit: '°C', label: 'Temperature', reliability: 'A' },
   relativeHumidityPercent: { minimum: 0, maximum: 100, unit: '%', label: 'Humidity', reliability: 'B' },
   pressureKpa: { minimum: 50, maximum: 110, unit: 'kPa', label: 'Pressure', reliability: 'A' },
+  turbulenceStrength: { minimum: 0, maximum: 1e-4, unit: '⟨μ²⟩', label: 'Turbulence', reliability: 'C' },
+  turbulenceScaleMetres: { minimum: .1, maximum: 10, unit: 'm', label: 'Turbulence scale', reliability: 'C' },
   coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
   heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
-  startSeconds: { minimum: 0, maximum: 120, unit: 's', label: 'Onset', reliability: null },
+  startSeconds: { minimum: 0, maximum: 240, unit: 's', label: 'Onset', reliability: null },
   segmentLengthMetres: { minimum: 1, maximum: 100, unit: 'm', label: 'Segment length', reliability: 'C' },
   straightLengthMetres: { minimum: .1, maximum: 100, unit: 'm', label: 'Straight element', reliability: 'C' },
   tortuosityDegrees: { minimum: 0, maximum: 60, unit: '°', label: 'Tortuosity', reliability: 'C' },
@@ -173,13 +175,13 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1') {
 export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
   const receiver = defaultReceiver();
-  if (blast) receiver.positionMetres = { x: 1000, y: 0, z: 1.7 };
+  if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
   return {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
     mode,
     modelVersion: MODEL_VERSION,
-    air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, absorption: true },
+    air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1 },
     ground: { enabled: true, type: 'grass' },
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
@@ -287,7 +289,9 @@ export function parseScene(value) {
       temperatureCelsius: number(air.temperatureCelsius, 'temperatureCelsius', 'air.temperatureCelsius'),
       relativeHumidityPercent: number(air.relativeHumidityPercent, 'relativeHumidityPercent', 'air.relativeHumidityPercent'),
       pressureKpa: number(air.pressureKpa, 'pressureKpa', 'air.pressureKpa'),
-      absorption: air.absorption
+      absorption: air.absorption,
+      turbulenceStrength: number(air.turbulenceStrength, 'turbulenceStrength', 'air.turbulenceStrength'),
+      turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres')
     },
     ground: { enabled: ground.enabled, type: ground.type },
     emitters: value.emitters.map(emitter),
