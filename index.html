@@ -4,11 +4,88 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boomtect</title>
+    <meta name="description" content="Physical acoustics laboratory for thunder and blasts: synthetic sources, height, ground, and air, rendered to sound." />
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="src/app.js"></script>
   </head>
   <body>
-    <main>
-      <h1>Boomtect</h1>
+    <header class="bar">
+      <span class="brand">Boomtect</span>
+      <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
+      <label class="toggle"><input type="checkbox" id="real-delay" checked /> Real delay</label>
+      <select id="receiver-select" aria-label="Receiver to hear"></select>
+      <span id="status" class="status" role="status" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button type="button" id="open">Open</button>
+      <button type="button" id="save">Save</button>
+      <button type="button" id="export" disabled>Export WAV</button>
+      <input type="file" id="open-file" accept="application/json,.json" hidden />
+    </header>
+
+    <main class="layout">
+      <section class="views" aria-label="Scene">
+        <figure class="view view-elevation">
+          <canvas id="elevation" aria-label="Elevation view, east and height"></canvas>
+          <figcaption>Elevation · x–z</figcaption>
+        </figure>
+        <figure class="view view-plan">
+          <canvas id="plan" aria-label="Plan view, east and north"></canvas>
+          <figcaption>Plan · x–y</figcaption>
+        </figure>
+      </section>
+
+      <aside class="panel" aria-label="Parameters">
+        <section>
+          <h2>Emitters</h2>
+          <div class="list" id="emitter-list"></div>
+          <div class="row-buttons">
+            <button type="button" id="add-lightning">+ Lightning</button>
+            <button type="button" id="add-blast">+ Blast</button>
+            <button type="button" id="duplicate-emitter">Variant</button>
+            <button type="button" id="remove-emitter">Remove</button>
+          </div>
+          <div class="fields" id="emitter-fields"></div>
+        </section>
+        <section>
+          <h2>Receivers</h2>
+          <div class="list" id="receiver-list"></div>
+          <div class="row-buttons">
+            <button type="button" id="add-receiver">+ Mic</button>
+            <button type="button" id="remove-receiver">Remove</button>
+          </div>
+          <div class="fields" id="receiver-fields"></div>
+        </section>
+        <section>
+          <h2>Air and ground</h2>
+          <div class="fields" id="environment-fields"></div>
+        </section>
+        <section>
+          <h2>Output</h2>
+          <div class="fields" id="output-fields"></div>
+        </section>
+      </aside>
+
+      <section class="results" aria-label="Result">
+        <figure class="plot plot-wave">
+          <canvas id="waveform" aria-label="Pressure waveform"></canvas>
+          <figcaption id="waveform-caption">Pressure</figcaption>
+        </figure>
+        <figure class="plot plot-arrivals">
+          <canvas id="arrivals" aria-label="Arrival time by source height"></canvas>
+          <figcaption>Arrival · height</figcaption>
+        </figure>
+        <section class="notes">
+          <p id="summary" class="summary"></p>
+          <ul id="warnings" class="warnings"></ul>
+          <details>
+            <summary>Model</summary>
+            <p class="legend"><b>A</b> first principles · <b>B</b> literature · <b>C</b> heuristic or synthetic</p>
+            <p class="legend">Not modelled:</p>
+            <ul id="missing" class="missing"></ul>
+          </details>
+        </section>
+      </section>
     </main>
   </body>
 </html>
