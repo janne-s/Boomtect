@@ -49,7 +49,9 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
   silence before the first sound is skipped, and the channel glows where the
   sound being heard comes from.
-- **Listen** — The checkbox on a microphone adds it to what plays.
+- **Listen** — The checkbox on a microphone adds it to what plays. During
+  playback, the sound continues from the same moment with the new combination.
+  Microphones that do not listen still show their level, muted.
 - **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
   its orientation and decoded for headphones.
 - **Orientation** — Facing and elevation of a binaural microphone. Drag across
@@ -66,6 +68,9 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Loudness** — Compresses level differences the way perceived loudness
   grows with pressure.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
+- **Plots** — Pressure and arrival time by source height for every microphone
+  on one time axis, the muted ones dimmer. A microphone's tab, or selecting the
+  microphone, brings it forward and scales the pressure to it.
 
 ## Export
 

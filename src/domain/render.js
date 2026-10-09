@@ -27,7 +27,8 @@ export const MISSING_PHENOMENA = Object.freeze([
   'Terrain, buildings, and clouds as reflectors',
   'Diffraction',
   'Temperature stratification and refraction',
-  'Wind and turbulence',
+  'Wind',
+  'Turbulent scattering of the direct sound',
   'Nonlinear propagation beyond the linearization radius',
   'Absolute calibration of sound pressure level'
 ]);

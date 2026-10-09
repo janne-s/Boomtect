@@ -143,8 +143,10 @@ export function createPlayer() {
   let context = null;
   let current = null;
   let clock = null;
+  /** Counts play requests, so an older one still connecting does not start after a newer one. */
+  let request = 0;
 
-  function stop() {
+  function release() {
     if (current) {
       for (const source of current.sources) {
         source.onended = null;
@@ -157,14 +159,30 @@ export function createPlayer() {
     clock = null;
   }
 
-  async function play(composition, gain, { realDelay, onEnded }) {
+  /** Stops playback, including a play request that is still connecting. */
+  function stop() {
+    request += 1;
+    release();
+  }
+
+  /**
+   * Plays a composition. `atSceneSeconds` continues an interrupted playback from that point of the
+   * scene timeline, keeping its skipped lead-in, so a listening change does not restart the sound.
+   */
+  async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null }) {
+    const ticket = request += 1;
     context ??= new AudioContext({ sampleRate: composition.sampleRate });
     await context.resume();
-    stop();
+    release();
     const connected = await connectComposition(context, composition, gain, context.destination, { live: true });
+    if (ticket !== request) {
+      connected.sources.forEach(source => source.disconnect());
+      connected.nodes.forEach(node => node.disconnect());
+      return false;
+    }
     current = connected;
-    const skipped = realDelay ? 0 : Math.max(0, composition.startSeconds - SHORTENED_LEAD_SECONDS);
-    const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - skipped;
+    const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.startSeconds - SHORTENED_LEAD_SECONDS));
+    const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - (atSceneSeconds ?? skipped);
     const when = origin + composition.startSeconds;
     const now = context.currentTime;
     for (const source of connected.sources) {
@@ -176,6 +194,7 @@ export function createPlayer() {
       onEnded?.();
     };
     clock = { skippedSeconds: skipped, sceneSeconds: () => context.currentTime - origin };
+    return true;
   }
 
   return {

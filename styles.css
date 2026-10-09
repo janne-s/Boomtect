@@ -82,6 +82,45 @@ button.primary:hover:not(:disabled) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+dialog:focus {
+  outline: none;
+}
+input[type="checkbox"] {
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-radius: 3px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--faint);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+input[type="checkbox"]::before {
+  width: 8px;
+  height: 8px;
+  background: #1a1208;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+  content: "";
+  transform: scale(0);
+}
+input[type="checkbox"]:hover {
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  box-shadow: none;
+}
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
 h2 {
   margin: 0 0 8px;
   color: var(--muted);
@@ -100,6 +139,26 @@ figcaption {
   color: var(--faint);
   font-size: 11px;
   pointer-events: none;
+}
+.plot-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+  pointer-events: auto;
+}
+.plot-tabs button {
+  background: none;
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 16px;
+}
+.plot-tabs button.muted {
+  color: var(--muted);
+}
+.plot-tabs button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .bar {

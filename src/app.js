@@ -30,6 +30,8 @@ const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up 
 /** How long a stroke stays on screen after it has run its route. */
 const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
+/** Level range of the microphone rings in the scene, below the loudest microphone's peak. */
+const ENVELOPE_RANGE_DB = 40;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
 /** Every worker holds the whole scene, so very large scenes use fewer of them to bound memory. */
 const SOURCE_COPIES_BUDGET = 2000000;
@@ -72,6 +74,8 @@ const state = {
   workers: [],
   renderTimer: null,
   detailsId: null,
+  /** The microphone the plots and scene facts follow; null follows the first listening one. */
+  soloId: null,
   preferences
 };
 state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
@@ -88,7 +92,7 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
 const views = [createCubeView($('cube'), {
   onView: next => { state.preferences.cubeView = next; savePreferences(); },
   onViewChange: () => orientationBall?.draw(),
-  onSelect: selection => { state.selection = selection; refreshPanel(); },
+  onSelect: selection => { select(selection); refreshPanel(); },
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
     if (handle.field === 'headingDegrees') {
@@ -116,6 +120,12 @@ function findItem(type, id) {
   return (type === 'emitter' ? state.scene.emitters : state.scene.receivers).find(item => item.id === id);
 }
 
+/** Selecting a microphone also makes the plots follow it. */
+function select(selection) {
+  state.selection = selection;
+  if (selection.type === 'receiver') state.soloId = selection.id;
+}
+
 function setStatus(text, error = false) {
   $('status').textContent = text;
   $('status').classList.toggle('error', error);
@@ -134,6 +144,7 @@ function commit(change) {
   }
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
   if (state.selection.type && !findItem(state.selection.type, state.selection.id)) state.selection = { type: null, id: null };
+  if (state.soloId && !findItem('receiver', state.soloId)) state.soloId = null;
   invalidateResults();
   refreshPanel();
   scheduleRender();
@@ -244,7 +255,7 @@ function finishRender(scene, prepared, parts, info) {
     drawResults();
     return;
   }
-  state.envelopes = new Map([...state.results.values()].map(result => [result.receiverId, envelope(result)]));
+  state.envelopes = envelopes([...state.results.values()]);
   earCache.clear();
   setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
   $('play').disabled = false;
@@ -253,24 +264,35 @@ function finishRender(scene, prepared, parts, info) {
   drawInfo();
 }
 
-/** RMS envelope in ENVELOPE_SECONDS windows, normalized to its own maximum. */
-function envelope(result) {
-  const window = Math.max(1, Math.round(result.sampleRate * ENVELOPE_SECONDS));
-  const values = new Float32Array(Math.ceil(result.samples.length / window));
-  let maximum = 0;
-  for (let block = 0; block < values.length; block += 1) {
-    let sum = 0;
-    const end = Math.min(result.samples.length, (block + 1) * window);
-    for (let index = block * window; index < end; index += 1) sum += result.samples[index] ** 2;
-    values[block] = Math.sqrt(sum / Math.max(1, end - block * window));
-    maximum = Math.max(maximum, values[block]);
+/**
+ * RMS envelopes in ENVELOPE_SECONDS windows for every microphone, on one decibel scale from the
+ * loudest window of any microphone (1) down ENVELOPE_RANGE_DB (0), so their rings compare.
+ */
+function envelopes(results) {
+  const raw = results.map(result => {
+    const window = Math.max(1, Math.round(result.sampleRate * ENVELOPE_SECONDS));
+    const values = new Float32Array(Math.ceil(result.samples.length / window));
+    for (let block = 0; block < values.length; block += 1) {
+      let sum = 0;
+      const end = Math.min(result.samples.length, (block + 1) * window);
+      for (let index = block * window; index < end; index += 1) sum += result.samples[index] ** 2;
+      values[block] = Math.sqrt(sum / Math.max(1, end - block * window));
+    }
+    return { result, values };
+  });
+  const maximum = Math.max(0, ...raw.map(({ values }) => values.reduce((a, b) => Math.max(a, b), 0)));
+  for (const { values } of raw) {
+    for (let block = 0; block < values.length; block += 1) {
+      values[block] = maximum > 0 && values[block] > 0 ? Math.max(0, 1 + 20 * Math.log10(values[block] / maximum) / ENVELOPE_RANGE_DB) : 0;
+    }
   }
-  if (maximum > 0) for (let block = 0; block < values.length; block += 1) values[block] /= maximum;
-  return { window: ENVELOPE_SECONDS, values };
+  return new Map(raw.map(({ result, values }) => [result.receiverId, { window: ENVELOPE_SECONDS, startSeconds: result.startSeconds, values }]));
 }
 
-/** The receiver the scene view and the plots follow: the first listening one, heads first. */
-function listenReceiver() {
+/** The receiver the plots and scene facts follow: the solo one, or the first listening one, heads first. */
+function focusReceiver() {
+  const solo = state.soloId && findItem('receiver', state.soloId);
+  if (solo) return solo;
   const { heads, omnis } = listeningKind(state.scene.receivers, state.scene.render.ambisonicOrder);
   return heads[0] ?? omnis[0] ?? state.scene.receivers[0];
 }
@@ -478,9 +500,8 @@ function commitListening(change) {
     return;
   }
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
-  player.stop();
-  showStopped();
   refreshPanel();
+  resumePlayback();
 }
 
 /** Live orientation while a control moves; stored when it ends. */
@@ -532,9 +553,9 @@ function receiverCard(container, receiver, selected) {
   checkbox.addEventListener('click', event => event.stopPropagation());
   checkbox.addEventListener('change', () => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = checkbox.checked; }));
   header.append(checkbox, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`));
-  const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }; refreshPanel(); };
-  header.addEventListener('click', select);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
+  const choose = () => { select(selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }); refreshPanel(); };
+  header.addEventListener('click', choose);
+  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } });
   card.append(header);
   if (selected) {
     const fields = element('div', 'fields');
@@ -626,7 +647,10 @@ function detailSections(emitter) {
 function openDetails(id) {
   state.detailsId = id;
   renderDetails();
-  if (!$('details').open) $('details').showModal();
+  if ($('details').open) return;
+  $('details').showModal();
+  // The dialog itself takes focus, so its first button is not ringed when it opens; Tab enters it.
+  $('details').focus();
 }
 
 function renderDetails() {
@@ -738,7 +762,7 @@ function emitterAnchor(emitter) {
 function drawInfo() {
   drawOrientation();
   const { scene, selection } = state;
-  const receiver = listenReceiver();
+  const receiver = focusReceiver();
   const selected = findItem(selection.type, selection.id);
   const selectedInfo = $('cube-selected');
   selectedInfo.replaceChildren();
@@ -757,7 +781,7 @@ function drawInfo() {
     selectedInfo.append(element('span', '', metres < 1 ? 'At the origin' : `${formatMetres(metres)} ${direction} of the origin`));
   }
   const listenInfo = $('cube-listen');
-  listenInfo.replaceChildren(element('strong', '', `Listening at ${receiver.name}`));
+  listenInfo.replaceChildren(element('strong', '', receiver.listen ? `Listening at ${receiver.name}` : `At ${receiver.name} · muted`));
   let nearest = Infinity;
   const measure = point => { nearest = Math.min(nearest, Math.hypot(point.x - receiver.positionMetres.x, point.y - receiver.positionMetres.y, point.z - receiver.positionMetres.z)); };
   for (const item of scene.emitters) {
@@ -802,22 +826,46 @@ function addEmitter(create) {
 
 /* Results */
 
+/**
+ * Both plots show every microphone on one time axis: the listening ones in ink and the others
+ * muted, or one soloed microphone over the dimmed rest.
+ */
 function drawResults(playheadSeconds = null) {
-  const receiver = listenReceiver();
-  const result = state.results?.get(receiver.id) ?? null;
-  drawWaveform($('waveform'), result, playheadSeconds);
-  drawArrivals($('arrivals'), result, playheadSeconds);
-  if (playheadSeconds === null) $('waveform-caption').textContent = result ? `Pressure · ${receiver.name}` : 'Pressure';
+  const { receivers } = state.scene;
+  const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
+  const traces = receivers.map(receiver => ({ id: receiver.id, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
+  const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
+  drawWaveform($('waveform'), { key, traces, soloId }, playheadSeconds);
+  drawArrivals($('arrivals'), { key, traces, soloId }, playheadSeconds);
+  if (playheadSeconds === null) drawPlotTabs(soloId);
+}
+
+/** One tab per microphone when there are several; a tab solos its microphone, again to release. */
+function drawPlotTabs(soloId) {
+  const tabs = $('plot-tabs');
+  const { receivers } = state.scene;
+  if (receivers.length < 2) { tabs.replaceChildren(); return; }
+  tabs.replaceChildren(...receivers.map(receiver => {
+    const tab = button(receiver.name, () => {
+      state.soloId = soloId === receiver.id ? null : receiver.id;
+      drawResults();
+      drawInfo();
+      redrawViews();
+    });
+    tab.setAttribute('aria-pressed', String(soloId === receiver.id));
+    tab.classList.toggle('muted', !receiver.listen);
+    return tab;
+  }));
 }
 
 /* Playback */
 
 /** Travel time of a blast's direct sound to the listening receiver. */
 function arrivalDelay(emitter) {
-  const result = state.results?.get(listenReceiver().id);
+  const result = state.results?.get(focusReceiver().id);
   if (emitter.kind !== 'blast' || !result) return 0;
   const { positionMetres: a } = emitter;
-  const b = listenReceiver().positionMetres;
+  const b = focusReceiver().positionMetres;
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) / result.speedOfSound;
 }
 
@@ -838,7 +886,7 @@ function animationState() {
   const now = clock.sceneSeconds();
   const strokes = new Map();
   const fronts = new Map();
-  const result = state.results?.get(listenReceiver().id);
+  const result = state.results?.get(focusReceiver().id);
   const realDelay = !clock.skippedSeconds && state.preferences.realDelay;
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
@@ -852,29 +900,67 @@ function animationState() {
       fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
     }
   }
-  const sound = !realDelay && result ? { seconds: now, receiver: listenReceiver().positionMetres, speed: result.speedOfSound } : null;
+  const sound = !realDelay && result ? { seconds: now, receiver: focusReceiver().positionMetres, speed: result.speedOfSound } : null;
   const receivers = new Map();
-  const envelopeData = state.envelopes.get(listenReceiver().id);
-  if (envelopeData && result) {
-    const index = Math.floor((now - result.startSeconds) / envelopeData.window);
-    receivers.set(listenReceiver().id, envelopeData.values[index] ?? 0);
+  for (const [id, envelopeData] of state.envelopes) {
+    receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
   return { strokes, fronts, receivers, sound };
 }
 
 views.forEach(view => view.setAnimation(animationState));
 
+let animating = false;
+
+function startAnimation() {
+  if (animating) return;
+  animating = true;
+  requestAnimationFrame(animate);
+}
+
 function animate() {
   const clock = player.clock();
   redrawViews();
   drawResults(clock ? clock.sceneSeconds() : null);
   if (player.playing()) requestAnimationFrame(animate);
-  else { redrawViews(); drawResults(); }
+  else { animating = false; redrawViews(); drawResults(); }
 }
 
 function showStopped() {
   $('play').textContent = 'Play';
   $('play').setAttribute('aria-pressed', 'false');
+}
+
+function showPlaying() {
+  $('play').textContent = 'Stop';
+  $('play').setAttribute('aria-pressed', 'true');
+  startAnimation();
+}
+
+let resuming = null;
+
+/**
+ * After a listening change during playback, plays the new composition on from the same moment.
+ * A change made while the previous one is still connecting is applied once that one has started.
+ */
+async function resumePlayback() {
+  if (resuming) { resuming.again = true; return; }
+  const clock = player.clock();
+  if (!player.playing() || !clock) return;
+  const current = listening();
+  if (!current) { player.stop(); showStopped(); return; }
+  resuming = { again: false };
+  let started = false;
+  try {
+    started = await player.play(current.composition, current.gain, {
+      realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds
+    });
+  } finally {
+    const { again } = resuming;
+    resuming = null;
+    if (started) showPlaying();
+    if (started && again) resumePlayback();
+  }
 }
 
 $('play').addEventListener('click', async () => {
@@ -885,10 +971,7 @@ $('play').addEventListener('click', async () => {
   }
   const current = listening();
   if (!current) return;
-  await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped });
-  $('play').textContent = 'Stop';
-  $('play').setAttribute('aria-pressed', 'true');
-  requestAnimationFrame(animate);
+  if (await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped })) showPlaying();
 });
 
 /* Files */
@@ -999,10 +1082,10 @@ $('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudF
 $('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(uniqueId('storm', scene.emitters), nextName(scene, 'Storm'), newSeed())));
 $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
 $('add-receiver').addEventListener('click', () => commit(scene => {
-  const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`, { type: 'omni', listen: false });
+  const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`);
   receiver.positionMetres = { ...receiver.positionMetres, x: receiver.positionMetres.x + 1000 * scene.receivers.length };
   scene.receivers.push(receiver);
-  state.selection = { type: 'receiver', id: receiver.id };
+  select({ type: 'receiver', id: receiver.id });
 }));
 
 

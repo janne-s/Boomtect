@@ -4,10 +4,18 @@ const LEFT = 8;
 const RIGHT = 8;
 const TOP = 22;
 const BOTTOM = 20;
+/** Opacity of microphones other than the solo one. */
+const DIMMED = .28;
 
 /** Scene-time window of a result: from its first rendered sample to its last. */
-export function resultWindow(result) {
+function resultWindow(result) {
   return { start: result.startSeconds, end: result.startSeconds + result.samples.length / result.sampleRate };
+}
+
+/** The window covering every result, so all microphones share one time axis. */
+function sharedWindow(traces) {
+  const windows = traces.map(trace => resultWindow(trace.result));
+  return { start: Math.min(...windows.map(window => window.start)), end: Math.max(...windows.map(window => window.end)) };
 }
 
 function timeAxis(context, width, height, window, colors) {
@@ -30,68 +38,126 @@ function playhead(context, width, height, window, seconds, colors) {
   context.beginPath(); context.moveTo(x, TOP); context.lineTo(x, height - BOTTOM); context.stroke();
 }
 
-/** Min/max envelope of the pressure signal per pixel column, in pascals. */
-export function drawWaveform(canvas, result, playheadSeconds = null) {
-  const { context, width, height } = fitCanvas(canvas);
-  const colors = palette();
-  if (!result?.samples.length) return;
-  const window = resultWindow(result);
-  timeAxis(context, width, height, window, colors);
-  const { samples, peakPa } = result;
-  const middle = (TOP + height - BOTTOM) / 2;
-  const half = (height - BOTTOM - TOP) / 2;
-  const columns = width - LEFT - RIGHT;
-  context.strokeStyle = colors.ink;
-  context.beginPath();
-  for (let column = 0; column < columns; column += 1) {
-    const from = Math.floor(column / columns * samples.length);
-    const to = Math.max(from + 1, Math.floor((column + 1) / columns * samples.length));
-    let low = Infinity;
-    let high = -Infinity;
-    for (let index = from; index < to && index < samples.length; index += 1) {
-      if (samples[index] < low) low = samples[index];
-      if (samples[index] > high) high = samples[index];
-    }
-    const x = LEFT + column + .5;
-    context.moveTo(x, middle - high / peakPa * half);
-    context.lineTo(x, middle - low / peakPa * half + .5);
-  }
-  context.stroke();
-  context.strokeStyle = colors.line;
-  context.beginPath(); context.moveTo(LEFT, middle); context.lineTo(width - RIGHT, middle); context.stroke();
-  context.fillStyle = colors.faint;
-  context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - RIGHT - 70, TOP - 6);
-  playhead(context, width, height, window, playheadSeconds, colors);
+/**
+ * How a microphone's trace is drawn: the solo microphone, or with none soloed every listening
+ * one, in ink; the others muted. Emphasized traces are drawn last.
+ */
+function traceStyles(traces, soloId, colors) {
+  return traces
+    .map(trace => {
+      const emphasized = soloId ? trace.id === soloId : trace.listening;
+      return { trace, emphasized, color: emphasized ? colors.ink : colors.muted, alpha: soloId && !emphasized ? DIMMED : emphasized ? 1 : .6 };
+    })
+    .sort((a, b) => Number(a.emphasized) - Number(b.emphasized));
 }
 
-/** Every path's arrival time against its source height; ground paths in the secondary color. */
-export function drawArrivals(canvas, result, playheadSeconds = null) {
+/**
+ * Draws the static part of a plot once per key into a backing canvas and copies it on every
+ * animation frame, so the playhead does not rescan the signal.
+ */
+const cache = new WeakMap();
+
+function cachedPlot(canvas, key, drawStatic, playheadSeconds) {
   const { context, width, height } = fitCanvas(canvas);
-  const colors = palette();
-  const arrivals = result?.arrivals;
-  if (!arrivals?.count) return;
-  const window = resultWindow(result);
-  timeAxis(context, width, height, window, colors);
-  let maximumHeight = 1;
-  let strongest = -Infinity;
-  for (let index = 0; index < arrivals.count; index += 1) {
-    maximumHeight = Math.max(maximumHeight, arrivals.heights[index]);
-    strongest = Math.max(strongest, arrivals.levels[index]);
+  const ratio = window.devicePixelRatio || 1;
+  const fullKey = `${key}|${width}x${height}@${ratio}`;
+  let entry = cache.get(canvas);
+  if (entry?.key !== fullKey) {
+    const backing = document.createElement('canvas');
+    backing.width = canvas.width;
+    backing.height = canvas.height;
+    const backingContext = backing.getContext('2d');
+    backingContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const window = drawStatic(backingContext, width, height);
+    entry = { key: fullKey, backing, window };
+    cache.set(canvas, entry);
   }
-  const plotWidth = width - LEFT - RIGHT;
-  const plotHeight = height - TOP - BOTTOM;
-  for (const kind of [1, 0]) {
-    context.fillStyle = kind === 0 ? colors.direct : colors.reflected;
-    for (let index = 0; index < arrivals.count; index += 1) {
-      if (arrivals.kinds[index] !== kind) continue;
-      const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
-      const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
-      context.globalAlpha = Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
-      context.fillRect(x - 1, y - 1, 2, 2);
+  context.drawImage(entry.backing, 0, 0, width, height);
+  if (entry.window) playhead(context, width, height, entry.window, playheadSeconds, palette());
+}
+
+/**
+ * Min/max envelope of each microphone's pressure per pixel column, in pascals, on one time axis.
+ * The scale is the solo microphone's peak, or the largest peak; louder traces are clipped.
+ */
+export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = null) {
+  cachedPlot(canvas, key, (context, width, height) => {
+    const live = traces.filter(trace => trace.result?.samples.length);
+    if (!live.length) return null;
+    const colors = palette();
+    const window = sharedWindow(live);
+    timeAxis(context, width, height, window, colors);
+    const solo = live.find(trace => trace.id === soloId);
+    const peakPa = solo ? solo.result.peakPa : Math.max(...live.map(trace => trace.result.peakPa));
+    const middle = (TOP + height - BOTTOM) / 2;
+    const half = (height - BOTTOM - TOP) / 2;
+    const columns = width - LEFT - RIGHT;
+    const span = window.end - window.start;
+    const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
+    context.strokeStyle = colors.line;
+    context.beginPath(); context.moveTo(LEFT, middle); context.lineTo(width - RIGHT, middle); context.stroke();
+    for (const { trace, color, alpha } of traceStyles(live, soloId, colors)) {
+      const { samples, sampleRate, startSeconds } = trace.result;
+      context.strokeStyle = color;
+      context.globalAlpha = alpha;
+      context.beginPath();
+      for (let column = 0; column < columns; column += 1) {
+        const from = Math.max(0, Math.floor((window.start + column / columns * span - startSeconds) * sampleRate));
+        const to = Math.min(samples.length, Math.max(from + 1, Math.floor((window.start + (column + 1) / columns * span - startSeconds) * sampleRate)));
+        if (from >= samples.length || to <= 0) continue;
+        let low = Infinity;
+        let high = -Infinity;
+        for (let index = from; index < to; index += 1) {
+          if (samples[index] < low) low = samples[index];
+          if (samples[index] > high) high = samples[index];
+        }
+        const x = LEFT + column + .5;
+        context.moveTo(x, y(high));
+        context.lineTo(x, y(low) + .5);
+      }
+      context.stroke();
     }
-  }
-  context.globalAlpha = 1;
-  context.fillStyle = colors.faint;
-  context.fillText(`${Math.round(maximumHeight)} m`, width - RIGHT - 50, TOP - 6);
-  playhead(context, width, height, window, playheadSeconds, colors);
+    context.globalAlpha = 1;
+    context.fillStyle = colors.faint;
+    context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - RIGHT - 70, TOP - 6);
+    return window;
+  }, playheadSeconds);
+}
+
+/** Every path's arrival time against its source height for each microphone; ground paths in the secondary color. */
+export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = null) {
+  cachedPlot(canvas, key, (context, width, height) => {
+    const live = traces.filter(trace => trace.result?.arrivals?.count);
+    if (!live.length) return null;
+    const colors = palette();
+    const window = sharedWindow(live);
+    timeAxis(context, width, height, window, colors);
+    let maximumHeight = 1;
+    let strongest = -Infinity;
+    for (const { result: { arrivals } } of live) {
+      for (let index = 0; index < arrivals.count; index += 1) {
+        maximumHeight = Math.max(maximumHeight, arrivals.heights[index]);
+        strongest = Math.max(strongest, arrivals.levels[index]);
+      }
+    }
+    const plotWidth = width - LEFT - RIGHT;
+    const plotHeight = height - TOP - BOTTOM;
+    for (const { trace, emphasized, alpha } of traceStyles(live, soloId, colors)) {
+      const { arrivals } = trace.result;
+      for (const kind of [1, 0]) {
+        context.fillStyle = !emphasized ? colors.muted : kind === 0 ? colors.direct : colors.reflected;
+        for (let index = 0; index < arrivals.count; index += 1) {
+          if (arrivals.kinds[index] !== kind) continue;
+          const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
+          const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
+          context.globalAlpha = alpha * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
+          context.fillRect(x - 1, y - 1, 2, 2);
+        }
+      }
+    }
+    context.globalAlpha = 1;
+    context.fillStyle = colors.faint;
+    context.fillText(`${Math.round(maximumHeight)} m`, width - RIGHT - 50, TOP - 6);
+    return window;
+  }, playheadSeconds);
 }

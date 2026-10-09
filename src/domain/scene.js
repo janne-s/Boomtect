@@ -172,7 +172,7 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
   };
 }
 
-export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'binaural', listen = true } = {}) {
+export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
 

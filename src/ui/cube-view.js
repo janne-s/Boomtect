@@ -475,8 +475,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const level = state?.receivers.get(receiver.id) ?? 0;
       if (level > 0) {
         const p = frame.project(receiver.positionMetres);
-        context.fillStyle = colors.accent;
-        context.globalAlpha = .2 + .5 * level;
+        context.fillStyle = receiver.listen ? colors.accent : colors.muted;
+        context.globalAlpha = (receiver.listen ? 1 : .5) * (.2 + .5 * level);
         context.beginPath(); context.arc(p.x, p.y, 6 + 14 * level, 0, 2 * Math.PI); context.fill();
         context.globalAlpha = 1;
       }

@@ -72,7 +72,7 @@
       <section class="results" aria-label="Result">
         <figure class="plot plot-wave">
           <canvas id="waveform" aria-label="Pressure waveform"></canvas>
-          <figcaption id="waveform-caption">Pressure</figcaption>
+          <figcaption>Pressure <span class="plot-tabs" id="plot-tabs" role="group" aria-label="Solo microphone"></span></figcaption>
         </figure>
         <figure class="plot plot-arrivals">
           <canvas id="arrivals" aria-label="Arrival time by source height"></canvas>
@@ -81,7 +81,7 @@
       </section>
     </main>
 
-    <dialog id="details" aria-labelledby="details-title">
+    <dialog id="details" aria-labelledby="details-title" tabindex="-1">
       <header class="details-header">
         <h2 id="details-title"></h2>
         <span class="legend"><b>A</b> first principles · <b>B</b> literature · <b>C</b> heuristic or synthetic</span>
