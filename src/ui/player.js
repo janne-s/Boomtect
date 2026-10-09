@@ -1,12 +1,13 @@
-/** Seconds between pressing Play and the emission, so scheduling never lands in the past. */
+/** Seconds between pressing Play and the start of the timeline, so scheduling never lands in the past. */
 const SCHEDULE_LEAD_SECONDS = .08;
-/** With a shortened delay, the sound starts this long after the emission. */
-const SHORTENED_DELAY_SECONDS = .5;
+/** Without the real delay, the first sound starts this long after playback begins. */
+const SHORTENED_LEAD_SECONDS = .5;
 
 /**
- * Web Audio playback of one rendered receiver. The context is created on the first Play so it
- * starts from a user gesture. The scene clock maps scene time (seconds since the first emission)
- * to audio-context time for the flash, the playhead, and the receiver display.
+ * Web Audio playback of one rendered receiver on the scene timeline (seconds since the emission
+ * origin). With the real delay the timeline starts at zero; without it, the silent lead-in before
+ * the first sound is skipped and earlier flashes are shown at once. The audio context is created on
+ * the first Play so it starts from a user gesture.
  */
 export function createPlayer() {
   let context = null;
@@ -33,21 +34,18 @@ export function createPlayer() {
     source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
-    const emission = context.currentTime + SCHEDULE_LEAD_SECONDS;
-    const audioStart = emission + (realDelay ? result.startSeconds : SHORTENED_DELAY_SECONDS);
-    source.start(audioStart);
+    const skipped = realDelay ? 0 : Math.max(0, result.startSeconds - SHORTENED_LEAD_SECONDS);
+    const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - skipped;
+    const when = origin + result.startSeconds;
+    if (when >= context.currentTime) source.start(when);
+    else source.start(context.currentTime, context.currentTime - when);
     const current = source;
     source.onended = () => {
       if (source !== current) return;
       stop();
       onEnded?.();
     };
-    clock = {
-      emission,
-      audioStart,
-      flashSeconds: () => context.currentTime - emission,
-      soundSeconds: () => result.startSeconds + context.currentTime - audioStart
-    };
+    clock = { skippedSeconds: skipped, sceneSeconds: () => context.currentTime - origin };
   }
 
   return { play, stop, clock: () => clock, playing: () => source !== null };

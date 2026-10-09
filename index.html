@@ -13,7 +13,7 @@
     <header class="bar">
       <span class="brand">Boomtect</span>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
-      <label class="toggle"><input type="checkbox" id="real-delay" checked /> Real delay</label>
+      <label class="toggle" title="Off: skip the silence before the first sound"><input type="checkbox" id="real-delay" checked /> Real delay</label>
       <select id="receiver-select" aria-label="Receiver to hear"></select>
       <span id="status" class="status" role="status" aria-live="polite"></span>
       <span class="spacer"></span>
@@ -40,7 +40,9 @@
           <h2>Emitters</h2>
           <div class="list" id="emitter-list"></div>
           <div class="row-buttons">
-            <button type="button" id="add-lightning">+ Lightning</button>
+            <button type="button" id="add-lightning">+ Ground flash</button>
+            <button type="button" id="add-cloud">+ Cloud flash</button>
+            <button type="button" id="add-storm">+ Storm</button>
             <button type="button" id="add-blast">+ Blast</button>
             <button type="button" id="duplicate-emitter">Variant</button>
             <button type="button" id="remove-emitter">Remove</button>

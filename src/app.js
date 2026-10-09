@@ -1,22 +1,29 @@
-import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS } from './domain/constants.js';
+import { speedOfSoundMetresPerSecond } from './domain/air.js';
+import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { newSeed } from './domain/random.js';
-import { MISSING_PHENOMENA } from './domain/render.js';
-import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseScene, serializeScene } from './domain/scene.js';
+import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
+import {
+  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, parseScene, serializeScene
+} from './domain/scene.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatSeconds } from './ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform } from './ui/plots.js';
-import { createSceneView } from './ui/scene-view.js';
+import { cachedFlashes, createSceneView } from './ui/scene-view.js';
 
 const SCENE_STORAGE_KEY = 'boomtect.scene';
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const RENDER_DEBOUNCE_MILLISECONDS = 200;
-/** Peak normalization leaves 1 dB of headroom. */
-const PEAK_TARGET = 10 ** (-1 / 20);
+/** Peak normalization leaves 3 dB of headroom for resampling and inter-sample peaks. */
+const PEAK_TARGET = 10 ** (-3 / 20);
 const FLASH_DECAY_SECONDS = .15;
 const ENVELOPE_SECONDS = .01;
+const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
+
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm' });
+const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
 
@@ -39,21 +46,22 @@ const state = {
   results: null,
   envelopes: new Map(),
   revision: 0,
-  worker: null,
+  workers: [],
   renderTimer: null,
+  lastEmitterId: null,
+  lastReceiverId: null,
   preferences: { realDelay: true, listenReceiverId: null, ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {}) }
 };
 state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 
 const player = createPlayer();
-let liveFields = { emitter: null, receiver: null };
+const liveFields = { emitter: null, receiver: null };
 
 const views = ['elevation', 'plan'].map(id => createSceneView($(id), {
   vertical: id === 'elevation' ? 'z' : 'y',
   onSelect: selection => { state.selection = selection; refreshPanel(); },
   onMove: (handle, point) => {
-    const item = findItem(handle.type, handle.id);
-    item[handle.field] = point;
+    findItem(handle.type, handle.id)[handle.field] = point;
     liveFields[handle.type]?.[handle.field]?.set(point);
     invalidateResults();
     redrawViews();
@@ -94,6 +102,7 @@ function invalidateResults() {
   $('play').disabled = true;
   $('export').disabled = true;
   $('play').textContent = 'Play';
+  $('play').setAttribute('aria-pressed', 'false');
 }
 
 function scheduleRender() {
@@ -101,42 +110,98 @@ function scheduleRender() {
   state.renderTimer = setTimeout(startRender, RENDER_DEBOUNCE_MILLISECONDS);
 }
 
+function stopWorkers() {
+  state.workers.forEach(worker => worker.terminate());
+  state.workers = [];
+}
+
+/**
+ * Renders on a pool of workers. Arrivals are split into equal time ranges; every worker renders
+ * its range for all receivers, and the segments are summed in range order.
+ */
 function startRender() {
   state.revision += 1;
   const revision = state.revision;
-  state.worker?.terminate();
-  if (!state.scene.emitters.some(emitter => emitter.enabled)) {
-    state.worker = null;
+  stopWorkers();
+  const scene = state.scene;
+  if (!scene.emitters.some(emitter => emitter.enabled)) {
     setStatus('No emitter is enabled.');
     drawResults();
     return;
   }
-  const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
-  state.worker = worker;
-  setStatus('Rendering…');
-  worker.addEventListener('message', ({ data }) => {
-    if (data.revision !== state.revision) return;
-    if (data.type === 'progress') { setStatus(`Rendering ${Math.round(data.fraction * 100)} %`); return; }
-    worker.terminate();
-    state.worker = null;
-    if (data.type === 'error') {
-      setStatus(data.message, true);
-      drawResults();
-      return;
-    }
-    state.results = new Map(data.results.map(result => [result.receiverId, result]));
-    state.envelopes = new Map(data.results.map(result => [result.receiverId, envelope(result)]));
-    state.renderInfo = { sources: data.sources, milliseconds: data.milliseconds };
-    setStatus(`Rendered ${data.sources} point sources in ${(data.milliseconds / 1000).toFixed(1)} s`);
-    $('play').disabled = false;
-    $('export').disabled = false;
+  let prepared;
+  let boundaries;
+  try {
+    prepared = prepareScene(scene);
+    boundaries = partitionSeconds(prepared, scene, WORKER_COUNT);
+  } catch (error) {
+    setStatus(error.message, true);
     drawResults();
-  });
-  worker.addEventListener('error', event => {
-    if (revision !== state.revision) return;
-    setStatus(event.message || 'The renderer failed to start.', true);
-  });
-  worker.postMessage({ revision, scene: state.scene });
+    return;
+  }
+  const sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
+  const started = performance.now();
+  const progress = new Array(WORKER_COUNT).fill(0);
+  const parts = new Array(WORKER_COUNT);
+  let remaining = WORKER_COUNT;
+  setStatus('Rendering…');
+  for (let index = 0; index < WORKER_COUNT; index += 1) {
+    const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
+    state.workers.push(worker);
+    worker.addEventListener('message', ({ data }) => {
+      if (data.revision !== state.revision) return;
+      if (data.type === 'progress') {
+        progress[index] = data.fraction;
+        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / WORKER_COUNT * 100)} %`);
+        return;
+      }
+      if (data.type === 'error') {
+        stopWorkers();
+        setStatus(data.message, true);
+        drawResults();
+        return;
+      }
+      parts[index] = data.segments;
+      worker.terminate();
+      remaining -= 1;
+      if (remaining === 0) finishRender(scene, prepared, parts, { sources, milliseconds: performance.now() - started });
+    });
+    worker.addEventListener('error', event => {
+      if (revision !== state.revision) return;
+      stopWorkers();
+      setStatus(event.message || 'The renderer failed to start.', true);
+    });
+    worker.postMessage({ revision, scene, fromSeconds: boundaries[index], toSeconds: boundaries[index + 1] });
+  }
+}
+
+function finishRender(scene, prepared, parts, info) {
+  state.workers = [];
+  const speedOfSound = speedOfSoundMetresPerSecond(scene.air.temperatureCelsius);
+  try {
+    state.results = new Map(scene.receivers.map(receiver => {
+      const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id));
+      const combined = combineSegments(segments, scene.render.sampleRate);
+      return [receiver.id, {
+        receiverId: receiver.id,
+        sampleRate: scene.render.sampleRate,
+        ...combined,
+        speedOfSound,
+        arrivals: arrivalTable(prepared, receiver, scene),
+        nonlinearPaths: segments.reduce((sum, segment) => sum + segment.nonlinearPaths, 0),
+        modelVersion: MODEL_VERSION
+      }];
+    }));
+  } catch (error) {
+    setStatus(error.message, true);
+    drawResults();
+    return;
+  }
+  state.envelopes = new Map([...state.results.values()].map(result => [result.receiverId, envelope(result)]));
+  setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${WORKER_COUNT} threads`);
+  $('play').disabled = false;
+  $('export').disabled = false;
+  drawResults();
 }
 
 /** RMS envelope in ENVELOPE_SECONDS windows, normalized to its own maximum. */
@@ -172,6 +237,10 @@ function savePreferences() {
 
 /* Panel */
 
+function emitterKindLabel(emitter) {
+  return emitter.kind === 'lightning' ? FLASH_TYPE_LABELS[emitter.flashType] : KIND_LABELS[emitter.kind];
+}
+
 function listItem(container, { selected, kind, name, enabled, onSelect, onToggle }) {
   const item = document.createElement('div');
   item.className = 'item';
@@ -199,31 +268,45 @@ function listItem(container, { selected, kind, name, enabled, onSelect, onToggle
   container.append(item);
 }
 
+function heading(container, text) {
+  const element = document.createElement('div');
+  element.className = 'unit-row';
+  element.textContent = text;
+  container.append(element);
+}
+
 const updateEmitter = (id, change) => commit(scene => change(scene.emitters.find(emitter => emitter.id === id)));
 const updateReceiver = (id, change) => commit(scene => change(scene.receivers.find(receiver => receiver.id === id)));
 
 function buildEmitterFields(container, emitter) {
   const set = key => value => updateEmitter(emitter.id, item => { item[key] = value; });
-  const number = key => numberField(container, { key, value: emitter[key], onCommit: set(key) });
-  textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
+  const numbers = keys => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const fields = {};
+  textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
+  if (emitter.kind !== 'blast') seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+  numbers(['startSeconds']);
   if (emitter.kind === 'lightning') {
-    seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
-    fields.baseMetres = pointFields(container, { label: 'Channel base (m)', point: emitter.baseMetres, onCommit: set('baseMetres') });
-    fields.topMetres = pointFields(container, { label: 'Channel top (m)', point: emitter.topMetres, onCommit: set('topMetres') });
-    const heading = document.createElement('div');
-    heading.className = 'unit-row';
-    heading.textContent = 'Channel and source';
-    container.append(heading);
-    ['segmentLengthMetres', 'tortuosityDegrees', 'energyJoulesPerMetre', 'acousticEfficiency', 'frequencyCoefficient',
-      'returnStrokeSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'subsequentStrokeEnergyRatio', 'riseTimeSeconds'].forEach(number);
+    selectField(container, { label: 'Type', value: emitter.flashType, options: Object.entries(FLASH_TYPE_LABELS), onCommit: set('flashType') });
+    fields.baseMetres = pointFields(container, { label: 'Channel start (m)', point: emitter.baseMetres, onCommit: set('baseMetres') });
+    fields.topMetres = pointFields(container, { label: 'Channel end (m)', point: emitter.topMetres, onCommit: set('topMetres') });
+    heading(container, 'Channel');
+    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchLengthRatio', 'branchEnergyRatio']);
+    heading(container, 'Source');
+    numbers(['energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds']);
+    heading(container, 'Strokes');
+    numbers(['channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'subsequentStrokeEnergyRatio']);
+  } else if (emitter.kind === 'storm') {
+    fields.centreMetres = pointFields(container, { label: 'Centre (m)', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
+    heading(container, 'Extent');
+    numbers(['radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres']);
+    heading(container, 'Source');
+    numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds']);
+    heading(container, 'Channel');
+    numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchEnergyRatio']);
   } else {
     fields.positionMetres = pointFields(container, { label: 'Position (m)', point: emitter.positionMetres, onCommit: set('positionMetres') });
-    const heading = document.createElement('div');
-    heading.className = 'unit-row';
-    heading.textContent = 'Source';
-    container.append(heading);
-    ['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'].forEach(number);
+    heading(container, 'Source');
+    numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
   }
   return fields;
 }
@@ -235,7 +318,7 @@ function refreshPanel() {
   for (const emitter of scene.emitters) {
     listItem(emitterList, {
       selected: selection.type === 'emitter' && selection.id === emitter.id,
-      kind: emitter.kind === 'lightning' ? 'Lightning' : 'Blast',
+      kind: emitterKindLabel(emitter),
       name: emitter.name,
       enabled: emitter.enabled,
       onSelect: () => { state.selection = { type: 'emitter', id: emitter.id }; refreshPanel(); },
@@ -274,8 +357,8 @@ function refreshPanel() {
 
   const environment = $('environment-fields');
   environment.replaceChildren();
-  const air = key => numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) });
-  ['temperatureCelsius', 'relativeHumidityPercent', 'pressureKpa'].forEach(air);
+  ['temperatureCelsius', 'relativeHumidityPercent', 'pressureKpa'].forEach(key =>
+    numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) }));
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
   selectField(environment, {
@@ -288,7 +371,7 @@ function refreshPanel() {
   output.replaceChildren();
   selectField(output, {
     label: 'Level', value: scene.render.levelMode,
-    options: [['peak', 'Peak −1 dBFS'], ['fixed', 'Fixed full scale']],
+    options: [['peak', 'Peak −3 dBFS'], ['fixed', 'Fixed full scale']],
     onCommit: value => commit(next => { next.render.levelMode = value; })
   });
   if (scene.render.levelMode === 'fixed') {
@@ -298,7 +381,8 @@ function refreshPanel() {
   const receiverSelect = $('receiver-select');
   receiverSelect.replaceChildren(...scene.receivers.map(receiver => new Option(receiver.name, receiver.id, false, receiver.id === listenReceiver().id)));
 
-  $('add-lightning').disabled = $('add-blast').disabled = $('duplicate-emitter').disabled = scene.emitters.length >= MAXIMUM_EMITTERS;
+  const full = scene.emitters.length >= MAXIMUM_EMITTERS;
+  ['add-lightning', 'add-cloud', 'add-storm', 'add-blast', 'duplicate-emitter'].forEach(id => { $(id).disabled = full; });
   $('remove-emitter').disabled = scene.emitters.length <= 1;
   $('add-receiver').disabled = scene.receivers.length >= MAXIMUM_RECEIVERS;
   $('remove-receiver').disabled = scene.receivers.length <= 1;
@@ -336,14 +420,18 @@ function drawResults(playheadSeconds = null) {
   const summary = $('summary');
   const warnings = $('warnings');
   warnings.replaceChildren();
-  const warn = text => { const item = document.createElement('li'); item.textContent = text; warnings.append(item); };
-  if (!result) {
-    summary.textContent = state.worker ? 'Rendering…' : '';
+  const warn = text => warnings.append(Object.assign(document.createElement('li'), { textContent: text }));
+  if (!result?.arrivals.count) {
+    summary.textContent = state.workers.length ? 'Rendering…' : '';
   } else {
-    const first = Math.min(...result.arrivals.map(arrival => arrival.seconds));
-    const last = Math.max(...result.arrivals.map(arrival => arrival.seconds));
+    let first = Infinity;
+    let last = -Infinity;
+    for (let index = 0; index < result.arrivals.count; index += 1) {
+      first = Math.min(first, result.arrivals.seconds[index]);
+      last = Math.max(last, result.arrivals.seconds[index]);
+    }
     const fullScale = 1 / outputGain(result);
-    summary.textContent = `${receiver.name}: first arrival ${formatSeconds(first)}, last ${formatSeconds(last)} after the flash. `
+    summary.textContent = `${receiver.name}: sound from ${formatSeconds(first)} to ${formatSeconds(last)} after the first flash. `
       + `Model peak ${result.peakPa.toPrecision(3)} Pa (uncalibrated), c = ${result.speedOfSound.toFixed(1)} m/s. `
       + `Full scale ${fullScale.toPrecision(3)} Pa.`;
     if (result.nonlinearPaths) warn(`${result.nonlinearPaths} paths start inside the nonlinear zone; their level is not reliable.`);
@@ -358,33 +446,35 @@ function drawResults(playheadSeconds = null) {
 
 /* Playback */
 
+/** Scene times at which each flash of an emitter lights up, one list per flash. */
 function flashTimes(emitter) {
-  if (emitter.kind === 'blast') return [0];
-  return Array.from({ length: emitter.strokeCount }, (_, index) => index * emitter.strokeIntervalSeconds);
+  if (emitter.kind === 'blast') return [[emitter.startSeconds]];
+  return cachedFlashes(emitter).map(flash => flash.strokes.map(stroke => flash.startSeconds + stroke.offsetSeconds));
 }
 
 function animationState() {
   const clock = player.clock();
   if (!clock) return null;
-  const flashSeconds = clock.flashSeconds();
-  const flash = new Map();
+  const now = clock.sceneSeconds();
+  const shown = time => Math.max(time, clock.skippedSeconds);
+  const flashes = new Map();
   const fronts = new Map();
   const result = state.results?.get(listenReceiver().id);
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
-    const intensity = flashTimes(emitter).reduce((sum, time) => sum + (flashSeconds >= time ? Math.exp(-(flashSeconds - time) / FLASH_DECAY_SECONDS) : 0), 0);
-    flash.set(emitter.id, Math.min(1, intensity));
-    if (emitter.kind === 'blast' && flashSeconds >= 0 && state.preferences.realDelay && result) {
-      fronts.set(emitter.id, { radiusMetres: flashSeconds * result.speedOfSound, opacity: .5 });
+    flashes.set(emitter.id, flashTimes(emitter).map(times => Math.min(1, times.reduce(
+      (sum, time) => sum + (now >= shown(time) ? Math.exp(-(now - shown(time)) / FLASH_DECAY_SECONDS) : 0), 0))));
+    if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && !clock.skippedSeconds) {
+      fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
     }
   }
   const receivers = new Map();
   const envelopeData = state.envelopes.get(listenReceiver().id);
   if (envelopeData && result) {
-    const index = Math.floor((clock.soundSeconds() - result.startSeconds) / envelopeData.window);
+    const index = Math.floor((now - result.startSeconds) / envelopeData.window);
     receivers.set(listenReceiver().id, envelopeData.values[index] ?? 0);
   }
-  return { flash, fronts, receivers };
+  return { flashes, fronts, receivers };
 }
 
 views.forEach(view => view.setAnimation(animationState));
@@ -392,24 +482,25 @@ views.forEach(view => view.setAnimation(animationState));
 function animate() {
   const clock = player.clock();
   redrawViews();
-  drawResults(clock ? clock.soundSeconds() : null);
+  drawResults(clock ? clock.sceneSeconds() : null);
   if (player.playing()) requestAnimationFrame(animate);
   else { redrawViews(); drawResults(); }
+}
+
+function showStopped() {
+  $('play').textContent = 'Play';
+  $('play').setAttribute('aria-pressed', 'false');
 }
 
 $('play').addEventListener('click', async () => {
   if (player.playing()) {
     player.stop();
-    $('play').textContent = 'Play';
-    $('play').setAttribute('aria-pressed', 'false');
+    showStopped();
     return;
   }
   const result = state.results?.get(listenReceiver().id);
-  if (!result) return;
-  await player.play(result, outputGain(result), {
-    realDelay: state.preferences.realDelay,
-    onEnded: () => { $('play').textContent = 'Play'; $('play').setAttribute('aria-pressed', 'false'); }
-  });
+  if (!result?.samples.length) return;
+  await player.play(result, outputGain(result), { realDelay: state.preferences.realDelay, onEnded: showStopped });
   $('play').textContent = 'Stop';
   $('play').setAttribute('aria-pressed', 'true');
   requestAnimationFrame(animate);
@@ -484,14 +575,17 @@ $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
 $('receiver-select').addEventListener('change', () => {
   player.stop();
-  $('play').textContent = 'Play';
+  showStopped();
   state.preferences.listenReceiverId = $('receiver-select').value;
   savePreferences();
   drawResults();
 });
 
-$('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), `Lightning ${scene.emitters.length + 1}`, newSeed())));
-$('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), `Blast ${scene.emitters.length + 1}`, newSeed())));
+const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
+$('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));
+$('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudFlash(uniqueId('cloud', scene.emitters), nextName(scene, 'Cloud flash'), newSeed())));
+$('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(uniqueId('storm', scene.emitters), nextName(scene, 'Storm'), newSeed())));
+$('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
 $('duplicate-emitter').addEventListener('click', () => addEmitter(scene => {
   const source = scene.emitters.find(emitter => emitter.id === state.lastEmitterId) ?? scene.emitters[0];
   source.enabled = false;

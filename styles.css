@@ -11,6 +11,7 @@
   --accent-soft: rgba(242, 164, 101, .16);
   --data-secondary: #7f9bb5;
   --ground: #1c2630;
+  --cloud: rgba(127, 155, 181, .07);
   font-family:
     Inter,
     ui-sans-serif,

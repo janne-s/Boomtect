@@ -68,20 +68,25 @@ export function drawWaveform(canvas, result, playheadSeconds = null) {
 export function drawArrivals(canvas, result, playheadSeconds = null) {
   const { context, width, height } = fitCanvas(canvas);
   const colors = palette();
-  if (!result?.arrivals.length) return;
+  const arrivals = result?.arrivals;
+  if (!arrivals?.count) return;
   const window = resultWindow(result);
   timeAxis(context, width, height, window, colors);
-  const maximumHeight = Math.max(1, ...result.arrivals.map(arrival => arrival.heightMetres));
-  const strongest = Math.max(...result.arrivals.map(arrival => arrival.levelDb));
+  let maximumHeight = 1;
+  let strongest = -Infinity;
+  for (let index = 0; index < arrivals.count; index += 1) {
+    maximumHeight = Math.max(maximumHeight, arrivals.heights[index]);
+    strongest = Math.max(strongest, arrivals.levels[index]);
+  }
   const plotWidth = width - LEFT - RIGHT;
   const plotHeight = height - TOP - BOTTOM;
-  for (const kind of ['ground', 'direct']) {
-    context.fillStyle = kind === 'direct' ? colors.accent : colors.secondary;
-    for (const arrival of result.arrivals) {
-      if (arrival.kind !== kind) continue;
-      const x = LEFT + (arrival.seconds - window.start) / (window.end - window.start) * plotWidth;
-      const y = height - BOTTOM - arrival.heightMetres / maximumHeight * plotHeight;
-      context.globalAlpha = Math.max(.15, Math.min(1, 1 + (arrival.levelDb - strongest) / 40));
+  for (const kind of [1, 0]) {
+    context.fillStyle = kind === 0 ? colors.accent : colors.secondary;
+    for (let index = 0; index < arrivals.count; index += 1) {
+      if (arrivals.kinds[index] !== kind) continue;
+      const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
+      const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
+      context.globalAlpha = Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
       context.fillRect(x - 1, y - 1, 2, 2);
     }
   }

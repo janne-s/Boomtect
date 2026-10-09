@@ -3,68 +3,145 @@ import {
 } from './constants.js';
 import { EMITTER_KINDS } from './emitters.js';
 import { GROUND_TYPES } from './ground.js';
+import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 1;
+export const SCENE_VERSION = 2;
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
+
+/** Minimum depth of a storm's cloud layer. */
+const MINIMUM_CLOUD_DEPTH_METRES = 100;
 
 /**
  * Every bounded number in a scene: unit, range, and reliability class of the value it controls.
  * Class A comes from first principles, B from literature, C from heuristic or synthetic choice.
+ * A null class marks a placement or output choice rather than a model value.
  */
 export const PARAMETERS = Object.freeze({
   temperatureCelsius: { minimum: -40, maximum: 50, unit: '°C', label: 'Temperature', reliability: 'A' },
   relativeHumidityPercent: { minimum: 0, maximum: 100, unit: '%', label: 'Humidity', reliability: 'B' },
   pressureKpa: { minimum: 50, maximum: 110, unit: 'kPa', label: 'Pressure', reliability: 'A' },
-  coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm' },
-  heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm' },
+  coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
+  heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
+  startSeconds: { minimum: 0, maximum: 120, unit: 's', label: 'Onset', reliability: null },
   segmentLengthMetres: { minimum: 1, maximum: 100, unit: 'm', label: 'Segment length', reliability: 'C' },
+  straightLengthMetres: { minimum: .5, maximum: 100, unit: 'm', label: 'Straight element', reliability: 'C' },
   tortuosityDegrees: { minimum: 0, maximum: 60, unit: '°', label: 'Tortuosity', reliability: 'C' },
+  branchCount: { minimum: 0, maximum: 50, unit: '', label: 'Branches', reliability: 'C', integer: true },
+  branchLengthRatio: { minimum: .02, maximum: 1, unit: '', label: 'Branch length', reliability: 'C' },
+  branchEnergyRatio: { minimum: .01, maximum: 1, unit: '', label: 'Branch energy', reliability: 'C' },
   energyJoulesPerMetre: { minimum: 1e3, maximum: 1e7, unit: 'J/m', label: 'Energy per metre', reliability: 'B' },
+  energyVariation: { minimum: 0, maximum: 1.5, unit: '', label: 'Energy variation σ', reliability: 'C' },
   acousticEfficiency: { minimum: 1e-4, maximum: .2, unit: '', label: 'Acoustic efficiency', reliability: 'C' },
   frequencyCoefficient: { minimum: .2, maximum: 1, unit: '', label: 'Peak coefficient κ', reliability: 'B' },
-  returnStrokeSpeedMetresPerSecond: { minimum: 1e7, maximum: 3e8, unit: 'm/s', label: 'Return stroke speed', reliability: 'B' },
+  channelSpeedMetresPerSecond: { minimum: 1e4, maximum: 3e8, unit: 'm/s', label: 'Channel speed', reliability: 'B' },
   strokeCount: { minimum: 1, maximum: 20, unit: '', label: 'Strokes', reliability: 'B', integer: true },
   strokeIntervalSeconds: { minimum: .005, maximum: .5, unit: 's', label: 'Stroke interval', reliability: 'B' },
   subsequentStrokeEnergyRatio: { minimum: .05, maximum: 1, unit: '', label: 'Later stroke energy', reliability: 'C' },
+  radiusMetres: { minimum: 0, maximum: 30000, unit: 'm', label: 'Radius', reliability: null },
+  durationSeconds: { minimum: 0, maximum: 120, unit: 's', label: 'Duration', reliability: null },
+  flashCount: { minimum: 1, maximum: 60, unit: '', label: 'Flashes', reliability: null, integer: true },
+  groundFlashShare: { minimum: 0, maximum: 1, unit: '', label: 'Ground flashes', reliability: 'B' },
+  cloudBaseMetres: { minimum: 200, maximum: 8000, unit: 'm', label: 'Cloud base', reliability: null },
+  cloudTopMetres: { minimum: 1000, maximum: 18000, unit: 'm', label: 'Cloud top', reliability: null },
+  energySpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Flash energy spread σ', reliability: 'C' },
   chargeKilograms: { minimum: .001, maximum: 1e6, unit: 'kg TNT', label: 'Charge', reliability: 'B' },
   linearScaledDistance: { minimum: 5, maximum: 100, unit: 'm/kg^⅓', label: 'Linearization distance', reliability: 'C' },
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
-  riseTimeSeconds: { minimum: 1e-5, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
+  riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null }
 });
 
+const LIGHTNING_NUMBERS = Object.freeze([
+  'startSeconds', 'segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'branchCount', 'branchLengthRatio',
+  'branchEnergyRatio', 'energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'frequencyCoefficient',
+  'channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'subsequentStrokeEnergyRatio', 'riseTimeSeconds'
+]);
+const STORM_NUMBERS = Object.freeze([
+  'startSeconds', 'radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres',
+  'energyJoulesPerMetre', 'energySpread', 'energyVariation', 'segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees',
+  'branchCount', 'branchEnergyRatio', 'acousticEfficiency', 'frequencyCoefficient', 'riseTimeSeconds'
+]);
+const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
+
 export class SceneError extends Error {}
 
-export function defaultLightning(id = 'lightning-1', name = 'Lightning', seed = 20261009) {
+const LIGHTNING_PHYSICS = Object.freeze({
+  segmentLengthMetres: 10,
+  straightLengthMetres: 3,
+  tortuosityDegrees: 16,
+  energyVariation: .5,
+  acousticEfficiency: .01,
+  frequencyCoefficient: 1 / 2.6,
+  riseTimeSeconds: 4e-5
+});
+
+export function defaultLightning(id = 'lightning-1', name = 'Ground flash', seed = 20261009) {
   return {
     id, name, kind: 'lightning', enabled: true, seed,
+    startSeconds: 0,
+    flashType: 'cloud-to-ground',
     baseMetres: { x: 0, y: 0, z: 0 },
     topMetres: { x: 600, y: 0, z: 4000 },
-    segmentLengthMetres: 10,
-    tortuosityDegrees: 16,
+    ...LIGHTNING_PHYSICS,
+    branchCount: 8,
+    branchLengthRatio: .35,
+    branchEnergyRatio: .1,
     energyJoulesPerMetre: 5e5,
-    acousticEfficiency: .01,
-    frequencyCoefficient: 1 / 2.6,
-    returnStrokeSpeedMetresPerSecond: 1e8,
+    channelSpeedMetresPerSecond: 1e8,
     strokeCount: 3,
     strokeIntervalSeconds: .06,
-    subsequentStrokeEnergyRatio: .5,
-    riseTimeSeconds: 1e-4
+    subsequentStrokeEnergyRatio: .5
+  };
+}
+
+export function defaultCloudFlash(id = 'cloud-1', name = 'Cloud flash', seed = 20261010) {
+  return {
+    ...defaultLightning(id, name, seed),
+    flashType: 'intra-cloud',
+    baseMetres: { x: -2500, y: 0, z: 5000 },
+    topMetres: { x: 2500, y: 1000, z: 6000 },
+    branchCount: 10,
+    branchLengthRatio: .2,
+    energyJoulesPerMetre: 1e5,
+    channelSpeedMetresPerSecond: 3e5,
+    strokeCount: 4,
+    strokeIntervalSeconds: .04,
+    subsequentStrokeEnergyRatio: .6
+  };
+}
+
+export function defaultStorm(id = 'storm-1', name = 'Storm', seed = 20261011) {
+  return {
+    id, name, kind: 'storm', enabled: true, seed,
+    startSeconds: 0,
+    centreMetres: { x: 0, y: 0, z: 0 },
+    radiusMetres: 8000,
+    durationSeconds: 60,
+    flashCount: 12,
+    groundFlashShare: .3,
+    cloudBaseMetres: 1500,
+    cloudTopMetres: 10000,
+    energyJoulesPerMetre: 3e5,
+    energySpread: .5,
+    ...LIGHTNING_PHYSICS,
+    branchCount: 6,
+    branchEnergyRatio: .1
   };
 }
 
 export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
   return {
     id, name, kind: 'blast', enabled: true, seed,
+    startSeconds: 0,
     positionMetres: { x: 0, y: 0, z: 1 },
     chargeKilograms: 10,
     linearScaledDistance: 20,
     durationSecondsPerCubeRootKilogram: .006,
     decay: 1,
-    riseTimeSeconds: 1e-4
+    riseTimeSeconds: 4e-5
   };
 }
 
@@ -73,16 +150,13 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1') {
 }
 
 export function defaultScene() {
-  const blast = defaultBlast();
-  blast.enabled = false;
-  blast.positionMetres = { x: -1000, y: 0, z: 1 };
   return {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
     modelVersion: MODEL_VERSION,
     air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, absorption: true },
     ground: { enabled: true, type: 'grass' },
-    emitters: [defaultLightning(), blast],
+    emitters: [defaultLightning()],
     receivers: [defaultReceiver()],
     render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20 }
   };
@@ -114,6 +188,10 @@ function text(value, path) {
   return value;
 }
 
+function numbers(value, keys, path) {
+  return Object.fromEntries(keys.map(key => [key, number(value[key], key, `${path}.${key}`)]));
+}
+
 function emitter(value, index) {
   const path = `emitters[${index}]`;
   check(value && typeof value === 'object', `${path} is missing.`);
@@ -121,36 +199,28 @@ function emitter(value, index) {
   check(typeof value.enabled === 'boolean', `${path}.enabled must be true or false.`);
   check(isSeed(value.seed), `${path}.seed must be a 32-bit unsigned integer.`);
   const common = { id: text(value.id, `${path}.id`), name: text(value.name, `${path}.name`), kind: value.kind, enabled: value.enabled, seed: value.seed };
-  const field = key => number(value[key], key, `${path}.${key}`);
   if (value.kind === 'blast') {
-    return {
-      ...common,
-      positionMetres: point(value.positionMetres, `${path}.positionMetres`),
-      chargeKilograms: field('chargeKilograms'),
-      linearScaledDistance: field('linearScaledDistance'),
-      durationSecondsPerCubeRootKilogram: field('durationSecondsPerCubeRootKilogram'),
-      decay: field('decay'),
-      riseTimeSeconds: field('riseTimeSeconds')
-    };
+    return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, BLAST_NUMBERS, path) };
   }
+  if (value.kind === 'storm') {
+    const storm = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, STORM_NUMBERS, path) };
+    check(storm.centreMetres.z === 0, `${path}.centreMetres must lie on the ground.`);
+    check(storm.cloudTopMetres >= storm.cloudBaseMetres + MINIMUM_CLOUD_DEPTH_METRES, `${path} needs a cloud top above its cloud base.`);
+    check(storm.straightLengthMetres <= storm.segmentLengthMetres, `${path}.straightLengthMetres must not exceed the segment length.`);
+    return storm;
+  }
+  check(FLASH_TYPES.includes(value.flashType), `${path}.flashType is not supported.`);
   const lightning = {
     ...common,
+    flashType: value.flashType,
     baseMetres: point(value.baseMetres, `${path}.baseMetres`),
     topMetres: point(value.topMetres, `${path}.topMetres`),
-    segmentLengthMetres: field('segmentLengthMetres'),
-    tortuosityDegrees: field('tortuosityDegrees'),
-    energyJoulesPerMetre: field('energyJoulesPerMetre'),
-    acousticEfficiency: field('acousticEfficiency'),
-    frequencyCoefficient: field('frequencyCoefficient'),
-    returnStrokeSpeedMetresPerSecond: field('returnStrokeSpeedMetresPerSecond'),
-    strokeCount: field('strokeCount'),
-    strokeIntervalSeconds: field('strokeIntervalSeconds'),
-    subsequentStrokeEnergyRatio: field('subsequentStrokeEnergyRatio'),
-    riseTimeSeconds: field('riseTimeSeconds')
+    ...numbers(value, LIGHTNING_NUMBERS, path)
   };
   const { baseMetres: base, topMetres: top } = lightning;
   check(Math.hypot(top.x - base.x, top.y - base.y, top.z - base.z) >= lightning.segmentLengthMetres,
     `${path} must be at least one segment long.`);
+  check(lightning.straightLengthMetres <= lightning.segmentLengthMetres, `${path}.straightLengthMetres must not exceed the segment length.`);
   return lightning;
 }
 

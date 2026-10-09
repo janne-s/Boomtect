@@ -1,5 +1,5 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
-import { lightningChannelPoints } from '../domain/emitters.js';
+import { emitterFlashes } from '../domain/emitters.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 
 const MARGIN = 32;
@@ -9,24 +9,26 @@ const MINIMUM_SPAN_METRES = 50;
 /** Axis labels stay below the view caption. */
 const LABEL_CLEARANCE = 26;
 
-const channelCache = new Map();
+const flashCache = new Map();
 
-/** The channel polyline of a lightning emitter, cached by the parameters that shape it. */
-export function channelPoints(emitter) {
-  const key = JSON.stringify([emitter.baseMetres, emitter.topMetres, emitter.segmentLengthMetres, emitter.tortuosityDegrees, emitter.seed]);
-  const cached = channelCache.get(emitter.id);
-  if (cached?.key === key) return cached.points;
-  let points;
-  try { points = lightningChannelPoints(emitter); } catch { points = [emitter.baseMetres, emitter.topMetres]; }
-  channelCache.set(emitter.id, { key, points });
-  return points;
+/** Channels and strokes of an emitter, cached by everything except its name and switch. */
+export function cachedFlashes(emitter) {
+  const { name, enabled, ...shape } = emitter;
+  const key = JSON.stringify(shape);
+  const cached = flashCache.get(emitter.id);
+  if (cached?.key === key) return cached.flashes;
+  let flashes;
+  try { flashes = emitterFlashes(emitter); } catch { flashes = []; }
+  flashCache.set(emitter.id, { key, flashes });
+  return flashes;
 }
 
-/** Draggable points of a scene: blast positions, channel ends, and receivers. */
+/** Draggable points of a scene: blast positions, channel ends, storm centres, and receivers. */
 function handles(scene) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: emitter.positionMetres });
+    else if (emitter.kind === 'storm') list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true });
     else {
       list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres });
       list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres });
@@ -52,30 +54,31 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
     const vs = [];
     const include = point => { xs.push(point.x); vs.push(point[vertical]); };
     for (const emitter of scene.emitters) {
-      if (emitter.kind === 'blast') include(emitter.positionMetres);
-      else channelPoints(emitter).forEach(include);
+      if (emitter.kind === 'blast') { include(emitter.positionMetres); continue; }
+      if (emitter.kind === 'storm') {
+        const { x, y } = emitter.centreMetres;
+        const r = emitter.radiusMetres;
+        include({ x: x - r, y: y - r, z: emitter.cloudTopMetres });
+        include({ x: x + r, y: y + r, z: 0 });
+      }
+      for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
     }
     scene.receivers.forEach(receiver => include(receiver.positionMetres));
     if (vertical === 'z') vs.push(0);
-    let minX = Math.min(...xs); let maxX = Math.max(...xs);
-    let minV = Math.min(...vs); let maxV = Math.max(...vs);
     const grow = (low, high) => {
       const middle = (low + high) / 2;
       const half = Math.max(MINIMUM_SPAN_METRES, high - low) / 2;
       return [middle - half, middle + half];
     };
-    [minX, maxX] = grow(minX, maxX);
-    if (vertical === 'z') maxV = Math.max(MINIMUM_SPAN_METRES, maxV);
-    else [minV, maxV] = grow(minV, maxV);
-    if (vertical === 'z') minV = 0;
+    const [minX, maxX] = grow(Math.min(...xs), Math.max(...xs));
+    const [minV, maxV] = vertical === 'z' ? [0, Math.max(MINIMUM_SPAN_METRES, ...vs)] : grow(Math.min(...vs), Math.max(...vs));
     return { minX, maxX, minV, maxV };
   }
 
   function computeFrame(width, height) {
     const { minX, maxX, minV, maxV } = bounds();
     const bottom = vertical === 'z' ? height - MARGIN : height / 2;
-    const usableHeight = height - 2 * MARGIN;
-    const scale = Math.min((width - 2 * MARGIN) / ((maxX - minX) * 1.08), usableHeight / ((maxV - minV) * 1.08));
+    const scale = Math.min((width - 2 * MARGIN) / ((maxX - minX) * 1.08), (height - 2 * MARGIN) / ((maxV - minV) * 1.08));
     const centreX = (minX + maxX) / 2;
     const anchorV = vertical === 'z' ? 0 : (minV + maxV) / 2;
     return {
@@ -85,58 +88,99 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
     };
   }
 
+  function drawFlashes(context, emitter, colors, selected, intensities) {
+    const { toScreen } = frame;
+    context.lineJoin = 'round';
+    cachedFlashes(emitter).forEach((flash, flashIndex) => {
+      const level = intensities?.[flashIndex] ?? 0;
+      for (const channel of flash.channels) {
+        const points = channel.points.map(toScreen);
+        if (level > 0) {
+          context.shadowColor = colors.accent;
+          context.shadowBlur = 24 * level;
+          context.strokeStyle = colors.ink;
+          context.lineWidth = channel.main ? 1.5 + 2.5 * level : .8 + 1.2 * level;
+          strokePolyline(context, points);
+          context.shadowBlur = 0;
+        }
+        context.strokeStyle = selected ? colors.accent : colors.muted;
+        context.lineWidth = channel.main ? (selected ? 1.5 : 1.1) : .6;
+        strokePolyline(context, points);
+      }
+    });
+  }
+
+  function drawStormArea(context, emitter, colors, selected) {
+    const { toScreen, scale } = frame;
+    const { x, y } = emitter.centreMetres;
+    const r = emitter.radiusMetres;
+    context.fillStyle = colors.cloud;
+    context.strokeStyle = selected ? colors.accent : colors.line;
+    context.lineWidth = 1;
+    if (vertical === 'z') {
+      const corner = toScreen({ x: x - r, z: emitter.cloudTopMetres });
+      const opposite = toScreen({ x: x + r, z: emitter.cloudBaseMetres });
+      context.fillRect(corner.x, corner.y, opposite.x - corner.x, opposite.y - corner.y);
+    } else {
+      const centre = toScreen({ x, y });
+      context.beginPath(); context.arc(centre.x, centre.y, r * scale, 0, 2 * Math.PI);
+      context.fill(); context.stroke();
+    }
+  }
+
+  function drawBlast(context, emitter, colors, selected, state, alpha) {
+    const { toScreen, scale } = frame;
+    const centre = toScreen(emitter.positionMetres);
+    const level = state?.flashes.get(emitter.id)?.[0] ?? 0;
+    if (level > 0) {
+      context.fillStyle = colors.ink;
+      context.shadowColor = colors.accent;
+      context.shadowBlur = 30 * level;
+      context.beginPath(); context.arc(centre.x, centre.y, 4 + 10 * level, 0, 2 * Math.PI); context.fill();
+      context.shadowBlur = 0;
+    }
+    const front = state?.fronts.get(emitter.id);
+    if (front) {
+      context.strokeStyle = colors.accent;
+      context.globalAlpha = alpha * .5;
+      context.lineWidth = 1;
+      context.beginPath(); context.arc(centre.x, centre.y, front * scale, 0, 2 * Math.PI); context.stroke();
+      context.globalAlpha = alpha;
+    }
+    drawHandle(context, centre, selected ? colors.accent : colors.muted, true);
+    label(context, emitter.name, centre, colors.faint);
+  }
+
   function draw() {
     if (!scene) return;
     const { context, width, height } = fitCanvas(canvas);
     const colors = palette();
     if (!drag || !frame) frame = computeFrame(width, height);
-    const { toScreen, toWorld, scale } = frame;
+    const { toScreen } = frame;
     const state = animation?.() ?? null;
 
-    drawGrid(context, width, height, colors, toWorld, toScreen, scale);
+    drawGrid(context, width, height, colors);
 
     for (const emitter of scene.emitters) {
       const selected = selection?.type === 'emitter' && selection.id === emitter.id;
-      const flash = state?.flash.get(emitter.id) ?? 0;
       const alpha = emitter.enabled ? 1 : .35;
       context.globalAlpha = alpha;
-      if (emitter.kind === 'lightning') {
-        const points = channelPoints(emitter).map(toScreen);
-        context.lineJoin = 'round';
-        if (flash > 0) {
-          context.shadowColor = colors.accent;
-          context.shadowBlur = 24 * flash;
-          context.strokeStyle = colors.ink;
-          context.lineWidth = 1.5 + 2.5 * flash;
-          strokePolyline(context, points);
-          context.shadowBlur = 0;
+      if (emitter.kind === 'blast') drawBlast(context, emitter, colors, selected, state, alpha);
+      else {
+        if (emitter.kind === 'storm') drawStormArea(context, emitter, colors, selected);
+        drawFlashes(context, emitter, colors, selected, state?.flashes.get(emitter.id));
+        const color = selected ? colors.accent : colors.muted;
+        if (emitter.kind === 'storm') {
+          const centre = toScreen(emitter.centreMetres);
+          drawHandle(context, centre, color, true);
+          label(context, emitter.name, centre, colors.faint);
+        } else {
+          drawHandle(context, toScreen(emitter.baseMetres), color, false);
+          drawHandle(context, toScreen(emitter.topMetres), color, false);
+          label(context, emitter.name, toScreen(emitter.topMetres), colors.faint);
         }
-        context.strokeStyle = selected ? colors.accent : colors.muted;
-        context.lineWidth = selected ? 1.6 : 1.1;
-        strokePolyline(context, points);
-        drawHandle(context, toScreen(emitter.baseMetres), selected ? colors.accent : colors.muted, false);
-        drawHandle(context, toScreen(emitter.topMetres), selected ? colors.accent : colors.muted, false);
-      } else {
-        const centre = toScreen(emitter.positionMetres);
-        if (flash > 0) {
-          context.fillStyle = colors.ink;
-          context.shadowColor = colors.accent;
-          context.shadowBlur = 30 * flash;
-          context.beginPath(); context.arc(centre.x, centre.y, 4 + 10 * flash, 0, 2 * Math.PI); context.fill();
-          context.shadowBlur = 0;
-        }
-        const front = state?.fronts.get(emitter.id);
-        if (front) {
-          context.strokeStyle = colors.accent;
-          context.globalAlpha = alpha * front.opacity;
-          context.lineWidth = 1;
-          context.beginPath(); context.arc(centre.x, centre.y, front.radiusMetres * scale, 0, 2 * Math.PI); context.stroke();
-          context.globalAlpha = alpha;
-        }
-        drawHandle(context, centre, selected ? colors.accent : colors.muted, true);
       }
       context.globalAlpha = 1;
-      label(context, emitter.name, toScreen(emitter.kind === 'blast' ? emitter.positionMetres : emitter.topMetres), colors.faint);
     }
 
     for (const receiver of scene.receivers) {
@@ -157,7 +201,8 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
     }
   }
 
-  function drawGrid(context, width, height, colors, toWorld, toScreen, scale) {
+  function drawGrid(context, width, height, colors) {
+    const { toScreen, toWorld, scale } = frame;
     const step = niceStep(width / scale, 6);
     const topLeft = toWorld(0, 0);
     const bottomRight = toWorld(width, height);
@@ -186,10 +231,9 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
   }
 
   function hit(x, y) {
-    const { toScreen } = frame;
     let best = null;
     for (const handle of handles(scene)) {
-      const screen = toScreen(handle.point);
+      const screen = frame.toScreen(handle.point);
       const distance = Math.hypot(screen.x - x, screen.y - y);
       if (distance <= HIT_RADIUS && (!best || distance < best.distance)) best = { ...handle, distance };
     }
@@ -220,13 +264,9 @@ export function createSceneView(canvas, { vertical, onSelect, onMove, onCommit }
     }
     const world = frame.toWorld(x, y);
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
-    const point = {
-      ...drag.point,
-      x: Math.round(clamp(world.x, SCENE_EXTENT_METRES)),
-      [vertical]: vertical === 'z'
-        ? Math.round(clamp(world.v, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10
-        : Math.round(clamp(world.v, SCENE_EXTENT_METRES))
-    };
+    const point = { ...drag.point, x: Math.round(clamp(world.x, SCENE_EXTENT_METRES)) };
+    if (vertical === 'y') point.y = Math.round(clamp(world.v, SCENE_EXTENT_METRES));
+    else if (!drag.onGround) point.z = Math.round(clamp(world.v, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10;
     drag.point = point;
     onMove(drag, point);
   });

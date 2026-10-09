@@ -1,20 +1,26 @@
 # Boomtect
 
 Boomtect is a browser-based acoustics laboratory for impulsive sound: lightning
-and blasts. Place a synthetic source in 3D above the ground, put microphones
-where you want to listen, and hear how distance, height, air, and ground shape
-what arrives. Thunder is modelled as what it is — a long, tortuous channel of
-sources at different heights — rather than as one point.
+and blasts. Place synthetic sources in 3D above the ground — a single ground
+flash, a cloud flash, a whole storm, or an explosion — put microphones where you
+want to listen, and hear how distance, height, air, and ground shape what
+arrives. Thunder is modelled as what it is — long, tortuous, branching channels
+of sources at different heights — rather than as one point.
 
 ## Using it
 
 - **Elevation** (east–height) and **Plan** (east–north) show the same 3D scene.
-  Drag a channel's base or top, a blast, or a microphone in either view.
+  Drag a channel's ends, a storm's centre, a blast, or a microphone in either
+  view.
+- **+ Ground flash** and **+ Cloud flash** add one flash you shape yourself.
+  **+ Storm** generates many flashes over a disc and a time window, mixing
+  ground and cloud flashes under an adjustable cloud layer. Every emitter has
+  an onset, so flashes can be staggered in time.
 - **Play** flashes the source and plays the sound at the selected microphone.
   With **Real delay** the sound arrives as late as it would outdoors; without
-  it, half a second after the flash.
-- **Variant** copies the selected emitter with a new seed, so two channels with
-  the same parameters but a different shape can be compared.
+  it, the silence before the first sound is skipped.
+- **Variant** copies the selected emitter with a new seed, so two flashes or
+  storms with the same parameters but a different shape can be compared.
 - **Export WAV** writes the selected microphone as a mono 32-bit float WAV and a
   JSON document with the full scene, the time of the first sample after the
   flash, and the pascals that correspond to full scale. That JSON opens as a
@@ -35,7 +41,10 @@ emitter's pulse, delayed by its travel time and shaped by the path.
 | Channel segment directivity | uniform line element, `sinc(πfℓ·cosψ/c)` | A |
 | Lightning pulse | N-wave peaking at `κ·c/R₀`, `R₀ = sqrt(E/(πp))` (Few) | B |
 | Lightning level | acoustic share of channel energy | C |
-| Channel shape | seeded tortuous walk from base to top | C |
+| Channel shape | seeded tortuous walk with branches | C |
+| Segment radiation | straight element shorter than the segment | C |
+| Energy along the channel | seeded lognormal variation | C |
+| Storm | seeded flash positions, onsets, types, strokes, energies | B/C |
 | Blast pulse | Friedlander waveform | B |
 | Blast level | Kinney & Graham (1985) overpressure at a linearization radius | B |
 | Blast duration | cube-root scaling from a reference duration | C |
@@ -57,6 +66,7 @@ npm start
 ```
 
 Then open http://localhost:8000/. Tests run with `npm test` (Node 20 or later).
+Rendering runs on several worker threads.
 There is no build step and no dependency to install.
 
 ## License

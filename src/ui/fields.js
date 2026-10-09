@@ -1,12 +1,16 @@
 import { PARAMETERS } from '../domain/scene.js';
 
-const SPEED_OF_LIGHT_METRES_PER_SECOND = 299792458;
-
 /** How a stored SI value is shown in the panel; stored values never change unit. */
 const DISPLAY = Object.freeze({
   energyJoulesPerMetre: { scale: 1e-3, unit: 'kJ/m' },
   acousticEfficiency: { scale: 100, unit: '%' },
-  returnStrokeSpeedMetresPerSecond: { scale: 1 / SPEED_OF_LIGHT_METRES_PER_SECOND, unit: 'c' },
+  channelSpeedMetresPerSecond: { scale: 1e-3, unit: 'km/s' },
+  branchLengthRatio: { scale: 100, unit: '% of channel' },
+  branchEnergyRatio: { scale: 100, unit: '%' },
+  groundFlashShare: { scale: 100, unit: '%' },
+  radiusMetres: { scale: 1e-3, unit: 'km' },
+  cloudBaseMetres: { scale: 1e-3, unit: 'km' },
+  cloudTopMetres: { scale: 1e-3, unit: 'km' },
   strokeIntervalSeconds: { scale: 1e3, unit: 'ms' },
   subsequentStrokeEnergyRatio: { scale: 100, unit: '%' },
   durationSecondsPerCubeRootKilogram: { scale: 1e3, unit: 'ms/kg^⅓' },
@@ -82,20 +86,20 @@ export function numberField(container, { key, label, value, onCommit, reliabilit
   };
 }
 
-/** Three coordinate rows for a 3D point in metres. */
-export function pointFields(container, { label, point, onCommit, reliability = null }) {
+/** Coordinate rows for a point in metres; `axes` limits them, as for a point fixed to the ground. */
+export function pointFields(container, { label, point, onCommit, reliability = null, axes = ['x', 'y', 'z'] }) {
   const heading = document.createElement('div');
   heading.className = 'unit-row';
   heading.textContent = label;
   container.append(heading);
-  const rows = ['x', 'y', 'z'].map(axis => numberField(container, {
+  const rows = axes.map(axis => numberField(container, {
     key: axis === 'z' ? 'heightMetres' : 'coordinateMetres',
     label: { x: 'East', y: 'North', z: 'Height' }[axis],
     value: point[axis],
     reliability,
     onCommit: value => onCommit({ ...point, [axis]: value })
   }));
-  return { set(next) { rows.forEach((row, index) => row.set(next['xyz'[index]])); } };
+  return { set(next) { rows.forEach((row, index) => row.set(next[axes[index]])); } };
 }
 
 export function textField(container, { label, value, onCommit }) {

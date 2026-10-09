@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultScene, parseScene, SceneError, serializeScene } from '../src/domain/scene.js';
+import { defaultBlast, defaultCloudFlash, defaultScene, defaultStorm, parseScene, SceneError, serializeScene } from '../src/domain/scene.js';
 import { encodeFloat32Wav } from '../src/domain/wav.js';
 
 test('the default scene is valid and round-trips without loss', () => {
@@ -9,12 +9,21 @@ test('the default scene is valid and round-trips without loss', () => {
   assert.deepEqual(parseScene(JSON.parse(serializeScene(scene))), scene);
 });
 
+test('every emitter kind validates and round-trips', () => {
+  const scene = { ...defaultScene(), emitters: [defaultScene().emitters[0], defaultCloudFlash(), defaultStorm(), defaultBlast()] };
+  assert.deepEqual(parseScene(JSON.parse(serializeScene(scene))), scene);
+});
+
 test('invalid scenes are rejected with a reason', () => {
   const cases = [
     scene => { scene.format = 'other'; },
     scene => { scene.air.temperatureCelsius = 100; },
     scene => { scene.ground.type = 'lava'; },
-    scene => { scene.emitters[1].id = scene.emitters[0].id; },
+    scene => { scene.emitters.push({ ...scene.emitters[0] }); },
+    scene => { scene.emitters[0].flashType = 'sheet'; },
+    scene => { scene.emitters[0].straightLengthMetres = 20; },
+    scene => { scene.emitters = [{ ...defaultStorm(), cloudTopMetres: 1500 }]; },
+    scene => { scene.emitters = [{ ...defaultStorm(), centreMetres: { x: 0, y: 0, z: 10 } }]; },
     scene => { scene.emitters[0].seed = -1; },
     scene => { scene.receivers[0].positionMetres.z = -1; },
     scene => { scene.emitters[0].strokeCount = 1.5; },

@@ -19,7 +19,7 @@ export function palette() {
   const read = name => style.getPropertyValue(name).trim();
   return {
     bg: read('--bg'), panel: read('--panel'), raised: read('--raised'), line: read('--line'), ink: read('--ink'),
-    muted: read('--muted'), faint: read('--faint'), accent: read('--accent'), secondary: read('--data-secondary'), ground: read('--ground')
+    muted: read('--muted'), faint: read('--faint'), accent: read('--accent'), secondary: read('--data-secondary'), ground: read('--ground'), cloud: read('--cloud')
   };
 }
 
