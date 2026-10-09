@@ -5,7 +5,7 @@ import { newSeed } from './domain/random.js';
 import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene
+  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
@@ -109,7 +109,12 @@ const views = [createCubeView($('cube'), {
       orient(item.id, Math.round((Math.atan2(point.x - item.positionMetres.x, point.y - item.positionMetres.y) * 180 / Math.PI + 360) % 360), item.pitchDegrees);
       return;
     }
-    if (handle.field === 'radiusMetres') {
+    if (handle.field === 'cloudBaseMetres' || handle.field === 'cloudTopMetres') {
+      const { cloudBaseMetres: base, cloudTopMetres: top } = PARAMETERS;
+      const height = Math.round(point.z / 10) * 10;
+      if (handle.field === 'cloudBaseMetres') item.cloudBaseMetres = Math.min(base.maximum, item.cloudTopMetres - MINIMUM_CLOUD_DEPTH_METRES, Math.max(base.minimum, height));
+      else item.cloudTopMetres = Math.min(top.maximum, Math.max(top.minimum, item.cloudBaseMetres + MINIMUM_CLOUD_DEPTH_METRES, height));
+    } else if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else item[handle.field] = point;
     liveFields[handle.type]?.[handle.field]?.set(point);

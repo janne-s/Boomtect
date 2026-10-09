@@ -15,7 +15,7 @@ export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', '
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
-const MINIMUM_CLOUD_DEPTH_METRES = 100;
+export const MINIMUM_CLOUD_DEPTH_METRES = 100;
 
 /**
  * Every bounded number in a scene: unit, range, and reliability class of the value it controls.

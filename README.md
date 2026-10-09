@@ -23,7 +23,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
   Shift-drag, or the right button to pan, double-click to reset.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
-  one. A storm's edge handle sets its size.
+  one. A storm's edge handle sets its size, and its grey handles move the
+  cloud base and top up and down.
 - **Selection** — Dashed lines lead from a selected microphone, blast, or channel
   end to its shadows on the floor and walls.
 - **Shadow boundary** — The line on the floor beyond which refraction lifts the

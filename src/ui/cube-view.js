@@ -73,6 +73,10 @@ function handles(scene, box) {
     else if (emitter.kind === 'storm') {
       list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true, role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: { x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }, onGround: true, role: 'radius' });
+      // The cloud layer's base and top, on the far side of the storm from its edge handle; they move only up and down.
+      for (const field of ['cloudBaseMetres', 'cloudTopMetres']) {
+        list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true });
+      }
     }
     else {
       list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres, onGround: emitter.flashType === 'cloud-to-ground', role: 'start' });
@@ -201,6 +205,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (Math.abs(determinant) < DEGENERATE_AREA * frame.scale * frame.scale) return null;
     const dx = x - origin.x; const dy = y - origin.y;
     return { [plane.free[0]]: (dx * by - dy * bx) / determinant, [plane.free[1]]: (ax * dy - ay * dx) / determinant };
+  }
+
+  /** The vertical plane through a point that faces the viewer most, for dragging a height alone. */
+  function verticalPlane(point) {
+    const facesX = Math.abs(frame.right.x) >= Math.abs(frame.right.y);
+    return facesX ? { name: 'vertical', fixed: 'y', value: point.y, free: ['x', 'z'] } : { name: 'vertical', fixed: 'x', value: point.x, free: ['y', 'z'] };
   }
 
   function planeUsable(plane) {
@@ -616,6 +626,16 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.fill();
       return;
     }
+    if (handle.role === 'level') {
+      context.arc(p.x, p.y, HANDLE_RADIUS - 1, 0, 2 * Math.PI);
+      context.fillStyle = colors.muted;
+      context.fill();
+      if (selected) {
+        context.strokeStyle = colors.accent;
+        context.beginPath(); context.arc(p.x, p.y, HANDLE_RADIUS + 1, 0, 2 * Math.PI); context.stroke();
+      }
+      return;
+    }
     const radius = handle.role === 'radius' ? HANDLE_RADIUS - 1.5 : HANDLE_RADIUS;
     context.arc(p.x, p.y, radius, 0, 2 * Math.PI);
     if (handle.role === 'end') {
@@ -706,6 +726,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     let best = null;
     const usable = planes().filter(planeUsable);
     for (const handle of handles(scene, frame.box)) {
+      if (handle.verticalOnly) {
+        const p = frame.project(handle.point);
+        const distance = Math.hypot(p.x - x, p.y - y);
+        if (distance <= HIT_RADIUS && (!best || distance < best.distance)) best = { ...handle, plane: verticalPlane(handle.point), distance };
+        continue;
+      }
       const candidates = [{ point: handle.point, plane: { name: 'own', fixed: 'z', value: handle.point.z, free: ['x', 'y'] } }];
       for (const plane of handle.ownPlaneOnly ? [] : usable) {
         if (handle.onGround && plane.fixed === 'z') continue;
@@ -818,6 +844,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
     const point = { ...drag.origin };
     for (const axis of drag.plane.free) {
+      if (drag.verticalOnly && axis !== 'z') continue;
       const moved = drag.origin[axis] + solved[axis] - drag.grabbed[axis];
       if (axis === 'z') {
         if (!drag.onGround) point.z = Math.round(clamp(moved, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10;
