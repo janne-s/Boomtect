@@ -1,83 +1,95 @@
-# Boomtect
+# Boomtect: Build thunder where you want it
 
-Boomtect is a browser-based acoustics laboratory for impulsive sound: lightning
-and blasts. Place synthetic sources in 3D above the ground — a single ground
-flash, a cloud flash, a whole storm, or an explosion — put microphones where you
-want to listen, and hear how distance, height, air, and ground shape what
-arrives. Thunder is modelled as what it is — long, tortuous, branching channels
-of sources at different heights — rather than as one point.
+Boomtect simulates the sound of lightning and blasts from their physics. Shape
+a flash or a whole storm in 3D above the ground, place microphones, and hear
+how distance, height, air, and ground shape what arrives. Listen in mono, as a
+spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
 
-## Using it
+## How it works
 
-- **Thunder** and **Blast** are separate modes, each with its own scene.
-- The scene sits in a box whose floor is the ground and whose two far walls
-  show the scene from the side; the cross on the floor is the origin. Drag a
-  point to move it horizontally, or drag its shadow on the floor or a wall to
-  move it in that plane. Drag empty space to turn the box; pinch or the mouse
-  wheel zooms toward the pointer; two fingers, Shift-drag, or the right button
-  pan; double-click resets. A channel starts at the dark circle and ends at the
-  white one; a storm's edge handle sets its size.
-- The borders between the scene, the parameters, and the results can be
-  dragged to resize them.
-- **+ Ground flash** and **+ Cloud flash** add one flash you shape yourself.
-  **+ Storm** generates many flashes over a disc and a time window, mixing
-  ground and cloud flashes under an adjustable cloud layer. Every emitter has
-  an onset, so flashes can be staggered in time.
-- **Play** flashes the source and plays the sound at the selected microphone.
-  The flash runs along the channel figuratively; a real return stroke takes
-  microseconds.
-  With **Real delay** the sound arrives as late as it would outdoors and the
-  light leaves the channel at the moment of the flash. Without it, the silence
-  before the first sound is skipped, and the channel glows where the sound
-  being heard comes from.
-- The selected emitter opens with a few **macro** sliders — energy, height,
-  branching, zigzag, crack, strokes; for a storm also size, duration, and
-  flash count — that each set several parameters at once. **Details…** opens
-  every parameter, grouped and marked with its reliability class.
-- **New shape** draws a new seed. **Variant** copies the emitter with a new
-  seed and switches the original off, so two shapes can be compared.
-- Several microphones are several listening positions; choose which one to
-  hear next to Play.
-- **Export WAV** writes the selected microphone as a mono 32-bit float WAV and a
-  JSON document with the full scene, the time of the first sample after the
-  flash, and the pascals that correspond to full scale. That JSON opens as a
-  scene.
-- **Save** and **Open** store and restore scenes as JSON. The current scene is
-  also kept in the browser between visits.
+Every source is a set of points, each with a position, an emission time, and a
+pressure pulse. A lightning channel is thousands of them along a branching,
+zigzagging path; a blast is one. Each pulse travels to each microphone with its
+own delay and loss, and the microphone hears their sum.
+
+Thunder and Blast are separate modes, each with its own scene.
+
+## Scene
+
+- **Box** — The floor is the ground and the two far walls show the scene from
+  the side. The cross on the floor is the origin.
+- **Points and shadows** — Drag a point to move it horizontally, or its shadow
+  on the floor or a wall to move it in that plane.
+- **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
+  Shift-drag, or the right button to pan, double-click to reset.
+- **Channel ends** — A channel starts at the dark circle and ends at the white
+  one. A storm's edge handle sets its size.
+
+## Emitters
+
+- **Ground flash** — A channel from the ground into the cloud. Later strokes
+  follow the same channel or strike a new ground point.
+- **Cloud flash** — A channel inside the cloud; its sound spreads out in time.
+- **Storm** — Ground and cloud flashes over an area, a time span, and a cloud
+  layer.
+- **Blast** — An explosion of a given charge.
+- **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
+  flash; size, duration, flashes, ground share, and cloud layer for a storm.
+  Each sets several parameters at once.
+- **Details** — Every parameter, marked A (first principles), B (literature),
+  or C (heuristic or synthetic).
+- **New shape** — Draws a new random seed.
+- **Variant** — Copies the emitter with a new seed and switches the original
+  off.
+- **Onset** — Delays an emitter in the scene.
+
+## Listening
+
+- **Play** — Flashes the sources and plays the sound at the microphone.
+- **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
+  silence before the first sound is skipped, and the channel glows where the
+  sound being heard comes from.
+- **Mono** — The pressure at one microphone.
+- **Binaural** — The sound field at one microphone, turned to its **Facing**
+  direction and decoded for headphones.
+- **Stereo pair** — Two microphones as left and right.
+- **Spatial** — The Ambisonic order of the render, or Off.
+- **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
+
+## Export
+
+**Export WAV** writes 32-bit float WAV files for the current listening mode —
+mono, the stereo pair, or binaural stereo with an AmbiX file (ACN, SN3D; front
+is north, left is west) — and a JSON file with the full scene, the time of the
+first sample after the flash, and the pascals at full scale. The JSON opens as
+a scene.
+
+## Echotect
+
+To place a Boomtect sound in an [Echotect](https://github.com/janne-s/Echotect)
+echo field, export a mono WAV and load it in Echotect as the source sound.
 
 ## Model
-
-Every source is a set of point emitters, each with a position, an emission
-time, and a pressure pulse. The pressure at a microphone is the sum of every
-emitter's pulse, delayed by its travel time and shaped by the path.
 
 | Part | Model | Class |
 |---|---|---|
 | Speed of sound | `c = sqrt(γRT)` | A |
-| Travel time and spreading | straight path, `1/R` per point emitter | A |
-| Channel segment directivity | uniform line element, `sinc(πfℓ·cosψ/c)` | A |
-| Lightning pulse | N-wave with period `τ₀ = 2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
-| Weak shock | period grows as `x^¼`, extra decay `x^-¼` with distance (ReVelle) | B |
-| Lightning level | acoustic share of channel energy | C |
+| Travel time and spreading | `1/R` per point | A |
+| Segment directivity | straight line element | A |
+| Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
+| Weak shock | period grows as `x^¼`, extra decay `x^-¼` (ReVelle) | B |
+| Strokes | lognormal intervals, new ground points | B/C |
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
-| Strokes | lognormal intervals, new ground points on later strokes | B/C |
-| Segment radiation | straight element shorter than the segment | C |
-| Energy along the channel | seeded lognormal variation | C |
-| Storm | seeded flash positions, onsets, types, strokes, energies | B/C |
-| Blast pulse | Friedlander waveform | B |
-| Blast level | Kinney & Graham (1985) overpressure at a linearization radius | B |
-| Blast duration | cube-root scaling from a reference duration | C |
+| Lightning level | acoustic share of channel energy | C |
+| Blast | Friedlander pulse, Kinney & Graham overpressure | B |
 | Air absorption | ISO 9613-1 | B |
-| Ground reflection | image source with Delany–Bazley impedance and spherical-wave coefficient | B |
-| Turbulence | seeded phase fluctuation of the ground reflection (Clifford & Lataitis) | B/C |
-
-**A** — first principles, **B** — literature, **C** — heuristic or synthetic.
-The panel marks each parameter with its class.
+| Ground reflection | Delany–Bazley impedance, spherical-wave coefficient | B |
+| Turbulence | phase fluctuation of the ground reflection | B/C |
+| Ambisonics | spherical harmonics, AmbiX | A |
 
 Not modelled: terrain and buildings, diffraction, temperature stratification
-and refraction, wind and turbulence, and nonlinear propagation beyond the
-linearization radius. Levels are model values in pascals and are not
-calibrated. A synthetic channel is not a reconstruction of a real strike.
+and refraction, wind, nonlinear propagation beyond the linearization radius.
+Levels are model values in pascals and are not calibrated.
 
 ## Running locally
 
@@ -85,9 +97,13 @@ calibrated. A synthetic channel is not a reconstruction of a real strike.
 npm start
 ```
 
-Then open http://localhost:8000/. Tests run with `npm test` (Node 20 or later).
-Rendering runs on several worker threads.
-There is no build step and no dependency to install.
+Open http://localhost:8000/. Run the tests with `npm test`.
+
+## Third-party code
+
+Binaural decoding uses [Omnitone](https://github.com/GoogleChrome/omnitone)
+1.3.0 with its SADIE HRIRs, under the Apache License 2.0
+([notice](assets/vendor/omnitone/NOTICE)).
 
 ## License
 
