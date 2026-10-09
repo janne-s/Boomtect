@@ -8,8 +8,9 @@
   --ink: #e3e9ef;
   --muted: #8b99a8;
   --faint: #56636f;
-  --accent: #f2a465;
-  --accent-soft: rgba(242, 164, 101, .16);
+  --accent: #ff9a45;
+  --accent-soft: rgba(255, 154, 69, .16);
+  --accent-hover: #ffad66;
   --ground: #18212b;
   --wall: #151c24;
   --grid: #222c37;
@@ -23,6 +24,15 @@
   --receiver: #dfe6ee;
   --direct: #8fb6e6;
   --reflected: #6c7c8e;
+  /* One cool color per microphone in the plots, in receiver order. */
+  --mic-1: #e3e9ef;
+  --mic-2: #8fb6e6;
+  --mic-3: #7fcfc0;
+  --mic-4: #b7a6ec;
+  --mic-5: #e59ab5;
+  --mic-6: #b5d67a;
+  --mic-7: #6fd3e8;
+  --mic-8: #93a4b8;
   font-family:
     Inter,
     ui-sans-serif,
@@ -76,7 +86,7 @@ button.primary {
   font-weight: 600;
 }
 button.primary:hover:not(:disabled) {
-  background: #f5b47e;
+  background: var(--accent-hover);
 }
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -153,8 +163,11 @@ figcaption {
   font-size: 11px;
   line-height: 16px;
 }
+.plot-tabs button {
+  color: var(--mic);
+}
 .plot-tabs button.muted {
-  color: var(--muted);
+  opacity: .55;
 }
 .plot-tabs button[aria-pressed="true"] {
   background: var(--accent-soft);
@@ -325,7 +338,52 @@ canvas {
 }
 .macros input[type="range"] {
   width: 100%;
-  accent-color: var(--accent);
+}
+/*
+ * Range sliders draw their own track: --from and --to (set from the value) bound the filled part,
+ * so a two-handle slider fills only between its handles.
+ */
+input[type="range"] {
+  --from: 0%;
+  --to: 0%;
+  height: 18px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--line) var(--from), var(--accent) var(--from), var(--accent) var(--to), var(--line) var(--to));
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--line) var(--from), var(--accent) var(--from), var(--accent) var(--to), var(--line) var(--to));
+}
+input[type="range"]::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  -webkit-appearance: none;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+}
+input[type="range"]:hover::-webkit-slider-thumb {
+  background: var(--accent-hover);
+}
+input[type="range"]:hover::-moz-range-thumb {
+  background: var(--accent-hover);
 }
 .dual {
   position: relative;
@@ -334,10 +392,14 @@ canvas {
 .dual input[type="range"] {
   position: absolute;
   inset: 0;
-  margin: 0;
-  background: none;
+  width: 100%;
   pointer-events: none;
-  accent-color: var(--accent);
+}
+.dual input[type="range"] + input[type="range"]::-webkit-slider-runnable-track {
+  background: none;
+}
+.dual input[type="range"] + input[type="range"]::-moz-range-track {
+  background: none;
 }
 .dual input[type="range"]::-webkit-slider-thumb {
   pointer-events: auto;

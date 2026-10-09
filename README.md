@@ -73,8 +73,9 @@ Thunder and Blast are separate modes, each with its own scene.
   grows with pressure.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
 - **Plots** — Pressure and arrival time by source height for every microphone
-  on one time axis, the muted ones dimmer. A microphone's tab, or selecting the
-  microphone, brings it forward and scales the pressure to it.
+  on one time axis, each in its own color and the muted ones dimmer. A
+  microphone's tab, or selecting the microphone, brings it forward and scales
+  the pressure to it.
 
 ## Air
 

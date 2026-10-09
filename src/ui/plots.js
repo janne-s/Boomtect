@@ -4,8 +4,10 @@ const LEFT = 8;
 const RIGHT = 8;
 const TOP = 22;
 const BOTTOM = 20;
-/** Opacity of microphones other than the solo one. */
-const DIMMED = .28;
+/** Opacity of microphones other than the solo one, of muted ones, and of the rest, which may overlap. */
+const DIMMED = .2;
+const MUTED = .4;
+const OVERLAPPING = .8;
 
 /** Scene-time window of a result: from its first rendered sample to its last. */
 function resultWindow(result) {
@@ -39,14 +41,17 @@ function playhead(context, width, height, window, seconds, colors) {
 }
 
 /**
- * How a microphone's trace is drawn: the solo microphone, or with none soloed every listening
- * one, in ink; the others muted. Emphasized traces are drawn last.
+ * How a microphone's trace is drawn: each in its own color, the solo one opaque over the dimmed
+ * rest, or with none soloed the listening ones slightly transparent so that overlaps show, over
+ * the muted ones. Emphasized traces are drawn last. A single microphone keeps the plain colors.
  */
 function traceStyles(traces, soloId, colors) {
+  const single = traces.length === 1;
   return traces
     .map(trace => {
       const emphasized = soloId ? trace.id === soloId : trace.listening;
-      return { trace, emphasized, color: emphasized ? colors.ink : colors.muted, alpha: soloId && !emphasized ? DIMMED : emphasized ? 1 : .6 };
+      const alpha = single ? 1 : soloId ? (emphasized ? 1 : DIMMED) : emphasized ? OVERLAPPING : MUTED;
+      return { trace, emphasized, single, color: single ? colors.ink : colors.mics[trace.index % colors.mics.length], alpha };
     })
     .sort((a, b) => Number(a.emphasized) - Number(b.emphasized));
 }
@@ -142,15 +147,17 @@ export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = 
     }
     const plotWidth = width - LEFT - RIGHT;
     const plotHeight = height - TOP - BOTTOM;
-    for (const { trace, emphasized, alpha } of traceStyles(live, soloId, colors)) {
+    for (const { trace, single, color, alpha } of traceStyles(live, soloId, colors)) {
       const { arrivals } = trace.result;
-      for (const kind of [1, 0]) {
-        context.fillStyle = !emphasized ? colors.muted : kind === 0 ? colors.direct : colors.reflected;
+      // Ground paths behind, in the secondary color or at half strength of the microphone's color.
+      for (const reflected of [true, false]) {
+        context.fillStyle = single ? (reflected ? colors.reflected : colors.direct) : color;
+        const strength = !single && reflected ? alpha / 2 : alpha;
         for (let index = 0; index < arrivals.count; index += 1) {
-          if (arrivals.kinds[index] !== kind) continue;
+          if ((arrivals.kinds[index] === 1) !== reflected) continue;
           const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
           const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
-          context.globalAlpha = alpha * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
+          context.globalAlpha = strength * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
           context.fillRect(x - 1, y - 1, 2, 2);
         }
       }

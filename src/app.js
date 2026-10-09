@@ -8,7 +8,7 @@ import {
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
-import { formatMetres, formatSeconds } from './ui/canvas.js';
+import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes } from './ui/geometry-cache.js';
@@ -399,6 +399,15 @@ function emitterSummary(emitter) {
 }
 
 const MACRO_STEPS = 1000;
+/** Half the slider thumb's width: the filled track runs between thumb centres. */
+const THUMB_HALF_PIXELS = 6;
+
+/** Sets a slider's filled track from `from` to `to`, positions in [0, 1] of its range. */
+function paintTrack(element, from, to) {
+  const at = t => `calc(${THUMB_HALF_PIXELS}px + (100% - ${2 * THUMB_HALF_PIXELS}px) * ${t})`;
+  element.style.setProperty('--from', from === 0 ? '0%' : at(from));
+  element.style.setProperty('--to', at(to));
+}
 
 function macroRow(container, emitter, macro) {
   const id = `macro-${emitter.id}-${macro.label}`;
@@ -433,8 +442,11 @@ function macroRow(container, emitter, macro) {
       const b = Number(upper.value);
       return [Math.min(a, b) / steps, Math.max(a, b) / steps];
     };
+    // Both inputs inherit the fill from the holder; the upper one's track is transparent.
+    const paint = () => { const [from, to] = read(); paintTrack(holder, from, to); };
+    paint();
     for (const input of [lower, upper]) {
-      input.addEventListener('input', () => apply(read));
+      input.addEventListener('input', () => { paint(); apply(read); });
       input.addEventListener('change', () => commit(() => {}));
     }
     holder.append(lower, upper);
@@ -443,7 +455,8 @@ function macroRow(container, emitter, macro) {
   }
   const input = slider(macro.read(emitter));
   input.id = id;
-  input.addEventListener('input', () => apply(() => [Number(input.value) / steps]));
+  paintTrack(input, 0, Number(input.value) / steps);
+  input.addEventListener('input', () => { paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
   input.addEventListener('change', () => commit(() => {}));
   container.append(label, input, value);
 }
@@ -847,7 +860,7 @@ function addEmitter(create) {
 function drawResults(playheadSeconds = null) {
   const { receivers } = state.scene;
   const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
-  const traces = receivers.map(receiver => ({ id: receiver.id, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
+  const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
   const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
   drawWaveform($('waveform'), { key, traces, soloId }, playheadSeconds);
   drawArrivals($('arrivals'), { key, traces, soloId }, playheadSeconds);
@@ -867,6 +880,7 @@ function drawPlotTabs(soloId) {
       redrawViews();
     });
     tab.setAttribute('aria-pressed', String(soloId === receiver.id));
+    tab.style.setProperty('--mic', microphoneColor(receivers.indexOf(receiver)));
     tab.classList.toggle('muted', !receiver.listen);
     return tab;
   }));
@@ -1005,6 +1019,10 @@ async function resumePlayback() {
     started = await player.play(current.composition, current.gain, {
       realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds
     });
+  } catch (error) {
+    player.stop();
+    showStopped();
+    setStatus(`Playback failed: ${error.message}`, true);
   } finally {
     const { again } = resuming;
     resuming = null;
@@ -1019,9 +1037,17 @@ $('play').addEventListener('click', async () => {
     showStopped();
     return;
   }
-  const current = listening();
-  if (!current) return;
-  if (await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped })) showPlaying();
+  const unlocked = player.unlock(state.scene.render.sampleRate);
+  try {
+    const current = listening();
+    if (!current) return;
+    await unlocked;
+    if (await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped })) showPlaying();
+  } catch (error) {
+    player.stop();
+    showStopped();
+    setStatus(`Playback failed: ${error.message}`, true);
+  }
 });
 
 /* Files */

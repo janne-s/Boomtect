@@ -13,13 +13,17 @@ export function fitCanvas(canvas) {
   return { context, width, height };
 }
 
-/** CSS custom properties as canvas colors, read once per draw. */
+const MICROPHONE_COLORS = 8;
+
+/** CSS custom properties as canvas colors, read once per draw; `mics` holds one color per receiver slot. */
 export function palette() {
   const style = getComputedStyle(document.documentElement);
   const read = name => style.getPropertyValue(name).trim();
   const names = ['bg', 'panel', 'raised', 'line', 'ink', 'muted', 'faint', 'accent', 'ground', 'cloud', 'wall', 'grid', 'shadow',
     'lightning', 'flash', 'glow', 'start', 'end', 'receiver', 'direct', 'reflected'];
-  return Object.fromEntries(names.map(name => [name, read(`--${name}`)]));
+  const colors = Object.fromEntries(names.map(name => [name, read(`--${name}`)]));
+  colors.mics = Array.from({ length: MICROPHONE_COLORS }, (_, index) => read(`--mic-${index + 1}`));
+  return colors;
 }
 
 /** A round step of 1, 2, or 5 times a power of ten that gives roughly `count` ticks over `span`. */
@@ -37,3 +41,6 @@ export function formatMetres(value) {
 export function formatSeconds(value) {
   return Math.abs(value) >= 1 ? `${+value.toFixed(2)} s` : `${+(value * 1000).toFixed(1)} ms`;
 }
+
+/** A receiver's plot color by its position in the scene. */
+export const microphoneColor = index => `var(--mic-${index % MICROPHONE_COLORS + 1})`;

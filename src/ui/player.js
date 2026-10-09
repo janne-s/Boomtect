@@ -169,10 +169,19 @@ export function createPlayer() {
    * Plays a composition. `atSceneSeconds` continues an interrupted playback from that point of the
    * scene timeline, keeping its skipped lead-in, so a listening change does not restart the sound.
    */
+  /**
+   * Creates and resumes the audio context. Call it first thing in a user gesture: browsers allow
+   * audio to start only within a short time of the gesture, and preparing a long composition can
+   * take longer than that.
+   */
+  function unlock(sampleRate) {
+    context ??= new AudioContext({ sampleRate });
+    return context.resume();
+  }
+
   async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null }) {
     const ticket = request += 1;
-    context ??= new AudioContext({ sampleRate: composition.sampleRate });
-    await context.resume();
+    await unlock(composition.sampleRate);
     release();
     const connected = await connectComposition(context, composition, gain, context.destination, { live: true });
     if (ticket !== request) {
@@ -198,6 +207,7 @@ export function createPlayer() {
   }
 
   return {
+    unlock,
     play,
     stop,
     clock: () => clock,
