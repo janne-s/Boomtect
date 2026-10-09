@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 5;
+export const SCENE_VERSION = 6;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -60,6 +60,10 @@ export const PARAMETERS = Object.freeze({
   cloudBaseMetres: { minimum: 200, maximum: 8000, unit: 'm', label: 'Cloud base', reliability: null },
   cloudTopMetres: { minimum: 1000, maximum: 18000, unit: 'm', label: 'Cloud top', reliability: null },
   energySpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Flash energy spread σ', reliability: 'C' },
+  currentDecayHeightMetres: { minimum: 300, maximum: 1e6, unit: 'm', label: 'Current decay height', reliability: 'B' },
+  inCloudLengthMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'In-cloud channels', reliability: 'C' },
+  inCloudEnergyRatio: { minimum: .01, maximum: 1, unit: '', label: 'In-cloud energy', reliability: 'C' },
+  inCloudSpeedMetresPerSecond: { minimum: 1e4, maximum: 1e7, unit: 'm/s', label: 'In-cloud speed', reliability: 'B' },
   chargeKilograms: { minimum: .001, maximum: 1e6, unit: 'kg TNT', label: 'Charge', reliability: 'B' },
   linearScaledDistance: { minimum: 5, maximum: 100, unit: 'm/kg^⅓', label: 'Linearization distance', reliability: 'C' },
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
@@ -76,13 +80,15 @@ const CHANNEL_NUMBERS = Object.freeze([
   'branchCount', 'branchDepth', 'branchEnergyRatio', 'energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency',
   'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds'
 ]);
+/** A ground flash's return-stroke current decay and in-cloud channels; storms share them. */
+const GROUND_FLASH_NUMBERS = Object.freeze(['currentDecayHeightMetres', 'inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond']);
 const LIGHTNING_NUMBERS = Object.freeze([
   'startSeconds', ...CHANNEL_NUMBERS, 'branchLengthRatio', 'channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds',
-  'strokeIntervalSpread', 'subsequentStrokeEnergyRatio', 'newTerminationProbability'
+  'strokeIntervalSpread', 'subsequentStrokeEnergyRatio', 'newTerminationProbability', ...GROUND_FLASH_NUMBERS
 ]);
 const STORM_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres',
-  'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS
+  'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS, ...GROUND_FLASH_NUMBERS
 ]);
 const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
 
@@ -98,7 +104,11 @@ const LIGHTNING_PHYSICS = Object.freeze({
   acousticEfficiency: .01,
   periodCoefficient: 2.81,
   weakShockLimitRadii: 1e4,
-  riseTimeSeconds: 4e-5
+  riseTimeSeconds: 4e-5,
+  currentDecayHeightMetres: 2000,
+  inCloudLengthMetres: 5000,
+  inCloudEnergyRatio: .3,
+  inCloudSpeedMetresPerSecond: 3e5
 });
 
 export function defaultLightning(id = 'lightning-1', name = 'Ground flash', seed = 20261009) {

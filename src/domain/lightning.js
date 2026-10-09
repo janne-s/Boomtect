@@ -22,6 +22,16 @@ const GROUND_BRANCH_ANGLE_DEGREES = Object.freeze([15, 65]);
 const SUB_BRANCH_ANGLE_DEGREES = Object.freeze([20, 60]);
 /** Class C: cloud-flash branches stay within this elevation of the horizontal, in degrees. */
 const CLOUD_BRANCH_ELEVATION_DEGREES = 20;
+/**
+ * Class C: a ground flash's in-cloud channels. Mapped ground flashes show long, near-horizontal
+ * channels inside the cloud (VHF lightning mapping; no typical length verified yet). Two leave the
+ * top in roughly opposite directions, within this elevation, each reaching this share of the
+ * nominal length or more.
+ */
+const IN_CLOUD_CHANNELS = 2;
+const IN_CLOUD_ELEVATION_DEGREES = 10;
+const IN_CLOUD_SPREAD_DEGREES = 50;
+const IN_CLOUD_LENGTH_SHARE = Object.freeze([.6, 1]);
 /** Class C: a branch reaches between this share and all of its nominal length. */
 const BRANCH_LENGTH_MINIMUM_SHARE = .3;
 /** Class C: each branching level has this share of the previous level's count and length. */
@@ -183,6 +193,21 @@ export function lightningFlash(spec) {
   const branchIndices = channels.map((_, index) => index).slice(1);
 
   const ground = spec.type === 'cloud-to-ground';
+  // In-cloud channels start at the top once the first return stroke has reached it.
+  const inCloud = [];
+  if (ground && spec.inCloudLengthMetres > 0) {
+    const firstAzimuth = 2 * Math.PI * random();
+    for (let index = 0; index < IN_CLOUD_CHANNELS; index += 1) {
+      const azimuth = firstAzimuth + index * Math.PI + toRadians((2 * random() - 1) * IN_CLOUD_SPREAD_DEGREES);
+      const elevation = toRadians((2 * random() - 1) * IN_CLOUD_ELEVATION_DEGREES);
+      const reach = spec.inCloudLengthMetres * uniform(random, IN_CLOUD_LENGTH_SHARE);
+      const direction = { x: Math.cos(elevation) * Math.cos(azimuth), y: Math.cos(elevation) * Math.sin(azimuth), z: Math.sin(elevation) };
+      if (reach * BUDGET_MARGIN / spec.segmentLengthMetres > budget.remaining) continue;
+      const points = channelPath(random, spec.topMetres, add(spec.topMetres, scaled(direction, reach)), spec, budget);
+      channels.push({ points, main: false, inCloud: true, level: 1, energyScale: spec.inCloudEnergyRatio, emissionOffsetMetres: 0, mainLength });
+      inCloud.push({ channel: channels.length - 1, fromArc: 0, offsetMetres: 0, offsetSeconds: mainLength / spec.channelSpeedMetresPerSecond, speedMetresPerSecond: spec.inCloudSpeedMetresPerSecond });
+    }
+  }
   const strokes = [];
   let route = [{ channel: 0, fromArc: 0, offsetMetres: 0 }];
   let offsetSeconds = 0;
@@ -205,22 +230,49 @@ export function lightningFlash(spec) {
         }
       }
     }
-    const lit = stroke === 0 ? [...route, ...branchIndices.map(channel => ({ channel, fromArc: 0, offsetMetres: channels[channel].emissionOffsetMetres }))] : route;
+    const lit = stroke === 0 ? [...route, ...branchIndices.map(channel => ({ channel, fromArc: 0, offsetMetres: channels[channel].emissionOffsetMetres })), ...inCloud] : route;
     strokes.push({ offsetSeconds, energyScale: stroke === 0 ? 1 : spec.subsequentStrokeEnergyRatio, route: lit });
   }
 
   for (const channel of channels) {
     channel.segments = segmentsFromPoints(channel.points);
+    channel.lengthMetres = pathLength(channel.points);
     channel.energyVariation = Float64Array.from(channel.segments, () => Math.exp(spec.energyVariation * normalDeviate(random) - spec.energyVariation ** 2 / 2));
   }
   return {
     type: spec.type,
     startSeconds: spec.startSeconds,
     channelSpeedMetresPerSecond: spec.channelSpeedMetresPerSecond,
+    currentDecayHeightMetres: ground ? spec.currentDecayHeightMetres : Infinity,
     energyJoulesPerMetre: spec.energyJoulesPerMetre,
     strokes,
     channels
   };
+}
+
+/**
+ * When a channel point at arc `arcMetres` of a stroke's route step emits, in scene seconds: the
+ * stroke's onset, the step's own delay, and the travel of the discharge along the channel at the
+ * step's speed (the flash's channel speed unless the step has its own).
+ */
+export function emissionSeconds(flash, stroke, step, arcMetres) {
+  return flash.startSeconds + stroke.offsetSeconds + (step.offsetSeconds ?? 0)
+    + (step.offsetMetres + arcMetres - step.fromArc) / (step.speedMetresPerSecond ?? flash.channelSpeedMetresPerSecond);
+}
+
+/** Class C: an in-cloud channel's energy per metre falls to e^(−IN_CLOUD_TAPER) at its far end. */
+const IN_CLOUD_TAPER = 4;
+
+/**
+ * The share of a flash's energy per metre that a segment deposits. Return-stroke channels: class B
+ * for the decay (MTLE return-stroke model: the current falls as I(z) = I₀·e^(−z/λ) with height;
+ * λ ≈ 2 km is the commonly used value, not yet verified against Nucci et al. 1988), class C for the
+ * energy following the current squared, e^(−2z/λ). In-cloud channels are not return-stroke paths;
+ * they thin out toward their tips (class C).
+ */
+export function segmentEnergyShare(flash, channel, segment) {
+  if (channel.inCloud) return Math.exp(-IN_CLOUD_TAPER * segment.arcMetres / channel.lengthMetres);
+  return Math.exp(-2 * Math.max(0, segment.centreMetres.z) / flash.currentDecayHeightMetres);
 }
 
 /**
@@ -255,11 +307,12 @@ export function flashSources(flashes, physics, air, sources = []) {
   const density = airDensityKilogramsPerCubicMetre(groundPressurePa, air.temperatureCelsius);
   flashes.forEach((flash, flashIndex) => {
     for (const stroke of flash.strokes) {
-      for (const { channel: channelIndex, fromArc, offsetMetres } of stroke.route) {
-        const channel = flash.channels[channelIndex];
+      for (const step of stroke.route) {
+        const channel = flash.channels[step.channel];
         channel.segments.forEach((segment, segmentIndex) => {
-          if (segment.arcMetres < fromArc) return;
-          const energy = flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex];
+          if (segment.arcMetres < step.fromArc) return;
+          const energy = flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex]
+            * segmentEnergyShare(flash, channel, segment);
           const pressurePa = pressureAtHeightPa(air, segment.centreMetres.z);
           const radius = relaxationRadiusMetres(energy, pressurePa);
           const sourcePeriodSeconds = physics.periodCoefficient * radius / speed;
@@ -270,7 +323,7 @@ export function flashSources(flashes, physics, air, sources = []) {
             positionMetres: segment.centreMetres,
             direction: segment.direction,
             elementMetres: Math.min(physics.straightLengthMetres, segment.lengthMetres),
-            emissionSeconds: flash.startSeconds + stroke.offsetSeconds + (offsetMetres + segment.arcMetres - fromArc) / flash.channelSpeedMetresPerSecond,
+            emissionSeconds: emissionSeconds(flash, stroke, step, segment.arcMetres),
             amplitudePaMetres: Math.sqrt(3 * density * speed * acousticEnergy / (4 * Math.PI * reference.durationSeconds)),
             pulse: 'n-wave',
             weakShock: { relaxationRadius: radius, sourcePeriodSeconds, limitRadii: physics.weakShockLimitRadii },

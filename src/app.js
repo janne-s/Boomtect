@@ -1,5 +1,6 @@
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
+import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
@@ -427,6 +428,11 @@ function paintTrack(element, from, to) {
   element.style.setProperty('--to', at(to));
 }
 
+/** Keeps the scene box still while a slider moves, and lets it fit the scene again when it ends. */
+function holdViews(on) {
+  views.forEach(view => view.hold(on));
+}
+
 function macroRow(container, emitter, macro) {
   const id = `macro-${emitter.id}-${macro.label}`;
   const label = element('label', '', macro.label);
@@ -465,8 +471,8 @@ function macroRow(container, emitter, macro) {
     const paint = () => { const [from, to] = read(); paintTrack(lower, from, to); paintTrack(upper, from, to); };
     paint();
     for (const input of [lower, upper]) {
-      input.addEventListener('input', () => { paint(); apply(read); });
-      input.addEventListener('change', () => commit(() => {}));
+      input.addEventListener('input', () => { holdViews(true); paint(); apply(read); });
+      input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
     }
     holder.append(lower, upper);
     container.append(label, holder, value);
@@ -475,8 +481,8 @@ function macroRow(container, emitter, macro) {
   const input = slider(macro.read(emitter));
   input.id = id;
   paintTrack(input, 0, Number(input.value) / steps);
-  input.addEventListener('input', () => { paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
-  input.addEventListener('change', () => commit(() => {}));
+  input.addEventListener('input', () => { holdViews(true); paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
+  input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
   container.append(label, input, value);
 }
 
@@ -654,7 +660,9 @@ function detailSections(emitter) {
       }),
       section('Channel', numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees',
         'branchCount', 'branchDepth', 'branchLengthRatio', 'branchEnergyRatio'])),
-      section('Source', numbers(['energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds'])),
+      section('Source', numbers(['energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds',
+        ...(ground ? ['currentDecayHeightMetres'] : [])])),
+      ...(ground ? [section('In cloud', numbers(['inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond']))] : []),
       section('Strokes', numbers(['channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'strokeIntervalSpread', 'subsequentStrokeEnergyRatio',
         ...(ground ? ['newTerminationProbability'] : [])]))
     ];
@@ -666,7 +674,8 @@ function detailSections(emitter) {
         pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
       }),
       section('Extent', numbers(['radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres', 'newTerminationProbability'])),
-      section('Source', numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds'])),
+      section('Source', numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds', 'currentDecayHeightMetres'])),
+      section('Ground flashes in cloud', numbers(['inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond'])),
       section('Channel', numbers(['segmentLengthMetres', 'straightLengthMetres', 'tortuosityDegrees', 'macroStepMetres', 'macroTortuosityDegrees', 'branchCount', 'branchDepth', 'branchEnergyRatio']))
     ];
   }
@@ -970,12 +979,11 @@ function wavefrontCandidates(scene) {
     if (emitter.kind === 'blast') { candidates.push({ point: emitter.positionMetres, emitted: emitter.startSeconds }); continue; }
     for (const flash of cachedFlashes(emitter)) {
       const [stroke] = flash.strokes;
-      const start = flash.startSeconds + stroke.offsetSeconds;
       for (const step of stroke.route) {
         const channel = flash.channels[step.channel];
         channel.points.forEach((point, index) => {
           const arc = channel.arcs[index];
-          if (arc >= step.fromArc) candidates.push({ point, emitted: start + (step.offsetMetres + arc - step.fromArc) / flash.channelSpeedMetresPerSecond });
+          if (arc >= step.fromArc) candidates.push({ point, emitted: emissionSeconds(flash, stroke, step, arc) });
         });
       }
     }

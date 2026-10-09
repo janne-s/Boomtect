@@ -1,4 +1,5 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
+import { emissionSeconds } from '../domain/lightning.js';
 import { grazingRange, soundSpeedProfile } from '../domain/refraction.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { cachedFlashes } from './geometry-cache.js';
@@ -31,8 +32,10 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
-const WAVEFRONT_FILL_ALPHA = .05;
-const WAVEFRONT_EDGE_ALPHA = .4;
+/** A wavefront crossing a face is drawn as a ripple: the front and fading rings behind it. */
+const RIPPLE_ALPHAS = Object.freeze([.5, .3, .16, .07]);
+/** Spacing of the ripple rings as a share of the box. */
+const RIPPLE_SPACING_SHARE = .018;
 const BOUNDARY_EDGE_ALPHA = .7;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
@@ -104,6 +107,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let drag = null;
   let animation = null;
   let scratch = null;
+  /** While a control changes the scene continuously, the box keeps its size so the view stays still. */
+  let held = false;
+  let lastBox = null;
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -136,7 +142,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   function computeFrame(width, height) {
-    const box = sceneBox();
+    const box = held && lastBox ? lastBox : sceneBox();
+    lastBox = box;
     const { yaw, pitch, zoom } = view;
     const cosYaw = Math.cos(yaw); const sinYaw = Math.sin(yaw);
     const cosPitch = Math.cos(pitch); const sinPitch = Math.sin(pitch);
@@ -345,18 +352,15 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return age >= 0 && age < SOUND_GLOW_SECONDS ? 1 - age / SOUND_GLOW_SECONDS : 0;
     };
     for (const flash of cachedFlashes(emitter)) {
-      const speedOfChannel = flash.channelSpeedMetresPerSecond;
       for (const stroke of flash.strokes) {
-        const start = flash.startSeconds + stroke.offsetSeconds;
-        if (seconds < start) continue;
+        if (seconds < flash.startSeconds + stroke.offsetSeconds) continue;
         for (const step of stroke.route) {
           const channel = flash.channels[step.channel];
           let previous = null;
           channel.points.forEach((point, index) => {
             const arc = channel.arcs[index];
             if (arc < step.fromArc) return;
-            const arrival = start + (step.offsetMetres + arc - step.fromArc) / speedOfChannel + travelSeconds(point);
-            const level = glow(arrival);
+            const level = glow(emissionSeconds(flash, stroke, step, arc) + travelSeconds(point));
             if (previous && level > .02) levels[Math.min(3, Math.floor(level * 4))].push(previous, point);
             previous = point;
           });
@@ -433,6 +437,18 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * which the ray to the followed microphone's height grazes the ground. Drawn for the selected
    * emitter, or for every enabled one.
    */
+  /** The selected item's points above the ground: a microphone, a blast, or a channel's ends. */
+  function selectedPoints() {
+    if (selection?.type === 'receiver') {
+      const receiver = scene.receivers.find(item => item.id === selection.id);
+      return receiver ? [receiver.positionMetres] : [];
+    }
+    const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
+    if (!emitter || emitter.kind === 'storm') return [];
+    const points = emitter.kind === 'blast' ? [emitter.positionMetres] : [emitter.baseMetres, emitter.topMetres];
+    return points.filter(point => point.z > 0);
+  }
+
   function drawShadowBoundary(context, colors) {
     const profile = soundSpeedProfile(scene.air);
     const receiver = focus?.();
@@ -462,9 +478,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   /**
-   * The wavefronts where they cross the floor and the two far walls: each sampled source's sphere
-   * meets a plane in a circle, and the union of those circles is drawn faintly with its edge, only
-   * within the face. On the floor the circle stops at the shadow boundary.
+   * The wavefronts where they cross the floor and the two far walls, as ripples: each sampled
+   * source's sphere meets a plane in a circle, and the outline of their union is drawn with fading
+   * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
+   * floor the circle stops at the shadow boundary.
    */
   function drawWavefronts(context, colors, wavefronts) {
     const { profile, spheres } = wavefronts;
@@ -474,34 +491,37 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'x', value: farX, axes: ['y', 'z'], corners: [[box.y0, 0], [box.y1, 0], [box.y1, box.z1], [box.y0, box.z1]] },
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
+    const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * RIPPLE_SPACING_SHARE;
     for (const face of faces) {
       const [u, v] = face.axes;
       const place = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
-      const path = new Path2D();
-      let any = false;
-      for (const { source, centre, radiusMetres } of spheres) {
-        const offset = face.value - centre[face.fixed];
-        if (Math.abs(offset) >= radiusMetres) continue;
-        let radius = Math.sqrt(radiusMetres ** 2 - offset ** 2);
-        if (face.fixed === 'z' && profile.gradient < 0) radius = Math.min(radius, grazingRange(profile, source.z));
-        if (!(radius > 0)) continue;
-        any = true;
-        addPolygon(path, Array.from({ length: OUTLINE_STEPS }, (_, step) => {
-          const angle = 2 * Math.PI * step / OUTLINE_STEPS;
-          return place(centre[u] + radius * Math.cos(angle), centre[v] + radius * Math.sin(angle));
-        }));
-      }
-      if (!any) continue;
       const outline = new Path2D();
       addPolygon(outline, face.corners.map(([a, b]) => place(a, b)));
       context.save();
       context.clip(outline);
-      unionOutline(context, path, colors.glow, { fillAlpha: WAVEFRONT_FILL_ALPHA, edgeAlpha: WAVEFRONT_EDGE_ALPHA });
+      RIPPLE_ALPHAS.forEach((alpha, ring) => {
+        const path = new Path2D();
+        let any = false;
+        for (const { source, centre, radiusMetres } of spheres) {
+          const sphere = radiusMetres - ring * spacing;
+          const offset = face.value - centre[face.fixed];
+          if (!(sphere > Math.abs(offset))) continue;
+          let radius = Math.sqrt(sphere ** 2 - offset ** 2);
+          if (face.fixed === 'z' && profile.gradient < 0) radius = Math.min(radius, grazingRange(profile, source.z));
+          if (!(radius > 0)) continue;
+          any = true;
+          addPolygon(path, Array.from({ length: OUTLINE_STEPS }, (_, step) => {
+            const angle = 2 * Math.PI * step / OUTLINE_STEPS;
+            return place(centre[u] + radius * Math.cos(angle), centre[v] + radius * Math.sin(angle));
+          }));
+        }
+        if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
+      });
       context.restore();
     }
   }
 
-  /** Dashed lines from a selected microphone down to the floor and across to the walls, to its shadows there. */
+  /** Dashed lines from a selected point down to the floor and across to the walls, to its shadows there. */
   function drawProjectionLines(context, colors, point) {
     const { farX, farY } = frame;
     const floor = { ...point, z: 0 };
@@ -636,8 +656,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       context.globalAlpha = 1;
     }
-    const selectedReceiver = selection?.type === 'receiver' ? scene.receivers.find(receiver => receiver.id === selection.id) : null;
-    if (selectedReceiver) drawProjectionLines(context, colors, selectedReceiver.positionMetres);
+    for (const point of selectedPoints()) drawProjectionLines(context, colors, point);
     for (const receiver of scene.receivers) {
       const level = state?.receivers.get(receiver.id) ?? 0;
       if (level > 0) {
@@ -857,6 +876,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     setView(next) { changeView({ ...DEFAULT_CUBE_VIEW, ...next }); },
     getView: () => view,
     draw,
-    setAnimation(source) { animation = source; }
+    setAnimation(source) { animation = source; },
+    hold(on) { held = on; if (!on) draw(); }
   };
 }

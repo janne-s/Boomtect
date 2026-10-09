@@ -19,7 +19,7 @@ test('a straight path divides evenly from start to end', () => {
 });
 
 test('a ground flash is deterministic, reaches its top, and branches in levels above the ground', () => {
-  const emitter = { ...defaultLightning(), strokeCount: 1 };
+  const emitter = { ...defaultLightning(), strokeCount: 1, inCloudLengthMetres: 0 };
   const [flash] = lightningEmitterFlashes(emitter);
   assert.deepEqual(lightningEmitterFlashes(emitter), [flash]);
   assert.notDeepEqual(lightningEmitterFlashes({ ...emitter, seed: emitter.seed + 1 }), [flash]);
@@ -63,7 +63,7 @@ test('a cloud flash spreads its emission over its length at the channel speed', 
 });
 
 test('the source period follows Few and ReVelle, grows with distance, and freezes at the weak-shock limit', () => {
-  const emitter = { ...defaultLightning(), tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, energyVariation: 0, strokeCount: 1 };
+  const emitter = { ...defaultLightning(), tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, energyVariation: 0, strokeCount: 1, currentDecayHeightMetres: 1e6, inCloudLengthMetres: 0 };
   const { sources } = emitterSources(emitter, air);
   const low = sources[0].weakShock;
   assert.ok(sources.at(-1).weakShock.relaxationRadius > low.relaxationRadius);
@@ -107,4 +107,31 @@ test('a blast is one point source at its linearization radius and onset', () => 
   assert.equal(sources[0].emissionSeconds, 2);
   assert.ok(Math.abs(sources[0].linearRadiusMetres - 20 * Math.cbrt(10)) < 1e-9);
   assert.ok(speedOfSoundMetresPerSecond(air.temperatureCelsius) > 0);
+});
+
+test('return-stroke energy falls as e^(−2z/λ) with height, and in-cloud channels start at the top after the stroke', async () => {
+  const { emissionSeconds } = await import('../src/domain/lightning.js');
+  const base = { ...defaultLightning(), topMetres: { x: 0, y: 0, z: 3000 }, tortuosityDegrees: 0, macroTortuosityDegrees: 0, branchCount: 0, energyVariation: 0, strokeCount: 1 };
+  const flat = emitterSources({ ...base, currentDecayHeightMetres: 1e6, inCloudLengthMetres: 0 }, air).sources;
+  const decaying = emitterSources({ ...base, currentDecayHeightMetres: 2000, inCloudLengthMetres: 0 }, air).sources;
+  for (const index of [0, 100, flat.length - 1]) {
+    const z = flat[index].positionMetres.z;
+    const expected = Math.exp(-2 * z / 2000);
+    const energy = source => (source.weakShock.relaxationRadius ** 2);
+    // R₀² ∝ E at a given height, so the ratio of squared radii is the energy share.
+    assert.ok(Math.abs(energy(decaying[index]) / energy(flat[index]) / (expected / Math.exp(-2 * z / 1e6)) - 1) < 1e-9);
+  }
+  const [flash] = lightningEmitterFlashes({ ...base, inCloudLengthMetres: 4000 });
+  const inCloud = flash.channels.filter(channel => channel.inCloud);
+  assert.equal(inCloud.length, 2);
+  const mainLength = flash.channels[0].arcs?.at(-1) ?? flash.channels[0].segments.at(-1).arcMetres;
+  for (const channel of inCloud) {
+    assert.deepEqual(channel.points[0], base.topMetres);
+    assert.ok(Math.abs(channel.points.at(-1).z - base.topMetres.z) < 4000 * Math.sin(10 * Math.PI / 180) + 1);
+  }
+  const step = flash.strokes[0].route.find(entry => flash.channels[entry.channel].inCloud);
+  const start = emissionSeconds(flash, flash.strokes[0], step, 0);
+  assert.ok(start >= mainLength / base.channelSpeedMetresPerSecond * .99);
+  assert.ok(Math.abs(emissionSeconds(flash, flash.strokes[0], step, 3000) - start - 3000 / base.inCloudSpeedMetresPerSecond) < 1e-12);
+  assert.equal(lightningEmitterFlashes({ ...base, flashType: 'intra-cloud', baseMetres: { x: 0, y: 0, z: 2000 }, inCloudLengthMetres: 4000 })[0].channels.filter(channel => channel.inCloud).length, 0);
 });

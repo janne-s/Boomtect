@@ -24,15 +24,15 @@ Thunder and Blast are separate modes, each with its own scene.
   Shift-drag, or the right button to pan, double-click to reset.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
   one. A storm's edge handle sets its size.
-- **Selected microphone** — Dashed lines lead from it to its shadows on the
-  floor and walls.
+- **Selection** — Dashed lines lead from a selected microphone, blast, or channel
+  end to its shadows on the floor and walls.
 - **Shadow boundary** — The line on the floor beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 
 ## Emitters
 
-- **Ground flash** — A channel from the ground into the cloud. Later strokes
-  follow the same channel or strike a new ground point.
+- **Ground flash** — A channel from the ground into the cloud, where it spreads
+  sideways. Later strokes follow the same channel or strike a new ground point.
 - **Cloud flash** — A channel inside the cloud; its sound spreads out in time.
 - **Storm** — Ground and cloud flashes over an area, a time span, and a cloud
   layer.
@@ -53,8 +53,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
   silence before the first sound is skipped, and the channel glows where the
   sound being heard comes from.
-- **Wavefront** — While the sound plays, shows where the wavefronts cross the
-  floor and the walls.
+- **Wavefront** — While the sound plays, shows the wavefronts as ripples where
+  they cross the floor and the walls.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
@@ -116,6 +116,8 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
 | Weak shock | period grows as `x^¼`, extra decay `x^-¼` (ReVelle) | B |
 | Strokes | lognormal intervals, new ground points | B/C |
+| Return-stroke current | decays with height, `e^(-z/λ)` (MTLE); energy as its square | B/C |
+| In-cloud channels | sideways channels from a ground flash's top, thinning out | C |
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |

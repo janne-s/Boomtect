@@ -77,7 +77,11 @@ export function stormFlashes(storm) {
         channelSpeedMetresPerSecond: logUniform(random, STORM.returnStrokeSpeed),
         strokeCount,
         strokeIntervalSeconds: STORM.groundStrokeIntervalMedianSeconds,
-        newTerminationProbability: storm.newTerminationProbability
+        newTerminationProbability: storm.newTerminationProbability,
+        currentDecayHeightMetres: storm.currentDecayHeightMetres,
+        inCloudLengthMetres: storm.inCloudLengthMetres,
+        inCloudEnergyRatio: storm.inCloudEnergyRatio,
+        inCloudSpeedMetresPerSecond: storm.inCloudSpeedMetresPerSecond
       });
     } else {
       const [low, high] = STORM.cloudLayer;
