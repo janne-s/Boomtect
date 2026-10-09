@@ -17,10 +17,9 @@ export function fitCanvas(canvas) {
 export function palette() {
   const style = getComputedStyle(document.documentElement);
   const read = name => style.getPropertyValue(name).trim();
-  return {
-    bg: read('--bg'), panel: read('--panel'), raised: read('--raised'), line: read('--line'), ink: read('--ink'),
-    muted: read('--muted'), faint: read('--faint'), accent: read('--accent'), secondary: read('--data-secondary'), ground: read('--ground'), cloud: read('--cloud')
-  };
+  const names = ['bg', 'panel', 'raised', 'line', 'ink', 'muted', 'faint', 'accent', 'ground', 'cloud', 'wall', 'grid', 'shadow',
+    'lightning', 'flash', 'glow', 'start', 'end', 'receiver', 'direct', 'reflected'];
+  return Object.fromEntries(names.map(name => [name, read(`--${name}`)]));
 }
 
 /** A round step of 1, 2, or 5 times a power of ten that gives roughly `count` ticks over `span`. */

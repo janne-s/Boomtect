@@ -81,7 +81,7 @@ export function drawArrivals(canvas, result, playheadSeconds = null) {
   const plotWidth = width - LEFT - RIGHT;
   const plotHeight = height - TOP - BOTTOM;
   for (const kind of [1, 0]) {
-    context.fillStyle = kind === 0 ? colors.accent : colors.secondary;
+    context.fillStyle = kind === 0 ? colors.direct : colors.reflected;
     for (let index = 0; index < arrivals.count; index += 1) {
       if (arrivals.kinds[index] !== kind) continue;
       const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;

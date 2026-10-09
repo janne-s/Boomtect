@@ -4,21 +4,24 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { newSeed } from './domain/random.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, parseScene, serializeScene
+  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, parseScene, serializeScene
 } from './domain/scene.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatSeconds } from './ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
+import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
+import { cachedFlashes } from './ui/geometry-cache.js';
 import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform } from './ui/plots.js';
-import { cachedFlashes, createSceneView } from './ui/scene-view.js';
+import { attachSplitters } from './ui/splitters.js';
 
-const SCENE_STORAGE_KEY = 'boomtect.scene';
+const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const RENDER_DEBOUNCE_MILLISECONDS = 200;
 /** Peak normalization leaves 3 dB of headroom for resampling and inter-sample peaks. */
 const PEAK_TARGET = 10 ** (-3 / 20);
-const FLASH_DECAY_SECONDS = .15;
+/** How long a stroke stays on screen after it has run its route. */
+const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
 
@@ -36,12 +39,23 @@ const storage = {
   }
 };
 
-function restoredScene() {
-  try { return parseScene(storage.read(SCENE_STORAGE_KEY)); } catch { return defaultScene(); }
+function restoredScene(mode) {
+  try {
+    const scene = parseScene(storage.read(sceneStorageKey(mode)));
+    if (scene.mode === mode) return scene;
+  } catch { /* A missing or outdated scene falls back to the default. */ }
+  return defaultScene(mode);
 }
 
+const preferences = {
+  realDelay: true, listenReceiverId: null, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
+  panelWidth: 340, resultsHeight: 220,
+  ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
+};
+if (!MODES.includes(preferences.mode)) preferences.mode = 'thunder';
+
 const state = {
-  scene: restoredScene(),
+  scene: restoredScene(preferences.mode),
   selection: null,
   results: null,
   envelopes: new Map(),
@@ -50,15 +64,15 @@ const state = {
   renderTimer: null,
   lastEmitterId: null,
   lastReceiverId: null,
-  preferences: { realDelay: true, listenReceiverId: null, ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {}) }
+  preferences
 };
 state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 
 const player = createPlayer();
 const liveFields = { emitter: null, receiver: null };
 
-const views = ['elevation', 'plan'].map(id => createSceneView($(id), {
-  vertical: id === 'elevation' ? 'z' : 'y',
+const views = [createCubeView($('cube'), {
+  onView: next => { state.preferences.cubeView = next; savePreferences(); },
   onSelect: selection => { state.selection = selection; refreshPanel(); },
   onMove: (handle, point) => {
     findItem(handle.type, handle.id)[handle.field] = point;
@@ -67,7 +81,12 @@ const views = ['elevation', 'plan'].map(id => createSceneView($(id), {
     redrawViews();
   },
   onCommit: () => commit(() => {})
-}));
+})];
+views[0].setView(state.preferences.cubeView);
+attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
+  Object.assign(state.preferences, sizes);
+  savePreferences();
+});
 
 function findItem(type, id) {
   return (type === 'emitter' ? state.scene.emitters : state.scene.receivers).find(item => item.id === id);
@@ -89,7 +108,7 @@ function commit(change) {
     refreshPanel();
     return;
   }
-  storage.write(SCENE_STORAGE_KEY, state.scene);
+  storage.write(sceneStorageKey(state.scene.mode), state.scene);
   if (!findItem(state.selection?.type, state.selection?.id)) state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
   invalidateResults();
   refreshPanel();
@@ -395,6 +414,8 @@ function refreshPanel() {
 
   const full = scene.emitters.length >= MAXIMUM_EMITTERS;
   ['add-lightning', 'add-cloud', 'add-storm', 'add-blast', 'duplicate-emitter'].forEach(id => { $(id).disabled = full; });
+  document.querySelectorAll('.row-buttons [data-mode]').forEach(button => { button.hidden = button.dataset.mode !== scene.mode; });
+  document.querySelectorAll('.modes [data-mode]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.mode === scene.mode)));
   $('remove-emitter').disabled = scene.emitters.length <= 1;
   $('add-receiver').disabled = scene.receivers.length >= MAXIMUM_RECEIVERS;
   $('remove-receiver').disabled = scene.receivers.length <= 1;
@@ -443,7 +464,8 @@ function drawResults(playheadSeconds = null) {
       last = Math.max(last, result.arrivals.seconds[index]);
     }
     const fullScale = 1 / outputGain(result);
-    summary.textContent = `${receiver.name}: sound from ${formatSeconds(first)} to ${formatSeconds(last)} after the first flash. `
+    const span = last > first ? `from ${formatSeconds(first)} to ${formatSeconds(last)}` : `at ${formatSeconds(first)}`;
+    summary.textContent = `${receiver.name}: sound ${span} after the first flash. `
       + `Model peak ${result.peakPa.toPrecision(3)} Pa (uncalibrated), c = ${result.speedOfSound.toFixed(1)} m/s. `
       + `Full scale ${fullScale.toPrecision(3)} Pa.`;
     if (result.nonlinearPaths) warn(`${result.nonlinearPaths} paths start inside the nonlinear zone; their level is not reliable.`);
@@ -458,35 +480,31 @@ function drawResults(playheadSeconds = null) {
 
 /* Playback */
 
-/** Every flash of an emitter as its channel count and strokes: when each lights and which channels. */
-function flashTimeline(emitter) {
-  if (emitter.kind === 'blast') return [{ channels: 1, strokes: [{ time: emitter.startSeconds, route: [0] }] }];
-  return cachedFlashes(emitter).map(flash => ({
-    channels: flash.channels.length,
-    strokes: flash.strokes.map(stroke => ({ time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route.map(step => step.channel) }))
-  }));
+/** Every stroke of an emitter as its flash, scene time, and route. */
+function strokeTimeline(emitter) {
+  if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [] }];
+  return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 
+/**
+ * What the scene view shows at the playback clock: every stroke that has started and not yet
+ * faded, the blast fronts, and the listening receiver's level. A stroke's light runs its route
+ * figuratively in FLASH_TRAVERSE_SECONDS; physically a return stroke takes microseconds.
+ */
 function animationState() {
   const clock = player.clock();
   if (!clock) return null;
   const now = clock.sceneSeconds();
   const shown = time => Math.max(time, clock.skippedSeconds);
-  const flashes = new Map();
+  const strokes = new Map();
   const fronts = new Map();
   const result = state.results?.get(listenReceiver().id);
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
-    flashes.set(emitter.id, flashTimeline(emitter).map(flash => {
-      const levels = new Float32Array(flash.channels);
-      for (const stroke of flash.strokes) {
-        const time = shown(stroke.time);
-        if (now < time) continue;
-        const level = Math.exp(-(now - time) / FLASH_DECAY_SECONDS);
-        for (const channel of stroke.route) levels[channel] = Math.min(1, levels[channel] + level);
-      }
-      return levels;
-    }));
+    const active = strokeTimeline(emitter)
+      .map(stroke => ({ ...stroke, elapsed: now - shown(stroke.time) }))
+      .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS);
+    strokes.set(emitter.id, active);
     if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && !clock.skippedSeconds) {
       fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
     }
@@ -497,7 +515,7 @@ function animationState() {
     const index = Math.floor((now - result.startSeconds) / envelopeData.window);
     receivers.set(listenReceiver().id, envelopeData.values[index] ?? 0);
   }
-  return { flashes, fronts, receivers };
+  return { strokes, fronts, receivers };
 }
 
 views.forEach(view => view.setAnimation(animationState));
@@ -555,7 +573,9 @@ $('open-file').addEventListener('change', async () => {
     const scene = parseScene(JSON.parse(await file.text()));
     state.scene = scene;
     state.selection = { type: 'emitter', id: scene.emitters[0].id };
-    storage.write(SCENE_STORAGE_KEY, scene);
+    storage.write(sceneStorageKey(scene.mode), scene);
+    state.preferences.mode = scene.mode;
+    savePreferences();
     invalidateResults();
     refreshPanel();
     scheduleRender();
@@ -593,6 +613,18 @@ $('export').addEventListener('click', () => {
 });
 
 /* Controls */
+
+document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEventListener('click', () => {
+  const mode = button.dataset.mode;
+  if (mode === state.scene.mode) return;
+  state.scene = restoredScene(mode);
+  state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
+  state.preferences.mode = mode;
+  savePreferences();
+  invalidateResults();
+  refreshPanel();
+  startRender();
+}));
 
 $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });

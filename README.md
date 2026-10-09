@@ -9,14 +9,21 @@ of sources at different heights — rather than as one point.
 
 ## Using it
 
-- **Elevation** (east–height) and **Plan** (east–north) show the same 3D scene.
-  Drag a channel's ends, a storm's centre, a blast, or a microphone in either
-  view.
+- **Thunder** and **Blast** are separate modes, each with its own scene.
+- The scene sits in a box whose floor is the ground and whose two far walls
+  show the scene from the side. Drag a point to move it horizontally, or drag
+  its shadow on the floor or a wall to move it in that plane. Drag empty space
+  to turn the box, use the wheel to zoom, and double-click to reset. A channel
+  starts at the orange square and ends at the cyan circle.
+- The borders between the scene, the parameters, and the results can be
+  dragged to resize them.
 - **+ Ground flash** and **+ Cloud flash** add one flash you shape yourself.
   **+ Storm** generates many flashes over a disc and a time window, mixing
   ground and cloud flashes under an adjustable cloud layer. Every emitter has
   an onset, so flashes can be staggered in time.
 - **Play** flashes the source and plays the sound at the selected microphone.
+  The flash runs along the channel figuratively; a real return stroke takes
+  microseconds.
   With **Real delay** the sound arrives as late as it would outdoors; without
   it, the silence before the first sound is skipped.
 - **Variant** copies the selected emitter with a new seed, so two flashes or

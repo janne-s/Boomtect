@@ -6,7 +6,7 @@ import { combineSegments, partitionSeconds, prepareScene, renderReceiver, render
 import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
 
 function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false }) {
-  const base = defaultScene();
+  const base = defaultScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
   return parseScene({ ...base, air: { ...base.air, absorption }, ground, emitters: [emitter], receivers });
 }
 
@@ -105,7 +105,7 @@ test('renders are finite and refuse an arrival span over the limit', () => {
   const result = render(scene({ emitter: lightning, receivers: [receiverAt('mic', { x: 500, y: 0, z: 1.7 })], ground: { enabled: true, type: 'grass' }, absorption: true }));
   assert.ok(result.samples.every(Number.isFinite));
   assert.ok(result.peakPa > 0);
-  const base = defaultScene();
+  const base = defaultScene('blast');
   const wide = parseScene({
     ...base,
     emitters: [{ ...smallBlast({ x: 0, y: 0, z: 1 }), id: 'a' }, { ...smallBlast({ x: 48000, y: 0, z: 1 }), id: 'b', startSeconds: 100 }],

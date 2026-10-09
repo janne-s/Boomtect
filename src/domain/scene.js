@@ -7,7 +7,10 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 2;
+export const SCENE_VERSION = 3;
+export const MODES = Object.freeze(['thunder', 'blast']);
+/** Emitter kinds each mode works with. */
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
@@ -167,15 +170,19 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1') {
   return { id, name, positionMetres: { x: 2000, y: 0, z: 1.7 } };
 }
 
-export function defaultScene() {
+export function defaultScene(mode = 'thunder') {
+  const blast = mode === 'blast';
+  const receiver = defaultReceiver();
+  if (blast) receiver.positionMetres = { x: 1000, y: 0, z: 1.7 };
   return {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
+    mode,
     modelVersion: MODEL_VERSION,
     air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, absorption: true },
     ground: { enabled: true, type: 'grass' },
-    emitters: [defaultLightning()],
-    receivers: [defaultReceiver()],
+    emitters: [blast ? defaultBlast() : defaultLightning()],
+    receivers: [receiver],
     render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20 }
   };
 }
@@ -258,6 +265,7 @@ export function parseScene(value) {
   check(value && typeof value === 'object', 'The scene is not an object.');
   check(value.format === SCENE_FORMAT, 'This is not a Boomtect scene.');
   check(value.version === SCENE_VERSION, `Scene version ${value.version} is not supported.`);
+  check(MODES.includes(value.mode), 'The scene mode is not supported.');
   const air = value.air ?? {};
   check(typeof air.absorption === 'boolean', 'air.absorption must be true or false.');
   const ground = value.ground ?? {};
@@ -273,6 +281,7 @@ export function parseScene(value) {
   const scene = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
+    mode: value.mode,
     modelVersion: MODEL_VERSION,
     air: {
       temperatureCelsius: number(air.temperatureCelsius, 'temperatureCelsius', 'air.temperatureCelsius'),
@@ -285,6 +294,7 @@ export function parseScene(value) {
     receivers: value.receivers.map(receiver),
     render: { sampleRate: render.sampleRate, levelMode: render.levelMode, fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa') }
   };
+  scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));
   uniqueIds(scene.emitters, 'Emitter');
   uniqueIds(scene.receivers, 'Receiver');
   return scene;

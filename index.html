@@ -12,6 +12,10 @@
   <body>
     <header class="bar">
       <span class="brand">Boomtect</span>
+      <div class="modes" role="radiogroup" aria-label="Mode">
+        <button type="button" role="radio" data-mode="thunder" aria-checked="true">Thunder</button>
+        <button type="button" role="radio" data-mode="blast" aria-checked="false">Blast</button>
+      </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
       <label class="toggle" title="Off: skip the silence before the first sound"><input type="checkbox" id="real-delay" checked /> Real delay</label>
       <select id="receiver-select" aria-label="Receiver to hear"></select>
@@ -24,26 +28,19 @@
     </header>
 
     <main class="layout">
-      <section class="views" aria-label="Scene">
-        <figure class="view view-elevation">
-          <canvas id="elevation" aria-label="Elevation view, east and height"></canvas>
-          <figcaption>Elevation · x–z</figcaption>
-        </figure>
-        <figure class="view view-plan">
-          <canvas id="plan" aria-label="Plan view, east and north"></canvas>
-          <figcaption>Plan · x–y</figcaption>
-        </figure>
-      </section>
-
+      <figure class="view" aria-label="Scene">
+        <canvas id="cube" aria-label="Scene box: drag points or their shadows, drag empty space to turn, wheel to zoom, double-click to reset"></canvas>
+      </figure>
+      <div class="splitter splitter-column" id="split-column" role="separator" aria-orientation="vertical" aria-label="Resize parameters" tabindex="0"></div>
       <aside class="panel" aria-label="Parameters">
         <section>
           <h2>Emitters</h2>
           <div class="list" id="emitter-list"></div>
           <div class="row-buttons">
-            <button type="button" id="add-lightning">+ Ground flash</button>
-            <button type="button" id="add-cloud">+ Cloud flash</button>
-            <button type="button" id="add-storm">+ Storm</button>
-            <button type="button" id="add-blast">+ Blast</button>
+            <button type="button" id="add-lightning" data-mode="thunder">+ Ground flash</button>
+            <button type="button" id="add-cloud" data-mode="thunder">+ Cloud flash</button>
+            <button type="button" id="add-storm" data-mode="thunder">+ Storm</button>
+            <button type="button" id="add-blast" data-mode="blast">+ Blast</button>
             <button type="button" id="duplicate-emitter">Variant</button>
             <button type="button" id="remove-emitter">Remove</button>
           </div>
@@ -68,6 +65,7 @@
         </section>
       </aside>
 
+      <div class="splitter splitter-row" id="split-row" role="separator" aria-orientation="horizontal" aria-label="Resize results" tabindex="0"></div>
       <section class="results" aria-label="Result">
         <figure class="plot plot-wave">
           <canvas id="waveform" aria-label="Pressure waveform"></canvas>

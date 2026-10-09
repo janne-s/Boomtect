@@ -9,9 +9,19 @@
   --faint: #56636f;
   --accent: #f2a465;
   --accent-soft: rgba(242, 164, 101, .16);
-  --data-secondary: #7f9bb5;
-  --ground: #1c2630;
-  --cloud: rgba(127, 155, 181, .07);
+  --ground: #18212b;
+  --wall: #151c24;
+  --grid: #222c37;
+  --shadow: rgba(139, 160, 186, .22);
+  --cloud: rgba(150, 175, 205, .07);
+  --lightning: #8fb6e6;
+  --flash: #f2f8ff;
+  --glow: #9cc9ff;
+  --start: #f2a465;
+  --end: #8fdbe3;
+  --receiver: #dfe6ee;
+  --direct: #8fb6e6;
+  --reflected: #6c7c8e;
   font-family:
     Inter,
     ui-sans-serif,
@@ -124,23 +134,31 @@ figcaption {
   flex: 1;
 }
 
+.modes {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 6px;
+}
+.modes button[aria-checked="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .layout {
+  --panel-width: 340px;
+  --results-height: 220px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  grid-template-rows: minmax(360px, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) 6px var(--panel-width);
+  grid-template-rows: minmax(240px, 1fr) 6px var(--results-height);
   grid-template-areas:
-    "views panel"
-    "results panel";
-  gap: 8px;
+    "view split-column panel"
+    "split-row split-column panel"
+    "results split-column panel";
   height: calc(100% - 46px);
   padding: 8px;
 }
-.views {
-  display: grid;
-  grid-area: views;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 8px;
-  min-height: 0;
+.view {
+  grid-area: view;
 }
 .view,
 .plot {
@@ -155,9 +173,26 @@ canvas {
   height: 100%;
   touch-action: none;
 }
+.splitter {
+  border-radius: 3px;
+}
+.splitter:hover,
+.splitter:focus-visible,
+.splitter.dragging {
+  background: var(--line);
+}
+.splitter-column {
+  grid-area: split-column;
+  cursor: col-resize;
+}
+.splitter-row {
+  grid-area: split-row;
+  cursor: row-resize;
+}
 
 .panel {
   grid-area: panel;
+  min-height: 0;
   overflow-y: auto;
   border-radius: 4px;
   background: var(--panel);
@@ -258,6 +293,7 @@ canvas {
 .results {
   display: grid;
   grid-area: results;
+  min-height: 0;
   grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr) minmax(220px, 1.4fr);
   gap: 8px;
   min-height: 0;
@@ -291,17 +327,17 @@ details summary {
 
 @media (max-width: 900px) {
   .layout {
+    gap: 8px;
     grid-template-columns: 1fr;
-    grid-template-rows: 420px auto auto;
+    grid-template-rows: 460px auto auto;
     grid-template-areas:
-      "views"
+      "view"
       "results"
       "panel";
     height: auto;
   }
-  .views {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+  .splitter {
+    display: none;
   }
   .results {
     grid-template-columns: 1fr;

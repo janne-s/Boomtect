@@ -9,9 +9,17 @@ test('the default scene is valid and round-trips without loss', () => {
   assert.deepEqual(parseScene(JSON.parse(serializeScene(scene))), scene);
 });
 
-test('every emitter kind validates and round-trips', () => {
-  const scene = { ...defaultScene(), emitters: [defaultScene().emitters[0], defaultCloudFlash(), defaultStorm(), defaultBlast()] };
-  assert.deepEqual(parseScene(JSON.parse(serializeScene(scene))), scene);
+test('every emitter kind validates and round-trips in its mode', () => {
+  const thunder = { ...defaultScene('thunder'), emitters: [defaultScene().emitters[0], defaultCloudFlash(), defaultStorm()] };
+  assert.deepEqual(parseScene(JSON.parse(serializeScene(thunder))), thunder);
+  const blast = defaultScene('blast');
+  assert.deepEqual(parseScene(JSON.parse(serializeScene(blast))), blast);
+});
+
+test('an emitter outside its mode is rejected', () => {
+  assert.throws(() => parseScene({ ...defaultScene('thunder'), emitters: [defaultBlast()] }), SceneError);
+  assert.throws(() => parseScene({ ...defaultScene('blast'), emitters: [defaultStorm()] }), SceneError);
+  assert.throws(() => parseScene({ ...defaultScene(), mode: 'opera' }), SceneError);
 });
 
 test('invalid scenes are rejected with a reason', () => {
