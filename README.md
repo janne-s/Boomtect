@@ -2,7 +2,7 @@
 
 Boomtect simulates the sound of lightning and blasts from their physics. Shape
 a flash or a whole storm in 3D above the ground, place microphones, and hear
-how distance, height, air, and ground shape what arrives. Listen in mono, as a
+how distance, height, layered air, and ground shape what arrives. Listen in mono, as a
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
 
 ## How it works
@@ -24,6 +24,8 @@ Thunder and Blast are separate modes, each with its own scene.
   Shift-drag, or the right button to pan, double-click to reset.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
   one. A storm's edge handle sets its size.
+- **Shadow boundary** — The line on the floor beyond which refraction lifts the
+  selected emitter's sound off the ground, for the microphone's height.
 
 ## Emitters
 
@@ -49,6 +51,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
   silence before the first sound is skipped, and the channel glows where the
   sound being heard comes from.
+- **Wavefront** — Shows the spreading wavefronts as a veil while the sound
+  plays.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
@@ -72,6 +76,17 @@ Thunder and Blast are separate modes, each with its own scene.
   on one time axis, the muted ones dimmer. A microphone's tab, or selecting the
   microphone, brings it forward and scales the pressure to it.
 
+## Air
+
+- **Lapse rate** — How fast the temperature falls with height; 6.5 K/km is the
+  standard atmosphere, a negative value an inversion.
+- **Refraction** — Sound bends toward slower air. Falling temperature
+  bends it up and leaves a shadow on the ground, where thunder fades out; an
+  inversion bends it down and carries it far. Off: homogeneous air, the
+  free-field reference.
+- **Shadow floor** — How far below the unbent level the shadow can go, set by
+  turbulent scattering.
+
 ## Export
 
 **Export WAV** writes 32-bit float WAV files of what plays — mono, a pair, one
@@ -90,7 +105,9 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Part | Model | Class |
 |---|---|---|
 | Speed of sound | `c = sqrt(γRT)` | A |
-| Travel time and spreading | `1/R` per point | A |
+| Temperature profile | linear in height, fitted to `sqrt(γRT)` up to 3 km | B |
+| Travel time, rays, and spreading | circular rays in a linear `c(z)`, ray tubes; `1/R` without refraction | A |
+| Refraction shadow | grazing ray, creeping wave along the ground (Fock), floor | B/C |
 | Segment directivity | straight line element | A |
 | Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
 | Weak shock | period grows as `x^¼`, extra decay `x^-¼` (ReVelle) | B |
@@ -105,8 +122,9 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
 | Loudness | Stevens' power law on the level envelope | B/C |
 
-Not modelled: terrain and buildings, diffraction, temperature stratification
-and refraction, wind, nonlinear propagation beyond the linearization radius.
+Not modelled: terrain and buildings, diffraction by obstacles, wind, more than
+one ground reflection in an inversion, temperature profiles other than linear,
+nonlinear propagation beyond the linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

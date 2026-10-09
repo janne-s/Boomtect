@@ -1,4 +1,4 @@
-import { atmosphericAbsorptionNepersPerMetre, speedOfSoundMetresPerSecond } from './air.js';
+import { atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
@@ -7,6 +7,9 @@ import { sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
+import {
+  creepingCoefficient, inShadow, PATH_DIRECT, PATH_GROUND, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
+} from './refraction.js';
 
 /** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
 const PRE_ROLL_SAMPLES = 512;
@@ -19,14 +22,27 @@ const GROUND_GRID_POINTS = 64;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
+/** Frequency at which the arrival diagram weighs a shadow path's creeping loss. */
+const DIAGRAM_FREQUENCY_HZ = 100;
+/** Below this frequency the creeping response is regularized so that its tail decays within a frame. */
+const SHADOW_REGULARIZATION_HZ = 5;
 
-const PATH_DIRECT = 0;
-const PATH_GROUND = 1;
+/**
+ * Seconds until the shadow response for a creeping loss of `nepersAtOneHertz` has fallen 80 dB below
+ * its peak: an upper bound measured on its impulse response for creeping distances of 0.2–60 km and
+ * gradients of 2–12 K/km, t ≤ 0.1 + 0.6·β^0.65.
+ */
+export function shadowTailSeconds(nepersAtOneHertz) {
+  if (!(nepersAtOneHertz > 0)) return 0;
+  return .1 + .6 * creepingBeta(nepersAtOneHertz) ** .65;
+}
+
+/** Paths are framed per emitter, and separately for shadow paths, whose response needs a longer tail. */
+const frameGroup = (paths, index) => 2 * paths.emitter[index] + (paths.creepMetres[index] > 0 ? 1 : 0);
 
 export const MISSING_PHENOMENA = Object.freeze([
   'Terrain, buildings, and clouds as reflectors',
-  'Diffraction',
-  'Temperature stratification and refraction',
+  'Diffraction by terrain and obstacles',
   'Wind',
   'Turbulent scattering of the direct sound',
   'Nonlinear propagation beyond the linearization radius',
@@ -42,74 +58,104 @@ export function prepareScene(scene) {
 }
 
 /**
- * Every direct and ground-reflected path from the prepared sources to one receiver, as parallel
- * typed arrays. Order is emitter, source, then direct before ground, so it is deterministic.
+ * Class A: a receiver above the ground hears a pulse defined in ground-level air scaled by
+ * sqrt(ρc at the receiver / ρc at the ground), from the energy flux along a ray tube. Source levels
+ * are stated for ground-level air, so this is 1 at the ground and in homogeneous air.
+ */
+function receiverImpedanceFactor(air, profile, heightMetres) {
+  if (!air.refraction) return 1;
+  const density = pressureAtHeightPa(air, heightMetres) / pressureAtHeightPa(air, 0) * temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, heightMetres);
+  return Math.sqrt(density * speedAt(profile, heightMetres) / profile.groundSpeed);
+}
+
+/**
+ * Every path from the prepared sources to one receiver, as parallel typed arrays: the direct ray,
+ * or in the refraction shadow the creeping path, and the ground-reflected ray where one exists.
+ * Order is emitter, source, then direct before ground, so it is deterministic. `metres` is the
+ * length along the path, which absorption and the weak shock use; `spreadMetres` the distance
+ * whose inverse is the geometric amplitude.
  */
 export function receiverPaths(preparedEmitters, receiver, scene) {
-  const speed = speedOfSoundMetresPerSecond(scene.air.temperatureCelsius);
-  const perSource = scene.ground.enabled ? 2 : 1;
-  const count = preparedEmitters.reduce((sum, item) => sum + item.sources.length, 0) * perSource;
+  const profile = soundSpeedProfile(scene.air);
+  const ground = scene.ground.enabled;
+  const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length, 0) * (ground ? 2 : 1);
   const paths = {
-    count,
-    emitter: new Uint16Array(count),
-    source: new Uint32Array(count),
-    kind: new Uint8Array(count),
-    seconds: new Float64Array(count),
-    metres: new Float64Array(count),
-    directivityCos: new Float64Array(count),
-    cosIncidence: new Float64Array(count),
-    duration: new Float64Array(count),
-    amplitudeScale: new Float64Array(count),
-    direction: new Float64Array(3 * count)
+    count: 0,
+    emitter: new Uint16Array(capacity),
+    source: new Uint32Array(capacity),
+    kind: new Uint8Array(capacity),
+    seconds: new Float64Array(capacity),
+    metres: new Float64Array(capacity),
+    spreadMetres: new Float64Array(capacity),
+    creepMetres: new Float64Array(capacity),
+    directivityCos: new Float64Array(capacity),
+    cosIncidence: new Float64Array(capacity),
+    duration: new Float64Array(capacity),
+    amplitudeScale: new Float64Array(capacity),
+    direction: new Float64Array(3 * capacity)
   };
   const r = receiver.positionMetres;
+  const impedance = receiverImpedanceFactor(scene.air, profile, r.z);
   let index = 0;
+  const add = (emitterIndex, sourceIndex, source, kind, path) => {
+    const d = source.direction;
+    const { departure, arrival } = path;
+    paths.emitter[index] = emitterIndex;
+    paths.source[index] = sourceIndex;
+    paths.kind[index] = kind;
+    paths.metres[index] = path.metres;
+    paths.spreadMetres[index] = path.spreadMetres / impedance;
+    paths.creepMetres[index] = path.creepMetres ?? 0;
+    paths.seconds[index] = source.emissionSeconds + path.seconds;
+    // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
+    paths.directivityCos[index] = d ? (d.x * departure.x + d.y * departure.y + d.z * departure.z) * profile.groundSpeed / speedAt(profile, source.positionMetres.z) : 0;
+    paths.cosIncidence[index] = path.groundSine ?? 1;
+    paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
+    if (source.weakShock) {
+      const { relaxationRadius, sourcePeriodSeconds, limitRadii } = source.weakShock;
+      const pulse = weakShockPulse(relaxationRadius, sourcePeriodSeconds, path.metres, limitRadii);
+      paths.duration[index] = pulse.durationSeconds;
+      paths.amplitudeScale[index] = pulse.amplitudeScale;
+    } else {
+      paths.duration[index] = source.durationSeconds;
+      paths.amplitudeScale[index] = 1;
+    }
+    index += 1;
+  };
   preparedEmitters.forEach((prepared, emitterIndex) => {
     prepared.sources.forEach((source, sourceIndex) => {
       const p = source.positionMetres;
-      const d = source.direction;
-      for (let kind = 0; kind < perSource; kind += 1) {
-        const sign = kind === PATH_GROUND ? -1 : 1;
-        const dx = r.x - p.x;
-        const dy = r.y - p.y;
-        const dz = r.z - sign * p.z;
-        const metres = Math.hypot(dx, dy, dz);
-        paths.emitter[index] = emitterIndex;
-        paths.source[index] = sourceIndex;
-        paths.kind[index] = kind;
-        paths.metres[index] = metres;
-        paths.seconds[index] = source.emissionSeconds + metres / speed;
-        paths.directivityCos[index] = d && metres > 0 ? (d.x * dx + d.y * dy + sign * d.z * dz) / metres : 0;
-        paths.cosIncidence[index] = metres > 0 ? (p.z + r.z) / metres : 1;
-        const toward = metres > 0 ? ambisonicDirection(-dx / metres, -dy / metres, -dz / metres) : [1, 0, 0];
-        paths.direction.set(toward, 3 * index);
-        if (source.weakShock) {
-          const { relaxationRadius, sourcePeriodSeconds, limitRadii } = source.weakShock;
-          const pulse = weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii);
-          paths.duration[index] = pulse.durationSeconds;
-          paths.amplitudeScale[index] = pulse.amplitudeScale;
-        } else {
-          paths.duration[index] = source.durationSeconds;
-          paths.amplitudeScale[index] = 1;
-        }
-        index += 1;
+      if (inShadow(profile, p, r)) {
+        add(emitterIndex, sourceIndex, source, PATH_SHADOW, shadowPath(profile, p, r));
+        return;
       }
+      add(emitterIndex, sourceIndex, source, PATH_DIRECT, rayBetween(profile, p, r));
+      if (!ground) return;
+      const reflected = reflectedRay(profile, p, r);
+      if (reflected) add(emitterIndex, sourceIndex, source, PATH_GROUND, reflected);
     });
   });
+  paths.count = index;
   return paths;
 }
 
-/** Arrival time, source height, and geometric level of every path, for the arrival diagram. */
+/**
+ * Arrival time, source height, and geometric level of every path, for the arrival diagram; a
+ * shadow path's level includes its creeping loss at DIAGRAM_FREQUENCY_HZ.
+ */
 export function arrivalTable(preparedEmitters, receiver, scene) {
   const paths = receiverPaths(preparedEmitters, receiver, scene);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
+  const creep = creepingCoefficient(soundSpeedProfile(scene.air));
+  const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   for (let index = 0; index < paths.count; index += 1) {
     const source = preparedEmitters[paths.emitter[index]].sources[paths.source[index]];
     heights[index] = source.positionMetres.z;
-    levels[index] = 20 * Math.log10(source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.metres[index], 1e-3));
+    levels[index] = 20 * Math.log10(source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
+      + (paths.creepMetres[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, creep * paths.creepMetres[index], floor))) : 0);
   }
-  return { count: paths.count, seconds: paths.seconds, heights, levels, kinds: paths.kind };
+  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, kinds: paths.kind.slice(0, paths.count) };
 }
 
 /**
@@ -138,20 +184,25 @@ function erf(x) {
 }
 
 /**
- * Frame layout of one emitter at one receiver: hop H and block 2H hold any of its paths with
- * pre-roll and tail. It depends on all of the emitter's paths, so every time range shares it.
+ * Frame layout of one frame group at one receiver: hop H and block 2H hold any of its paths with
+ * pre-roll and tail. It depends on all of the group's paths, so every time range shares it.
  */
-function framePlan(prepared, emitterIndex, paths, sampleRate, speed, scene) {
+function framePlan(prepared, group, paths, sampleRate, profile, scene) {
+  const speed = profile.groundSpeed;
+  const creeping = creepingCoefficient(profile);
   let longestElement = 0;
   let longestSpan = 0;
+  let longestCreep = 0;
   for (const source of prepared.sources) longestElement = Math.max(longestElement, source.elementMetres);
   for (let index = 0; index < paths.count; index += 1) {
-    if (paths.emitter[index] !== emitterIndex) continue;
+    if (frameGroup(paths, index) !== group) continue;
     const source = prepared.sources[paths.source[index]];
     longestSpan = Math.max(longestSpan, source.weakShock ? paths.duration[index] : source.spanSeconds);
+    longestCreep = Math.max(longestCreep, paths.creepMetres[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
-  const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES);
+  const shadowTail = Math.ceil(shadowTailSeconds(creeping * longestCreep) * sampleRate);
+  const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES + shadowTail);
   const size = 2 * hop;
   const bins = hop + 1;
   const absorption = new Float64Array(bins);
@@ -168,7 +219,12 @@ function framePlan(prepared, emitterIndex, paths, sampleRate, speed, scene) {
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
   const groundFrequencies = Float64Array.from({ length: GROUND_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (GROUND_GRID_POINTS - 1)));
-  return { preRoll, hop, size, bins, absorption, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
+  const shadowFloor = 10 ** (-scene.air.shadowFloorDecibels / 20);
+  const shadow = longestCreep > 0 ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
+  if (shadow) {
+    for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
+  }
+  return { preRoll, hop, size, bins, absorption, creeping, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
 }
 
 function absorptionLimit(plan, metres) {
@@ -182,9 +238,42 @@ function absorptionLimit(plan, metres) {
 }
 
 /**
- * Adds one path into a frame spectrum: source pulse × rise smoothing × 1/R × ISO 9613-1 absorption
- * × line-element directivity × ground reflection × e^(−iωτ) for the exact fractional offset τ.
- * Trigonometric terms advance by rotation from bin to bin.
+ * The shadow's transfer at one frequency, in the e^(+iωt) convention of `fft.js`. `nepersAtOneHertz`
+ * is the creeping loss αL at 1 Hz, which grows as f^(1/3). The creeping mode's propagation constant
+ * carries s^(1/3), s = iω, so its loss comes with a phase lag of 1/√3 of it: H = exp(−β·s^(1/3)) is
+ * causal and delays the low frequencies (class B). Its impulse response has a t^(−4/3) tail, so
+ * s^(1/3) becomes s·(s + ω_c)^(−2/3): a plain delay well below SHADOW_REGULARIZATION_HZ, a
+ * loss 4.4 % short of the creeping law at 50 Hz, 2.1 % at 100 Hz, and 0.5 % at 400 Hz, and an
+ * impulse response whose tail decays exponentially (class C).
+ * The scattered share F of the shadow floor joins it smoothly, (1 − F)·H + F (class C).
+ */
+export function shadowResponse(frequencyHz, nepersAtOneHertz, floor) {
+  const [loss, lag] = shadowExponent(frequencyHz);
+  return shadowFromExponent(loss, lag, creepingBeta(nepersAtOneHertz), floor);
+}
+
+/** β of the creeping response from its loss at 1 Hz: α(1 Hz)·L = (√3/2)·β·(2π)^(1/3). */
+const creepingBeta = nepersAtOneHertz => 2 * nepersAtOneHertz / (Math.sqrt(3) * Math.cbrt(2 * Math.PI));
+
+/** Real and imaginary parts of s·(s + ω_c)^(−2/3) at s = iω, which depend on frequency alone. */
+function shadowExponent(frequencyHz) {
+  const omega = 2 * Math.PI * frequencyHz;
+  const cutoff = 2 * Math.PI * SHADOW_REGULARIZATION_HZ;
+  const size = omega * Math.hypot(cutoff, omega) ** (-2 / 3);
+  const angle = Math.PI / 2 - 2 / 3 * Math.atan2(omega, cutoff);
+  return [size * Math.cos(angle), size * Math.sin(angle)];
+}
+
+function shadowFromExponent(loss, lag, beta, floor) {
+  const magnitude = (1 - floor) * Math.exp(-beta * loss);
+  const phase = -beta * lag;
+  return [magnitude * Math.cos(phase) + floor, magnitude * Math.sin(phase)];
+}
+
+/**
+ * Adds one path into a frame spectrum: source pulse × rise smoothing × geometric spreading ×
+ * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
+ * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
  */
 function accumulatePath(spectra, gains, plan, source, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
   const channels = spectra.length;
@@ -192,7 +281,11 @@ function accumulatePath(spectra, gains, plan, source, paths, index, offsetSample
   const limit = absorptionLimit(plan, metres);
   if (limit < 2) return;
   const { absorption, smoothing, gridPosition, binHz, size } = plan;
-  const gain = source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(metres, Number.MIN_VALUE);
+  const gain = source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
+  if (!(gain > 0)) return;
+  const creepMetres = paths.creepMetres[index];
+  const { creeping, shadow, shadowFloor } = plan;
+  const beta = creepMetres > 0 ? creepingBeta(creeping * creepMetres) : 0;
   const ground = paths.kind[index] === PATH_GROUND && scene.ground.type !== 'rigid';
   const reflected = paths.kind[index] === PATH_GROUND;
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
@@ -266,6 +359,12 @@ function accumulatePath(spectra, gains, plan, source, paths, index, offsetSample
     }
     re *= factor;
     im *= factor;
+    if (creepMetres > 0) {
+      const [cRe, cIm] = shadowFromExponent(shadow.loss[bin], shadow.lag[bin], beta, shadowFloor);
+      const nextRe = re * cRe - im * cIm;
+      im = re * cIm + im * cRe;
+      re = nextRe;
+    }
     if (ground || turbulent) {
       const position = gridPosition[bin];
       const lower = Math.floor(position);
@@ -310,9 +409,10 @@ function synthesizeFrame(real, imaginary, size, sampleRate) {
  */
 export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null } = {}) {
   const sampleRate = scene.render.sampleRate;
-  const speed = speedOfSoundMetresPerSecond(scene.air.temperatureCelsius);
+  const profile = soundSpeedProfile(scene.air);
+  const speed = profile.groundSpeed;
   const paths = receiverPaths(preparedEmitters, receiver, scene);
-  const plans = preparedEmitters.map((prepared, emitterIndex) => framePlan(prepared, emitterIndex, paths, sampleRate, speed, scene));
+  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1].map(shadow => framePlan(prepared, 2 * emitterIndex + shadow, paths, sampleRate, profile, scene)));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);
@@ -322,7 +422,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   let last = -Infinity;
   let nonlinearPaths = 0;
   for (const index of selected) {
-    const plan = plans[paths.emitter[index]];
+    const plan = plans[frameGroup(paths, index)];
     const frame = Math.floor((paths.seconds[index] * sampleRate - plan.preRoll) / plan.hop);
     frameOf[index] = frame;
     first = Math.min(first, frame * plan.hop);
@@ -338,16 +438,17 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   }
   const outputs = Array.from({ length: channels }, () => new Float64Array(last - first));
   const gains = new Float64Array(channels);
-  selected.sort((a, b) => paths.emitter[a] - paths.emitter[b] || frameOf[a] - frameOf[b] || a - b);
+  selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   let cursor = 0;
   while (cursor < selected.length) {
+    const group = frameGroup(paths, selected[cursor]);
     const emitterIndex = paths.emitter[selected[cursor]];
     const frame = frameOf[selected[cursor]];
-    const plan = plans[emitterIndex];
+    const plan = plans[group];
     const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
-    while (cursor < selected.length && paths.emitter[selected[cursor]] === emitterIndex && frameOf[selected[cursor]] === frame) {
+    while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
       const source = preparedEmitters[emitterIndex].sources[paths.source[index]];
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
@@ -420,7 +521,7 @@ export function renderReceiver(preparedEmitters, receiver, scene) {
     sampleRate: scene.render.sampleRate,
     ...combined,
     samples: combined.channels[0],
-    speedOfSound: speedOfSoundMetresPerSecond(scene.air.temperatureCelsius),
+    speedOfSound: soundSpeedProfile(scene.air).groundSpeed,
     arrivals: arrivalTable(preparedEmitters, receiver, scene),
     nonlinearPaths: segment.nonlinearPaths,
     modelVersion: MODEL_VERSION

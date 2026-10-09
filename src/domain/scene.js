@@ -1,5 +1,5 @@
 import {
-  MAXIMUM_EMITTERS, MAXIMUM_HEIGHT_METRES, MAXIMUM_RECEIVERS, MODEL_VERSION, SAMPLE_RATE_HZ, SCENE_EXTENT_METRES
+  ISA_LAPSE_RATE_KELVIN_PER_METRE, MAXIMUM_EMITTERS, MAXIMUM_HEIGHT_METRES, MAXIMUM_RECEIVERS, MODEL_VERSION, SAMPLE_RATE_HZ, SCENE_EXTENT_METRES
 } from './constants.js';
 import { EMITTER_KINDS } from './emitters.js';
 import { GROUND_TYPES } from './ground.js';
@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 4;
+export const SCENE_VERSION = 5;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -28,6 +28,8 @@ export const PARAMETERS = Object.freeze({
   pressureKpa: { minimum: 50, maximum: 110, unit: 'kPa', label: 'Pressure', reliability: 'A' },
   turbulenceStrength: { minimum: 0, maximum: 1e-4, unit: '⟨μ²⟩', label: 'Turbulence', reliability: 'C' },
   turbulenceScaleMetres: { minimum: .1, maximum: 10, unit: 'm', label: 'Turbulence scale', reliability: 'C' },
+  lapseRateKelvinPerMetre: { minimum: -.02, maximum: .012, unit: 'K/m', label: 'Lapse rate', reliability: 'B' },
+  shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
   heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
   startSeconds: { minimum: 0, maximum: 240, unit: 's', label: 'Onset', reliability: null },
@@ -185,7 +187,10 @@ export function defaultScene(mode = 'thunder') {
     version: SCENE_VERSION,
     mode,
     modelVersion: MODEL_VERSION,
-    air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1 },
+    air: {
+      temperatureCelsius: 15, lapseRateKelvinPerMetre: ISA_LAPSE_RATE_KELVIN_PER_METRE, relativeHumidityPercent: 70, pressureKpa: 101.325,
+      refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1
+    },
     ground: { enabled: true, type: 'grass' },
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
@@ -284,6 +289,7 @@ export function parseScene(value) {
   check(MODES.includes(value.mode), 'The scene mode is not supported.');
   const air = value.air ?? {};
   check(typeof air.absorption === 'boolean', 'air.absorption must be true or false.');
+  check(typeof air.refraction === 'boolean', 'air.refraction must be true or false.');
   const ground = value.ground ?? {};
   check(typeof ground.enabled === 'boolean', 'ground.enabled must be true or false.');
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
@@ -302,8 +308,11 @@ export function parseScene(value) {
     modelVersion: MODEL_VERSION,
     air: {
       temperatureCelsius: number(air.temperatureCelsius, 'temperatureCelsius', 'air.temperatureCelsius'),
+      lapseRateKelvinPerMetre: number(air.lapseRateKelvinPerMetre, 'lapseRateKelvinPerMetre', 'air.lapseRateKelvinPerMetre'),
       relativeHumidityPercent: number(air.relativeHumidityPercent, 'relativeHumidityPercent', 'air.relativeHumidityPercent'),
       pressureKpa: number(air.pressureKpa, 'pressureKpa', 'air.pressureKpa'),
+      refraction: air.refraction,
+      shadowFloorDecibels: number(air.shadowFloorDecibels, 'shadowFloorDecibels', 'air.shadowFloorDecibels'),
       absorption: air.absorption,
       turbulenceStrength: number(air.turbulenceStrength, 'turbulenceStrength', 'air.turbulenceStrength'),
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres')

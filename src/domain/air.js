@@ -1,5 +1,5 @@
 import {
-  GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, ISA_LAPSE_RATE_KELVIN_PER_METRE, ISA_PRESSURE_EXPONENT, KELVIN_OFFSET
+  GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, KELVIN_OFFSET, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED
 } from './constants.js';
 
 const REFERENCE_TEMPERATURE_KELVIN = 293.15;
@@ -17,11 +17,26 @@ export function airDensityKilogramsPerCubicMetre(pressurePa, temperatureCelsius)
   return pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (temperatureCelsius + KELVIN_OFFSET));
 }
 
-/** Class B: ISA troposphere pressure at a height, anchored to the ground temperature and pressure. */
-export function pressureAtHeightPa(groundPressurePa, groundTemperatureCelsius, heightMetres) {
-  const groundKelvin = groundTemperatureCelsius + KELVIN_OFFSET;
-  const ratio = 1 - ISA_LAPSE_RATE_KELVIN_PER_METRE * Math.max(0, heightMetres) / groundKelvin;
-  return groundPressurePa * Math.max(0, ratio) ** ISA_PRESSURE_EXPONENT;
+/** Temperature at a height for the scene's linear profile T(z) = T₀ − Γz, in kelvin. */
+export function temperatureAtHeightKelvin(air, heightMetres) {
+  return air.temperatureCelsius + KELVIN_OFFSET - air.lapseRateKelvinPerMetre * heightMetres;
+}
+
+/**
+ * Class A for the given profile: hydrostatic pressure of an ideal gas with T(z) = T₀ − Γz,
+ * p = p₀·(T/T₀)^(g/(RΓ)), and p₀·exp(−gz/(RT₀)) without a gradient. With Γ = 6.5 K/km it is the
+ * ISA troposphere (ISO 2533, class B as a model of the real atmosphere).
+ */
+export function pressureAtHeightPa(air, heightMetres) {
+  const groundPa = air.pressureKpa * 1000;
+  const groundKelvin = air.temperatureCelsius + KELVIN_OFFSET;
+  const height = Math.max(0, heightMetres);
+  const lapse = air.lapseRateKelvinPerMetre;
+  if (Math.abs(lapse) * height < 1e-9 * groundKelvin) {
+    return groundPa * Math.exp(-STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED * height / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * groundKelvin));
+  }
+  const ratio = Math.max(0, temperatureAtHeightKelvin(air, height) / groundKelvin);
+  return groundPa * ratio ** (STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * lapse));
 }
 
 /**

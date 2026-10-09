@@ -5,9 +5,9 @@ import { sphericalReflectionCoefficient } from '../src/domain/ground.js';
 import { combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
 import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
 
-function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false }) {
+function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false, refraction = false }) {
   const base = defaultScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
-  return parseScene({ ...base, air: { ...base.air, absorption, turbulenceStrength: 0 }, ground, emitters: [emitter], receivers });
+  return parseScene({ ...base, air: { ...base.air, absorption, refraction, turbulenceStrength: 0 }, ground, emitters: [emitter], receivers });
 }
 
 const receiverAt = (id, positionMetres) => ({ ...defaultReceiver(id, id), positionMetres });
@@ -167,4 +167,81 @@ test('the omnidirectional channel is the pressure and a source in the east sound
   assert.equal(result.channels.length, 4);
   assert.ok(Math.abs(y / w + 1) < 1e-6, `east is to the right of north: ${y / w}`);
   assert.ok(Math.abs(x / w) < 1e-6 && Math.abs(z / w) < 1e-6);
+});
+
+test('with refraction a lit blast arrives at the ray travel time and keeps its free-field level within 1 dB', async () => {
+  const { rayBetween, soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const source = { x: 0, y: 0, z: 1000 };
+  const mic = { x: 5000, y: 0, z: 1.7 };
+  const bent = scene({ emitter: smallBlast(source), receivers: [receiverAt('mic', mic)], refraction: true });
+  const straight = scene({ emitter: smallBlast(source), receivers: [receiverAt('mic', mic)] });
+  const ray = rayBetween(soundSpeedProfile(bent.air), source, mic);
+  const refracted = peak(render(bent));
+  const free = peak(render(straight));
+  const straightSeconds = Math.hypot(5000, 998.3) / speedOfSoundMetresPerSecond(straight.air.temperatureCelsius);
+  // Both peaks sit the same rise time after their arrivals, so their difference is the travel-time difference.
+  assert.ok(Math.abs(refracted.seconds - free.seconds - (ray.seconds - straightSeconds)) < 1.5 / 48000);
+  assert.ok(refracted.seconds > free.seconds);
+  assert.ok(Math.abs(20 * Math.log10(Math.abs(refracted.value / free.value))) < 1);
+});
+
+test('a blast beyond the shadow boundary is 15–27 dB below its free-field level and arrives later', () => {
+  const source = { x: 0, y: 0, z: 2000 };
+  const mic = { x: 25000, y: 0, z: 1.7 };
+  const shadowed = peak(render(scene({ emitter: smallBlast(source), receivers: [receiverAt('mic', mic)], refraction: true })));
+  const free = peak(render(scene({ emitter: smallBlast(source), receivers: [receiverAt('mic', mic)] })));
+  const drop = 20 * Math.log10(Math.abs(free.value / shadowed.value));
+  assert.ok(drop > 15 && drop < 27, `${drop} dB`);
+  assert.ok(shadowed.seconds > free.seconds);
+});
+
+test('an inversion brings a ground reflection to a distant microphone that refraction off also has', () => {
+  const source = { x: 0, y: 0, z: 5 };
+  const receivers = [receiverAt('mic', { x: 8000, y: 0, z: 1.7 })];
+  const ground = { enabled: true, type: 'rigid' };
+  const inverted = scene({ emitter: smallBlast(source), receivers, ground, refraction: true });
+  inverted.air.lapseRateKelvinPerMetre = -.01;
+  const paths = render(inverted).arrivals;
+  assert.equal(paths.count, 2);
+  assert.deepEqual([...paths.kinds], [0, 1]);
+  assert.ok(render(inverted).samples.every(Number.isFinite));
+});
+
+test('the shadow response is causal, lossless at low frequencies, f^(1/3) creeping above, and ends in its frame tail', async () => {
+  const { shadowResponse, shadowTailSeconds } = await import('../src/domain/render.js');
+  const { creepingCoefficient, soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const { fft } = await import('../src/domain/fft.js');
+  const coefficient = creepingCoefficient(soundSpeedProfile({ temperatureCelsius: 15, lapseRateKelvinPerMetre: .0065, refraction: true }));
+  const floor = 10 ** (-25 / 20);
+  for (const creep of [1000, 8000, 30000]) {
+    const nepers = coefficient * creep;
+    assert.ok(Math.abs(Math.hypot(...shadowResponse(.01, nepers, 0)) - 1) < 1e-3);
+    for (const frequency of [100, 400, 2000]) {
+      const loss = -Math.log(Math.hypot(...shadowResponse(frequency, nepers, 0)));
+      const creeping = nepers * Math.cbrt(frequency);
+      assert.ok(Math.abs(loss / creeping - 1) < .05, `${creep} m, ${frequency} Hz: ${loss} vs ${creeping} Np`);
+    }
+    assert.ok(Math.abs(Math.hypot(...shadowResponse(20000, nepers * 50, floor)) / floor - 1) < 1e-3);
+    // Impulse response, band-limited to 4 kHz: nothing before the arrival, and at most −80 dB after the tail.
+    const size = 1 << 17;
+    const rate = 48000;
+    const re = new Float64Array(size);
+    const im = new Float64Array(size);
+    for (let bin = 1; bin < size / 2; bin += 1) {
+      const frequency = bin * rate / size;
+      const [a, b] = shadowResponse(frequency, nepers, 0);
+      const limit = Math.exp(-((frequency / 4000) ** 2));
+      re[bin] = a * limit; im[bin] = b * limit; re[size - bin] = re[bin]; im[size - bin] = -im[bin];
+    }
+    re[0] = 1;
+    fft(re, im, true);
+    const largest = values => values.reduce((most, value) => Math.max(most, Math.abs(value)), 0);
+    const peak = largest(re);
+    const tail = Math.ceil(shadowTailSeconds(nepers) * rate);
+    const after = largest(re.slice(tail, size / 2));
+    // The test's own zero-phase band limit spreads the arrival by a fraction of a millisecond.
+    const before = largest(re.slice(size - rate / 10, size - rate / 1000));
+    assert.ok(after < peak * 1e-4, `${creep} m: tail ${20 * Math.log10(after / peak)} dB`);
+    assert.ok(before < peak * 1e-5, `${creep} m: before arrival ${20 * Math.log10(before / peak)} dB`);
+  }
 });

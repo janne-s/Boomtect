@@ -19,9 +19,16 @@ test('air density at sea level and 15 °C is about 1.225 kg/m³', () => {
   assert.ok(Math.abs(airDensityKilogramsPerCubicMetre(101325, 15) - 1.225) < .001);
 });
 
-test('ISA pressure halves near 5.5 km', () => {
-  assert.equal(pressureAtHeightPa(101325, 15, 0), 101325);
-  assert.ok(Math.abs(pressureAtHeightPa(101325, 15, 5500) - 50500) < 500);
+test('pressure follows the ISA table and the isothermal limit', () => {
+  const isa = { temperatureCelsius: 15, pressureKpa: 101.325, lapseRateKelvinPerMetre: .0065 };
+  assert.equal(pressureAtHeightPa(isa, 0), 101325);
+  // ISO 2533: 54 020 Pa at 5 km and 26 436 Pa at 10 km.
+  assert.ok(Math.abs(pressureAtHeightPa(isa, 5000) / 54020 - 1) < 1e-3);
+  assert.ok(Math.abs(pressureAtHeightPa(isa, 10000) / 26436 - 1) < 1e-3);
+  const isothermal = { ...isa, lapseRateKelvinPerMetre: 0 };
+  assert.ok(Math.abs(pressureAtHeightPa(isothermal, 8000) / (101325 * Math.exp(-9.80665 * 8000 / (287.05 * 288.15))) - 1) < 1e-12);
+  assert.ok(Math.abs(pressureAtHeightPa({ ...isa, lapseRateKelvinPerMetre: 1e-7 }, 8000) / pressureAtHeightPa(isothermal, 8000) - 1) < 1e-4);
+  assert.ok(pressureAtHeightPa({ ...isa, lapseRateKelvinPerMetre: -.01 }, 2000) > pressureAtHeightPa(isa, 2000));
 });
 
 test('ISO 9613-1 absorption matches the 20 °C, 70 % table within 2 %', () => {

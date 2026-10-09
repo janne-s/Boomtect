@@ -260,7 +260,7 @@ export function flashSources(flashes, physics, air, sources = []) {
         channel.segments.forEach((segment, segmentIndex) => {
           if (segment.arcMetres < fromArc) return;
           const energy = flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex];
-          const pressurePa = pressureAtHeightPa(groundPressurePa, air.temperatureCelsius, segment.centreMetres.z);
+          const pressurePa = pressureAtHeightPa(air, segment.centreMetres.z);
           const radius = relaxationRadiusMetres(energy, pressurePa);
           const sourcePeriodSeconds = physics.periodCoefficient * radius / speed;
           const reference = weakShockPulse(radius, sourcePeriodSeconds, 0, physics.weakShockLimitRadii);

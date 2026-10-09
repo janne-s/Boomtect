@@ -1,7 +1,7 @@
-import { speedOfSoundMetresPerSecond } from './domain/air.js';
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { newSeed } from './domain/random.js';
+import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene
@@ -27,6 +27,8 @@ const PEAK_TARGET = 10 ** (-3 / 20);
 /** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
 const BINAURAL_HEADROOM = 10 ** (-3 / 20);
 const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
+/** Source points whose wavefronts make up the veil, at most. */
+const VEIL_SPHERES = 360;
 /** How long a stroke stays on screen after it has run its route. */
 const FLASH_VISIBLE_SECONDS = 1.2;
 const ENVELOPE_SECONDS = .01;
@@ -59,7 +61,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
+  realDelay: true, wavefront: false, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -107,7 +109,8 @@ const views = [createCubeView($('cube'), {
     redrawViews();
     drawInfo();
   },
-  onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {}))
+  onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
+  focus: () => focusReceiver()
 })];
 views[0].setView(state.preferences.cubeView);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
@@ -234,7 +237,7 @@ function startRender() {
 
 function finishRender(scene, prepared, parts, info) {
   state.workers = [];
-  const speedOfSound = speedOfSoundMetresPerSecond(scene.air.temperatureCelsius);
+  const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
     state.results = new Map(scene.receivers.map(receiver => {
       const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id));
@@ -676,6 +679,8 @@ function renderDetails() {
 
 function missingPhenomena() {
   const missing = [...MISSING_PHENOMENA];
+  if (state.scene.air.refraction) missing.push('Several ground reflections in an inversion', 'Temperature profile other than linear');
+  else missing.unshift('Temperature stratification and refraction');
   if (!state.scene.air.absorption) missing.unshift('Air absorption');
   if (!state.scene.ground.enabled) missing.unshift('Ground reflection');
   return missing;
@@ -695,8 +700,10 @@ function refreshPanel() {
 
   const environment = $('environment-fields');
   environment.replaceChildren();
-  ['temperatureCelsius', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres'].forEach(key =>
-    numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) }));
+  const airField = key => numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) });
+  ['temperatureCelsius', 'lapseRateKelvinPerMetre', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres'].forEach(airField);
+  checkboxField(environment, { label: 'Refraction', value: scene.air.refraction, reliability: 'A', onCommit: value => commit(next => { next.air.refraction = value; }) });
+  if (scene.air.refraction) airField('shadowFloorDecibels');
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
   selectField(environment, {
@@ -800,6 +807,13 @@ function drawInfo() {
     }
     listenInfo.append(element('span', '', last > first ? `Sound ${formatSeconds(first)}–${formatSeconds(last)} after the flash` : `Sound ${formatSeconds(first)} after the flash`));
     listenInfo.append(element('span', '', `Peak ${result.peakPa.toPrecision(3)} Pa · c ${result.speedOfSound.toFixed(1)} m/s`));
+    let shadowed = 0;
+    let sources = 0;
+    for (let index = 0; index < result.arrivals.count; index += 1) {
+      if (result.arrivals.kinds[index] === PATH_SHADOW) shadowed += 1;
+      if (result.arrivals.kinds[index] !== 1) sources += 1;
+    }
+    if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${Math.round(shadowed / sources * 100)} % of sources in the refraction shadow`));
     if (result.nonlinearPaths) listenInfo.append(element('span', 'warning', `${result.nonlinearPaths} paths start in the nonlinear zone`));
     if (scene.render.levelMode === 'fixed' && result.peakPa > scene.render.fullScalePa) listenInfo.append(element('span', 'warning', 'Peak above full scale: clips'));
   }
@@ -860,13 +874,10 @@ function drawPlotTabs(soloId) {
 
 /* Playback */
 
-/** Travel time of a blast's direct sound to the listening receiver. */
+/** Travel time of a blast's first sound to the receiver the view follows. */
 function arrivalDelay(emitter) {
-  const result = state.results?.get(focusReceiver().id);
-  if (emitter.kind !== 'blast' || !result) return 0;
-  const { positionMetres: a } = emitter;
-  const b = focusReceiver().positionMetres;
-  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) / result.speedOfSound;
+  if (emitter.kind !== 'blast' || !state.results) return 0;
+  return travelSeconds(soundSpeedProfile(state.scene.air), emitter.positionMetres, focusReceiver().positionMetres);
 }
 
 /** Every stroke of an emitter as its flash, scene time, and route. */
@@ -887,6 +898,7 @@ function animationState() {
   const strokes = new Map();
   const fronts = new Map();
   const result = state.results?.get(focusReceiver().id);
+  const profile = soundSpeedProfile(state.scene.air);
   const realDelay = !clock.skippedSeconds && state.preferences.realDelay;
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
@@ -897,15 +909,53 @@ function animationState() {
         .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS));
     }
     if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && realDelay) {
-      fronts.set(emitter.id, (now - emitter.startSeconds) * result.speedOfSound);
+      fronts.set(emitter.id, wavefront(profile, emitter.positionMetres, now - emitter.startSeconds));
     }
   }
-  const sound = !realDelay && result ? { seconds: now, receiver: focusReceiver().positionMetres, speed: result.speedOfSound } : null;
+  const receiver = focusReceiver().positionMetres;
+  const sound = !realDelay && result ? { seconds: now, travelSeconds: point => travelSeconds(profile, point, receiver) } : null;
   const receivers = new Map();
   for (const [id, envelopeData] of state.envelopes) {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
-  return { strokes, fronts, receivers, sound };
+  const veil = state.preferences.wavefront ? { profile, spheres: veilSpheres(now, profile) } : null;
+  return { strokes, fronts, receivers, sound, veil };
+}
+
+const veilSources = new WeakMap();
+
+/**
+ * Every enabled emitter's sampled source points with their emission times: a blast's point, and
+ * the channel points of each flash's first stroke, which lead the later strokes' nested fronts.
+ */
+function veilCandidates(scene) {
+  if (veilSources.has(scene)) return veilSources.get(scene);
+  const candidates = [];
+  for (const emitter of scene.emitters) {
+    if (!emitter.enabled) continue;
+    if (emitter.kind === 'blast') { candidates.push({ point: emitter.positionMetres, emitted: emitter.startSeconds }); continue; }
+    for (const flash of cachedFlashes(emitter)) {
+      const [stroke] = flash.strokes;
+      const start = flash.startSeconds + stroke.offsetSeconds;
+      for (const step of stroke.route) {
+        const channel = flash.channels[step.channel];
+        channel.points.forEach((point, index) => {
+          const arc = channel.arcs[index];
+          if (arc >= step.fromArc) candidates.push({ point, emitted: start + (step.offsetMetres + arc - step.fromArc) / flash.channelSpeedMetresPerSecond });
+        });
+      }
+    }
+  }
+  const stride = Math.max(1, Math.ceil(candidates.length / VEIL_SPHERES));
+  const sampled = candidates.filter((_, index) => index % stride === 0);
+  veilSources.set(scene, sampled);
+  return sampled;
+}
+
+function veilSpheres(now, profile) {
+  return veilCandidates(state.scene)
+    .filter(candidate => now > candidate.emitted)
+    .map(({ point, emitted }) => ({ source: point, ...wavefront(profile, point, now - emitted) }));
 }
 
 views.forEach(view => view.setAnimation(animationState));
@@ -1049,7 +1099,8 @@ $('export').addEventListener('click', async () => {
       startSeconds: composition.startSeconds,
       fullScalePa: 1 / gain,
       peakPa: composition.peakPa,
-      speedOfSoundMetresPerSecond: speedOfSoundMetresPerSecond(state.scene.air.temperatureCelsius),
+      speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
+      soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
       modelVersion: MODEL_VERSION,
       exportedAt: new Date().toISOString()
     }
@@ -1074,6 +1125,8 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   startRender();
 }));
 
+$('wavefront').checked = state.preferences.wavefront;
+$('wavefront').addEventListener('change', () => { state.preferences.wavefront = $('wavefront').checked; savePreferences(); redrawViews(); });
 $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
 const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
