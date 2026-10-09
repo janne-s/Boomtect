@@ -21,8 +21,10 @@ export const FLASH_TRAVERSE_SECONDS = .12;
 const FLASH_FADE_SECONDS = .2;
 
 export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panX: 0, panY: 0 });
+const MICROPHONE_RADIUS = 5.5;
+const ARROWHEAD_PIXELS = 8;
 /** Length of a receiver's facing arrow, as a share of the box. */
-const FACING_LENGTH_SHARE = .05;
+const FACING_LENGTH_SHARE = .1;
 /** While the sound plays without the real delay, a point glows from its arrival for this long. */
 const SOUND_GLOW_SECONDS = .25;
 
@@ -73,7 +75,7 @@ function frontArc(step, elapsed, routeLength) {
  * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
  * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange }) {
   let scene = null;
   let selection = null;
   let view = { ...DEFAULT_CUBE_VIEW };
@@ -407,14 +409,26 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     context.lineWidth = selected ? 2 : 1.5;
     context.beginPath();
     if (handle.role === 'receiver') {
-      context.moveTo(p.x, p.y - 7); context.lineTo(p.x + 6, p.y + 4); context.lineTo(p.x - 6, p.y + 4); context.closePath();
+      context.arc(p.x, p.y, MICROPHONE_RADIUS, 0, 2 * Math.PI);
       context.fillStyle = colors.receiver;
       context.fill();
-      if (selected) { context.strokeStyle = colors.accent; context.stroke(); }
+      context.fillStyle = colors.panel;
+      context.beginPath(); context.arc(p.x, p.y, MICROPHONE_RADIUS * .4, 0, 2 * Math.PI); context.fill();
+      if (selected) {
+        context.strokeStyle = colors.accent;
+        context.beginPath(); context.arc(p.x, p.y, MICROPHONE_RADIUS + 1.5, 0, 2 * Math.PI); context.stroke();
+      }
       return;
     }
     if (handle.role === 'facing') {
-      context.arc(p.x, p.y, 3.5, 0, 2 * Math.PI);
+      const owner = scene.receivers.find(receiver => receiver.id === handle.id);
+      const base = frame.project(owner.positionMetres);
+      const angle = Math.atan2(p.y - base.y, p.x - base.x);
+      const size = ARROWHEAD_PIXELS;
+      context.moveTo(p.x + Math.cos(angle) * size * .6, p.y + Math.sin(angle) * size * .6);
+      context.lineTo(p.x + Math.cos(angle + 2.5) * size, p.y + Math.sin(angle + 2.5) * size);
+      context.lineTo(p.x + Math.cos(angle - 2.5) * size, p.y + Math.sin(angle - 2.5) * size);
+      context.closePath();
       context.fillStyle = selected ? colors.accent : colors.receiver;
       context.fill();
       return;
@@ -473,8 +487,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       if (receiver.type !== 'binaural') continue;
       const a = frame.project(receiver.positionMetres);
       const b = frame.project(facingTip(receiver, frame.box));
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      if (length <= MICROPHONE_RADIUS) continue;
+      const ux = (b.x - a.x) / length;
+      const uy = (b.y - a.y) / length;
       context.globalAlpha = receiver.listen ? 1 : .35;
-      context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
+      context.beginPath(); context.moveTo(a.x + ux * MICROPHONE_RADIUS, a.y + uy * MICROPHONE_RADIUS); context.lineTo(b.x, b.y); context.stroke();
     }
     context.globalAlpha = 1;
     for (const handle of handles(scene, frame.box)) {
@@ -525,6 +543,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
     view = next;
     frame = null;
     draw();
+    onViewChange?.(view);
   }
 
   /** Zooms by a factor about a screen point, keeping the scene under that point in place. */
@@ -669,6 +688,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView }) {
       draw();
     },
     setView(next) { changeView({ ...DEFAULT_CUBE_VIEW, ...next }); },
+    getView: () => view,
     draw,
     setAnimation(source) { animation = source; }
   };

@@ -1,12 +1,10 @@
 import { fitCanvas, palette } from './canvas.js';
 
-const MARGIN = 14;
-const HIT_RADIUS = 12;
-const ROTATE_RADIANS_PER_PIXEL = .012;
-const PITCH_RANGE = Object.freeze([-1.4, 1.4]);
+const MARGIN = 12;
+/** Degrees of facing and elevation per pixel of drag on the sphere. */
+const DEGREES_PER_PIXEL = .8;
 const CIRCLE_POINTS = 72;
 const toRadians = degrees => degrees * Math.PI / 180;
-const toDegrees = radians => radians * 180 / Math.PI;
 
 /** A unit look direction (east, north, up) from compass heading and elevation in degrees. */
 export function lookDirection(headingDegrees, pitchDegrees) {
@@ -16,38 +14,21 @@ export function lookDirection(headingDegrees, pitchDegrees) {
 }
 
 /**
- * A small turnable sphere showing a microphone's orientation: the horizon with the compass points,
- * two meridians, and the look direction. Drag the arrow's tip to aim; drag elsewhere to turn the
- * sphere.
+ * A small sphere showing a microphone's orientation from the same angle as the scene box: the
+ * horizon with the compass points, two meridians, and the look direction. Dragging across it turns
+ * the microphone; dragging up and down tilts it.
  */
-export function createOrientationBall(canvas, { headingDegrees, pitchDegrees, onChange, onCommit }) {
-  let orientation = { headingDegrees, pitchDegrees };
-  let view = { yaw: -.55, pitch: .4 };
+export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
+  let orientation = null;
   let drag = null;
   let geometry = null;
 
   function project(point) {
+    const { yaw, pitch } = getView();
     const { cx, cy, radius } = geometry;
-    const a = Math.cos(view.yaw) * point.x - Math.sin(view.yaw) * point.y;
-    const b = Math.sin(view.yaw) * point.x + Math.cos(view.yaw) * point.y;
-    return {
-      x: cx + a * radius,
-      y: cy - (point.z * Math.cos(view.pitch) + b * Math.sin(view.pitch)) * radius,
-      depth: b * Math.cos(view.pitch) - point.z * Math.sin(view.pitch)
-    };
-  }
-
-  /** The point on the sphere's near side under a screen point, as a unit vector. */
-  function unproject(x, y) {
-    const { cx, cy, radius } = geometry;
-    let a = (x - cx) / radius;
-    let up = (cy - y) / radius;
-    const length = Math.hypot(a, up);
-    if (length > 1) { a /= length; up /= length; }
-    const depth = -Math.sqrt(Math.max(0, 1 - a * a - up * up));
-    const b = up * Math.sin(view.pitch) + depth * Math.cos(view.pitch);
-    const z = up * Math.cos(view.pitch) - depth * Math.sin(view.pitch);
-    return { x: Math.cos(view.yaw) * a + Math.sin(view.yaw) * b, y: -Math.sin(view.yaw) * a + Math.cos(view.yaw) * b, z };
+    const a = Math.cos(yaw) * point.x - Math.sin(yaw) * point.y;
+    const b = Math.sin(yaw) * point.x + Math.cos(yaw) * point.y;
+    return { x: cx + a * radius, y: cy - (point.z * Math.cos(pitch) + b * Math.sin(pitch)) * radius, depth: b * Math.cos(pitch) - point.z * Math.sin(pitch) };
   }
 
   function circle(context, pointAt, front, back) {
@@ -63,7 +44,7 @@ export function createOrientationBall(canvas, { headingDegrees, pitchDegrees, on
   }
 
   function draw() {
-    if (!canvas.isConnected || canvas.clientWidth < 2 * MARGIN) return;
+    if (!orientation || !canvas.isConnected || canvas.clientWidth < 2 * MARGIN) return;
     const { context, width, height } = fitCanvas(canvas);
     const colors = palette();
     geometry = { cx: width / 2, cy: height / 2, radius: Math.min(width, height) / 2 - MARGIN };
@@ -77,61 +58,37 @@ export function createOrientationBall(canvas, { headingDegrees, pitchDegrees, on
     context.font = '10px system-ui, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    for (const [label, point] of [['N', { x: 0, y: 1.18, z: 0 }], ['E', { x: 1.18, y: 0, z: 0 }], ['S', { x: 0, y: -1.18, z: 0 }], ['W', { x: -1.18, y: 0, z: 0 }]]) {
+    for (const [label, point] of [['N', { x: 0, y: 1.2, z: 0 }], ['E', { x: 1.2, y: 0, z: 0 }], ['S', { x: 0, y: -1.2, z: 0 }], ['W', { x: -1.2, y: 0, z: 0 }]]) {
       const p = project(point);
       context.fillStyle = p.depth > 0 ? colors.faint : colors.muted;
       context.fillText(label, p.x, p.y);
     }
     const tip = project(lookDirection(orientation.headingDegrees, orientation.pitchDegrees));
-    context.strokeStyle = colors.end;
-    context.fillStyle = colors.end;
+    context.strokeStyle = colors.receiver;
+    context.fillStyle = colors.receiver;
     context.globalAlpha = tip.depth > 0 ? .45 : 1;
     context.lineWidth = 2;
     context.beginPath(); context.moveTo(cx, cy); context.lineTo(tip.x, tip.y); context.stroke();
-    context.beginPath(); context.arc(tip.x, tip.y, 5, 0, 2 * Math.PI); context.fill();
+    context.beginPath(); context.arc(tip.x, tip.y, 4, 0, 2 * Math.PI); context.fill();
     context.globalAlpha = 1;
-    context.fillStyle = colors.receiver;
-    context.beginPath(); context.arc(cx, cy, 2.5, 0, 2 * Math.PI); context.fill();
-  }
-
-  function local(event) {
-    const rect = canvas.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
   canvas.addEventListener('pointerdown', event => {
-    if (!geometry) return;
-    const { x, y } = local(event);
-    const tip = project(lookDirection(orientation.headingDegrees, orientation.pitchDegrees));
-    drag = Math.hypot(tip.x - x, tip.y - y) <= HIT_RADIUS ? { kind: 'aim' } : { kind: 'turn', x, y, view: { ...view } };
-    canvas.setPointerCapture(event.pointerId);
+    if (!orientation) return;
+    drag = { x: event.clientX, y: event.clientY, start: { ...orientation } };
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* The drag still follows the pointer while it stays over the sphere. */ }
     event.preventDefault();
   });
   canvas.addEventListener('pointermove', event => {
-    const { x, y } = local(event);
-    if (!drag) {
-      if (geometry) {
-        const tip = project(lookDirection(orientation.headingDegrees, orientation.pitchDegrees));
-        canvas.style.cursor = Math.hypot(tip.x - x, tip.y - y) <= HIT_RADIUS ? 'grab' : 'move';
-      }
-      return;
-    }
-    if (drag.kind === 'turn') {
-      const [low, high] = PITCH_RANGE;
-      view = { yaw: drag.view.yaw - (x - drag.x) * ROTATE_RADIANS_PER_PIXEL, pitch: Math.min(high, Math.max(low, drag.view.pitch + (y - drag.y) * ROTATE_RADIANS_PER_PIXEL)) };
-      draw();
-      return;
-    }
-    const direction = unproject(x, y);
-    orientation = {
-      headingDegrees: Math.round((toDegrees(Math.atan2(direction.x, direction.y)) + 360) % 360),
-      pitchDegrees: Math.round(toDegrees(Math.asin(Math.max(-1, Math.min(1, direction.z)))))
-    };
+    if (!drag) return;
+    const headingDegrees = Math.round(((drag.start.headingDegrees + (event.clientX - drag.x) * DEGREES_PER_PIXEL) % 360 + 360) % 360);
+    const pitchDegrees = Math.round(Math.min(90, Math.max(-90, drag.start.pitchDegrees - (event.clientY - drag.y) * DEGREES_PER_PIXEL)));
+    orientation = { headingDegrees, pitchDegrees };
     draw();
-    onChange(orientation.headingDegrees, orientation.pitchDegrees);
+    onChange(headingDegrees, pitchDegrees);
   });
   const finish = () => {
-    if (drag?.kind === 'aim') onCommit(orientation.headingDegrees, orientation.pitchDegrees);
+    if (drag) onCommit();
     drag = null;
   };
   canvas.addEventListener('pointerup', finish);
@@ -140,8 +97,9 @@ export function createOrientationBall(canvas, { headingDegrees, pitchDegrees, on
 
   return {
     set(next) {
-      orientation = { ...next };
+      orientation = next ? { headingDegrees: next.headingDegrees, pitchDegrees: next.pitchDegrees } : null;
       draw();
-    }
+    },
+    draw
   };
 }

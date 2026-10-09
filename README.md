@@ -52,8 +52,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Listen** — The checkbox on a microphone adds it to what plays.
 - **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
   its orientation and decoded for headphones.
-- **Orientation** — Facing and elevation of a binaural microphone. Drag the
-  arrow's tip on the sphere or in the scene.
+- **Orientation** — Facing and elevation of a binaural microphone. Drag across
+  the sphere beside the scene, or drag the arrowhead in the scene.
 - **Combinations** — One omni microphone is mono, two are a stereo pair, more
   are one channel each. One binaural microphone is binaural; binaural and omni
   together are a stereo mix with the omni microphones in the centre. Surround

@@ -31,7 +31,13 @@
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
-        <div class="overlay overlay-bottom" id="cube-listen"></div>
+        <div class="overlay overlay-bottom">
+          <div class="cube-orientation" id="cube-orientation" hidden>
+            <canvas id="cube-orientation-ball" aria-label="Orientation"></canvas>
+            <span><strong id="cube-orientation-name"></strong> <span id="cube-orientation-value"></span></span>
+          </div>
+          <div class="overlay-stack" id="cube-listen"></div>
+        </div>
       </figure>
       <div class="splitter splitter-column" id="split-column" role="separator" aria-orientation="vertical" aria-label="Resize parameters" tabindex="0"></div>
       <aside class="panel" aria-label="Parameters">

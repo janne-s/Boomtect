@@ -78,8 +78,15 @@ state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 const player = createPlayer();
 const liveFields = { receiver: null, orientation: null };
 
+const orientationBall = createOrientationBall($('cube-orientation-ball'), {
+  getView: () => views[0].getView(),
+  onChange: (heading, pitch) => { const target = orientationTarget(); if (target) orient(target.id, heading, pitch); },
+  onCommit: () => storeScene()
+});
+
 const views = [createCubeView($('cube'), {
   onView: next => { state.preferences.cubeView = next; savePreferences(); },
+  onViewChange: () => orientationBall?.draw(),
   onSelect: selection => { state.selection = selection; refreshPanel(); },
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
@@ -454,8 +461,27 @@ function orient(receiverId, headingDegrees, pitchDegrees) {
   item.headingDegrees = headingDegrees;
   item.pitchDegrees = pitchDegrees;
   player.setOrientation(receiverId, headingDegrees, pitchDegrees);
-  liveFields.orientation?.set(item);
+  if (liveFields.orientation?.receiverId === receiverId) liveFields.orientation.set(item);
+  if (orientationTarget()?.id === receiverId) orientationBall.set(item);
+  $('cube-orientation-value').textContent = `${compassLabel(headingDegrees)} · ${pitchDegrees > 0 ? '+' : ''}${pitchDegrees}°`;
   redrawViews();
+}
+
+/** The binaural receiver whose orientation the sphere shows: the selected one, or the first listening head. */
+function orientationTarget() {
+  const selected = state.selection.type === 'receiver' ? findItem('receiver', state.selection.id) : null;
+  if (selected?.type === 'binaural') return selected;
+  return state.scene.receivers.find(receiver => receiver.listen && receiver.type === 'binaural') ?? null;
+}
+
+
+function drawOrientation() {
+  const target = orientationTarget();
+  $('cube-orientation').hidden = !target;
+  if (!target) return;
+  $('cube-orientation-name').textContent = target.name;
+  $('cube-orientation-value').textContent = `${compassLabel(target.headingDegrees)} · ${target.pitchDegrees > 0 ? '+' : ''}${target.pitchDegrees}°`;
+  orientationBall.set(target);
 }
 
 function storeScene() {
@@ -463,49 +489,6 @@ function storeScene() {
 }
 
 const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
-
-function orientationSection(container, receiver) {
-  const section = element('details', 'orientation');
-  section.open = true;
-  section.append(element('summary', '', 'Orientation'));
-  const ball = element('canvas', 'orientation-ball');
-  ball.setAttribute('aria-label', 'Orientation');
-  section.append(ball);
-  const controls = element('div', 'macros');
-  const label = element('label', '', 'Facing');
-  const slider = element('input');
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '360';
-  slider.step = '1';
-  slider.id = `facing-${receiver.id}`;
-  label.htmlFor = slider.id;
-  const value = element('span', 'macro-value');
-  controls.append(label, slider, value);
-  section.append(controls);
-  const fields = element('div', 'fields');
-  const elevation = numberField(fields, {
-    key: 'pitchDegrees', value: receiver.pitchDegrees,
-    onCommit: pitch => commitListening(next => { next.receivers.find(item => item.id === receiver.id).pitchDegrees = pitch; })
-  });
-  section.append(fields);
-  const sphere = createOrientationBall(ball, {
-    headingDegrees: receiver.headingDegrees, pitchDegrees: receiver.pitchDegrees,
-    onChange: (heading, pitch) => orient(receiver.id, heading, pitch),
-    onCommit: storeScene
-  });
-  const show = item => {
-    slider.value = String(item.headingDegrees);
-    value.textContent = compassLabel(item.headingDegrees);
-    elevation.set(item.pitchDegrees);
-    sphere.set({ headingDegrees: item.headingDegrees, pitchDegrees: item.pitchDegrees });
-  };
-  show(receiver);
-  slider.addEventListener('input', () => orient(receiver.id, Number(slider.value), receiver.pitchDegrees));
-  slider.addEventListener('change', storeScene);
-  liveFields.orientation = { set: show };
-  container.append(section);
-}
 
 function receiverCard(container, receiver, selected) {
   const card = element('div', 'card');
@@ -539,7 +522,19 @@ function receiverCard(container, receiver, selected) {
       })
     };
     card.append(fields);
-    if (receiver.type === 'binaural') orientationSection(card, receiver);
+    if (receiver.type === 'binaural') {
+      const orientation = element('div', 'fields');
+      const facing = numberField(orientation, {
+        key: 'headingDegrees', value: receiver.headingDegrees,
+        onCommit: heading => commitListening(next => { next.receivers.find(item => item.id === receiver.id).headingDegrees = heading; })
+      });
+      const elevation = numberField(orientation, {
+        key: 'pitchDegrees', value: receiver.pitchDegrees,
+        onCommit: pitch => commitListening(next => { next.receivers.find(item => item.id === receiver.id).pitchDegrees = pitch; })
+      });
+      liveFields.orientation = { receiverId: receiver.id, set: item => { facing.set(item.headingDegrees); elevation.set(item.pitchDegrees); } };
+      card.append(orientation);
+    }
     const actions = element('div', 'card-actions');
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
@@ -711,6 +706,7 @@ function emitterAnchor(emitter) {
 
 /** Short facts around the scene box: the selection, the listening position, and warnings. */
 function drawInfo() {
+  drawOrientation();
   const { scene, selection } = state;
   const receiver = listenReceiver();
   const selected = findItem(selection.type, selection.id);

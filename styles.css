@@ -2,6 +2,7 @@
   color-scheme: dark;
   --bg: #11161c;
   --panel: #19212a;
+  --panel-dim: #141a21;
   --raised: #222c37;
   --line: #2e3a46;
   --ink: #e3e9ef;
@@ -106,7 +107,7 @@ figcaption {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--panel);
+  background: var(--panel-dim);
 }
 .brand {
   margin-right: 8px;
@@ -171,6 +172,9 @@ figcaption {
   border-radius: 4px;
   background: var(--panel);
 }
+.plot {
+  background: var(--panel-dim);
+}
 canvas {
   display: block;
   width: 100%;
@@ -199,7 +203,7 @@ canvas {
   min-height: 0;
   overflow-y: auto;
   border-radius: 4px;
-  background: var(--panel);
+  background: var(--panel-dim);
   padding: 12px;
 }
 .panel section + section {
@@ -337,6 +341,26 @@ canvas {
 .overlay-bottom {
   bottom: 12px;
   left: 14px;
+  gap: 10px;
+}
+.overlay-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cube-orientation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+}
+.cube-orientation[hidden] {
+  display: none;
+}
+.cube-orientation canvas {
+  width: 120px;
+  height: 120px;
+  cursor: grab;
 }
 .overlay-hint {
   right: 14px;
@@ -543,24 +567,3 @@ details summary {
   margin: 0;
 }
 
-.orientation {
-  margin: 10px 8px 0;
-}
-.orientation summary {
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.orientation-ball {
-  width: 140px;
-  height: 140px;
-  margin: 0 auto 8px;
-}
-.orientation .macros,
-.orientation .fields {
-  margin: 0 0 6px;
-}
