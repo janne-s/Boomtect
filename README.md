@@ -146,7 +146,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Temperature profile | linear in height, fitted to `sqrt(γRT)` up to 3 km | B |
 | Travel time, rays, and spreading | circular rays in a linear `c(z)`, ray tubes; `1/R` without refraction | A |
 | Wind | effective sound speed along each path, linear in height | B/C |
-| Refraction shadow | grazing ray, creeping wave along the ground (Fock), floor; over terrain, heights above the mean ground plane between source and microphone (CNOSSOS-EU) | B/C |
+| Refraction shadow | grazing ray, creeping wave along the ground (Fock), softer over porous ground at high frequencies, floor; over terrain, heights above the mean ground plane between source and microphone (CNOSSOS-EU) | B/C |
 | Segment directivity | straight line element | A |
 | Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
 | Weak shock | period grows as `x^¼`, extra decay `x^-¼` (ReVelle) | B |

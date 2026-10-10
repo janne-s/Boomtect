@@ -8,7 +8,8 @@ import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
-import { planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
+import { creepingTransitionHz, softExponent } from './creeping.js';
+import { GROUND_FLOW_RESISTIVITY, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
@@ -33,6 +34,10 @@ const GROUND_GRID_POINTS = 64;
  */
 const ABSORPTION_LAYER_METRES = 250;
 const ABSORPTION_GRID_POINTS = 128;
+/** Refraction radii at which a frame group tabulates its ground's creeping mode when the wind varies them. */
+const CREEPING_RADII = 8;
+/** The largest lag of the creeping mode over soft ground relative to rigid ground, measured 3.14 (snow to stony ground, 10 Hz–20 kHz). */
+const SOFT_CREEP_LAG = 3.5;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
@@ -120,6 +125,8 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     spreadMetres: new Float64Array(capacity),
     /** Creeping loss of a shadow path at 1 Hz, αL in nepers, which grows as f^(1/3). */
     creepNepers: new Float64Array(capacity),
+    /** Radius c₀/|g| of the air along a shadow path, which scales its ground's creeping mode. */
+    creepRadius: new Float64Array(capacity),
     directivityCos: new Float64Array(capacity),
     cosIncidence: new Float64Array(capacity),
     duration: new Float64Array(capacity),
@@ -141,6 +148,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     paths.metres[index] = path.metres;
     paths.spreadMetres[index] = path.spreadMetres / impedance;
     paths.creepNepers[index] = path.creepNepers ?? 0;
+    paths.creepRadius[index] = path.creepRadius ?? 0;
     paths.seconds[index] = sources.emissionSeconds[sourceIndex] + path.seconds;
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
@@ -169,7 +177,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
         const frame = surface.flat ? { profile: along, from: position, to: receiverPosition } : meanPlaneFrame(along, surface.heightAt, position, receiverPosition);
         if (inShadow(frame.profile, frame.from, frame.to)) {
           const shadow = shadowPath(frame.profile, frame.from, frame.to);
-          add(emitterIndex, sourceIndex, sources, PATH_SHADOW, { ...shadow, creepNepers: creepingCoefficient(along) * shadow.creepMetres });
+          add(emitterIndex, sourceIndex, sources, PATH_SHADOW, { ...shadow, creepNepers: creepingCoefficient(along) * shadow.creepMetres, creepRadius: along.groundSpeed / -along.gradient });
           continue;
         }
       }
@@ -273,11 +281,21 @@ export function arrivalTable(preparedEmitters, receiver, scene) {
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
+  const soft = scene.ground.enabled && scene.ground.type !== 'rigid';
+  const speed = soundSpeedProfile(scene.air).groundSpeed;
+  const transitions = new Map();
+  /** The ground's creeping transition frequency per refraction radius, or 0 on rigid ground. */
+  const diagramCreep = radius => {
+    if (!soft) return 0;
+    const key = radius.toPrecision(4);
+    if (!transitions.has(key)) transitions.set(key, creepingTransitionHz(GROUND_FLOW_RESISTIVITY[scene.ground.type], speed, radius));
+    return transitions.get(key);
+  };
   for (let index = 0; index < paths.count; index += 1) {
     const sources = pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]);
     heights[index] = sources.z[paths.source[index]];
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
-      + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, paths.creepNepers[index], floor))) : 0)
+      + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
       + edgeDecibels(paths, index, DIAGRAM_FREQUENCY_HZ);
   }
   return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, kinds: paths.kind.slice(0, paths.count) };
@@ -318,6 +336,8 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   let longestElement = 0;
   let longestSpan = 0;
   let largestCreep = 0;
+  let smallestRadius = Infinity;
+  let largestRadius = 0;
   const sources = group % FRAME_GROUPS === 2 ? prepared.cells ?? prepared.sources : prepared.sources;
   for (let index = 0; index < sources.length; index += 1) longestElement = Math.max(longestElement, sources.elementMetres[index]);
   for (let index = 0; index < paths.count; index += 1) {
@@ -325,10 +345,16 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     const source = paths.source[index];
     longestSpan = Math.max(longestSpan, sources.relaxationRadius[source] > 0 ? paths.duration[index] : sources.spanSeconds[source]);
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
+    if (paths.creepRadius[index] > 0) {
+      smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
+      largestRadius = Math.max(largestRadius, paths.creepRadius[index]);
+    }
     highest = Math.max(highest, sources.z[source]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
-  const shadowTail = Math.ceil(shadowTailSeconds(largestCreep) * sampleRate);
+  // Soft ground lags the creeping response up to SOFT_CREEP_LAG times as much as rigid ground, which spreads it.
+  const soft = scene.ground.enabled && scene.ground.type !== 'rigid';
+  const shadowTail = Math.ceil(shadowTailSeconds(largestCreep * (soft ? SOFT_CREEP_LAG : 1)) * sampleRate);
   const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES + shadowTail);
   const size = 2 * hop;
   const bins = hop + 1;
@@ -351,6 +377,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   const shadow = largestCreep > 0 ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
   if (shadow) {
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
+    if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
   return { preRoll, hop, size, bins, absorption, layered, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
 }
@@ -415,6 +442,28 @@ function binAbsorption(plan, bin) {
   return path[lower] + (path[lower + 1] - path[lower]) * (at - lower);
 }
 
+/**
+ * The transition frequency of the scene's ground's creeping mode (`creeping.js`) for refraction
+ * radii spaced evenly in log between the smallest and largest of a frame group's shadow paths,
+ * which differ only in wind; a path interpolates between them.
+ */
+function groundCreeping(groundType, speed, smallest, largest) {
+  const rows = largest > smallest * 1.0001 ? CREEPING_RADII : 1;
+  const radii = Float64Array.from({ length: rows }, (_, row) => (rows > 1 ? smallest * (largest / smallest) ** (row / (rows - 1)) : smallest));
+  const transitions = Float64Array.from(radii, radius => creepingTransitionHz(GROUND_FLOW_RESISTIVITY[groundType], speed, radius));
+  return { radii, transitions };
+}
+
+/** The transition frequency for one path's refraction radius, interpolated in log. */
+function pathTransitionHz(ground, radius) {
+  const { radii, transitions } = ground;
+  if (radii.length === 1) return transitions[0];
+  let row = 0;
+  while (row < radii.length - 2 && radius > radii[row + 1]) row += 1;
+  const mix = Math.min(1, Math.max(0, Math.log(radius / radii[row]) / Math.log(radii[row + 1] / radii[row])));
+  return transitions[row] * (transitions[row + 1] / transitions[row]) ** mix;
+}
+
 /** The first bin whose absorption over `metres` is negligible; call after `pathAbsorption` in layered air. */
 function absorptionLimit(plan, metres) {
   let low = 0;
@@ -436,9 +485,11 @@ function absorptionLimit(plan, metres) {
  * impulse response whose tail decays exponentially (class C).
  * The scattered share F of the shadow floor joins it smoothly, (1 − F)·H + F (class C).
  */
-export function shadowResponse(frequencyHz, nepersAtOneHertz, floor) {
+export function shadowResponse(frequencyHz, nepersAtOneHertz, floor, transitionHz = 0) {
   const [loss, lag] = shadowExponent(frequencyHz);
-  return shadowFromExponent(loss, lag, creepingBeta(nepersAtOneHertz), floor);
+  if (!transitionHz) return shadowFromExponent(loss, lag, creepingBeta(nepersAtOneHertz), floor);
+  const [softLoss, softLag] = softExponent(frequencyHz, transitionHz);
+  return shadowFromExponent(loss + softLoss, lag + softLag, creepingBeta(nepersAtOneHertz), floor);
 }
 
 /** β of the creeping response from its loss at 1 Hz: α(1 Hz)·L = (√3/2)·β·(2π)^(1/3). */
@@ -476,6 +527,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const creepNepers = paths.creepNepers[index];
   const { shadow, shadowFloor } = plan;
   const beta = creepNepers > 0 ? creepingBeta(creepNepers) : 0;
+  const transitionHz = creepNepers > 0 && shadow.ground ? pathTransitionHz(shadow.ground, paths.creepRadius[index]) : 0;
   const edgeCount = paths.edgeCount[index];
   const kind = paths.kind[index];
   const reflected = kind === PATH_GROUND;
@@ -562,7 +614,14 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = nextRe;
     }
     if (creepNepers > 0) {
-      const [cRe, cIm] = shadowFromExponent(shadow.loss[bin], shadow.lag[bin], beta, shadowFloor);
+      let loss = shadow.loss[bin];
+      let lag = shadow.lag[bin];
+      if (transitionHz) {
+        const [softLoss, softLag] = softExponent(bin * binHz, transitionHz);
+        loss += softLoss;
+        lag += softLag;
+      }
+      const [cRe, cIm] = shadowFromExponent(loss, lag, beta, shadowFloor);
       const nextRe = re * cRe - im * cIm;
       im = re * cIm + im * cRe;
       re = nextRe;
