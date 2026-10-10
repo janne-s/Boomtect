@@ -231,3 +231,38 @@ test('an echo whose legs pass through the refraction shadow keeps the shadow flo
   const ratio = strongest(kept) / strongest(lit);
   assert.ok(ratio > .5 * floor ** 2 && ratio < 2 * floor ** 2, `${ratio}`);
 });
+
+test('scattered echoes spread over their patches rather than arriving as clicks', async () => {
+  const { fft, nextPowerOfTwo } = await import('../src/domain/fft.js');
+  const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
+  const scene = defaultScene('blast');
+  scene.terrain = terrain(hills, { cells: 120, extentMetres: 6000, scattering: 1 });
+  scene.emitters[0] = { ...scene.emitters[0], chargeKilograms: 1000, secondaryShock: false, fireballDecibels: -60 };
+  scene.receivers[0].positionMetres = { x: 800, y: 0, z: 1.7 };
+  const parsed = parseScene(scene);
+  const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  const samples = result.samples;
+  // 2–8 kHz, where a click stands out; kurtosis per 50 ms window from 0.5 s after the shock.
+  const size = nextPowerOfTwo(2 * samples.length);
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  re.set(samples);
+  fft(re, im);
+  for (let bin = 0; bin < size; bin += 1) {
+    const frequency = Math.min(bin, size - bin) * result.sampleRate / size;
+    if (frequency < 2000 || frequency > 8000) { re[bin] = 0; im[bin] = 0; }
+  }
+  fft(re, im, true);
+  let peak = 0;
+  samples.forEach((value, index) => { if (Math.abs(value) > Math.abs(samples[peak])) peak = index; });
+  const window = Math.round(.05 * result.sampleRate);
+  let largest = 0;
+  for (let start = peak + Math.round(.5 * result.sampleRate); start + window < samples.length; start += window) {
+    let second = 0;
+    let fourth = 0;
+    for (let index = start; index < start + window; index += 1) { second += re[index] ** 2; fourth += re[index] ** 4; }
+    if (second > 0) largest = Math.max(largest, fourth * window / second ** 2);
+  }
+  // Measured: 35 with point copies, 1.7 spread; Gaussian noise gives 3.
+  assert.ok(largest < 8, `${largest}`);
+});

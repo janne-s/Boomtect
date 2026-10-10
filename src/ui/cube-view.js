@@ -210,7 +210,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
     include({ x: 0, y: 0, z: 0 });
-    // The box holds the scene; terrain beyond it fades out (drawTerrain), so only the ground inside sets its depth.
+    const surface = currentSurface();
+    // The box holds the scene and the loaded terrain, so that points can be dragged anywhere on it;
+    // terrain beyond the box fades out (drawTerrain), so only the ground inside sets its depth.
+    if (!surface.flat) {
+      include({ x: -surface.halfExtentMetres, y: -surface.halfExtentMetres, z: 0 });
+      include({ x: surface.halfExtentMetres, y: surface.halfExtentMetres, z: 0 });
+    }
     const pad = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ) * BOX_PADDING;
     const grow = (low, high) => {
       const half = Math.max(high - low, MINIMUM_SPAN_METRES) / 2 + pad;
@@ -218,7 +224,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     };
     const [x0, x1] = grow(minX, maxX);
     const [y0, y1] = grow(minY, maxY);
-    const surface = currentSurface();
     let minZ = 0;
     if (!surface.flat) {
       const { columns, rows, cellMetres } = surface;

@@ -398,7 +398,7 @@ function maximumPathMetres(echo, S, R) {
 function clusterBuffers(field, size) {
   if (!field.clusters || field.clusters.energy.length < size) {
     const length = Math.max(size, 2 * (field.clusters?.energy.length ?? 0));
-    field.clusters = { energy: new Float64Array(length), x: new Float64Array(length), y: new Float64Array(length), cosine: new Float64Array(length) };
+    field.clusters = { energy: new Float64Array(length), x: new Float64Array(length), y: new Float64Array(length), cosine: new Float64Array(length), spread: new Float64Array(length) };
   }
   return field.clusters;
 }
@@ -448,24 +448,29 @@ export function echoPaths(field, S) {
       if (!visibleFromFacet(echo, facet, { x, y, z }, S)) continue;
       const r2 = field.distance[facet];
       const energy = scattering * area * slopeFactor * cosine * field.exitCosine[facet] / Math.PI * ((r1 + r2) / (r1 * r2)) ** 2;
+      // The patch's own spread of arrival times: its width times how fast the path grows across it.
+      const [ax, ay] = pathGradient(S, R, x, y, z, { x: gx, y: gy });
+      const spread = Math.hypot(ax, ay) * echo.spacing / field.profile.groundSpeed;
       const key = Math.floor((r1 + r2) * binsPerMetre) * sectors + field.sector[facet];
       if (clusters.energy[key] === 0) touched.push(key);
       clusters.energy[key] += energy;
       clusters.x[key] += energy * x;
       clusters.y[key] += energy * y;
       clusters.cosine[key] += energy * cosine;
+      clusters.spread[key] += energy * spread;
     }
     for (const key of touched) {
       const energy = clusters.energy[key];
       const x = clusters.x[key] / energy;
       const y = clusters.y[key] / energy;
       const cosine = clusters.cosine[key] / energy;
-      clusters.energy[key] = 0; clusters.x[key] = 0; clusters.y[key] = 0; clusters.cosine[key] = 0;
+      const spreadSeconds = clusters.spread[key] / energy;
+      clusters.energy[key] = 0; clusters.x[key] = 0; clusters.y[key] = 0; clusters.cosine[key] = 0; clusters.spread[key] = 0;
       if (!(energy > 0)) continue;
       const point = { x, y, z: echo.heightAt(x, y) };
       const r1 = Math.hypot(S.x - x, S.y - y, S.z - point.z);
       const r2 = Math.hypot(R.x - x, R.y - y, R.z - point.z);
-      candidates.push({ kind: PATH_SCATTER, energy, point, cosine, r1, r2 });
+      candidates.push({ kind: PATH_SCATTER, energy, point, cosine, r1, r2, spreadSeconds });
     }
   }
 
@@ -488,7 +493,8 @@ export function echoPaths(field, S) {
         spreadMetres: (r1 + r2) / Math.sqrt(candidate.energy) * down.spreadMetres * up.spreadMetres / (r1 * r2) / (down.floor * up.floor),
         departure: { x: (point.x - S.x) / r1, y: (point.y - S.y) / r1, z: (point.z - S.z) / r1 },
         arrival,
-        groundSine: candidate.cosine
+        groundSine: candidate.cosine,
+        spreadSeconds: candidate.spreadSeconds
       });
       continue;
     }

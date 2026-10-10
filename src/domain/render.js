@@ -85,6 +85,13 @@ const SOFT_CREEP_LAG = 3.5;
  * arrive as echoes of their own, which are not traced (class C).
  */
 const END_IMAGE_SECONDS = .02;
+/**
+ * A scattered echo is not one sharp copy: a patch of ground returns its sound over the time its
+ * width adds to the path, and a merged echo gathers patches from across its arrival bin. It is
+ * rendered as this many seeded sub-arrivals of random sign spread over that time, which keeps its
+ * energy at every frequency on average (class C; a point copy sounds as a click).
+ */
+const SCATTER_ARRIVALS = 12;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
@@ -214,7 +221,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     /** Length of the path under a forest's canopy, metres. */
     foliageMetres: new Float64Array(capacity),
     /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
-    roar: new Uint8Array(capacity)
+    roar: new Uint8Array(capacity),
+    /** The time a scattered echo spreads over, seconds, from just before its arrival. */
+    timeSpread: new Float64Array(capacity)
   };
   let room = capacity;
   const grow = () => {
@@ -258,6 +267,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.endSine[2 * index] = path.sourceSine ?? 0;
     paths.endSine[2 * index + 1] = path.receiverSine ?? 0;
     paths.sourceHeight[index] = path.sourceHeight ?? 0;
+    paths.timeSpread[index] = path.timeSpread ?? 0;
     paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
       : foliageMetres(path.metres, sources.z[sourceIndex] - surface.heightAt(sources.x[sourceIndex], sources.y[sourceIndex]), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
@@ -394,7 +404,7 @@ function mergeScattered(merged, cells, cell, path) {
   const energy = (cells.amplitudePaMetres[cell] / path.spreadMetres) ** 2;
   let entry = merged.get(key);
   if (!entry) {
-    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, sourceLift: 0, receiverLift: 0, sourceSine: 0, receiverSine: 0, sourceHeight: 0, foliageMetres: 0, cell, strongest: 0 };
+    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, sourceLift: 0, receiverLift: 0, sourceSine: 0, receiverSine: 0, sourceHeight: 0, foliageMetres: 0, spreadSeconds: 0, cell, strongest: 0 };
     merged.set(key, entry);
   }
   entry.energy += energy;
@@ -407,7 +417,7 @@ function mergeScattered(merged, cells, cell, path) {
   if (energy > entry.strongest) Object.assign(entry, { strongest: energy, cell, seconds: path.seconds });
 }
 
-const MERGED_END_KEYS = Object.freeze(['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight', 'foliageMetres']);
+const MERGED_END_KEYS = Object.freeze(['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight', 'foliageMetres', 'spreadSeconds']);
 
 function mergedPath(entry, cells) {
   const { energy, cell } = entry;
@@ -420,7 +430,9 @@ function mergedPath(entry, cells) {
     departure: arrival,
     arrival,
     groundSine: entry.cosine / energy,
-    ...Object.fromEntries(MERGED_END_KEYS.map(key => [key, entry[key] / energy]))
+    ...Object.fromEntries(MERGED_END_KEYS.map(key => [key, entry[key] / energy])),
+    // Its patches arrive across the bin as well as across their own widths.
+    timeSpread: entry.spreadSeconds / energy + SCATTER_BIN_SECONDS
   };
 }
 
@@ -511,7 +523,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : sources.spanSeconds[source];
-    longestSpan = Math.max(longestSpan, span);
+    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index]);
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
@@ -744,6 +756,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   }
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
+  const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
   const phaseStepIm = Math.sin(phaseStep);
@@ -834,6 +847,21 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       im = re * cIm + im * cRe;
       re = nextRe;
     }
+    if (spreadArrivals) {
+      const { gain: subGain, re: subRe, im: subIm, stepRe, stepIm } = spreadArrivals;
+      let sumRe = 0;
+      let sumIm = 0;
+      for (let k = 0; k < SCATTER_ARRIVALS; k += 1) {
+        sumRe += subGain[k] * subRe[k];
+        sumIm += subGain[k] * subIm[k];
+        const nextRe = subRe[k] * stepRe[k] - subIm[k] * stepIm[k];
+        subIm[k] = subRe[k] * stepIm[k] + subIm[k] * stepRe[k];
+        subRe[k] = nextRe;
+      }
+      const nextRe = re * sumRe - im * sumIm;
+      im = re * sumIm + im * sumRe;
+      re = nextRe;
+    }
     for (let end = 0; end < endCount; end += 1) {
       const { re: gridRe, im: gridIm, rotation } = ends[end];
       const position = gridPosition[bin];
@@ -871,6 +899,27 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     phaseIm = phaseRe * phaseStepIm + phaseIm * phaseStepRe;
     phaseRe = nextPhaseRe;
   }
+}
+
+/**
+ * A scattered echo's sub-arrivals: seeded times across `spread` seconds, from half a merging bin
+ * before its arrival, each of gain ±1/√SCATTER_ARRIVALS, as rotations that start at bin 1.
+ */
+function scatterArrivals(spread, seed, binHz) {
+  const random = createRandom(seed >>> 0);
+  const gain = new Float64Array(SCATTER_ARRIVALS);
+  const re = new Float64Array(SCATTER_ARRIVALS);
+  const im = new Float64Array(SCATTER_ARRIVALS);
+  const stepRe = new Float64Array(SCATTER_ARRIVALS);
+  const stepIm = new Float64Array(SCATTER_ARRIVALS);
+  for (let k = 0; k < SCATTER_ARRIVALS; k += 1) {
+    const delay = random() * spread - SCATTER_BIN_SECONDS / 2;
+    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(SCATTER_ARRIVALS);
+    const step = -2 * Math.PI * binHz * delay;
+    stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
+    re[k] = stepRe[k]; im[k] = stepIm[k];
+  }
+  return { gain, re, im, stepRe, stepIm };
 }
 
 /**

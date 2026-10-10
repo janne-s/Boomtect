@@ -17,8 +17,8 @@ Thunder and Blast are separate modes, each with its own scene.
 ## Scene
 
 - **Box** — The floor is the ground and the two far walls show the scene from
-  the side. The cross on the floor is the origin. Terrain beyond the box fades
-  out.
+  the side. The cross on the floor is the origin. The box holds the scene and
+  all of the loaded terrain.
 - **Points and shadows** — Drag a point to move it horizontally, or its shadow
   on the floor or a wall to move it in that plane.
 - **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
@@ -199,7 +199,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Terrain echoes, scattered | Lambert's law per patch of ground | B |
 | Echoes near the ground | the ground's image at the source and microphone ends, rigid within a blast's nonlinear radius | B/C |
 | Echoes through the shadow | a leg in the refraction shadow keeps the shadow floor, as the direct sound | C |
-| Echo cells and merging | sources pooled in cells; scattered echoes merged by arrival and direction | C |
+| Echo cells and merging | sources pooled in cells; scattered echoes merged by arrival and direction, each spread over its patches' arrival times | C |
 | Turbulence | phase fluctuation of the ground reflection | B/C |
 | Ambisonics | spherical harmonics, AmbiX | A |
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
