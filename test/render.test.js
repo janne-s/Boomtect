@@ -28,7 +28,9 @@ function peak(result, fromSeconds = -Infinity, toSeconds = Infinity) {
 /** A ground flash with the same energy all along and no in-cloud channels, for geometric checks. */
 const uniformChannel = () => ({ ...defaultLightning(), currentDecayHeightMetres: 1e6, inCloudLengthMetres: 0 });
 
-const smallBlast = position => ({ ...defaultBlast(), chargeKilograms: .01, riseTimeSeconds: 1e-4, positionMetres: position });
+/** The shock alone, without its secondary shock and roar, for checks of the shock's own physics. */
+const shockOnly = { secondaryShock: false, fireballDecibels: -60 };
+const smallBlast = position => ({ ...defaultBlast(), ...shockOnly, chargeKilograms: .01, riseTimeSeconds: 1e-4, positionMetres: position });
 
 /** The weak-shock stretch of a scene's first blast after `metres`, by which its peak falls below 1/R. */
 function stretch(value, metres) {
@@ -263,7 +265,7 @@ test('the shadow response is causal, lossless at low frequencies, f^(1/3) creepi
 
 test('a strong blast keeps its shock: grazing over grass it merges with its reflection as over rigid ground, and absorption does not round its front', () => {
   const at = (ground, absorption = true, charge = 10) => {
-    const value = scene({ emitter: { ...defaultBlast(), chargeKilograms: charge, positionMetres: { x: 0, y: 0, z: 1 } }, receivers: [receiverAt('mic', { x: 400, y: 0, z: 1.7 })], ground });
+    const value = scene({ emitter: { ...defaultBlast(), ...shockOnly, chargeKilograms: charge, positionMetres: { x: 0, y: 0, z: 1 } }, receivers: [receiverAt('mic', { x: 400, y: 0, z: 1.7 })], ground });
     value.air.absorption = absorption;
     value.air.turbulenceStrength = 0;
     return render(value).samples;
@@ -291,7 +293,7 @@ test('a strong blast keeps its shock: grazing over grass it merges with its refl
 });
 
 test('a blast ages as a weak shock: its positive phase lengthens as √(1 + σ ln(r/r₀)) and outlasts the linear pulse', () => {
-  const blast = { ...defaultBlast(), positionMetres: { x: 0, y: 0, z: 100 } };
+  const blast = { ...defaultBlast(), ...shockOnly, positionMetres: { x: 0, y: 0, z: 100 } };
   const value = scene({ emitter: blast, receivers: [receiverAt('near', { x: 400, y: 0, z: 100 }), receiverAt('far', { x: 4000, y: 0, z: 100 })] });
   // From the front to the first zero crossing.
   const positivePhase = result => {

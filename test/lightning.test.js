@@ -101,11 +101,15 @@ test('Kinney–Graham overpressure matches a hand evaluation and decays as 1/Z f
   assert.ok(Math.abs(kinneyGrahamOverpressureRatio(500) / kinneyGrahamOverpressureRatio(1000) - 2) < .02);
 });
 
-test('a blast is one point source at its linearization radius and onset', () => {
+test('a blast is its shock, a secondary shock of 4 % of the charge, and a roar, at its linearization radius and onset', () => {
   const sources = blastSources({ ...defaultBlast(), startSeconds: 2 }, air);
-  assert.equal(sources.length, 1);
-  assert.equal(sources[0].emissionSeconds, 2);
+  assert.deepEqual(sources.map(source => source.pulse), ['friedlander', 'friedlander', 'noise']);
+  assert.ok(sources.every(source => source.emissionSeconds === 2));
   assert.ok(Math.abs(sources[0].linearRadiusMetres - 20 * Math.cbrt(10)) < 1e-9);
+  // A smaller charge's shock: amplitude and duration scale with the cube root of the share.
+  assert.ok(Math.abs(sources[1].amplitudePaMetres / sources[0].amplitudePaMetres - Math.cbrt(.04)) < 1e-9);
+  assert.ok(Math.abs(sources[2].amplitudePaMetres / sources[0].amplitudePaMetres - .1) < 1e-9);
+  assert.equal(blastSources({ ...defaultBlast(), secondaryShock: false, fireballDecibels: -60 }, air).length, 1);
   assert.ok(speedOfSoundMetresPerSecond(air.temperatureCelsius) > 0);
 });
 

@@ -2,12 +2,13 @@ import {
   ISA_LAPSE_RATE_KELVIN_PER_METRE, MAXIMUM_EMITTERS, MAXIMUM_HEIGHT_METRES, MAXIMUM_RECEIVERS, MODEL_VERSION, SAMPLE_RATE_HZ, SCENE_EXTENT_METRES
 } from './constants.js';
 import { EMITTER_KINDS } from './emitters.js';
+import { EXPLOSIVE_TYPES } from './explosives.js';
 import { GROUND_TYPES } from './ground.js';
 import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 13;
+export const SCENE_VERSION = 14;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -88,6 +89,8 @@ export const PARAMETERS = Object.freeze({
   linearScaledDistance: { minimum: 5, maximum: 100, unit: 'm/kg^⅓', label: 'Linearization distance', reliability: 'C' },
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
+  fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
+  fireballSecondsPerCubeRootKilogram: { minimum: .05, maximum: 3, unit: 's/kg^⅓', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
@@ -110,7 +113,7 @@ const STORM_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres',
   'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS, ...GROUND_FLASH_NUMBERS
 ]);
-const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
+const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds', 'fireballDecibels', 'fireballSecondsPerCubeRootKilogram']);
 
 export class SceneError extends Error {}
 
@@ -197,6 +200,10 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
     startSeconds: 0,
     positionMetres: { x: 0, y: 0, z: 1 },
     chargeKilograms: 10,
+    explosive: 'tnt',
+    secondaryShock: true,
+    fireballDecibels: -20,
+    fireballSecondsPerCubeRootKilogram: .7,
     linearScaledDistance: 20,
     durationSecondsPerCubeRootKilogram: .006,
     decay: 1,
@@ -272,7 +279,9 @@ function emitter(value, index) {
   check(isSeed(value.seed), `${path}.seed must be a 32-bit unsigned integer.`);
   const common = { id: text(value.id, `${path}.id`), name: text(value.name, `${path}.name`), kind: value.kind, enabled: value.enabled, seed: value.seed };
   if (value.kind === 'blast') {
-    return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, BLAST_NUMBERS, path) };
+    check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
+    check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
+    return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BLAST_NUMBERS, path) };
   }
   if (value.kind === 'storm') {
     const storm = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, STORM_NUMBERS, path) };

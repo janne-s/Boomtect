@@ -38,12 +38,16 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Cloud flash** — A channel inside the cloud; its sound spreads out in time.
 - **Storm** — Ground and cloud flashes over an area, a time span, and a cloud
   layer.
-- **Blast** — An explosion of a given charge.
+- **Blast** — An explosion of a given charge: its shock, the secondary shock
+  that follows it, and the roar of its fireball and debris.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
-  flash; size, duration, flashes, ground share, and cloud layer for a storm.
+  flash; size, duration, flashes, ground share, and cloud layer for a storm;
+  charge, height, and fireball for a blast.
   Each sets several parameters at once.
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).
+- **Explosive** — A blast's explosive, which times its secondary shock. The
+  charge stays a TNT equivalent.
 - **New shape** — Draws a new random seed.
 - **Variant** — Copies the emitter with a new seed and switches the original
   off.
@@ -182,6 +186,8 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
 | Blast aging | weak shock of a spherical wave: positive phase grows as `√(1 + σ·ln(r/r₀))`, peak falls by as much; a merged ground front ages as twice the pressure | B/C |
+| Secondary shock | delay by the explosive's detonation velocity and density (Rigby & Gitterman); a 4 % charge's shock | B |
+| Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |

@@ -63,7 +63,8 @@ export function sourceCells(sources, cellMetres) {
     let place = placeIndex.get(where);
     if (place === undefined) { place = placeMembers.length; placeIndex.set(where, place); placeMembers.push([]); }
     placeMembers[place].push(source);
-    const key = `${where},${Math.floor(sources.emissionSeconds[source] / CELL_SECONDS)}`;
+    // A blast's shock, secondary shock, and roar keep cells of their own: they differ in pulse and delay.
+    const key = `${where},${Math.floor(sources.emissionSeconds[source] / CELL_SECONDS)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0}`;
     let cell = index.get(key);
     if (cell === undefined) { cell = members.length; index.set(key, cell); members.push([]); placeOf.push(place); }
     members[cell].push(source);
@@ -90,7 +91,10 @@ export function sourceCells(sources, cellMetres) {
     elementMetres: new Float64Array(length),
     emissionSeconds: new Float64Array(length),
     amplitudePaMetres: new Float64Array(length),
-    friedlander: new Uint8Array(length),
+    pulse: new Uint8Array(length),
+    noiseSeed: new Uint32Array(length),
+    secondaryDelaySeconds: new Float64Array(length),
+    secondaryCubeRoot: new Float64Array(length),
     durationSeconds: new Float64Array(length),
     decay: new Float64Array(length),
     spanSeconds: new Float64Array(length),
@@ -110,7 +114,7 @@ export function sourceCells(sources, cellMetres) {
       table[key][cell] = sum;
     }
     table.amplitudePaMetres[cell] = Math.sqrt(energy);
-    table.friedlander[cell] = sources.friedlander[list[0]];
+    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot']) table[key][cell] = sources[key][list[0]];
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);

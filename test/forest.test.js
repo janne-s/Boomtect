@@ -10,6 +10,8 @@ const SAMPLE_RATE = 48000;
 function forestBlast({ distance = 400, forest = true } = {}) {
   const scene = defaultScene('blast');
   scene.ground = { ...scene.ground, forest };
+  // The shock alone, so that the tail is the forest's.
+  scene.emitters[0] = { ...scene.emitters[0], secondaryShock: false, fireballDecibels: -60 };
   scene.receivers[0].positionMetres = { x: distance, y: 0, z: 1.7 };
   return parseScene(scene);
 }

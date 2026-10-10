@@ -1,4 +1,6 @@
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
+import { SECONDARY_MASS_SHARE, secondaryShockFactors } from './explosives.js';
+import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
@@ -15,29 +17,43 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
 }
 
 /**
- * A blast as one point source with a Friedlander waveform. Its amplitude comes from the Kinney &
- * Graham fit at the linearization scaled distance, from where propagation is linear (class B).
- * The positive phase scales with the cube root of the charge (Hopkinson–Cranz, class B) from a
- * reference duration (class C until the Kinney & Graham duration fit is verified).
+ * A blast as point sources at one place: its shock, its secondary shock, and its roar. The shock is a
+ * Friedlander pulse whose amplitude comes from the Kinney & Graham fit at the linearization scaled
+ * distance, from where propagation is linear (class B). The positive phase scales with the cube
+ * root of the charge (Hopkinson–Cranz, class B) from a reference duration (class C until the
+ * Kinney & Graham duration fit is verified). The secondary shock is the same pulse of a smaller
+ * charge, delayed per path by the explosive's fit (`explosives.js`); the roar is a seeded noise
+ * burst at a level against the shock's amplitude at the same distance (`fireball.js`).
  */
+/** The Fireball level at which a blast has no roar. */
+export const FIREBALL_OFF_DECIBELS = -60;
+
 export function blastSources(emitter, air, surface = null) {
-  const cubeRoot = Math.cbrt(emitter.chargeKilograms);
-  const linearRadiusMetres = emitter.linearScaledDistance * cubeRoot;
-  const overpressurePa = air.pressureKpa * 1000 * kinneyGrahamOverpressureRatio(emitter.linearScaledDistance);
-  const durationSeconds = emitter.durationSecondsPerCubeRootKilogram * cubeRoot;
-  return [{
-    flash: 0,
-    positionMetres: surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres,
-    direction: null,
-    elementMetres: 0,
-    emissionSeconds: emitter.startSeconds,
-    amplitudePaMetres: overpressurePa * linearRadiusMetres,
-    pulse: 'friedlander',
-    durationSeconds,
-    decay: emitter.decay,
-    spanSeconds: friedlanderSpanSeconds(durationSeconds, emitter.decay),
-    linearRadiusMetres
-  }];
+  const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
+  const shock = kilograms => {
+    const cubeRoot = Math.cbrt(kilograms);
+    const linearRadiusMetres = emitter.linearScaledDistance * cubeRoot;
+    const overpressurePa = air.pressureKpa * 1000 * kinneyGrahamOverpressureRatio(emitter.linearScaledDistance);
+    const durationSeconds = emitter.durationSecondsPerCubeRootKilogram * cubeRoot;
+    return {
+      flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds,
+      amplitudePaMetres: overpressurePa * linearRadiusMetres,
+      pulse: 'friedlander', durationSeconds, decay: emitter.decay,
+      spanSeconds: friedlanderSpanSeconds(durationSeconds, emitter.decay),
+      linearRadiusMetres
+    };
+  };
+  const primary = shock(emitter.chargeKilograms);
+  const secondary = { ...shock(SECONDARY_MASS_SHARE * emitter.chargeKilograms), secondaryShock: secondaryShockFactors(emitter.explosive, emitter.chargeKilograms) };
+  const roarSeconds = emitter.fireballSecondsPerCubeRootKilogram * Math.cbrt(emitter.chargeKilograms);
+  const roar = {
+    flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds,
+    amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * primary.amplitudePaMetres,
+    pulse: 'noise', noiseSeed: emitter.seed, durationSeconds: roarSeconds, decay: 0,
+    spanSeconds: fireballSpanSeconds(roarSeconds), linearRadiusMetres: 0
+  };
+  // The roar's lowest level means none; the secondary shock can be switched off.
+  return [primary, ...(emitter.secondaryShock ? [secondary] : []), ...(emitter.fireballDecibels > FIREBALL_OFF_DECIBELS ? [roar] : [])];
 }
 
 /**

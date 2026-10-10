@@ -4,7 +4,9 @@ import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, KELVIN_OFFSET, MAXIMUM_REN
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
 import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES } from './forest.js';
-import { sourcePosition, sourceTable } from './source-table.js';
+import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
+import { secondaryShockDelay } from './explosives.js';
+import { fireballSpectrum } from './fireball.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
@@ -236,7 +238,8 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.spreadMetres[index] = path.spreadMetres / impedance;
     paths.creepNepers[index] = path.creepNepers ?? 0;
     paths.creepRadius[index] = path.creepRadius ?? 0;
-    paths.seconds[index] = sources.emissionSeconds[sourceIndex] + path.seconds;
+    paths.seconds[index] = sources.emissionSeconds[sourceIndex] + path.seconds
+      + (sources.secondaryDelaySeconds[sourceIndex] > 0 ? secondaryShockDelay(sources.secondaryDelaySeconds[sourceIndex], sources.secondaryCubeRoot[sourceIndex], path.metres) : 0);
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
       ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
@@ -254,7 +257,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
       const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
       paths.duration[index] = pulse.durationSeconds;
       paths.amplitudeScale[index] = pulse.amplitudeScale;
-    } else if (sources.friedlander[sourceIndex]) {
+    } else if (sources.pulse[sourceIndex] === PULSE_FRIEDLANDER) {
       const lift = sources.z[sourceIndex] - surface.heightAt(sources.x[sourceIndex], sources.y[sourceIndex]);
       const stretch = blastStretch(sources, sourceIndex, path.metres, shockImpedance, lift);
       paths.duration[index] = sources.durationSeconds[sourceIndex] * stretch;
@@ -493,7 +496,11 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   for (let index = 0; index < paths.count; index += 1) {
     if (frameGroup(paths, index) !== group) continue;
     const source = paths.source[index];
-    longestSpan = Math.max(longestSpan, sources.relaxationRadius[source] > 0 ? paths.duration[index] : sources.spanSeconds[source]);
+    // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase.
+    const span = sources.relaxationRadius[source] > 0 ? paths.duration[index]
+      : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
+        : sources.spanSeconds[source];
+    longestSpan = Math.max(longestSpan, span);
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
@@ -685,7 +692,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // Absorption beyond the steady shock's own smoothing is undone by steepening: the loss is capped at
   // that of a front rising in SHOCK_RISE_PASCAL_SECONDS / Δp, as far as the pulse is still a shock.
   const riseSeconds = SHOCK_RISE_PASCAL_SECONDS / gain;
-  const shock = smoothStep((paths.duration[index] / riseSeconds - OLD_AGE_DURATION_RATIO) / (SHOCK_DURATION_RATIO - OLD_AGE_DURATION_RATIO));
+  // A blast's roar is no shock.
+  const pulseKind = sources.pulse[sourceIndex];
+  const shock = pulseKind === PULSE_NOISE ? 0 : smoothStep((paths.duration[index] / riseSeconds - OLD_AGE_DURATION_RATIO) / (SHOCK_DURATION_RATIO - OLD_AGE_DURATION_RATIO));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
   const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
@@ -739,7 +748,11 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let directivityIm = directivityStepIm;
 
   const omegaStep = 2 * Math.PI * binHz;
-  const nWave = sources.friedlander[sourceIndex] === 0;
+  const nWave = pulseKind === PULSE_NWAVE;
+  // The roar comes from the whole moving fireball and debris cloud, so its ground reflection does not
+  // interfere with it as a point's would: the reflection is noise of its own seed (class C).
+  const noiseSeed = (sources.noiseSeed[sourceIndex] + (paths.kind[index] === PATH_GROUND ? 1 : 0)) >>> 0;
+  const noise = pulseKind === PULSE_NOISE ? fireballSpectrum(noiseSeed, paths.duration[index], size, binHz * size) : null;
   const duration = paths.duration[index];
   const pulseStep = omegaStep * duration;
   const pulseStepRe = Math.cos(pulseStep);
@@ -752,7 +765,10 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     const omega = omegaStep * bin;
     let re;
     let im;
-    if (nWave) {
+    if (noise) {
+      re = noise.re[bin];
+      im = noise.im[bin];
+    } else if (nWave) {
       const x = pulseStep * bin;
       if (x < SMALL_ARGUMENT) {
         re = 0;

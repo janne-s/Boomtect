@@ -144,9 +144,16 @@ const blastHeight = {
   show: item => metres(item.positionMetres.z)
 };
 
+const fireball = {
+  label: 'Fireball',
+  read: item => clamp01((item.fireballDecibels - range('fireballDecibels')[0]) / (range('fireballDecibels')[1] - range('fireballDecibels')[0])),
+  write: (item, t) => { const [low, high] = range('fireballDecibels'); item.fireballDecibels = Math.round(low + t * (high - low)); },
+  show: item => `${item.fireballDecibels} dB`
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
   if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
-  return [charge, blastHeight];
+  return [charge, blastHeight, fireball];
 }

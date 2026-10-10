@@ -19,8 +19,12 @@ export function sourceTable(sources) {
     elementMetres: new Float64Array(length),
     emissionSeconds: new Float64Array(length),
     amplitudePaMetres: new Float64Array(length),
-    /** 1 for a Friedlander pulse, 0 for an N-wave. */
-    friedlander: new Uint8Array(length),
+    /** PULSE_NWAVE, PULSE_FRIEDLANDER, or PULSE_NOISE (a blast's roar, from its seed). */
+    pulse: new Uint8Array(length),
+    noiseSeed: new Uint32Array(length),
+    /** A secondary shock's delay factors (`explosives.js`); 0 for any other source. */
+    secondaryDelaySeconds: new Float64Array(length),
+    secondaryCubeRoot: new Float64Array(length),
     durationSeconds: new Float64Array(length),
     decay: new Float64Array(length),
     spanSeconds: new Float64Array(length),
@@ -44,7 +48,12 @@ export function sourceTable(sources) {
     table.elementMetres[index] = source.elementMetres;
     table.emissionSeconds[index] = source.emissionSeconds;
     table.amplitudePaMetres[index] = source.amplitudePaMetres;
-    table.friedlander[index] = source.pulse === 'friedlander' ? 1 : 0;
+    table.pulse[index] = PULSE_CODES[source.pulse];
+    table.noiseSeed[index] = source.noiseSeed ?? 0;
+    if (source.secondaryShock) {
+      table.secondaryDelaySeconds[index] = source.secondaryShock.delaySeconds;
+      table.secondaryCubeRoot[index] = source.secondaryShock.cubeRootKilograms;
+    }
     table.durationSeconds[index] = source.durationSeconds;
     table.decay[index] = source.decay;
     table.spanSeconds[index] = source.spanSeconds;
@@ -57,5 +66,10 @@ export function sourceTable(sources) {
   });
   return table;
 }
+
+export const PULSE_NWAVE = 0;
+export const PULSE_FRIEDLANDER = 1;
+export const PULSE_NOISE = 2;
+const PULSE_CODES = Object.freeze({ 'n-wave': PULSE_NWAVE, friedlander: PULSE_FRIEDLANDER, noise: PULSE_NOISE });
 
 export const sourcePosition = (table, index) => ({ x: table.x[index], y: table.y[index], z: table.z[index] });

@@ -1,4 +1,5 @@
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
+import { EXPLOSIVE_TYPES, EXPLOSIVES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
@@ -845,7 +846,15 @@ function detailSections(emitter) {
       placement(container);
       pointFields(container, { label: 'Position', point: emitter.positionMetres, onCommit: set('positionMetres') });
     }),
-    section('Source', numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']))
+    section('Source', container => {
+      selectField(container, {
+        label: 'Explosive', value: emitter.explosive, reliability: 'B',
+        options: EXPLOSIVE_TYPES.map(type => [type, EXPLOSIVES[type].label]), onCommit: set('explosive')
+      });
+      numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
+      checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
+    }),
+    section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerCubeRootKilogram']))
   ];
 }
 
