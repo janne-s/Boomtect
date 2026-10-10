@@ -169,7 +169,7 @@ microphone along the Mach cone.
 
 **Export** packs the chosen files, several of them in a ZIP:
 
-- **Scene** — The full scene as JSON, with the files, the time of their first
+- **Scene (JSON)** — The full scene as JSON, with the files, the time of their first
   sample after the flash, and the pascals at full scale. It opens as a scene.
 - **Stereo** — What plays, in two channels: mono on both, a pair left and right,
   more microphones panned, binaural as heard on headphones.

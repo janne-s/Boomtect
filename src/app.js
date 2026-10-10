@@ -1730,7 +1730,7 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
-const EXPORT_LABELS = Object.freeze({ scene: 'Scene', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics' });
+const EXPORT_LABELS = Object.freeze({ scene: 'Scene (JSON)', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics' });
 const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
 let exportState = null;
 
