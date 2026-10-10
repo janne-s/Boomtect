@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 8;
+export const SCENE_VERSION = 9;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -39,6 +39,9 @@ export const PARAMETERS = Object.freeze({
   longitude: { minimum: -180, maximum: 180, unit: '°', label: 'Longitude', reliability: null },
   terrainExtentMetres: { minimum: 500, maximum: 20000, unit: 'm', label: 'Area', reliability: null },
   terrainCellMetres: { minimum: 5, maximum: 200, unit: 'm', label: 'Resolution', reliability: null },
+  scattering: { minimum: 0, maximum: 1, unit: '', label: 'Scattering', reliability: 'C' },
+  echoCellMetres: { minimum: 25, maximum: 500, unit: 'm', label: 'Echo cells', reliability: 'C' },
+  echoLimit: { minimum: 10, maximum: 2000, unit: '', label: 'Echoes per cell', reliability: 'C', integer: true },
   coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
   heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
   startSeconds: { minimum: 0, maximum: 240, unit: 's', label: 'Onset', reliability: null },
@@ -193,6 +196,9 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
   };
 }
 
+/** The terrain switches and echo settings a new capture starts with. */
+export const TERRAIN_DEFAULTS = Object.freeze({ enabled: true, shielding: true, echoes: true, scattering: .5, echoCellMetres: 100, echoLimit: 500 });
+
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
@@ -288,7 +294,7 @@ function emitter(value, index) {
 function terrain(value) {
   if (value === null || value === undefined) return null;
   check(typeof value === 'object', 'terrain must be an object or null.');
-  check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean', 'terrain.enabled and terrain.shielding must be true or false.');
+  check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean' && typeof value.echoes === 'boolean', 'terrain.enabled, terrain.shielding, and terrain.echoes must be true or false.');
   check(typeof value.place === 'string' && value.place.length <= 120, 'terrain.place must be a short text.');
   const grid = key => {
     check(Number.isInteger(value[key]) && value[key] >= 2 && value[key] <= MAXIMUM_TERRAIN_CELLS, `terrain.${key} must be a whole number of cells.`);
@@ -312,6 +318,8 @@ function terrain(value) {
   return {
     enabled: value.enabled,
     shielding: value.shielding,
+    echoes: value.echoes,
+    ...numbers(value, ['scattering', 'echoCellMetres', 'echoLimit'], 'terrain'),
     place: value.place,
     names,
     latitude: number(value.latitude, 'latitude', 'terrain.latitude'),

@@ -36,6 +36,9 @@ const ROUNDING = 1e-12;
 export const PATH_DIRECT = 0;
 export const PATH_GROUND = 1;
 export const PATH_SHADOW = 2;
+/** Terrain echoes: specular reflection and merged Lambertian scattering (`terrain-echoes.js`). */
+export const PATH_ECHO = 3;
+export const PATH_SCATTER = 4;
 
 /** The linear sound-speed profile of the scene's air: ground speed c₀ and gradient g. */
 export function soundSpeedProfile(air) {
@@ -57,6 +60,19 @@ function asinhRatio(x) {
 /** θ/sin θ for the arc length of a circular arc from its chord, accurate near zero. */
 function arcRatio(half) {
   return half < 1e-4 ? 1 + half * half / 6 : half / Math.sin(half);
+}
+
+/**
+ * Travel time and spreading distance of the ray between two points, as `rayBetween` gives them,
+ * without its directions, for paths traced in large numbers.
+ */
+export function rayTiming(profile, a, b) {
+  const distance = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  const speedA = speedAt(profile, a.z);
+  const speedB = speedAt(profile, b.z);
+  const mean = Math.sqrt(speedA * speedB);
+  const x = Math.abs(profile.gradient) * distance / (2 * mean);
+  return { seconds: distance / mean * asinhRatio(x), spreadMetres: distance * Math.sqrt(speedB / speedA) * Math.sqrt(1 + x * x) };
 }
 
 /**

@@ -1,0 +1,172 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
+import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
+import { defaultBlast, defaultScene, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
+import { sourceTable } from '../src/domain/source-table.js';
+import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
+import { echoPaths, CELL_SECONDS, clearBetween, echoField, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+
+function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
+  const cellMetres = extentMetres / cells;
+  const values = new Float32Array(cells * cells);
+  for (let row = 0; row < cells; row += 1) {
+    for (let column = 0; column < cells; column += 1) {
+      values[row * cells + column] = height((column + .5 - cells / 2) * cellMetres, (row + .5 - cells / 2) * cellMetres);
+    }
+  }
+  return { ...TERRAIN_DEFAULTS, ...settings, place: '', names: [], latitude: 61.5, longitude: 23.8, extentMetres, cellMetres, zoom: 13, columns: cells, rows: cells, heights: encodeHeights(values) };
+}
+
+const pointSource = (position, { amplitude = 1, emission = 0 } = {}) => ({
+  positionMetres: position, direction: null, elementMetres: 0, emissionSeconds: emission, amplitudePaMetres: amplitude,
+  pulse: 'nwave', durationSeconds: .01, decay: 0, spanSeconds: .01, linearRadiusMetres: 1, weakShock: null
+});
+
+const homogeneous = { groundSpeed: 340, gradient: 0 };
+const mirror = (point, normal, offset) => {
+  const above = point.x * normal.x + point.y * normal.y + point.z * normal.z - offset;
+  return { x: point.x - 2 * above * normal.x, y: point.y - 2 * above * normal.y, z: point.z - 2 * above * normal.z };
+};
+
+test('the specular point on a sloping plane gives its image path to 1e-6 m, with no focusing', () => {
+  // Ground z = 0.2·x + 0.05·y + 300 m.
+  const surface = terrainSurface(terrain((x, y) => .2 * x + .05 * y + 300));
+  const echo = echoSurface(surface);
+  const S = { x: -800, y: 300, z: 1500 };
+  const R = { x: 600, y: -200, z: 900 };
+  const length = Math.hypot(.2, .05, 1);
+  const normal = { x: -.2 / length, y: -.05 / length, z: 1 / length };
+  const image = mirror(S, normal, (300 - surface.datumMetres) / length);
+  const points = specularPoints(echo, S, R);
+  assert.equal(points.length, 1);
+  const [{ point, focusing }] = points;
+  const path = Math.hypot(S.x - point.x, S.y - point.y, S.z - point.z) + Math.hypot(R.x - point.x, R.y - point.y, R.z - point.z);
+  assert.ok(Math.abs(path - Math.hypot(R.x - image.x, R.y - image.y, R.z - image.z)) < 1e-6, `${path}`);
+  assert.ok(Math.abs(focusing - 1) < 1e-6, `${focusing}`);
+});
+
+test('an echo from a slope beyond level ground arrives along its image path, 2 000 m', () => {
+  // A 56° slope rising from x = 800 m; the point P on it reflects S to R by construction.
+  const surface = terrainSurface(terrain(x => Math.max(0, 1.5 * (x - 800))));
+  const P = { x: 1000, y: 0, z: 300 };
+  const normalAngle = Math.atan2(1, -1.5);
+  const toward = (angle, metres) => ({ x: P.x + metres * Math.cos(angle), y: 0, z: P.z + metres * Math.sin(angle) });
+  const S = toward(normalAngle + Math.PI / 6, 1200);
+  const R = toward(normalAngle - Math.PI / 6, 800);
+  const field = echoField(surface, homogeneous, R, { scattering: 0, limit: 10 });
+  const paths = echoPaths(field, S);
+  // The strongest echo; the rounded foot of the slope adds a weaker one, convex and so spread out.
+  assert.ok(paths.every(path => path.kind === PATH_ECHO));
+  assert.ok(paths.slice(1).every(path => path.spreadMetres > 3 * 2000));
+  assert.ok(Math.abs(paths[0].seconds - 2000 / 340) < 1e-9, `${paths[0].seconds * 340}`);
+  assert.ok(Math.abs(paths[0].spreadMetres - 2000) < 1e-6);
+  assert.ok(Math.abs(paths[0].groundSine - Math.cos(Math.PI / 6)) < 1e-9);
+});
+
+test('on level terrain the only specular point is the ground reflection, which is left to the ground', () => {
+  const scene = defaultScene('blast');
+  scene.terrain = terrain(() => 120, { scattering: 0 });
+  const prepared = prepareScene(scene);
+  const paths = receiverPaths(prepared, scene.receivers[0], scene);
+  const kinds = paths.kind.slice(0, paths.count);
+  assert.ok(!kinds.includes(PATH_ECHO) && !kinds.includes(PATH_SCATTER));
+});
+
+test('scattered echoes from a level plane add up to the Lambertian integral within 3 %', () => {
+  const surface = terrainSurface(terrain(() => 0, { cells: 200, extentMetres: 4000 }));
+  const S = { x: -300, y: 0, z: 400 };
+  const R = { x: 300, y: 100, z: 50 };
+  const field = echoField(surface, homogeneous, R, { scattering: 1, limit: 100000 });
+  let sum = 0;
+  for (const path of echoPaths(field, S)) {
+    assert.equal(path.kind, PATH_SCATTER);
+    sum += path.spreadMetres ** -2;
+  }
+  // The same law integrated finely over the plane, outside the ground under the receiver:
+  // ∫ cosθᵢ·cosθₒ / (π r₁² r₂²) dA.
+  const step = 2;
+  const exclusion = 1.5 * echoSurface(surface).spacing;
+  let integral = 0;
+  for (let x = -2000 + step / 2; x < 2000; x += step) {
+    for (let y = -2000 + step / 2; y < 2000; y += step) {
+      if (Math.hypot(x - R.x, y - R.y) < exclusion) continue;
+      const r1 = Math.hypot(x - S.x, y - S.y, S.z);
+      const r2 = Math.hypot(x - R.x, y - R.y, R.z);
+      integral += (S.z / r1) * (R.z / r2) / (Math.PI * r1 * r1 * r2 * r2) * step * step;
+    }
+  }
+  assert.ok(Math.abs(sum / integral - 1) < .03, `${sum} vs ${integral}`);
+});
+
+test('source cells keep the total energy and keep strokes apart', () => {
+  const sources = sourceTable([
+    pointSource({ x: 10, y: 10, z: 1010 }, { amplitude: 3 }),
+    pointSource({ x: 50, y: 20, z: 1050 }, { amplitude: 4 }),
+    pointSource({ x: 50, y: 20, z: 1050 }, { amplitude: 2, emission: 2 * CELL_SECONDS }),
+    pointSource({ x: 250, y: 20, z: 1050 }, { amplitude: 1 })
+  ]);
+  const cells = sourceCells(sources, 100);
+  assert.equal(cells.length, 3);
+  assert.ok(Math.abs(cells.amplitudePaMetres[0] - 5) < 1e-12);
+  assert.ok(Math.abs(cells.x[0] - (9 * 10 + 16 * 50) / 25) < 1e-9);
+  let total = 0;
+  for (let cell = 0; cell < cells.length; cell += 1) total += cells.amplitudePaMetres[cell] ** 2;
+  assert.ok(Math.abs(total - 30) < 1e-9);
+  assert.equal(cells.emissionSeconds[1], 2 * CELL_SECONDS);
+  // The later stroke shares its place, and the echo geometry traced from it, with the first.
+  assert.equal(cells.places.length, 2);
+  assert.equal(cells.place[0], cells.place[1]);
+  assert.ok(Math.abs(cells.places.x[0] - (9 * 10 + 16 * 50 + 4 * 50) / 29) < 1e-9);
+});
+
+test('the horizon test agrees with tracing the line in at least 98 % of facet–point pairs over hills', () => {
+  const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
+  const surface = terrainSurface(terrain(hills, { cells: 150, extentMetres: 6000 }));
+  const echo = echoSurface(surface);
+  const datum = surface.datumMetres;
+  let agree = 0;
+  const trials = 2000;
+  let seed = 7;
+  const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  for (let trial = 0; trial < trials; trial += 1) {
+    const point = { x: (random() - .5) * 5800, y: (random() - .5) * 5800, z: 0 };
+    point.z = hills(point.x, point.y) - datum + random() * 600;
+    const R = { x: point.x, y: point.y, z: point.z };
+    const field = echoField(surface, homogeneous, R, { scattering: 1, limit: 1 });
+    const facet = Math.floor(random() * echo.count);
+    const facetPoint = { x: echo.centreX(facet), y: echo.centreY(facet), z: echo.heights[facet] };
+    if (Math.hypot(facetPoint.x - R.x, facetPoint.y - R.y) < 1.5 * echo.spacing) { agree += 1; continue; }
+    const traced = clearBetween(echo, facetPoint, R);
+    const facing = (-echo.gradientX[facet] * (R.x - facetPoint.x) - echo.gradientY[facet] * (R.y - facetPoint.y) + (R.z - facetPoint.z)) > 0;
+    const listed = field.visible.includes(facet);
+    if (listed === (traced && facing)) agree += 1;
+  }
+  assert.ok(agree / trials >= .98, `${agree} of ${trials}`);
+});
+
+test('echoes over hills render finite, reproducible, and later than the direct sound', () => {
+  const hills = (x, y) => 150 + 250 * Math.exp(-((x - 1200) ** 2 + y ** 2) / 5e5);
+  const scene = defaultScene('blast');
+  scene.emitters = [{ ...defaultBlast(), positionMetres: { x: -300, y: 0, z: 2 } }];
+  scene.receivers[0].positionMetres = { x: 300, y: 0, z: 1.7 };
+  scene.terrain = terrain(hills, { scattering: .5, echoLimit: 100 });
+  const parsed = parseScene(scene);
+  const prepared = prepareScene(parsed);
+  const paths = receiverPaths(prepared, parsed.receivers[0], parsed);
+  const echoes = [];
+  let direct = Infinity;
+  for (let index = 0; index < paths.count; index += 1) {
+    if (paths.kind[index] === PATH_ECHO || paths.kind[index] === PATH_SCATTER) echoes.push(paths.seconds[index]);
+    else direct = Math.min(direct, paths.seconds[index]);
+  }
+  assert.ok(echoes.length > 10);
+  assert.ok(echoes.every(seconds => seconds > direct));
+  const first = renderReceiver(prepared, parsed.receivers[0], parsed);
+  const again = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  assert.ok(first.samples.every(Number.isFinite));
+  assert.deepEqual(first.samples, again.samples);
+  const quiet = renderReceiver(prepareScene({ ...parsed, terrain: { ...parsed.terrain, echoes: false } }), parsed.receivers[0], parsed);
+  const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
+  assert.ok(energy(first.samples) > energy(quiet.samples));
+});

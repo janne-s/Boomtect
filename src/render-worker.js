@@ -1,16 +1,26 @@
-import { prepareScene, renderReceiverRange } from './domain/render.js';
+import { arrivalTable, prepareScene, renderReceiverRange } from './domain/render.js';
 import { parseScene } from './domain/scene.js';
 
-/** Renders every receiver for the paths that arrive in [fromSeconds, toSeconds). */
+/**
+ * `arrivals`: the arrival tables of the given receivers. `render`: the given receivers for the
+ * paths that arrive in [fromSeconds, toSeconds).
+ */
 self.addEventListener('message', ({ data }) => {
-  const { revision, scene: value, fromSeconds, toSeconds } = data;
+  const { revision, type, scene: value } = data;
   try {
     const scene = parseScene(value);
     const prepared = prepareScene(scene);
-    const segments = scene.receivers.map((receiver, index) => {
+    if (type === 'arrivals') {
+      const tables = data.receivers.map(index => arrivalTable(prepared, scene.receivers[index], scene));
+      self.postMessage({ revision, type: 'result', tables }, tables.flatMap(table => [table.seconds.buffer, table.heights.buffer, table.levels.buffer, table.kinds.buffer]));
+      return;
+    }
+    const segments = data.receivers.map((receiverIndex, index) => {
+      const receiver = scene.receivers[receiverIndex];
       const segment = renderReceiverRange(prepared, receiver, scene, {
-        fromSeconds, toSeconds,
-        onProgress: (done, total) => self.postMessage({ revision, type: 'progress', fraction: (index + done / total) / scene.receivers.length })
+        fromSeconds: data.fromSeconds,
+        toSeconds: data.toSeconds,
+        onProgress: (done, total) => self.postMessage({ revision, type: 'progress', fraction: (index + done / total) / data.receivers.length })
       });
       return { receiverId: receiver.id, ...segment };
     });

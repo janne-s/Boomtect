@@ -42,20 +42,40 @@ export function delanyBazleyImpedance(frequencyHz, flowResistivityKpaSecondsPerS
  * `cosIncidence` is the cosine of the angle from the ground normal; `imagePathMetres` is the
  * image-source path length R2.
  */
-export function sphericalReflectionCoefficient(frequencyHz, groundType, cosIncidence, imagePathMetres, speedOfSound) {
-  if (groundType === 'rigid' || frequencyHz <= 0) return [1, 0];
+/**
+ * Class B: plane-wave reflection coefficient Rp = (cos θ − β)/(cos θ + β) of a locally reacting
+ * ground with normalized admittance β, as [re, im] in the e^(−iωt) convention, and β itself.
+ */
+function planeWave(frequencyHz, groundType, cosIncidence) {
   const flowResistivity = GROUND_FLOW_RESISTIVITY[groundType];
   if (!flowResistivity) throw new RangeError(`Unknown ground type: ${groundType}`);
   const [zRe, zIm] = delanyBazleyImpedance(frequencyHz, flowResistivity);
   const zScale = zRe * zRe + zIm * zIm;
   const betaRe = zRe / zScale;
   const betaIm = -zIm / zScale;
-
   const sumRe = cosIncidence + betaRe;
   const differenceRe = cosIncidence - betaRe;
   const sumScale = sumRe * sumRe + betaIm * betaIm;
-  const planeRe = (differenceRe * sumRe - betaIm * betaIm) / sumScale;
-  const planeIm = (-betaIm * sumRe - differenceRe * betaIm) / sumScale;
+  return { planeRe: (differenceRe * sumRe - betaIm * betaIm) / sumScale, planeIm: (-betaIm * sumRe - differenceRe * betaIm) / sumScale, betaRe, betaIm, sumRe };
+}
+
+/** |Rp|, the share of the incident amplitude a ground reflects at a given incidence (class B). */
+export function planeReflectionMagnitude(frequencyHz, groundType, cosIncidence) {
+  if (groundType === 'rigid' || frequencyHz <= 0) return 1;
+  const { planeRe, planeIm } = planeWave(frequencyHz, groundType, cosIncidence);
+  return Math.hypot(planeRe, planeIm);
+}
+
+/**
+ * Class B: spherical-wave reflection coefficient Q = Rp + (1 − Rp)·F(w) of a locally reacting
+ * ground (Weyl–Van der Pol; see Attenborough, Li & Horoshenkov, Predicting Outdoor Sound, 2007).
+ * Returned as [re, im] in the e^(+iωt) convention of `fft.js`, so it multiplies a forward spectrum.
+ * `cosIncidence` is the cosine of the angle from the ground normal; `imagePathMetres` is the
+ * image-source path length R2.
+ */
+export function sphericalReflectionCoefficient(frequencyHz, groundType, cosIncidence, imagePathMetres, speedOfSound) {
+  if (groundType === 'rigid' || frequencyHz <= 0) return [1, 0];
+  const { planeRe, planeIm, betaIm, sumRe } = planeWave(frequencyHz, groundType, cosIncidence);
 
   const root = Math.sqrt(2 * Math.PI * frequencyHz / speedOfSound * imagePathMetres) / 2;
   const wRe = root * (sumRe - betaIm);

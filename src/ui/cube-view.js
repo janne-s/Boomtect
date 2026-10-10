@@ -36,6 +36,12 @@ const OUTLINE_STEPS = 48;
 const TERRAIN_DRAW_CELLS = 110;
 /** Direction the terrain is lit from: north-west and above. */
 const TERRAIN_LIGHT = (() => { const length = Math.hypot(-1, 1, 1.6); return { x: -1 / length, y: 1 / length, z: 1.6 / length }; })();
+/**
+ * Terrain outside the box fades into the panel over this share of the box's width, and the edge of
+ * the captured terrain over this share of its own width, so neither ends in a hard line.
+ */
+const TERRAIN_FOG_SHARE = .3;
+const TERRAIN_EDGE_SHARE = .05;
 /** Contour stripes: roughly this many bands over the terrain's height range. */
 const CONTOUR_BANDS = 12;
 /** Place names drawn at most, in the order of PLACE_NAME_KINDS, without overlapping. */
@@ -159,25 +165,30 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
     include({ x: 0, y: 0, z: 0 });
-    const surface = currentSurface();
-    let minZ = 0;
-    if (!surface.flat) {
-      const half = surface.halfExtentMetres;
-      include({ x: -half, y: -half, z: 0 });
-      include({ x: half, y: half, z: 0 });
-      for (const value of surface.values) {
-        minZ = Math.min(minZ, value - surface.datumMetres);
-        maxZ = Math.max(maxZ, value - surface.datumMetres);
-      }
-    }
-    const span = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ - minZ);
-    const pad = span * BOX_PADDING;
+    // The box holds the scene; terrain beyond it fades out (drawTerrain), so only the ground inside sets its depth.
+    const pad = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ) * BOX_PADDING;
     const grow = (low, high) => {
       const half = Math.max(high - low, MINIMUM_SPAN_METRES) / 2 + pad;
       return [(low + high) / 2 - half, (low + high) / 2 + half];
     };
     const [x0, x1] = grow(minX, maxX);
     const [y0, y1] = grow(minY, maxY);
+    const surface = currentSurface();
+    let minZ = 0;
+    if (!surface.flat) {
+      const { columns, rows, cellMetres } = surface;
+      for (let row = 0; row < rows; row += 1) {
+        const y = (row + .5 - rows / 2) * cellMetres;
+        if (y < y0 || y > y1) continue;
+        for (let column = 0; column < columns; column += 1) {
+          const x = (column + .5 - columns / 2) * cellMetres;
+          if (x < x0 || x > x1) continue;
+          const z = surface.values[row * columns + column] - surface.datumMetres;
+          minZ = Math.min(minZ, z);
+          maxZ = Math.max(maxZ, z);
+        }
+      }
+    }
     return { x0, x1, y0, y1, z0: minZ, z1: Math.max(minZ + MINIMUM_SPAN_METRES, maxZ) + pad };
   }
 
@@ -264,6 +275,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.closePath();
   }
 
+  const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
+
+  /** The first height line above the floor, skipping the floor itself. */
+  function firstLevel(bounds, spacing) {
+    const first = Math.ceil(bounds.z0 / spacing) * spacing;
+    return first === bounds.z0 ? first + spacing : first;
+  }
+
   function drawBox(context, colors) {
     const { box, farX, farY } = frame;
     const nearX = farX === box.x1 ? box.x0 : box.x1;
@@ -277,12 +296,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     polygon(context, [{ x: box.x0, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y1, z: box.z0 }, { x: box.x0, y: box.y1, z: box.z0 }]);
     context.fill();
 
-    const step = niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
-    /** The first height line above the floor, skipping the floor itself. */
-    function firstLevel(bounds, spacing) {
-      const first = Math.ceil(bounds.z0 / spacing) * spacing;
-      return first === bounds.z0 ? first + spacing : first;
-    }
+    const step = boxStep(box);
     context.lineWidth = 1;
     context.strokeStyle = colors.grid;
     const line = (a, b) => { const p = frame.project(a); const q = frame.project(b); context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke(); };
@@ -300,7 +314,15 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     context.strokeStyle = colors.line;
     line({ x: farX, y: farY, z: box.z0 }, { x: farX, y: farY, z: box.z1 });
+  }
 
+  /** The scale, compass, and origin, drawn over the terrain. */
+  function drawBoxLabels(context, colors) {
+    const { box, farX, farY } = frame;
+    const nearX = farX === box.x1 ? box.x0 : box.x1;
+    const nearY = farY === box.y1 ? box.y0 : box.y1;
+    const step = boxStep(box);
+    context.lineWidth = 1;
     context.font = '10px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     const label = (text, point, dx = 4, dy = 12) => { const p = frame.project(point); context.fillText(text, p.x + dx, p.y + dy); };
@@ -498,76 +520,111 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
 
   /**
-   * The terrain as a shaded surface on the floor: quads drawn far to near, lit from the north-west,
-   * with optional contour stripes. It is drawn into a layer that is reused until the view, the
-   * size, or the terrain changes, so playback does not redraw it every frame.
+   * How far a ground point has faded into the panel, 0–1: outside the box over TERRAIN_FOG_SHARE of
+   * its width, and toward the edge of the captured terrain over TERRAIN_EDGE_SHARE of its width.
    */
-  function drawTerrain(context, colors) {
-    const surface = currentSurface();
-    if (surface.flat) return;
+  function terrainFog(surface, x, y) {
     const { box } = frame;
+    const smooth = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+    const outside = Math.hypot(Math.max(0, box.x0 - x, x - box.x1), Math.max(0, box.y0 - y, y - box.y1));
+    const half = surface.halfExtentMetres;
+    const inside = half - Math.max(Math.abs(x), Math.abs(y));
+    return Math.max(smooth(outside / (TERRAIN_FOG_SHARE * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (TERRAIN_EDGE_SHARE * 2 * half)));
+  }
+
+  /**
+   * The terrain as a shaded surface: quads drawn far to near, lit from the north-west, with optional
+   * contour stripes, fading into the panel beyond the box and at its own edge. Ground behind the far
+   * walls goes into a back layer drawn before them, the rest into a front layer drawn after the
+   * floor. Both are reused until the view, the size, or the terrain changes, so playback does not
+   * redraw them every frame.
+   */
+  function terrainLayers(colors) {
+    const surface = currentSurface();
+    const { box, farX, farY } = frame;
     const ratio = window.devicePixelRatio || 1;
     const striped = contours();
-    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground].join('|');
-    if (terrainLayer?.key !== key || terrainLayer.surface !== surface) {
-      const layer = terrainLayer?.canvas ?? document.createElement('canvas');
+    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground, colors.panel].join('|');
+    if (terrainLayer?.key === key && terrainLayer.surface === surface) return terrainLayer;
+    const layers = (terrainLayer?.layers ?? [document.createElement('canvas'), document.createElement('canvas')]).map(layer => {
       layer.width = canvas.width;
       layer.height = canvas.height;
       const paint = layer.getContext('2d');
       paint.setTransform(ratio, 0, 0, ratio, 0, 0);
       paint.clearRect(0, 0, layer.width, layer.height);
-      const half = surface.halfExtentMetres;
-      const cells = Math.min(TERRAIN_DRAW_CELLS, surface.columns);
-      const spacing = 2 * half / cells;
-      const vertices = [];
-      for (let row = 0; row <= cells; row += 1) {
-        for (let column = 0; column <= cells; column += 1) {
-          const x = -half + column * spacing;
-          const y = -half + row * spacing;
-          vertices.push({ x, y, z: ground(x, y) });
-        }
-      }
-      let lowest = Infinity;
-      let highest = -Infinity;
-      for (const vertex of vertices) { lowest = Math.min(lowest, vertex.z); highest = Math.max(highest, vertex.z); }
-      const band = niceStep(Math.max(1, highest - lowest), CONTOUR_BANDS);
-      const dark = rgb(colors.ground);
-      const light = mixColors(rgb(colors.line), rgb(colors.muted), .35);
-      const quads = [];
-      for (let row = 0; row < cells; row += 1) {
-        for (let column = 0; column < cells; column += 1) {
-          const at = (r, c) => vertices[r * (cells + 1) + c];
-          const corners = [at(row, column), at(row, column + 1), at(row + 1, column + 1), at(row + 1, column)];
-          const projected = corners.map(frame.project);
-          const depth = projected.reduce((sum, p) => sum + p.depth, 0) / 4;
-          // Normal from the quad's diagonals.
-          const u = { x: corners[2].x - corners[0].x, y: corners[2].y - corners[0].y, z: corners[2].z - corners[0].z };
-          const v = { x: corners[3].x - corners[1].x, y: corners[3].y - corners[1].y, z: corners[3].z - corners[1].z };
-          const n = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };
-          const length = Math.hypot(n.x, n.y, n.z) || 1;
-          const lit = Math.max(0, (n.x * TERRAIN_LIGHT.x + n.y * TERRAIN_LIGHT.y + n.z * TERRAIN_LIGHT.z) / length);
-          const height = corners.reduce((sum, corner) => sum + corner.z, 0) / 4;
-          const stripe = striped && Math.floor((height - lowest) / band) % 2 === 1 ? .82 : 1;
-          const [r, g, b] = mixColors(dark, light, lit * lit).map(value => Math.round(value * stripe));
-          quads.push({ projected, depth, color: `rgb(${r},${g},${b})` });
-        }
-      }
-      quads.sort((a, b) => b.depth - a.depth);
       paint.lineWidth = .6;
-      for (const { projected, color } of quads) {
-        paint.beginPath();
-        projected.forEach((p, index) => (index ? paint.lineTo(p.x, p.y) : paint.moveTo(p.x, p.y)));
-        paint.closePath();
-        paint.fillStyle = color;
-        paint.strokeStyle = color;
-        paint.fill();
-        paint.stroke();
+      return layer;
+    });
+    // The grid covers what can be seen: the box and its fog, within the captured terrain.
+    const half = surface.halfExtentMetres;
+    const fogMetres = TERRAIN_FOG_SHARE * Math.max(box.x1 - box.x0, box.y1 - box.y0);
+    const west = Math.max(-half, box.x0 - fogMetres);
+    const south = Math.max(-half, box.y0 - fogMetres);
+    const side = Math.max(Math.min(half, box.x1 + fogMetres) - west, Math.min(half, box.y1 + fogMetres) - south);
+    const cells = Math.max(2, Math.min(TERRAIN_DRAW_CELLS, Math.ceil(side / surface.cellMetres)));
+    const spacing = side / cells;
+    const vertices = [];
+    for (let row = 0; row <= cells; row += 1) {
+      for (let column = 0; column <= cells; column += 1) {
+        const x = Math.min(half, west + column * spacing);
+        const y = Math.min(half, south + row * spacing);
+        vertices.push({ x, y, z: ground(x, y) });
       }
-      terrainLayer = { key, surface, canvas: layer };
     }
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (const vertex of vertices) { lowest = Math.min(lowest, vertex.z); highest = Math.max(highest, vertex.z); }
+    const band = niceStep(Math.max(1, highest - lowest), CONTOUR_BANDS);
+    const dark = rgb(colors.ground);
+    const light = mixColors(rgb(colors.line), rgb(colors.muted), .35);
+    const fogColor = rgb(colors.panel);
+    const behind = (x, y) => (farX === box.x1 ? x > box.x1 : x < box.x0) || (farY === box.y1 ? y > box.y1 : y < box.y0);
+    const quads = [];
+    for (let row = 0; row < cells; row += 1) {
+      for (let column = 0; column < cells; column += 1) {
+        const at = (r, c) => vertices[r * (cells + 1) + c];
+        const corners = [at(row, column), at(row, column + 1), at(row + 1, column + 1), at(row + 1, column)];
+        const centreX = (corners[0].x + corners[2].x) / 2;
+        const centreY = (corners[0].y + corners[2].y) / 2;
+        if (!(corners[2].x > corners[0].x && corners[2].y > corners[0].y)) continue;
+        const fog = terrainFog(surface, centreX, centreY);
+        if (fog > .995) continue;
+        const projected = corners.map(frame.project);
+        const depth = projected.reduce((sum, p) => sum + p.depth, 0) / 4;
+        // Normal from the quad's diagonals.
+        const u = { x: corners[2].x - corners[0].x, y: corners[2].y - corners[0].y, z: corners[2].z - corners[0].z };
+        const v = { x: corners[3].x - corners[1].x, y: corners[3].y - corners[1].y, z: corners[3].z - corners[1].z };
+        const n = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };
+        const length = Math.hypot(n.x, n.y, n.z) || 1;
+        const lit = Math.max(0, (n.x * TERRAIN_LIGHT.x + n.y * TERRAIN_LIGHT.y + n.z * TERRAIN_LIGHT.z) / length);
+        const height = corners.reduce((sum, corner) => sum + corner.z, 0) / 4;
+        const stripe = striped && Math.floor((height - lowest) / band) % 2 === 1 ? .82 : 1;
+        const shaded = mixColors(dark, light, lit * lit).map(value => value * stripe);
+        const [r, g, b] = mixColors(shaded, fogColor, fog);
+        quads.push({ projected, depth, layer: behind(centreX, centreY) ? 0 : 1, color: `rgb(${r},${g},${b})` });
+      }
+    }
+    quads.sort((a, b) => b.depth - a.depth);
+    const paints = layers.map(layer => layer.getContext('2d'));
+    for (const { projected, color, layer } of quads) {
+      const paint = paints[layer];
+      paint.beginPath();
+      projected.forEach((p, index) => (index ? paint.lineTo(p.x, p.y) : paint.moveTo(p.x, p.y)));
+      paint.closePath();
+      paint.fillStyle = color;
+      paint.strokeStyle = color;
+      paint.fill();
+      paint.stroke();
+    }
+    terrainLayer = { key, surface, layers };
+    return terrainLayer;
+  }
+
+  function drawTerrain(context, colors, back) {
+    if (currentSurface().flat) return;
     context.save();
     context.setTransform(1, 0, 0, 1, 0, 0);
-    context.drawImage(terrainLayer.canvas, 0, 0);
+    context.drawImage(terrainLayers(colors).layers[back ? 0 : 1], 0, 0);
     context.restore();
   }
 
@@ -585,10 +642,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const text = item.kind === 'peak' && item.elevationMetres !== null ? `${item.name} ${Math.round(item.elevationMetres)} m` : item.name;
       const width = context.measureText(text).width;
       const box = { x0: p.x - 3, x1: p.x + 7 + width, y0: p.y - 7, y1: p.y + 7 };
+      const fog = terrainFog(currentSurface(), item.x, item.y);
+      if (fog > .8) continue;
       if (placed.some(other => box.x0 < other.x1 && box.x1 > other.x0 && box.y0 < other.y1 && box.y1 > other.y0)) continue;
       placed.push(box);
       context.fillStyle = item.kind === 'water' ? colors.direct : colors.muted;
-      context.globalAlpha = item.kind === 'hamlet' || item.kind === 'locality' ? .6 : .85;
+      context.globalAlpha = (item.kind === 'hamlet' || item.kind === 'locality' ? .6 : .85) * (1 - fog);
       if (item.kind === 'peak') {
         context.beginPath(); context.moveTo(p.x, p.y - 3); context.lineTo(p.x + 3, p.y + 2); context.lineTo(p.x - 3, p.y + 2); context.closePath(); context.fill();
       } else if (item.kind !== 'water') {
@@ -885,8 +944,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const state = animation?.() ?? null;
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
+    drawTerrain(context, colors, true);
     drawBox(context, colors);
-    drawTerrain(context, colors);
+    drawTerrain(context, colors, false);
+    drawBoxLabels(context, colors);
     drawNames(context, colors);
     drawShadowBoundary(context, colors);
     if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);

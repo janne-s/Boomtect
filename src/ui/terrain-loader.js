@@ -1,5 +1,5 @@
 import { decodePngRgb } from '../domain/png.js';
-import { PLACE_NAME_KINDS } from '../domain/scene.js';
+import { PLACE_NAME_KINDS, TERRAIN_DEFAULTS } from '../domain/scene.js';
 import { buildHeightfield, decodeTerrarium, encodeHeights, metresPerDegree, TERRAIN_PROVIDER, terrainPlan, TILE_SIZE } from '../domain/terrain.js';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
@@ -108,8 +108,7 @@ export async function captureTerrain({ latitude, longitude, extentMetres, cellMe
   onNames?.();
   const names = await placeNames({ latitude, longitude, extentMetres: plan.extentMetres }, signal);
   return {
-    enabled: true,
-    shielding: true,
+    ...TERRAIN_DEFAULTS,
     place: (place ?? '').slice(0, 120),
     names,
     latitude,

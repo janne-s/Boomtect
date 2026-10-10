@@ -5,14 +5,15 @@ import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
 import { sourcePosition, sourceTable } from './source-table.js';
 import { onGround, terrainSurface } from './terrain.js';
+import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { shieldingEdges, shiftedProfile, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
-import { sphericalReflectionCoefficient } from './ground.js';
+import { planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import {
-  creepingCoefficient, inShadow, PATH_DIRECT, PATH_GROUND, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
+  creepingCoefficient, inShadow, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';
 
 /** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
@@ -43,11 +44,21 @@ export function shadowTailSeconds(nepersAtOneHertz) {
   return .1 + .6 * creepingBeta(nepersAtOneHertz) ** .65;
 }
 
-/** Paths are framed per emitter, and separately for shadow paths, whose response needs a longer tail. */
-const frameGroup = (paths, index) => 2 * paths.emitter[index] + (paths.creepMetres[index] > 0 ? 1 : 0);
+/**
+ * Paths are framed per emitter, separately for shadow paths, whose response needs a longer tail, and
+ * for echoes, whose sources are the emitter's cells.
+ */
+const FRAME_GROUPS = 3;
+const isEcho = kind => kind === PATH_ECHO || kind === PATH_SCATTER;
+const frameGroup = (paths, index) => FRAME_GROUPS * paths.emitter[index] + (isEcho(paths.kind[index]) ? 2 : paths.creepMetres[index] > 0 ? 1 : 0);
+/** The point sources a path starts from: the emitter's sources, or its cells for an echo. */
+const pathSources = (prepared, kind) => (isEcho(kind) ? prepared.cells : prepared.sources);
+
+/** Whether a scene traces terrain echoes. */
+export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.terrain.echoes);
 
 export const MISSING_PHENOMENA = Object.freeze([
-  'Echoes from terrain, buildings, and clouds',
+  'Echoes from buildings and clouds, and repeated echoes',
   'Diffraction by buildings and rounded ridges',
   'Wind',
   'Turbulent scattering of the direct sound',
@@ -57,11 +68,16 @@ export const MISSING_PHENOMENA = Object.freeze([
 
 /**
  * Expands every enabled emitter into point sources, kept as a typed table so that the flash
- * geometry behind them can be released. Pure and deterministic from the scene.
+ * geometry behind them can be released, and pools them into cells when terrain echoes are traced.
+ * Pure and deterministic from the scene.
  */
 export function prepareScene(scene) {
   const surface = terrainSurface(scene.terrain);
-  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => ({ emitter, sources: sourceTable(emitterSources(emitter, scene.air, surface).sources) }));
+  const echoes = echoesActive(scene) && !surface.flat;
+  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
+    const sources = sourceTable(emitterSources(emitter, scene.air, surface).sources);
+    return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
+  });
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   if (count > MAXIMUM_SOURCES) throw new RangeError(`The scene has ${count} point sources; the limit is ${MAXIMUM_SOURCES}.`);
   return prepared;
@@ -92,7 +108,10 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
 export function receiverPaths(preparedEmitters, receiver, scene) {
   const profile = soundSpeedProfile(scene.air);
   const ground = scene.ground.enabled;
-  const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length, 0) * (ground ? 2 : 1);
+  const surface = terrainSurface(scene.terrain);
+  const receiverPosition = onGround(surface, receiver.positionMetres);
+  const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition) : [];
+  const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
   const paths = {
     count: 0,
     emitter: new Uint16Array(capacity),
@@ -110,9 +129,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     edgeCount: new Uint8Array(capacity),
     edges: new Float64Array(MAXIMUM_EDGES * capacity)
   };
-  const surface = terrainSurface(scene.terrain);
   const shielding = !surface.flat && scene.terrain.shielding;
-  const receiverPosition = onGround(surface, receiver.positionMetres);
   const groundHeight = surface.heightAt(receiverPosition.x, receiverPosition.y);
   const local = shiftedProfile(profile, groundHeight);
   const shift = point => (groundHeight === 0 ? point : { x: point.x, y: point.y, z: point.z - groundHeight });
@@ -163,8 +180,77 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
       if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
     }
   });
+  for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, preparedEmitters[emitterIndex].cells, kind, path);
   paths.count = index;
   return paths;
+}
+
+/**
+ * The terrain echoes of every emitter's cells at a receiver: traced once per place, specular ones
+ * kept per cell, and scattered ones merged across cells (`mergeScattered`).
+ */
+function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition) {
+  const field = echoField(surface, profile, receiverPosition, { scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit });
+  const list = [];
+  preparedEmitters.forEach(({ cells }, emitterIndex) => {
+    if (!cells) return;
+    const { places } = cells;
+    const cellsOf = Array.from({ length: places.length }, () => []);
+    for (let cell = 0; cell < cells.length; cell += 1) cellsOf[cells.place[cell]].push(cell);
+    const scattered = new Map();
+    // Place by place, so that only one place's traced paths are held at a time.
+    for (let place = 0; place < places.length; place += 1) {
+      const traced = echoPaths(field, { x: places.x[place], y: places.y[place], z: places.z[place] });
+      for (const cell of cellsOf[place]) {
+        for (const path of traced) {
+          if (path.kind === PATH_SCATTER) mergeScattered(scattered, cells, cell, path);
+          else list.push({ emitterIndex, cell, kind: path.kind, path });
+        }
+      }
+    }
+    for (const merged of scattered.values()) list.push({ emitterIndex, cell: merged.cell, kind: PATH_SCATTER, path: mergedPath(merged, cells) });
+  });
+  return list;
+}
+
+/**
+ * Scattered echoes from all of an emitter's cells that reach the receiver within one
+ * SCATTER_BIN_SECONDS and from one direction sector merge into one path (class C): its energy is
+ * their sum, its arrival, direction, length, and incidence their energy-weighted means, and its
+ * pulse that of the strongest. Scattering is incoherent, so this keeps the tail's energy and
+ * density while the number of paths stays bounded by time and direction rather than by cells.
+ */
+function mergeScattered(merged, cells, cell, path) {
+  const arrival = cells.emissionSeconds[cell] + path.seconds;
+  const key = Math.floor(arrival / SCATTER_BIN_SECONDS) * 64 + arrivalSector(path.arrival);
+  const energy = (cells.amplitudePaMetres[cell] / path.spreadMetres) ** 2;
+  let entry = merged.get(key);
+  if (!entry) {
+    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, cell, strongest: 0 };
+    merged.set(key, entry);
+  }
+  entry.energy += energy;
+  entry.seconds += energy * arrival;
+  entry.metres += energy * path.metres;
+  entry.cosine += energy * path.groundSine;
+  entry.x += energy * path.arrival.x;
+  entry.y += energy * path.arrival.y;
+  entry.z += energy * path.arrival.z;
+  if (energy > entry.strongest) { entry.strongest = energy; entry.cell = cell; }
+}
+
+function mergedPath(entry, cells) {
+  const { energy, cell } = entry;
+  const length = Math.hypot(entry.x, entry.y, entry.z);
+  const arrival = { x: entry.x / length, y: entry.y / length, z: entry.z / length };
+  return {
+    seconds: entry.seconds / energy - cells.emissionSeconds[cell],
+    metres: entry.metres / energy,
+    spreadMetres: cells.amplitudePaMetres[cell] / Math.sqrt(energy),
+    departure: arrival,
+    arrival,
+    groundSine: entry.cosine / energy
+  };
 }
 
 /** The level change of a path's terrain edges at one frequency, in decibels. */
@@ -187,7 +273,7 @@ export function arrivalTable(preparedEmitters, receiver, scene) {
   const creep = creepingCoefficient(soundSpeedProfile(scene.air));
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   for (let index = 0; index < paths.count; index += 1) {
-    const { sources } = preparedEmitters[paths.emitter[index]];
+    const sources = pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]);
     heights[index] = sources.z[paths.source[index]];
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
       + (paths.creepMetres[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, creep * paths.creepMetres[index], floor))) : 0)
@@ -231,7 +317,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene) {
   let longestElement = 0;
   let longestSpan = 0;
   let longestCreep = 0;
-  const { sources } = prepared;
+  const sources = group % FRAME_GROUPS === 2 ? prepared.cells ?? prepared.sources : prepared.sources;
   for (let index = 0; index < sources.length; index += 1) longestElement = Math.max(longestElement, sources.elementMetres[index]);
   for (let index = 0; index < paths.count; index += 1) {
     if (frameGroup(paths, index) !== group) continue;
@@ -326,15 +412,19 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const { creeping, shadow, shadowFloor } = plan;
   const beta = creepMetres > 0 ? creepingBeta(creeping * creepMetres) : 0;
   const edgeCount = paths.edgeCount[index];
-  const ground = paths.kind[index] === PATH_GROUND && scene.ground.type !== 'rigid';
-  const reflected = paths.kind[index] === PATH_GROUND;
+  const kind = paths.kind[index];
+  const reflected = kind === PATH_GROUND;
+  const ground = (reflected || isEcho(kind)) && scene.ground.type !== 'rigid';
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
   if (ground || turbulent) {
     const random = createRandom(seed);
     const knots = Float64Array.from({ length: TURBULENCE_KNOTS }, () => normalDeviate(random));
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
       const frequency = plan.groundFrequencies[point];
-      const q = ground ? sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed) : [1, 0];
+      // A specular echo reflects like the ground; a scattered one keeps the reflected share of its energy.
+      const q = !ground ? [1, 0]
+        : kind === PATH_SCATTER ? [planeReflectionMagnitude(frequency, scene.ground.type, paths.cosIncidence[index]), 0]
+          : sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed);
       const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
       const lower = Math.min(TURBULENCE_KNOTS - 2, Math.floor(position));
       const deviate = knots[lower] + (knots[lower + 1] - knots[lower]) * (position - lower);
@@ -459,7 +549,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
   const paths = receiverPaths(preparedEmitters, receiver, scene);
-  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1].map(shadow => framePlan(prepared, 2 * emitterIndex + shadow, paths, sampleRate, profile, scene)));
+  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1, 2].map(part => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene)));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);
@@ -474,7 +564,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     frameOf[index] = frame;
     first = Math.min(first, frame * plan.hop);
     last = Math.max(last, frame * plan.hop + plan.size);
-    if (paths.metres[index] < preparedEmitters[paths.emitter[index]].sources.linearRadiusMetres[paths.source[index]]) nonlinearPaths += 1;
+    if (paths.metres[index] < pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]).linearRadiusMetres[paths.source[index]]) nonlinearPaths += 1;
   }
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
@@ -496,7 +586,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
-      const { sources } = preparedEmitters[emitterIndex];
+      const sources = pathSources(preparedEmitters[emitterIndex], paths.kind[index]);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);

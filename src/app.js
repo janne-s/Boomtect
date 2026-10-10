@@ -2,10 +2,10 @@ import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/con
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
-import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
+import { PATH_DIRECT, PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene
+  defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
@@ -215,8 +215,39 @@ function stopWorkers() {
 }
 
 /**
- * Renders on a pool of workers. Arrivals are split into equal time ranges; every worker renders
- * its range for all receivers, and the segments are summed in range order.
+ * Starts a worker for the current revision. `onResult` gets its result message; errors, stalls, and
+ * a newer revision end the whole render.
+ */
+function spawnWorker(revision, message, { onProgress, onResult }) {
+  const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
+  state.workers.push(worker);
+  worker.addEventListener('message', ({ data }) => {
+    if (data.revision !== state.revision) return;
+    state.heard = performance.now();
+    if (data.type === 'progress') { onProgress?.(data.fraction); return; }
+    if (data.type === 'error') {
+      stopWorkers();
+      setStatus(data.message, true);
+      drawResults();
+      return;
+    }
+    worker.terminate();
+    onResult(data);
+  });
+  worker.addEventListener('error', event => {
+    if (revision !== state.revision) return;
+    stopWorkers();
+    setStatus(event.message || 'The renderer failed to start.', true);
+  });
+  worker.postMessage({ revision, scene: state.scene, ...message });
+}
+
+/**
+ * Renders on a pool of workers in two steps. First every receiver's arrival table is traced in a
+ * worker of its own, which keeps the page responsive while terrain echoes are traced. Then each
+ * receiver's arrivals are split into equal time ranges, with workers shared out by the number of
+ * paths, so that a worker traces only its receiver's paths; with more receivers than workers, each
+ * worker renders whole receivers. The segments are summed in range order.
  */
 function startRender() {
   state.revision += 1;
@@ -228,64 +259,81 @@ function startRender() {
     drawResults();
     return;
   }
-  let prepared;
-  let boundaries;
-  let arrivals;
+  let sources;
   let workerCount = WORKER_COUNT;
   try {
-    prepared = prepareScene(scene);
-    const total = prepared.reduce((sum, item) => sum + item.sources.length, 0);
-    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(SOURCE_COPIES_BUDGET / Math.max(1, total))));
-    arrivals = scene.receivers.map(receiver => arrivalTable(prepared, receiver, scene));
-    boundaries = partitionSeconds(prepared, scene, workerCount, arrivals);
+    sources = prepareScene(scene).reduce((sum, item) => sum + item.sources.length, 0);
+    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(SOURCE_COPIES_BUDGET / Math.max(1, sources))));
   } catch (error) {
     setStatus(error.message, true);
     drawResults();
     return;
   }
-  const sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   const started = performance.now();
-  const progress = new Array(workerCount).fill(0);
-  const parts = new Array(workerCount);
-  let remaining = workerCount;
-  let heard = performance.now();
-  setStatus('Rendering…');
+  state.heard = performance.now();
+  setStatus('Tracing paths…');
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
-    if (revision !== state.revision || performance.now() - heard < RENDER_STALL_SECONDS * 1000) return;
+    if (revision !== state.revision || performance.now() - state.heard < RENDER_STALL_SECONDS * 1000) return;
     stopWorkers();
     setStatus(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`, true);
     drawResults();
   }, 5000);
-  for (let index = 0; index < workerCount; index += 1) {
-    const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
-    state.workers.push(worker);
-    worker.addEventListener('message', ({ data }) => {
-      if (data.revision !== state.revision) return;
-      heard = performance.now();
-      if (data.type === 'progress') {
-        progress[index] = data.fraction;
-        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / workerCount * 100)} %`);
-        return;
+  const tracers = Math.min(workerCount, scene.receivers.length);
+  const arrivals = new Array(scene.receivers.length);
+  let tracing = tracers;
+  for (let index = 0; index < tracers; index += 1) {
+    const receivers = scene.receivers.map((_, receiverIndex) => receiverIndex).filter(receiverIndex => receiverIndex % tracers === index);
+    spawnWorker(revision, { type: 'arrivals', receivers }, {
+      onResult: data => {
+        data.tables.forEach((table, position) => { arrivals[receivers[position]] = table; });
+        tracing -= 1;
+        if (tracing === 0) renderRanges(revision, scene, arrivals, { sources, workerCount, started });
       }
-      if (data.type === 'error') {
-        stopWorkers();
-        setStatus(data.message, true);
-        drawResults();
-        return;
-      }
-      parts[index] = data.segments;
-      worker.terminate();
-      remaining -= 1;
-      if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
     });
-    worker.addEventListener('error', event => {
-      if (revision !== state.revision) return;
-      stopWorkers();
-      setStatus(event.message || 'The renderer failed to start.', true);
-    });
-    worker.postMessage({ revision, scene, fromSeconds: boundaries[index], toSeconds: boundaries[index + 1] });
   }
+}
+
+/** The render jobs: receivers and a time range for each worker. */
+function renderJobs(scene, arrivals, workerCount) {
+  const receivers = scene.receivers.map((_, index) => index);
+  if (receivers.length >= workerCount) {
+    return Array.from({ length: workerCount }, (_, job) => ({ receivers: receivers.filter(index => index % workerCount === job), fromSeconds: -Infinity, toSeconds: Infinity }));
+  }
+  const total = arrivals.reduce((sum, table) => sum + table.count, 0) || 1;
+  const shares = arrivals.map(table => Math.max(1, Math.floor(workerCount * table.count / total)));
+  // Workers left over by rounding down go to the receivers with the most paths per worker.
+  for (let spare = workerCount - shares.reduce((a, b) => a + b, 0); spare > 0; spare -= 1) {
+    let busiest = 0;
+    arrivals.forEach((table, index) => { if (table.count / shares[index] > arrivals[busiest].count / shares[busiest]) busiest = index; });
+    shares[busiest] += 1;
+  }
+  return receivers.flatMap(index => {
+    const boundaries = partitionSeconds(null, scene, shares[index], [arrivals[index]]);
+    return Array.from({ length: shares[index] }, (_, part) => ({ receivers: [index], fromSeconds: boundaries[part], toSeconds: boundaries[part + 1] }));
+  });
+}
+
+function renderRanges(revision, scene, arrivals, { sources, workerCount, started }) {
+  state.workers = [];
+  const jobs = renderJobs(scene, arrivals, workerCount);
+  const progress = new Array(jobs.length).fill(0);
+  const parts = new Array(jobs.length);
+  let remaining = jobs.length;
+  setStatus('Rendering…');
+  jobs.forEach((job, index) => {
+    spawnWorker(revision, { type: 'render', ...job }, {
+      onProgress: fraction => {
+        progress[index] = fraction;
+        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / jobs.length * 100)} %`);
+      },
+      onResult: data => {
+        parts[index] = data.segments;
+        remaining -= 1;
+        if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
+      }
+    });
+  });
 }
 
 function finishRender(scene, arrivals, parts, info) {
@@ -294,7 +342,7 @@ function finishRender(scene, arrivals, parts, info) {
   const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
     state.results = new Map(scene.receivers.map((receiver, receiverIndex) => {
-      const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id));
+      const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);
       const combined = combineSegments(segments, scene.render.sampleRate);
       return [receiver.id, {
         receiverId: receiver.id,
@@ -761,7 +809,10 @@ function renderDetails() {
 function missingPhenomena() {
   const missing = [...MISSING_PHENOMENA];
   if (!state.scene.terrain?.enabled) missing.unshift('Terrain');
-  else if (!state.scene.terrain.shielding) missing.unshift('Terrain shielding');
+  else {
+    if (!state.scene.terrain.echoes) missing.unshift('Terrain echoes');
+    if (!state.scene.terrain.shielding) missing.unshift('Terrain shielding');
+  }
   if (state.scene.air.refraction) missing.push('Several ground reflections in an inversion', 'Temperature profile other than linear');
   else missing.unshift('Temperature stratification and refraction');
   if (!state.scene.air.absorption) missing.unshift('Air absorption');
@@ -807,7 +858,10 @@ function scheduleTerrainCoverage() {
       const wider = await captureTerrain(draft, { onProgress: share => setStatus(`Widening the terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`), onNames: () => setStatus('Loading place names…') });
       Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
       savePreferences();
-      commit(next => { next.terrain = { ...wider, enabled: next.terrain?.enabled ?? true, shielding: next.terrain?.shielding ?? true }; });
+      commit(next => {
+        const kept = next.terrain && Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, next.terrain[key]]));
+        next.terrain = { ...wider, ...kept };
+      });
     } catch (error) {
       setStatus(`The terrain could not be widened: ${error.message}`, true);
     } finally {
@@ -868,6 +922,10 @@ function terrainPanel(container) {
     + (terrain.enabled ? ` · origin ${Math.round(surface.datumMetres)} m above sea level` : '')));
   checkboxField(container, { label: 'Terrain', value: terrain.enabled, reliability: 'B', onCommit: value => commit(next => { next.terrain.enabled = value; }) });
   checkboxField(container, { label: 'Shielding', value: terrain.shielding, reliability: 'B', onCommit: value => commit(next => { next.terrain.shielding = value; }) });
+  checkboxField(container, { label: 'Echoes', value: terrain.echoes, reliability: 'C', onCommit: value => commit(next => { next.terrain.echoes = value; }) });
+  if (terrain.echoes) {
+    for (const key of ['scattering', 'echoCellMetres', 'echoLimit']) numberField(container, { key, value: terrain[key], onCommit: value => commit(next => { next.terrain[key] = value; }) });
+  }
   checkboxField(container, { label: 'Contours', value: state.preferences.contours, onCommit: value => { state.preferences.contours = value; savePreferences(); redrawViews(); } });
 }
 
@@ -1050,7 +1108,7 @@ function drawInfo() {
     let sources = 0;
     for (let index = 0; index < result.arrivals.count; index += 1) {
       if (result.arrivals.kinds[index] === PATH_SHADOW) shadowed += 1;
-      if (result.arrivals.kinds[index] !== 1) sources += 1;
+      if (result.arrivals.kinds[index] === PATH_DIRECT || result.arrivals.kinds[index] === PATH_SHADOW) sources += 1;
     }
     const share = shadowed / sources * 100;
     if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${share < 1 ? '<1' : Math.round(share)} % of sources in the refraction shadow`));

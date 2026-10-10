@@ -1,3 +1,4 @@
+import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
 import { fitCanvas, formatSeconds, niceStep, palette } from './canvas.js';
 
 const LEFT = 8;
@@ -153,12 +154,12 @@ export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = 
     const plotHeight = height - TOP - BOTTOM;
     for (const { trace, single, color, alpha } of traceStyles(live, soloId, colors)) {
       const { arrivals } = trace.result;
-      // Ground paths behind, in the secondary color or at half strength of the microphone's color.
+      // Ground reflections and echoes behind, in the secondary color or at half strength of the microphone's color.
       for (const reflected of [true, false]) {
         context.fillStyle = single ? (reflected ? colors.reflected : colors.direct) : color;
         const strength = !single && reflected ? alpha / 2 : alpha;
         for (let index = 0; index < arrivals.count; index += 1) {
-          if ((arrivals.kinds[index] === 1) !== reflected) continue;
+          if ((arrivals.kinds[index] !== PATH_DIRECT && arrivals.kinds[index] !== PATH_SHADOW) !== reflected) continue;
           const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
           const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
           context.globalAlpha = strength * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));

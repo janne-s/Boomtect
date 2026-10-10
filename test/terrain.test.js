@@ -16,7 +16,7 @@ function terrain(height, { cells = 100, extentMetres = 4000 } = {}) {
       values[row * cells + column] = height((column + .5 - cells / 2) * cellMetres, (row + .5 - cells / 2) * cellMetres);
     }
   }
-  return { enabled: true, shielding: true, place: '', names: [], latitude: 61.5, longitude: 23.8, extentMetres, cellMetres, zoom: 13, columns: cells, rows: cells, heights: encodeHeights(values) };
+  return { enabled: true, shielding: true, echoes: false, scattering: .5, echoCellMetres: 100, echoLimit: 200, place: '', names: [], latitude: 61.5, longitude: 23.8, extentMetres, cellMetres, zoom: 13, columns: cells, rows: cells, heights: encodeHeights(values) };
 }
 
 test('Fresnel integrals match tabulated values to 1e-6', () => {

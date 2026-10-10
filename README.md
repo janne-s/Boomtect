@@ -17,7 +17,8 @@ Thunder and Blast are separate modes, each with its own scene.
 ## Scene
 
 - **Box** — The floor is the ground and the two far walls show the scene from
-  the side. The cross on the floor is the origin.
+  the side. The cross on the floor is the origin. Terrain beyond the box fades
+  out.
 - **Points and shadows** — Drag a point to move it horizontally, or its shadow
   on the floor or a wall to move it in that plane.
 - **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
@@ -112,6 +113,11 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Shielding** — Hills between a source and a microphone block the direct and
   the reflected sound, and sound bends over their crests, more at low
   frequencies.
+- **Echoes** — Slopes the source and the microphone both see send the sound
+  back: sharply from where they mirror it, and scattered from everywhere else.
+- **Scattering** — The share of the echo that scatters; the rest mirrors.
+- **Echo cells** — Sources this close together share their echoes.
+- **Echoes per cell** — The strongest echoes kept for each cell.
 - **Contours** — Stripes the terrain by height.
 
 ## Export
@@ -147,15 +153,19 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Air absorption | ISO 9613-1 | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
+| Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
+| Terrain echoes, scattered | Lambert's law per patch of ground | B |
+| Echo cells and merging | sources pooled in cells; scattered echoes merged by arrival and direction | C |
 | Turbulence | phase fluctuation of the ground reflection | B/C |
 | Ambisonics | spherical harmonics, AmbiX | A |
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
 | Loudness | Stevens' power law on the level envelope | B/C |
 
-Not modelled: echoes from terrain, buildings, rounded ridges (they shield more
-than thin edges), terrain finer than the heightfield, wind, more than
-one ground reflection in an inversion, temperature profiles other than linear,
-nonlinear propagation beyond the linearization radius.
+Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
+ridges, rounded ridges (they shield more than thin edges), terrain finer than
+the heightfield, wind, more than one ground reflection in an inversion,
+temperature profiles other than linear, nonlinear propagation beyond the
+linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 
