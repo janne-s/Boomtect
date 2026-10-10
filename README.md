@@ -93,9 +93,9 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Loudness** — Compresses level differences the way perceived loudness
   grows with pressure.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
-- **Plots** — Pressure and arrival time by source height for every microphone
-  on one time axis and one pressure scale, each in its own color and the muted
-  ones dimmer. A microphone's tab, or selecting the microphone, brings it
+- **Plots** — Pressure, and arrival time by source height (Thunder) or by the
+  direction the sound comes from (Blast), for every microphone on one time axis
+  and one pressure scale, each in its own color and the muted ones dimmer. A microphone's tab, or selecting the microphone, brings it
   forward.
 
 ## Air

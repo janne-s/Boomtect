@@ -453,6 +453,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const paths = receiverPaths(preparedEmitters, receiver, scene, options);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
+  const bearings = new Float32Array(paths.count);
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
   const speed = soundSpeedProfile(scene.air).groundSpeed;
@@ -467,11 +468,13 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   for (let index = 0; index < paths.count; index += 1) {
     const sources = pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]);
     heights[index] = sources.z[paths.source[index]];
+    // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
+    bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
       + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
       + edgeDecibels(paths, index, DIAGRAM_FREQUENCY_HZ);
   }
-  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, kinds: paths.kind.slice(0, paths.count) };
+  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, bearings, kinds: paths.kind.slice(0, paths.count) };
 }
 
 /**

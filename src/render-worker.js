@@ -14,7 +14,7 @@ self.addEventListener('message', ({ data }) => {
       const tables = data.receivers.map((receiverIndex, index) => arrivalTable(prepared, scene.receivers[receiverIndex], scene, {
         onProgress: share => self.postMessage({ revision, type: 'progress', fraction: (index + share) / data.receivers.length })
       }));
-      self.postMessage({ revision, type: 'result', tables }, tables.flatMap(table => [table.seconds.buffer, table.heights.buffer, table.levels.buffer, table.kinds.buffer]));
+      self.postMessage({ revision, type: 'result', tables }, tables.flatMap(table => [table.seconds.buffer, table.heights.buffer, table.levels.buffer, table.bearings.buffer, table.kinds.buffer]));
       return;
     }
     const segments = data.receivers.map((receiverIndex, index) => {

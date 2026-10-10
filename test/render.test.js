@@ -309,3 +309,14 @@ test('a blast ages as a weak shock: its positive phase lengthens as √(1 + σ l
   assert.ok(Math.abs(far / near - stretch(value, 4000) / stretch(value, 400)) < .02, `${far / near}`);
   assert.ok(far / linear > 1.4);
 });
+
+test('the arrival table gives the compass direction each path comes from', () => {
+  const bearingFrom = position => {
+    const value = scene({ emitter: smallBlast(position), receivers: [receiverAt('mic', { x: 0, y: 0, z: 10 })] });
+    return render(value).arrivals.bearings[0];
+  };
+  assert.ok(Math.abs(bearingFrom({ x: 0, y: 500, z: 10 }) - 0) < .01 || Math.abs(bearingFrom({ x: 0, y: 500, z: 10 }) - 360) < .01);
+  assert.ok(Math.abs(bearingFrom({ x: 500, y: 0, z: 10 }) - 90) < .01);
+  assert.ok(Math.abs(bearingFrom({ x: 0, y: -500, z: 10 }) - 180) < .01);
+  assert.ok(Math.abs(bearingFrom({ x: -500, y: 0, z: 10 }) - 270) < .01);
+});

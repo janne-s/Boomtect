@@ -1327,8 +1327,14 @@ function drawResults(playheadSeconds = null) {
   const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
   const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
   drawWaveform($('waveform'), { key, traces, soloId }, playheadSeconds);
-  drawArrivals($('arrivals'), { key, traces, soloId }, playheadSeconds);
-  if (playheadSeconds === null) drawPlotTabs(soloId);
+  // A blast is one point, so its arrivals are shown by the direction they come from rather than by height.
+  const byDirection = state.scene.mode === 'blast';
+  drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
+  if (playheadSeconds === null) {
+    drawPlotTabs(soloId);
+    $('arrivals-caption').textContent = byDirection ? 'Arrival · direction' : 'Arrival · height';
+    $('arrivals').setAttribute('aria-label', byDirection ? 'Arrival time by direction' : 'Arrival time by source height');
+  }
 }
 
 /** One tab per microphone when there are several; a tab solos its microphone, again to release. */

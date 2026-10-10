@@ -134,8 +134,14 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
   }, playheadSeconds);
 }
 
-/** Every path's arrival time against its source height for each microphone; ground paths in the secondary color. */
-export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = null) {
+const COMPASS = Object.freeze(['N', 'E', 'S', 'W', 'N']);
+
+/**
+ * Every path's arrival time for each microphone against its source height, or with `byDirection`
+ * against the compass direction it comes from, north at the top and again at the bottom; ground
+ * paths and echoes in the secondary color.
+ */
+export function drawArrivals(canvas, { key, traces, soloId, byDirection = false }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
     const live = traces.filter(trace => trace.result?.arrivals?.count);
     if (!live.length) return null;
@@ -152,6 +158,16 @@ export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = 
     }
     const plotWidth = width - LEFT - RIGHT;
     const plotHeight = height - TOP - BOTTOM;
+    const vertical = (arrivals, index) => (byDirection ? arrivals.bearings[index] / 360 : 1 - arrivals.heights[index] / maximumHeight);
+    if (byDirection) {
+      context.fillStyle = colors.faint;
+      context.strokeStyle = colors.raised;
+      COMPASS.forEach((label, quarter) => {
+        const y = TOP + quarter / 4 * plotHeight;
+        context.beginPath(); context.moveTo(LEFT, y); context.lineTo(width - RIGHT, y); context.stroke();
+        if (quarter > 0 && quarter < 4) context.fillText(label, LEFT + 3, y - 3);
+      });
+    }
     for (const { trace, single, color, alpha } of traceStyles(live, soloId, colors)) {
       const { arrivals } = trace.result;
       // Ground reflections and echoes behind, in the secondary color or at half strength of the microphone's color.
@@ -161,7 +177,7 @@ export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = 
         for (let index = 0; index < arrivals.count; index += 1) {
           if ((arrivals.kinds[index] !== PATH_DIRECT && arrivals.kinds[index] !== PATH_SHADOW) !== reflected) continue;
           const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
-          const y = height - BOTTOM - arrivals.heights[index] / maximumHeight * plotHeight;
+          const y = TOP + vertical(arrivals, index) * plotHeight;
           context.globalAlpha = strength * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
           context.fillRect(x - 1, y - 1, 2, 2);
         }
@@ -169,7 +185,7 @@ export function drawArrivals(canvas, { key, traces, soloId }, playheadSeconds = 
     }
     context.globalAlpha = 1;
     context.fillStyle = colors.faint;
-    context.fillText(`${Math.round(maximumHeight)} m`, width - RIGHT - 50, TOP - 6);
+    if (!byDirection) context.fillText(`${Math.round(maximumHeight)} m`, width - RIGHT - 50, TOP - 6);
     return window;
   }, playheadSeconds);
 }
