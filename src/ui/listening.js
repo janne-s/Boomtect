@@ -14,6 +14,20 @@ export const LISTENING_LABELS = Object.freeze({
   mix: 'Mix'
 });
 
+/** Below this share of the peak a sample is silence, so playback without the real delay skips it. */
+const SILENCE_SHARE = 1e-4;
+
+/**
+ * When the first sound is heard: a render starts on a frame boundary, which for long pulses or
+ * echoes lies seconds before the earliest arrival.
+ */
+function firstSoundSeconds(results, peakPa) {
+  return Math.min(...results.map(result => {
+    const index = result.samples.findIndex(sample => Math.abs(sample) > SILENCE_SHARE * peakPa);
+    return index < 0 ? Infinity : result.startSeconds + index / result.sampleRate;
+  }));
+}
+
 /** Places every listening receiver's channels on one shared timeline. */
 function aligned(results, channelCount) {
   const startSeconds = Math.min(...results.map(result => result.startSeconds));
@@ -48,6 +62,7 @@ export function composeListening(scene, results) {
   const order = scene.render.ambisonicOrder;
   const fieldChannels = (order + 1) ** 2;
   const timeline = aligned(listening.map(receiver => results.get(receiver.id)), fieldChannels);
+  const peakPa = Math.max(...listening.map(receiver => results.get(receiver.id).peakPa));
   const centre = omnis.reduce((sum, receiver) => ({ x: sum.x + receiver.positionMetres.x / omnis.length, y: sum.y + receiver.positionMetres.y / omnis.length }), { x: 0, y: 0 });
   return {
     kind,
@@ -55,6 +70,7 @@ export function composeListening(scene, results) {
     order,
     sampleRate: timeline.sampleRate,
     startSeconds: timeline.startSeconds,
+    firstSoundSeconds: Math.max(timeline.startSeconds, firstSoundSeconds(listening.map(receiver => results.get(receiver.id)), peakPa)),
     length: timeline.length,
     heads: heads.map(receiver => ({
       receiverId: receiver.id,
@@ -69,7 +85,7 @@ export function composeListening(scene, results) {
       bearing: Math.atan2(receiver.positionMetres.x - centre.x, receiver.positionMetres.y - centre.y),
       channel: timeline.place(results.get(receiver.id), 0)
     })),
-    peakPa: Math.max(...listening.map(receiver => results.get(receiver.id).peakPa)),
+    peakPa,
     parts: listening.length
   };
 }

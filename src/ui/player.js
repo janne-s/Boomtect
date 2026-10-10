@@ -190,7 +190,7 @@ export function createPlayer() {
       return false;
     }
     current = connected;
-    const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.startSeconds - SHORTENED_LEAD_SECONDS));
+    const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - SHORTENED_LEAD_SECONDS));
     const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - (atSceneSeconds ?? skipped);
     const when = origin + composition.startSeconds;
     const now = context.currentTime;
