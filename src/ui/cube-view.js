@@ -1,5 +1,6 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
 import { emissionSeconds } from '../domain/lightning.js';
+import { createRandom } from '../domain/random.js';
 import { alongProfile, grazingRange, inShadow, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
@@ -45,6 +46,17 @@ const TERRAIN_LIGHT = (() => { const length = Math.hypot(-1, 1, 1.6); return { x
  */
 const TERRAIN_FOG_SHARE = .3;
 const TERRAIN_EDGE_SHARE = .05;
+/**
+ * A storm's cloud is drawn as soft puffs placed by its seed in the cloud layer: a dark, flat base and
+ * a paler top that spreads into an anvil. Representational only.
+ */
+const CLOUD_PUFFS = 240;
+const CLOUD_PUFF_ALPHA = .34;
+const CLOUD_ANVIL_SPREAD = .45;
+/** A flash lights the cloud around its top for as long as its channel glows. */
+const CLOUD_FLASH_ALPHA = .5;
+/** Reach of a flash's light in its cloud, as a share of the cloud's depth. */
+const CLOUD_FLASH_REACH = .55;
 /** Contour stripes: roughly this many bands over the terrain's height range. */
 const CONTOUR_BANDS = 12;
 /** Place names drawn at most, in the order of PLACE_NAME_KINDS, without overlapping. */
@@ -140,7 +152,7 @@ function frontArc(step, elapsed, routeLength) {
  * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
  * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false }) {
   let scene = null;
   let selection = null;
   let view = { ...DEFAULT_CUBE_VIEW };
@@ -154,6 +166,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let terrainLayer = null;
   let rippleLayer = null;
   let terrainBoundary = null;
+  const cloudLayers = new Map();
+  let cloudLight = null;
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -907,12 +921,127 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const angle = 2 * Math.PI * index / DISC_POINTS;
       return { x: x + emitter.radiusMetres * Math.cos(angle), y: y + emitter.radiusMetres * Math.sin(angle), z };
     });
-    context.fillStyle = colors.cloud;
-    polygon(context, ring(emitter.cloudBaseMetres)); context.fill();
-    polygon(context, ring(emitter.cloudTopMetres)); context.fill();
+    // The flat layer marks the cloud when its fog is off.
+    if (!clouds()) {
+      context.fillStyle = colors.cloud;
+      polygon(context, ring(emitter.cloudBaseMetres)); context.fill();
+      polygon(context, ring(emitter.cloudTopMetres)); context.fill();
+    }
     context.strokeStyle = selected ? colors.accent : colors.line;
     context.lineWidth = 1;
     polygon(context, ring(0).map(point => ({ ...point, z: ground(point.x, point.y) }))); context.stroke();
+  }
+
+  /** The puffs of a storm's cloud, from its seed, in the scene frame: centre, radius, and height share. */
+  function cloudPuffs(emitter) {
+    const random = createRandom(emitter.seed ^ 0x5c10d);
+    const { x, y } = emitter.centreMetres;
+    const base = emitter.cloudBaseMetres;
+    const depth = emitter.cloudTopMetres - base;
+    return Array.from({ length: CLOUD_PUFFS }, () => {
+      // More of the cloud low down, where it is broad and dark; the top spreads into an anvil.
+      const share = random() ** 1.4;
+      const reach = emitter.radiusMetres * (.75 + CLOUD_ANVIL_SPREAD * share ** 4);
+      const angle = 2 * Math.PI * random();
+      const distance = reach * Math.sqrt(random());
+      return {
+        centre: { x: x + distance * Math.cos(angle), y: y + distance * Math.sin(angle), z: base + depth * share },
+        radius: Math.max(depth * (.22 + .22 * random()), emitter.radiusMetres * .18),
+        share
+      };
+    });
+  }
+
+  /**
+   * A storm's cloud as fog: its puffs far to near, each a soft disc darker at the base, drawn into a
+   * layer kept until the view, the size, or the storm changes.
+   */
+  function drawCloud(context, emitter, colors) {
+    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, emitter.seed, emitter.centreMetres.x, emitter.centreMetres.y, emitter.radiusMetres, emitter.cloudBaseMetres, emitter.cloudTopMetres, colors['storm-base'], colors['storm-top'], frame.box.x0, frame.box.x1, frame.box.z1].join('|');
+    let layer = cloudLayers.get(emitter.id);
+    if (layer?.key !== key) {
+      const canvasLayer = layer?.canvas ?? document.createElement('canvas');
+      canvasLayer.width = canvas.width;
+      canvasLayer.height = canvas.height;
+      const paint = canvasLayer.getContext('2d');
+      const ratio = window.devicePixelRatio || 1;
+      paint.setTransform(ratio, 0, 0, ratio, 0, 0);
+      paint.clearRect(0, 0, canvas.width, canvas.height);
+      const dark = rgb(colors['storm-base']);
+      const light = rgb(colors['storm-top']);
+      const puffs = cloudPuffs(emitter).map(puff => {
+        const p = frame.project(puff.centre);
+        const edge = frame.project({ ...puff.centre, z: puff.centre.z + puff.radius });
+        return { ...puff, p, size: Math.hypot(edge.x - p.x, edge.y - p.y) };
+      }).sort((a, b) => b.p.depth - a.p.depth);
+      for (const { p, size, share } of puffs) {
+        const [r, g, b] = mixColors(dark, light, share ** 1.5);
+        const gradient = paint.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+        gradient.addColorStop(0, `rgba(${r},${g},${b},${CLOUD_PUFF_ALPHA})`);
+        gradient.addColorStop(.6, `rgba(${r},${g},${b},${CLOUD_PUFF_ALPHA * .5})`);
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        paint.fillStyle = gradient;
+        paint.beginPath();
+        paint.arc(p.x, p.y, size, 0, 2 * Math.PI);
+        paint.fill();
+      }
+      layer = { key, canvas: canvasLayer };
+      cloudLayers.set(emitter.id, layer);
+    }
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(layer.canvas, 0, 0);
+    context.restore();
+  }
+
+  /**
+   * The light of a storm's flashes in its cloud: a soft glow around each glowing flash's top, kept to
+   * the cloud's own fog by using its layer as a mask, and added to the scene.
+   */
+  function drawCloudLight(context, emitter, colors, strokes) {
+    const layer = cloudLayers.get(emitter.id);
+    if (!layer || !strokes?.length) return;
+    const flashes = cachedFlashes(emitter);
+    const depth = emitter.cloudTopMetres - emitter.cloudBaseMetres;
+    cloudLight ??= { light: document.createElement('canvas'), mask: document.createElement('canvas') };
+    const { light, mask } = cloudLight;
+    for (const target of [light, mask]) {
+      target.width = canvas.width;
+      target.height = canvas.height;
+    }
+    const ratio = window.devicePixelRatio || 1;
+    const glow = light.getContext('2d');
+    glow.setTransform(ratio, 0, 0, ratio, 0, 0);
+    glow.globalCompositeOperation = 'lighter';
+    const [r, g, b] = rgb(colors.flash);
+    let lit = false;
+    for (const stroke of strokes) {
+      const top = flashes[stroke.flash]?.channels[0]?.points.at(-1);
+      if (!top) continue;
+      const fade = stroke.elapsed > FLASH_TRAVERSE_SECONDS ? Math.exp(-(stroke.elapsed - FLASH_TRAVERSE_SECONDS) / FLASH_FADE_SECONDS) : 1;
+      const p = frame.project(top);
+      const edge = frame.project({ ...top, z: top.z + depth * CLOUD_FLASH_REACH });
+      const size = Math.hypot(edge.x - p.x, edge.y - p.y);
+      const gradient = glow.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+      gradient.addColorStop(0, `rgba(${r},${g},${b},${CLOUD_FLASH_ALPHA * fade})`);
+      gradient.addColorStop(.4, `rgba(${r},${g},${b},${CLOUD_FLASH_ALPHA * fade * .35})`);
+      gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      glow.fillStyle = gradient;
+      glow.beginPath();
+      glow.arc(p.x, p.y, size, 0, 2 * Math.PI);
+      glow.fill();
+      lit = true;
+    }
+    if (!lit) return;
+    const shape = mask.getContext('2d');
+    shape.drawImage(layer.canvas, 0, 0);
+    shape.globalCompositeOperation = 'source-in';
+    shape.drawImage(light, 0, 0);
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.globalCompositeOperation = 'lighter';
+    context.drawImage(mask, 0, 0);
+    context.restore();
   }
 
   function drawBlast(context, emitter, colors, state) {
@@ -1029,6 +1158,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         if (state?.sound && emitter.enabled) drawSoundGlow(context, emitter, colors, state.sound);
       }
       context.globalAlpha = 1;
+    }
+    // The storm clouds over their channels, lit by the flashes inside them.
+    if (clouds()) {
+      for (const emitter of scene.emitters) {
+        if (emitter.kind !== 'storm' || !emitter.enabled) continue;
+        drawCloud(context, emitter, colors);
+        drawCloudLight(context, emitter, colors, state?.strokes.get(emitter.id));
+      }
     }
     for (const point of selectedPoints()) drawProjectionLines(context, colors, point);
     for (const receiver of scene.receivers) {

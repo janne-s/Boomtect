@@ -59,6 +59,7 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls.
 - **Names** — Place names, peaks, and lakes on the terrain.
+- **Cloud** — A storm's cloud as dark fog, lit by the flashes inside it.
 - **i** — The sources of the terrain and map data.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.

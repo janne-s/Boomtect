@@ -70,7 +70,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, names: true, mode: 'thunder',
+  realDelay: true, wavefront: false, contours: true, names: true, clouds: true, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -130,7 +130,8 @@ const views = [createCubeView($('cube'), {
   onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
   focus: () => focusReceiver(),
   contours: () => state.preferences.contours,
-  names: () => state.preferences.names
+  names: () => state.preferences.names,
+  clouds: () => state.preferences.clouds
 })];
 
 /** Whether a point is stored as a height above the ground under it rather than above the datum. */
@@ -1002,6 +1003,7 @@ function refreshPanel() {
   terrainPanel(terrainFields);
   $('cube-attribution').hidden = !scene.terrain;
   $('names-toggle').hidden = !scene.terrain;
+  $('clouds-toggle').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -1461,6 +1463,8 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   startRender();
 }));
 
+$('clouds').checked = state.preferences.clouds;
+$('clouds').addEventListener('change', () => { state.preferences.clouds = $('clouds').checked; savePreferences(); redrawViews(); });
 $('names').checked = state.preferences.names;
 $('names').addEventListener('change', () => { state.preferences.names = $('names').checked; savePreferences(); redrawViews(); });
 $('attribution-button').addEventListener('click', () => {
