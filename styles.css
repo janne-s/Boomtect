@@ -554,16 +554,27 @@ input[type="range"]:hover::-moz-range-thumb {
 .operations {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+/* A compact bar with its text inside; the fill shows how far it has come. */
+.operation {
+  padding: 2px 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: linear-gradient(to right, color-mix(in srgb, var(--accent) 38%, var(--raised)) var(--share, 0%), var(--raised) var(--share, 0%));
+}
 .overlay-timeline {
+  font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

@@ -54,9 +54,14 @@ const CLOUD_PUFFS = 240;
 const CLOUD_PUFF_ALPHA = .34;
 const CLOUD_ANVIL_SPREAD = .45;
 /** A flash lights the cloud around its top for as long as its channel glows. */
-const CLOUD_FLASH_ALPHA = .5;
-/** Reach of a flash's light in its cloud, as a share of the cloud's depth. */
-const CLOUD_FLASH_REACH = .55;
+const CLOUD_FLASH_ALPHA = 1.2;
+/** Radius of each glow of a flash's light in its cloud, as a share of the cloud's depth. */
+const CLOUD_FLASH_REACH = .32;
+/** Glows per flash, and how far they stray from its channel, as a share of the cloud's depth. */
+const CLOUD_BLOBS = 6;
+const CLOUD_BLOB_SCATTER = .25;
+/** A stroke's light flickers between seeded levels this far apart in time. */
+const FLICKER_SECONDS = .025;
 /** Contour stripes: roughly this many bands over the terrain's height range. */
 const CONTOUR_BANDS = 12;
 /** Place names drawn at most, in the order of PLACE_NAME_KINDS, without overlapping. */
@@ -142,6 +147,24 @@ function handles(scene, box) {
 }
 
 /** The point where a stroke's figurative front has reached on one channel, as an arc length. */
+/**
+ * A flash's flicker at a time after it starts: seeded levels between 0.35 and 1 every FLICKER_SECONDS,
+ * eased between, the first one full. Deterministic, so a replay looks the same.
+ */
+function flicker(seed, elapsed) {
+  const level = knot => {
+    if (knot <= 0) return 1;
+    let value = Math.imul((seed >>> 0) ^ Math.imul(knot, 0x9e3779b1), 0x85ebca6b) >>> 0;
+    value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35) >>> 0;
+    return .35 + .65 * ((value ^ (value >>> 16)) >>> 0) / 4294967296;
+  };
+  const position = Math.max(0, elapsed) / FLICKER_SECONDS;
+  const knot = Math.floor(position);
+  const t = position - knot;
+  const eased = t * t * (3 - 2 * t);
+  return level(knot) + (level(knot + 1) - level(knot)) * eased;
+}
+
 function frontArc(step, elapsed, routeLength) {
   return step.fromArc + elapsed / FLASH_TRAVERSE_SECONDS * routeLength - step.offsetMetres;
 }
@@ -928,8 +951,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       polygon(context, ring(emitter.cloudBaseMetres)); context.fill();
       polygon(context, ring(emitter.cloudTopMetres)); context.fill();
     }
-    context.strokeStyle = selected ? colors.accent : colors.line;
-    context.lineWidth = 1;
+    // The storm's reach on the ground, clear over terrain too.
+    context.strokeStyle = selected ? colors.accent : colors.lightning;
+    context.lineWidth = selected ? 1.4 : 1.2;
     polygon(context, ring(0).map(point => ({ ...point, z: ground(point.x, point.y) }))); context.stroke();
   }
 
@@ -996,8 +1020,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   /**
-   * The light of a storm's flashes in its cloud: a soft glow around each glowing flash's top, kept to
-   * the cloud's own fog by using its layer as a mask, and added to the scene.
+   * The light of a storm's flashes in its cloud: a loose blob that follows each flash's lit channel
+   * inside the cloud without tracing it, made of a few large soft glows at seeded offsets along it,
+   * flickering as the stroke's current does, kept to the cloud's fog by its layer as a mask, and added
+   * to the scene. Representational, not a model of scattering.
    */
   function drawCloudLight(context, emitter, colors, strokes) {
     const layer = cloudLayers.get(emitter.id);
@@ -1017,21 +1043,37 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const [r, g, b] = rgb(colors.flash);
     let lit = false;
     for (const stroke of strokes) {
-      const top = flashes[stroke.flash]?.channels[0]?.points.at(-1);
-      if (!top) continue;
+      const flash = flashes[stroke.flash];
+      if (!flash) continue;
       const fade = stroke.elapsed > FLASH_TRAVERSE_SECONDS ? Math.exp(-(stroke.elapsed - FLASH_TRAVERSE_SECONDS) / FLASH_FADE_SECONDS) : 1;
-      const p = frame.project(top);
-      const edge = frame.project({ ...top, z: top.z + depth * CLOUD_FLASH_REACH });
-      const size = Math.hypot(edge.x - p.x, edge.y - p.y);
-      const gradient = glow.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-      gradient.addColorStop(0, `rgba(${r},${g},${b},${CLOUD_FLASH_ALPHA * fade})`);
-      gradient.addColorStop(.4, `rgba(${r},${g},${b},${CLOUD_FLASH_ALPHA * fade * .35})`);
-      gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-      glow.fillStyle = gradient;
-      glow.beginPath();
-      glow.arc(p.x, p.y, size, 0, 2 * Math.PI);
-      glow.fill();
-      lit = true;
+      const intensity = CLOUD_FLASH_ALPHA * fade * flicker(emitter.seed + stroke.flash * 7919, stroke.elapsed);
+      if (intensity < .01) continue;
+      // The lit channel inside the cloud, or the flash's top when none of it is there yet.
+      const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
+      const inCloud = stroke.route.flatMap(step => {
+        const reached = frontArc(step, stroke.elapsed, routeLength);
+        return reached > step.fromArc ? pointsUpTo(flash.channels[step.channel], step.fromArc, reached) : [];
+      }).filter(point => point.z >= emitter.cloudBaseMetres);
+      const along = inCloud.length ? inCloud : [flash.channels[0].points.at(-1)];
+      const random = createRandom((emitter.seed ^ Math.imul(stroke.flash + 1, 0x27d4eb2d)) >>> 0);
+      for (let blob = 0; blob < CLOUD_BLOBS; blob += 1) {
+        const at = along[Math.min(along.length - 1, Math.floor((blob + random()) / CLOUD_BLOBS * along.length))];
+        const offset = depth * CLOUD_BLOB_SCATTER;
+        const centre = { x: at.x + offset * (random() - .5), y: at.y + offset * (random() - .5), z: at.z + offset * (random() - .5) };
+        const p = frame.project(centre);
+        const edge = frame.project({ ...centre, z: centre.z + depth * CLOUD_FLASH_REACH * (.6 + .8 * random()) });
+        const size = Math.hypot(edge.x - p.x, edge.y - p.y);
+        const gradient = glow.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+        const alpha = intensity / CLOUD_BLOBS * 2.2;
+        gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+        gradient.addColorStop(.45, `rgba(${r},${g},${b},${alpha * .45})`);
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        glow.fillStyle = gradient;
+        glow.beginPath();
+        glow.arc(p.x, p.y, size, 0, 2 * Math.PI);
+        glow.fill();
+        lit = true;
+      }
     }
     if (!lit) return;
     const shape = mask.getContext('2d');

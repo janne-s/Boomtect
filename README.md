@@ -57,7 +57,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Auto** — Renders again soon after every change. Off, changes wait for
   Render.
 - **In progress** — Rendering and loading are listed in the corner of the
-  scene while they run.
+  scene while they run, each with how far it has come, how long it has run, and
+  for requests over the network when it gives up.
 - **Real delay** — On: the sound arrives as late as it would outdoors, and the
   clock in the corner counts from the flash, its bar brightening when the sound
   arrives. Off: the silence before the first sound is skipped, and the channel
@@ -65,7 +66,7 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls.
 - **Names** — Place names, peaks, and lakes on the terrain.
-- **Cloud** — A storm's cloud as dark fog, lit by the flashes inside it.
+- **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
 - **i** — The sources of the terrain and map data.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
@@ -102,6 +103,7 @@ Thunder and Blast are separate modes, each with its own scene.
   free-field reference.
 - **Shadow floor** — How far below the unbent level the shadow can go, set by
   turbulent scattering.
+- **Ground** — What the ground is made of. Water reflects like rigid ground.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.

@@ -9,7 +9,7 @@ import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells }
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, softExponent } from './creeping.js';
-import { GROUND_FLOW_RESISTIVITY, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
+import { GROUND_FLOW_RESISTIVITY, isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
@@ -88,6 +88,8 @@ export function shadowTailSeconds(nepersAtOneHertz) {
  * for echoes, whose sources are the emitter's cells.
  */
 const FRAME_GROUPS = 3;
+/** Share of a render's progress given to tracing its paths. */
+const TRACE_SHARE = .3;
 const isEcho = kind => kind === PATH_ECHO || kind === PATH_SCATTER;
 const frameGroup = (paths, index) => FRAME_GROUPS * paths.emitter[index] + (isEcho(paths.kind[index]) ? 2 : paths.creepNepers[index] > 0 ? 1 : 0);
 /** The point sources a path starts from: the emitter's sources, or its cells for an echo. */
@@ -144,12 +146,17 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
  * Over terrain, the refraction shadow and the ground reflection are found from the ground under the
  * receiver, as if the ground there extended level; the shielding checks the actual terrain.
  */
-export function receiverPaths(preparedEmitters, receiver, scene) {
+export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
+  // Progress over the echo places and then the sources, reported about every percent.
+  const units = preparedEmitters.reduce((sum, item) => sum + item.sources.length + (item.cells ? item.cells.places.length : 0), 0);
+  const every = Math.max(1, Math.floor(units / 100));
+  let done = 0;
+  const tick = onProgress ? () => { done += 1; if (done % every === 0) onProgress(done / units); } : () => {};
   const profile = soundSpeedProfile(scene.air);
   const ground = scene.ground.enabled;
   const surface = terrainSurface(scene.terrain);
   const receiverPosition = onGround(surface, receiver.positionMetres);
-  const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition) : [];
+  const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) : [];
   const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
   // Arrays per path and how many entries each holds; they grow when rays with several contacts add more.
   const widths = { direction: 3, edges: MAXIMUM_EDGES };
@@ -221,6 +228,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
+      tick();
       const position = sourcePosition(sources, sourceIndex);
       // In wind, the air along this path has its own effective profile.
       const along = pathProfile(profile, position, receiverPosition);
@@ -259,7 +267,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
  * The terrain echoes of every emitter's cells at a receiver: traced once per place, specular ones
  * kept per cell, and scattered ones merged across cells (`mergeScattered`).
  */
-function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition) {
+function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) {
   const field = echoField(surface, profile, receiverPosition, { scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit });
   const list = [];
   preparedEmitters.forEach(({ cells }, emitterIndex) => {
@@ -270,6 +278,7 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
     const scattered = new Map();
     // Place by place, so that only one place's traced paths are held at a time.
     for (let place = 0; place < places.length; place += 1) {
+      tick();
       const traced = echoPaths(field, { x: places.x[place], y: places.y[place], z: places.z[place] });
       for (const cell of cellsOf[place]) {
         for (const path of traced) {
@@ -337,12 +346,12 @@ function edgeDecibels(paths, index, frequencyHz) {
  * Arrival time, source height, and geometric level of every path, for the arrival diagram; a
  * shadow path's level includes its creeping loss at DIAGRAM_FREQUENCY_HZ.
  */
-export function arrivalTable(preparedEmitters, receiver, scene) {
-  const paths = receiverPaths(preparedEmitters, receiver, scene);
+export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
+  const paths = receiverPaths(preparedEmitters, receiver, scene, options);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
-  const soft = scene.ground.enabled && scene.ground.type !== 'rigid';
+  const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
   const speed = soundSpeedProfile(scene.air).groundSpeed;
   const transitions = new Map();
   /** The ground's creeping transition frequency per refraction radius, or 0 on rigid ground. */
@@ -414,7 +423,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
   // Soft ground lags the creeping response up to SOFT_CREEP_LAG times as much as rigid ground, which spreads it.
-  const soft = scene.ground.enabled && scene.ground.type !== 'rigid';
+  const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
   const shadowTail = Math.ceil(shadowTailSeconds(largestCreep * (soft ? SOFT_CREEP_LAG : 1)) * sampleRate);
   const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES + shadowTail);
   const size = 2 * hop;
@@ -611,7 +620,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const edgeCount = paths.edgeCount[index];
   const kind = paths.kind[index];
   const reflected = kind === PATH_GROUND;
-  const ground = (reflected || isEcho(kind)) && scene.ground.type !== 'rigid';
+  const ground = (reflected || isEcho(kind)) && !isReflecting(scene.ground.type);
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
   // Share of the reflection that follows the ground's impedance; the rest merges with the direct front.
   const merging = reflected ? 1 - shock * (1 - linearShare(paths.cosIncidence[index] / Math.sqrt(2 * AIR_NONLINEARITY * mach))) : 1;
@@ -757,7 +766,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
-  const paths = receiverPaths(preparedEmitters, receiver, scene);
+  // Progress as a share: tracing the paths, then rendering them.
+  const paths = receiverPaths(preparedEmitters, receiver, scene, { onProgress: onProgress && (share => onProgress(TRACE_SHARE * share)) });
   const receiverZ = onGround(terrainSurface(scene.terrain), receiver.positionMetres).z;
   const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1, 2].map(part => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
   const selected = [];
@@ -808,7 +818,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const output = outputs[channel];
       for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
     });
-    onProgress?.(cursor, selected.length);
+    onProgress?.(TRACE_SHARE + (1 - TRACE_SHARE) * cursor / selected.length);
   }
   return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }

@@ -68,6 +68,7 @@ export function numberField(container, { key, label, value, onCommit, reliabilit
   const input = document.createElement('input');
   input.type = 'number';
   input.id = id;
+  input.dataset.key = key;
   input.step = 'any';
   input.value = rounded(value * scale);
   input.addEventListener('change', () => {
@@ -177,6 +178,7 @@ export function seedField(container, { value, onCommit, onNew }) {
   const input = document.createElement('input');
   input.type = 'number';
   input.id = id;
+  input.dataset.key = key;
   input.min = '0';
   input.max = String(0xffffffff);
   input.step = '1';

@@ -71,7 +71,7 @@ function restoredScene(mode) {
 
 const preferences = {
   realDelay: true, wavefront: false, contours: true, names: true, clouds: true, autoRender: true, mode: 'thunder',
-  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
+  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -96,6 +96,13 @@ state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 const player = createPlayer();
 const liveFields = { receiver: null, orientation: null };
 
+/** Rebuilds the panel at the next frame, at most once a frame. */
+function panelOnNextFrame() {
+  if (panelOnNextFrame.pending) return;
+  panelOnNextFrame.pending = true;
+  requestAnimationFrame(() => { panelOnNextFrame.pending = false; refreshPanel(); });
+}
+
 const orientationBall = createOrientationBall($('cube-orientation-ball'), {
   getView: () => views[0].getView(),
   onChange: (heading, pitch) => { const target = orientationTarget(); if (target) orient(target.id, heading, pitch); },
@@ -103,7 +110,8 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
 });
 
 const views = [createCubeView($('cube'), {
-  onView: next => { state.preferences.cubeView = next; savePreferences(); },
+  // Each mode keeps its own view: a blast's box is far smaller than a storm's.
+  onView: next => { state.preferences.cubeViews = { ...state.preferences.cubeViews, [state.scene.mode]: next }; savePreferences(); },
   onViewChange: () => orientationBall?.draw(),
   onSelect: selection => { select(selection); refreshPanel(); },
   onMove: (handle, point) => {
@@ -120,12 +128,16 @@ const views = [createCubeView($('cube'), {
     } else if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else {
+      panelOnNextFrame.skip = true;
       item[handle.field] = storedPoint(handle, item, point);
       liveFields[handle.type]?.[handle.field]?.set(item[handle.field]);
     }
     invalidateResults();
     redrawViews();
     drawInfo();
+    // The storm's sliders follow its handles, once a frame.
+    if (!panelOnNextFrame.skip) panelOnNextFrame();
+    panelOnNextFrame.skip = false;
   },
   onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
   focus: () => focusReceiver(),
@@ -153,7 +165,7 @@ function storedPoint(handle, item, point) {
   const above = point.z - currentSurface().heightAt(point.x, point.y);
   return { ...point, z: Math.round(Math.min(PARAMETERS.heightMetres.maximum, Math.max(0, above)) * 10) / 10 };
 }
-views[0].setView(state.preferences.cubeView);
+views[0].setView(state.preferences.cubeViews?.[state.scene.mode] ?? DEFAULT_CUBE_VIEW);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
   Object.assign(state.preferences, sizes);
   savePreferences();
@@ -203,16 +215,43 @@ function invalidateResults() {
 }
 
 /**
- * Operations in progress, listed in the corner of the scene: rendering, terrain, place names. Each
- * key holds one line; null removes it.
+ * Operations in progress, listed in the corner of the scene as compact bars: their text, how far they
+ * have come where that is known, how long they have run, and for network requests the time at which
+ * they give up. Each key holds one; a null text removes it.
  */
 const operations = new Map();
+let operationsTimer = null;
 
-function operation(key, text) {
-  if (text === null) operations.delete(key); else operations.set(key, text);
-  $('cube-operations').replaceChildren(...[...operations.values()].map(line => element('li', '', line)));
+function operation(key, text, { share = null, limitSeconds = null } = {}) {
+  if (text === null) operations.delete(key);
+  else operations.set(key, { text, share, limitSeconds, since: operations.get(key)?.since ?? performance.now() });
+  drawOperations();
   if (key === 'render') syncPlayButton();
 }
+
+function drawOperations() {
+  const now = performance.now();
+  $('cube-operations').replaceChildren(...[...operations.values()].map(({ text, share, limitSeconds, since }) => {
+    const seconds = Math.floor((now - since) / 1000);
+    const parts = [text];
+    if (share !== null) parts.push(`${Math.round(share * 100)} %`);
+    if (limitSeconds) parts.push(`${seconds} / ${limitSeconds} s`);
+    else if (seconds >= 1) parts.push(`${seconds} s`);
+    const bar = element('li', 'operation', parts.join(' · '));
+    bar.style.setProperty('--share', share === null ? '0%' : `${Math.min(100, share * 100)}%`);
+    return bar;
+  }));
+  // The clock in each bar keeps running while anything is in progress.
+  if (operations.size && !operationsTimer) operationsTimer = setInterval(drawOperations, 500);
+  if (!operations.size && operationsTimer) { clearInterval(operationsTimer); operationsTimer = null; }
+}
+
+/** Seconds a network request may take before it is given up. */
+const PLACE_NAMES_LIMIT_SECONDS = 30;
+const PLACE_SEARCH_LIMIT_SECONDS = 15;
+
+/** An abort signal that fires after a limit, for a network request listed with that limit. */
+const timeLimit = seconds => AbortSignal.timeout(seconds * 1000);
 
 /** One button for the result: Render when there is none, Rendering while it is made, then Play and Stop. */
 function syncPlayButton() {
@@ -300,7 +339,7 @@ function startRender() {
   }
   const started = performance.now();
   state.heard = performance.now();
-  operation('render', 'Tracing paths');
+  operation('render', 'Tracing paths', { share: 0 });
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
     if (revision !== state.revision || performance.now() - state.heard < RENDER_STALL_SECONDS * 1000) return;
@@ -311,9 +350,14 @@ function startRender() {
   const tracers = Math.min(workerCount, scene.receivers.length);
   const arrivals = new Array(scene.receivers.length);
   let tracing = tracers;
+  const traced = new Array(tracers).fill(0);
   for (let index = 0; index < tracers; index += 1) {
     const receivers = scene.receivers.map((_, receiverIndex) => receiverIndex).filter(receiverIndex => receiverIndex % tracers === index);
     spawnWorker(revision, { type: 'arrivals', receivers }, {
+      onProgress: fraction => {
+        traced[index] = fraction;
+        operation('render', 'Tracing paths', { share: traced.reduce((a, b) => a + b, 0) / tracers });
+      },
       onResult: data => {
         data.tables.forEach((table, position) => { arrivals[receivers[position]] = table; });
         tracing -= 1;
@@ -349,12 +393,12 @@ function renderRanges(revision, scene, arrivals, { sources, workerCount, started
   const progress = new Array(jobs.length).fill(0);
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
-  operation('render', 'Rendering');
+  operation('render', 'Rendering', { share: 0 });
   jobs.forEach((job, index) => {
     spawnWorker(revision, { type: 'render', ...job }, {
       onProgress: fraction => {
         progress[index] = fraction;
-        operation('render', `Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / jobs.length * 100)} %`);
+        operation('render', 'Rendering', { share: progress.reduce((a, b) => a + b, 0) / jobs.length });
       },
       onResult: data => {
         parts[index] = data.segments;
@@ -815,6 +859,10 @@ function openDetails(id) {
 }
 
 function renderDetails() {
+  keepingFocus($('details-body'), rebuildDetails);
+}
+
+function rebuildDetails() {
   const emitter = state.scene.emitters.find(item => item.id === state.detailsId);
   if (!emitter) { $('details').close(); return; }
   const kind = emitterKindLabel(emitter);
@@ -867,7 +915,7 @@ function scheduleTerrainCoverage() {
     try {
       const draft = { place: terrain.place, latitude: terrain.latitude, longitude: terrain.longitude, extentMetres: needed, cellMetres: state.preferences.terrainDraft.cellMetres };
       const wider = await captureTerrain(draft, {
-        onProgress: share => operation('terrain', `Widening terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`)
+        onProgress: share => operation('terrain', `Widening terrain to ${formatMetres(needed)}`, { share })
       });
       Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
       savePreferences();
@@ -899,15 +947,16 @@ const TERRAIN_LOAD_MARGIN = 1.25;
  * already shown stay when the service cannot be reached.
  */
 async function loadPlaceNames(terrain) {
-  operation('names', 'Loading place names');
+  operation('names', 'Place names', { limitSeconds: PLACE_NAMES_LIMIT_SECONDS });
   let names = null;
   try {
-    names = await fetchPlaceNames(terrain);
+    names = await fetchPlaceNames(terrain, timeLimit(PLACE_NAMES_LIMIT_SECONDS));
+  } catch {
+    // Given up at its time limit: the names already shown stay.
   } finally {
     operation('names', null);
   }
-  if (!names) { setStatus('The place names could not be loaded; the names already shown stay.', true); return; }
-  if (state.scene.terrain?.heights !== terrain.heights) return;
+  if (!names || state.scene.terrain?.heights !== terrain.heights) return;
   state.scene.terrain.names = names;
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
   redrawViews();
@@ -924,7 +973,7 @@ function terrainPanel(container) {
     const extentMetres = Math.max(draft.extentMetres, neededTerrainExtentMetres(state.scene, TERRAIN_LOAD_MARGIN));
     try {
       const terrain = await captureTerrain({ ...draft, extentMetres }, {
-        onProgress: share => operation('terrain', `Loading terrain ${formatMetres(extentMetres)} · ${Math.round(share * 100)} %`)
+        onProgress: share => operation('terrain', `Loading terrain ${formatMetres(extentMetres)}`, { share })
       });
       setDraft({ extentMetres });
       commit(next => { next.terrain = terrain; });
@@ -944,9 +993,9 @@ function terrainPanel(container) {
     label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
-      operation('place', `Finding ${text}`);
+      operation('place', `Finding ${text}`, { limitSeconds: PLACE_SEARCH_LIMIT_SECONDS });
       try {
-        const found = await searchPlace(text);
+        const found = await searchPlace(text, { signal: timeLimit(PLACE_SEARCH_LIMIT_SECONDS) });
         operation('place', null);
         if (!found) { setStatus(`No place found for ${text}`, true); return; }
         setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
@@ -1005,9 +1054,9 @@ function openPlaceDialog(load) {
 
 /** Moves the map to a place found by name; false when none is found. */
 async function showFoundPlace(text) {
-  operation('place', `Finding ${text}`);
+  operation('place', `Finding ${text}`, { limitSeconds: PLACE_SEARCH_LIMIT_SECONDS });
   try {
-    const found = await searchPlace(text);
+    const found = await searchPlace(text, { signal: timeLimit(PLACE_SEARCH_LIMIT_SECONDS) });
     if (!found) { setStatus(`No place found for ${text}`, true); return false; }
     placeMap.show(found, state.preferences.terrainDraft.extentMetres);
     showPlaceCoordinates(found);
@@ -1042,7 +1091,26 @@ $('place-done').addEventListener('click', async () => {
   placeLoad?.($('place-done'));
 });
 
+/**
+ * Runs a rebuild of form fields and puts the focus back in the field that had it, found by its place
+ * among the fields and its parameter: a step from a number field's arrows or keys rebuilds the panel,
+ * and without this the next step would go nowhere.
+ */
+function keepingFocus(root, rebuild) {
+  const focused = document.activeElement;
+  const fields = () => [...root.querySelectorAll('input, select')];
+  const index = root.contains(focused) ? fields().indexOf(focused) : -1;
+  rebuild();
+  if (index < 0) return;
+  const again = fields()[index];
+  if (again && again.dataset.key === focused.dataset.key && again.type === focused.type) again.focus({ preventScroll: true });
+}
+
 function refreshPanel() {
+  keepingFocus(document.querySelector('aside.panel'), rebuildPanel);
+}
+
+function rebuildPanel() {
   useTerrain(state.scene.terrain);
   const { scene, selection } = state;
   const emitterList = $('emitter-list');
@@ -1149,6 +1217,7 @@ function drawInfo() {
     const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
     const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' ? 'centre' : 'blast';
     selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
+    if (selected.kind === 'storm') selectedInfo.append(element('span', '', `Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`));
     if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
   } else if (selected) {
     const surface = currentSurface();
@@ -1371,7 +1440,8 @@ function drawTimeline(seconds) {
   holder.hidden = false;
   const end = result.startSeconds + result.samples.length / result.sampleRate;
   const share = value => `${Math.min(100, Math.max(0, value / end * 100))}%`;
-  $('cube-timeline-time').textContent = formatSeconds(Math.max(0, seconds));
+  // Always two decimals, so the clock keeps its width as it counts.
+  $('cube-timeline-time').textContent = `${Math.max(0, seconds).toFixed(2)} s`;
   $('cube-timeline-arrival').style.left = share(result.startSeconds);
   $('cube-timeline-progress').style.width = share(seconds);
 }
@@ -1537,6 +1607,7 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
   state.preferences.mode = mode;
   savePreferences();
+  views[0].setView(state.preferences.cubeViews?.[mode] ?? DEFAULT_CUBE_VIEW);
   invalidateResults();
   refreshPanel();
   if (state.preferences.autoRender) startRender();

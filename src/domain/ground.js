@@ -13,10 +13,18 @@ export const GROUND_FLOW_RESISTIVITY = Object.freeze({
   stonyGround: 550
 });
 
-export const GROUND_TYPES = Object.freeze(['rigid', ...Object.keys(GROUND_FLOW_RESISTIVITY)]);
+/**
+ * Ground that reflects without loss: rigid ground, and water, whose impedance is some 3 600 times
+ * that of air (class A for a calm surface; waves are not modelled).
+ */
+export const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);
+export const isReflecting = groundType => REFLECTING_GROUNDS.includes(groundType);
+
+export const GROUND_TYPES = Object.freeze([...REFLECTING_GROUNDS, ...Object.keys(GROUND_FLOW_RESISTIVITY)]);
 
 export const GROUND_LABELS = Object.freeze({
   rigid: 'Rigid',
+  water: 'Water',
   snow: 'Snow',
   forestFloor: 'Forest floor',
   grass: 'Grass',
@@ -61,7 +69,7 @@ function planeWave(frequencyHz, groundType, cosIncidence) {
 
 /** |Rp|, the share of the incident amplitude a ground reflects at a given incidence (class B). */
 export function planeReflectionMagnitude(frequencyHz, groundType, cosIncidence) {
-  if (groundType === 'rigid' || frequencyHz <= 0) return 1;
+  if (isReflecting(groundType) || frequencyHz <= 0) return 1;
   const { planeRe, planeIm } = planeWave(frequencyHz, groundType, cosIncidence);
   return Math.hypot(planeRe, planeIm);
 }
@@ -74,7 +82,7 @@ export function planeReflectionMagnitude(frequencyHz, groundType, cosIncidence) 
  * image-source path length R2.
  */
 export function sphericalReflectionCoefficient(frequencyHz, groundType, cosIncidence, imagePathMetres, speedOfSound) {
-  if (groundType === 'rigid' || frequencyHz <= 0) return [1, 0];
+  if (isReflecting(groundType) || frequencyHz <= 0) return [1, 0];
   const { planeRe, planeIm, betaIm, sumRe } = planeWave(frequencyHz, groundType, cosIncidence);
 
   const root = Math.sqrt(2 * Math.PI * frequencyHz / speedOfSound * imagePathMetres) / 2;
