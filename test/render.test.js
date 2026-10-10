@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
 import { sphericalReflectionCoefficient } from '../src/domain/ground.js';
-import { combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
+import { airShockImpedance, blastStretch, combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
 import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
 
 function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false, refraction = false }) {
@@ -30,14 +30,22 @@ const uniformChannel = () => ({ ...defaultLightning(), currentDecayHeightMetres:
 
 const smallBlast = position => ({ ...defaultBlast(), chargeKilograms: .01, riseTimeSeconds: 1e-4, positionMetres: position });
 
-test('a point blast arrives at R/c and falls off as 1/R', () => {
+/** The weak-shock stretch of a scene's first blast after `metres`, by which its peak falls below 1/R. */
+function stretch(value, metres) {
+  const [{ sources }] = prepareScene(value);
+  return blastStretch(sources, 0, metres, airShockImpedance(value.air), sources.z[0]);
+}
+
+test('a point blast arrives at R/c and falls off as 1/R, less its weak-shock aging', () => {
   const value = scene({ emitter: smallBlast({ x: 0, y: 0, z: 10 }), receivers: [receiverAt('near', { x: 300, y: 0, z: 10 }), receiverAt('far', { x: 600, y: 0, z: 10 })] });
   const speed = speedOfSoundMetresPerSecond(value.air.temperatureCelsius);
   const near = peak(render(value, 0));
   const far = peak(render(value, 1));
   assert.ok(Math.abs(near.seconds - 300 / speed) < 2e-4, `near arrival ${near.seconds}`);
   assert.ok(Math.abs(far.seconds - 600 / speed) < 2e-4, `far arrival ${far.seconds}`);
-  assert.ok(Math.abs(near.value / far.value - 2) < .01, `ratio ${near.value / far.value}`);
+  const expected = 2 * stretch(value, 600) / stretch(value, 300);
+  assert.ok(expected > 2.02);
+  assert.ok(Math.abs(near.value / far.value - expected) < .01, `ratio ${near.value / far.value}`);
 });
 
 test('a vertical channel arrives along t(z) = t_emit + sqrt(d² + z²)/c', () => {
@@ -79,7 +87,8 @@ test('rigid ground adds an image arrival scaled by R1/R2', () => {
   const direct = peak(result, 0, 100 / speed + .01);
   const reflected = peak(result, imagePath / speed - .002, imagePath / speed + .01);
   assert.ok(Math.abs(reflected.seconds - imagePath / speed) < 2e-4);
-  assert.ok(Math.abs(reflected.value / direct.value - 100 / imagePath) < .01, `ratio ${reflected.value / direct.value}`);
+  const expected = 100 / imagePath * stretch(value, 100) / stretch(value, imagePath);
+  assert.ok(Math.abs(reflected.value / direct.value - expected) < .01, `ratio ${reflected.value / direct.value}`);
 });
 
 test('ground reflection coefficient is one for rigid ground and below one for grass at normal incidence', () => {
@@ -279,4 +288,22 @@ test('a strong blast keeps its shock: grazing over grass it merges with its refl
   assert.ok(Math.abs(rise(at(free)) - rise(at(free, false))) < 5e-5);
   // A small charge has aged past a shock by 400 m: grass still reflects it linearly.
   assert.ok(Math.abs(10 * Math.log10(energy(at({ enabled: true, type: 'grass' }, true, .001)) / energy(at({ enabled: true, type: 'rigid' }, true, .001)))) > 1);
+});
+
+test('a blast ages as a weak shock: its positive phase lengthens as √(1 + σ ln(r/r₀)) and outlasts the linear pulse', () => {
+  const blast = { ...defaultBlast(), positionMetres: { x: 0, y: 0, z: 100 } };
+  const value = scene({ emitter: blast, receivers: [receiverAt('near', { x: 400, y: 0, z: 100 }), receiverAt('far', { x: 4000, y: 0, z: 100 })] });
+  // From the front to the first zero crossing.
+  const positivePhase = result => {
+    const front = result.samples.findIndex(sample => sample > .5 * result.peakPa);
+    let index = front;
+    while (result.samples[index] > 0) index += 1;
+    return (index - front) / result.sampleRate;
+  };
+  const near = positivePhase(render(value, 0));
+  const far = positivePhase(render(value, 1));
+  const linear = blast.durationSecondsPerCubeRootKilogram * Math.cbrt(blast.chargeKilograms);
+  assert.ok(Math.abs(near / linear - stretch(value, 400)) < .02, `${near / linear} vs ${stretch(value, 400)}`);
+  assert.ok(Math.abs(far / near - stretch(value, 4000) / stretch(value, 400)) < .02, `${far / near}`);
+  assert.ok(far / linear > 1.4);
 });

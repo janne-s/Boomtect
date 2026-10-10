@@ -1,6 +1,6 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { GAMMA_AIR, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
+import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, KELVIN_OFFSET, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
 import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES } from './forest.js';
@@ -62,6 +62,16 @@ const LINEAR_PARAMETER = 2;
  */
 const SHOCK_DURATION_RATIO = 10;
 const OLD_AGE_DURATION_RATIO = 2;
+/**
+ * A blast's shock ages as it spreads (class B, weak-shock theory of a spherical wave; Whitham 1956,
+ * Pierce, Acoustics, ch. 11): its front outruns the zero crossing by βp/(2ρc³) per metre while p·T·r
+ * stays fixed, so from the linearization radius r₀ on its positive phase lengthens as
+ * T = T₀·√(1 + σ·ln(r/r₀)), σ = β·p₀·r₀/(ρc³T₀), and its peak falls by the same factor. The growth
+ * stops where the pulse is no longer a shock, T/τ = OLD_AGE_DURATION_RATIO, at r = T₀p₀r₀/(2K).
+ * A blast within its linearization radius of the ground spreads as a merged hemispherical front of
+ * twice the pressure (class C, as the merged reflection).
+ */
+const MERGED_FRONT_FACTOR = 2;
 /** Refraction radii at which a frame group tabulates its ground's creeping mode when the wind varies them. */
 const CREEPING_RADII = 8;
 /** The largest lag of the creeping mode over soft ground relative to rigid ground, measured 3.14 (snow to stony ground, 10 Hz–20 kHz). */
@@ -209,6 +219,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   };
   const shielding = !surface.flat && scene.terrain.shielding;
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
+  const shockImpedance = airShockImpedance(scene.air);
   const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
   const receiverLift = receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y);
   let index = 0;
@@ -243,6 +254,11 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
       const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
       paths.duration[index] = pulse.durationSeconds;
       paths.amplitudeScale[index] = pulse.amplitudeScale;
+    } else if (sources.friedlander[sourceIndex]) {
+      const lift = sources.z[sourceIndex] - surface.heightAt(sources.x[sourceIndex], sources.y[sourceIndex]);
+      const stretch = blastStretch(sources, sourceIndex, path.metres, shockImpedance, lift);
+      paths.duration[index] = sources.durationSeconds[sourceIndex] * stretch;
+      paths.amplitudeScale[index] = 1 / stretch;
     } else {
       paths.duration[index] = sources.durationSeconds[sourceIndex];
       paths.amplitudeScale[index] = 1;
@@ -285,6 +301,23 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, preparedEmitters[emitterIndex].cells, kind, path);
   paths.count = index;
   return paths;
+}
+
+/** ρc³ of the ground-level air, which sets how fast a shock ages. */
+export function airShockImpedance(air) {
+  const density = air.pressureKpa * 1000 / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (air.temperatureCelsius + KELVIN_OFFSET));
+  return density * soundSpeedProfile(air).groundSpeed ** 3;
+}
+
+/** How much a blast's positive phase has lengthened, and its peak fallen, after `metres` of path (see MERGED_FRONT_FACTOR). */
+export function blastStretch(sources, index, metres, shockImpedance, heightMetres) {
+  const r0 = sources.linearRadiusMetres[index];
+  const T0 = sources.durationSeconds[index];
+  if (!(metres > r0 && r0 > 0 && T0 > 0)) return 1;
+  const p0 = sources.amplitudePaMetres[index] / r0 * (heightMetres < r0 ? MERGED_FRONT_FACTOR : 1);
+  const oldAge = T0 * p0 * r0 / (OLD_AGE_DURATION_RATIO * SHOCK_RISE_PASCAL_SECONDS);
+  const sigma = AIR_NONLINEARITY * p0 * r0 / (shockImpedance * T0);
+  return Math.sqrt(1 + sigma * Math.log(Math.min(metres, oldAge) / r0));
 }
 
 /**

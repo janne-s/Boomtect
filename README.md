@@ -181,6 +181,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
+| Blast aging | weak shock of a spherical wave: positive phase grows as `√(1 + σ·ln(r/r₀))`, peak falls by as much; a merged ground front ages as twice the pressure | B/C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
@@ -202,7 +203,7 @@ Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
 ridges, rounded ridges (they shield more than thin edges), terrain finer than
 the heightfield, gusts, more than six ground contacts, repeated contacts over
 sloping ground, rays bending through several layers in turn, nonlinear
-propagation beyond the linearization radius, the forest's reverberation around
+propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
 the source, a forest that covers only part of the terrain.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
