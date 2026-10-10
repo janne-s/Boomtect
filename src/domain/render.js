@@ -8,6 +8,7 @@ import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTabl
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
 import { flightBooms, flightMembers, flightPath } from './flight.js';
+import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
@@ -141,9 +142,12 @@ export function prepareScene(scene) {
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const sources = sourceTable(emitterSources(emitter, scene.air, surface).sources);
-    // A flight's booms leave its path where each receiver's arrival is stationary; its echoes are not traced.
+    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary; their echoes are not traced.
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
-      return { emitter, sources, cells: null, flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air) })) };
+      return { emitter, sources, cells: null, flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air), booms: flightBooms })) };
+    }
+    if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
+      return { emitter, sources, cells: null, flights: showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms })) };
     }
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
@@ -267,7 +271,6 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
       ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
-        - (sources.flowCosine?.[sourceIndex] ?? 0)
       : 0;
     paths.cosIncidence[index] = path.groundSine ?? 1;
     paths.endLift[2 * index] = path.sourceLift ?? 0;
@@ -303,13 +306,13 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
     if (prepared.flights) {
-      prepared.flights.forEach(({ flight, path }, sourceIndex) => {
+      prepared.flights.forEach(({ flight, path, booms }, sourceIndex) => {
         tick();
-        for (const boom of flightBooms(path, flight, receiverPosition, profile, scene.air)) {
+        for (const boom of booms(path, flight, receiverPosition, profile, scene.air)) {
           const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
           add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
           if (!ground) continue;
-          // Its ground reflection carries Carlson's pressure over its own length; the ground model reflects it (K_R).
+          // Its ground reflection carries the boom's pressure over its own length (Carlson's r^(−¾)); the ground model reflects it (K_R).
           const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
           if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
         }

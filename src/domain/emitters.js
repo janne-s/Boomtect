@@ -2,7 +2,7 @@ import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
 import { SECONDARY_MASS_SHARE, secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
-import { meteorSources, showerMembers } from './meteor.js';
+import { showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
 import { stormFlashes } from './storm.js';
@@ -29,12 +29,13 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
  * burst at a level against the shock's amplitude at the same distance (`fireball.js`).
  */
 /**
- * A flight as one row: the renderer finds its booms per receiver from its path (`flight.js`), which
- * set where and when each leaves, its overpressure, and its duration. The row keeps the N-wave pulse.
+ * A flight or a meteor as one row: the renderer finds its booms per receiver from its path
+ * (`flight.js`, `meteor.js`), which set where and when each leaves, its overpressure, and its
+ * duration. The row keeps the N-wave pulse; `flash` is the body's index in a formation or shower.
  */
-function flightSource(flight) {
+function flightSource(flight, flash = 0) {
   return {
-    flash: 0, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
+    flash, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
     amplitudePaMetres: 1, pulse: 'n-wave', durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, flight: true
   };
 }
@@ -86,7 +87,7 @@ export function emitterFlashes(emitter, surface = null) {
 /** Point sources of an emitter, with the flashes they came from. */
 export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
-  if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: showerMembers(emitter).flatMap((meteor, index) => meteorSources(meteor, air, index)) };
+  if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: showerMembers(emitter).map(flightSource) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   const flashes = emitterFlashes(emitter, surface);

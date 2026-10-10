@@ -109,20 +109,20 @@ export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicle
 }
 
 /**
- * The booms of a flight path at a receiver: where each leaves the path, when, along which ray, with
- * its free-field overpressure and duration there and its focusing. The receiver is in the frame of
+ * Where the arrival at a receiver is stationary along a path sampled every `path.step` seconds
+ * (`seconds`, `x`, `y`, `z`): each minimum of T(t) = t + travel(x(t) → receiver) between its ends,
+ * outside the refraction shadow, with the ray from there and T″. The receiver is in the frame of
  * the path (heights above the datum).
  */
-export function flightBooms(path, flight, receiver, profile, air) {
+export function stationaryArrivals(path, receiver, profile) {
   const count = path.seconds.length;
   if (count < 3) return [];
-  const pointAt = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
   const arrival = new Float64Array(count);
   for (let index = 0; index < count; index += 1) {
-    const point = pointAt(index);
+    const point = { x: path.x[index], y: path.y[index], z: path.z[index] };
     arrival[index] = path.seconds[index] + travelSeconds(pathProfile(profile, point, receiver), point, receiver);
   }
-  const booms = [];
+  const found = [];
   const h = path.step;
   for (let index = 1; index < count - 1; index += 1) {
     if (!(arrival[index] < arrival[index - 1] && arrival[index] <= arrival[index + 1])) continue;
@@ -133,7 +133,19 @@ export function flightBooms(path, flight, receiver, profile, air) {
     const point = { x: blend(path.x), y: blend(path.y), z: blend(path.z) };
     const along = pathProfile(profile, point, receiver);
     if (along.gradient < 0 && inShadow(along, point, receiver)) continue;
-    const ray = rayBetween(along, point, receiver);
+    found.push({ point, emissionSeconds: blend(path.seconds), ray: rayBetween(along, point, receiver), along, curvature, blend });
+  }
+  return found;
+}
+
+/**
+ * The booms of a flight path at a receiver: where each leaves the path, when, along which ray, with
+ * its free-field overpressure and duration there and its focusing. The receiver is in the frame of
+ * the path (heights above the datum).
+ */
+export function flightBooms(path, flight, receiver, profile, air) {
+  const booms = [];
+  for (const { point, emissionSeconds, ray, along, curvature, blend } of stationaryArrivals(path, receiver, profile)) {
     const speed = blend(path.speed);
     const soundSpeed = soundSpeedAt(air, point.z);
     const mach = speed / soundSpeed;
@@ -146,7 +158,7 @@ export function flightBooms(path, flight, receiver, profile, air) {
     const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
     const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
     const focus = Math.min(FOCUS_LIMIT, Math.sqrt(steady / Math.max(curvature, steady / FOCUS_LIMIT ** 2)));
-    booms.push({ point, emissionSeconds: blend(path.seconds), ray, along, mach, focus, ...boom });
+    booms.push({ point, emissionSeconds, ray, along, mach, focus, ...boom });
   }
   return booms;
 }

@@ -1,22 +1,32 @@
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
-import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { stationaryArrivals } from './flight.js';
 import { WEAK_SHOCK, weakShockPulse } from './lightning.js';
 import { createRandom, normalDeviate } from './random.js';
 
 /**
- * A meteoroid entering the atmosphere as a line source (class B, ReVelle 1976, the theory Boomtect
- * uses for thunder). Drag deposits E₀ = ½·ρ·v²·C_D·π(d/2)² per metre of trail; the blast radius is
- * R₀ = √(E₀/p), about M·d; each piece of trail radiates an N-wave of period 2.81·R₀/c that lengthens
- * as x^¼ (`weakShockPulse`). Literature prefactors of R₀ differ by up to 3.5 (Silber et al. 2018
- * review); the theory holds while v ≫ c and the body barely slows, so the speed is kept constant
- * (class C) and the trail ends at a height. The trail is cut into pieces like a lightning channel;
- * their emission times follow the flight, so the Mach cone forms in their sum (class A).
+ * A meteoroid entering the atmosphere as a line source (class B, ReVelle 1976). Drag deposits
+ * E₀ = ½·ρ·v²·C_D·π(d/2)² per metre of trail; the blast radius is R₀ = √(E₀/p), about M·d. The
+ * theory holds while v ≫ c and the body barely slows, so the speed is kept constant (class C) and
+ * the trail ends at a height.
+ *
+ * Its boom leaves the trail where the arrival at the receiver is stationary, where the ray leaves
+ * on the Mach cone (class A, as a flight's, `stationaryArrivals`). The trail's cylindrical blast
+ * wave already integrates the line, so the boom is one N-wave from there (class B, ReVelle 1976 as
+ * restated by Silber et al. 2015): at x = r/R₀ = 10, where the weak-shock regime begins,
+ *   Δp/p = 2γ/(γ+1) · 0.4503 / ((1 + 4.803·x^(8/3))^(3/8) − 1),
+ * then Δp ∝ x^(−3/4) as a weak cylindrical shock up to LIMIT_RADII and x^(−1/2) as a linear wave
+ * beyond; its period τ₀ = 2.81·R₀/c lengthens as x^¼ (`weakShockPulse`). From the air at the
+ * trail to the air at the receiver the overpressure scales with √(p_trail·p_receiver), as
+ * Carlson's (class B for the impedance law, temperature neglected).
  */
 
-/** The share of the deposited energy each piece radiates as sound (class C, as lightning's default). */
-export const METEOR_ACOUSTIC_EFFICIENCY = .01;
 const PERIOD_COEFFICIENT = 2.81;
 const LIMIT_RADII = 1e4;
+const START_RADII = WEAK_SHOCK.startRadii;
+const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** (8 / 3)) ** (3 / 8) - 1);
+/** Seconds between the points of a meteor's track. */
+const TRACK_STEP_SECONDS = .02;
 
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 
@@ -29,45 +39,33 @@ export function meteorTrail(meteor) {
   return { start: meteor.startMetres, direction, speed: meteor.speedKilometresPerSecond * 1000, lengthMetres };
 }
 
-/** The point sources of a meteor's trail (shaped as `flashSources`), with `flash` its index in a shower. */
-export function meteorSources(meteor, air, flash = 0) {
-  const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
-  const groundSpeed = soundSpeedAt(air, 0);
-  const groundDensity = airDensityKilogramsPerCubicMetre(air.pressureKpa * 1000, air.temperatureCelsius);
-  const area = Math.PI * (meteor.diameterMetres / 2) ** 2;
-  const pieces = Math.max(1, Math.ceil(lengthMetres / meteor.segmentLengthMetres));
-  const piece = lengthMetres / pieces;
-  const sources = [];
-  for (let index = 0; index < pieces; index += 1) {
-    const along = (index + .5) * piece;
-    const position = { x: start.x + direction.x * along, y: start.y + direction.y * along, z: start.z + direction.z * along };
-    const pressurePa = pressureAtHeightPa(air, position.z);
-    const density = pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, position.z));
-    const energy = .5 * density * speed * speed * meteor.dragCoefficient * area;
-    const radius = Math.sqrt(energy / pressurePa);
-    const localSpeed = soundSpeedAt(air, position.z);
-    const sourcePeriodSeconds = PERIOD_COEFFICIENT * radius / localSpeed;
-    const reference = weakShockPulse(radius, sourcePeriodSeconds, 0, LIMIT_RADII);
-    const acousticEnergy = METEOR_ACOUSTIC_EFFICIENCY * energy * piece;
-    sources.push({
-      flash,
-      positionMetres: position,
-      direction,
-      elementMetres: piece,
-      // The body crosses the piece as it radiates: its emission lags by s/v along it, which the renderer
-      // takes as a cosine of c₀/v off its directivity (c₀ the ground speed, the renderer's unit).
-      flowCosine: groundSpeed / speed,
-      emissionSeconds: meteor.startSeconds + along / speed,
-      amplitudePaMetres: Math.sqrt(3 * groundDensity * groundSpeed * acousticEnergy / (4 * Math.PI * reference.durationSeconds)),
-      pulse: 'n-wave',
-      weakShock: { relaxationRadius: radius, sourcePeriodSeconds, limitRadii: LIMIT_RADII },
-      durationSeconds: reference.durationSeconds,
-      decay: 0,
-      spanSeconds: weakShockPulse(radius, sourcePeriodSeconds, Infinity, LIMIT_RADII).durationSeconds,
-      linearRadiusMetres: radius * WEAK_SHOCK.startRadii
-    });
-  }
-  return sources;
+/** The blast radius R₀, m, and source period τ₀, s, of a meteor's trail at a height. */
+export function meteorBlast(meteor, air, heightMetres) {
+  const pressurePa = pressureAtHeightPa(air, heightMetres);
+  const density = pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
+  const speed = meteor.speedKilometresPerSecond * 1000;
+  const energy = .5 * density * speed * speed * meteor.dragCoefficient * Math.PI * (meteor.diameterMetres / 2) ** 2;
+  const radius = Math.sqrt(energy / pressurePa);
+  return { radiusMetres: radius, sourcePeriodSeconds: PERIOD_COEFFICIENT * radius / soundSpeedAt(air, heightMetres), pressurePa };
+}
+
+/** A meteor's boom `metres` along the ray from a point of its trail at a height: overpressure, Pa, and N-wave duration, s. */
+export function meteorBoom(meteor, air, heightMetres, metres, receiverPressurePa) {
+  const { radiusMetres, sourcePeriodSeconds, pressurePa } = meteorBlast(meteor, air, heightMetres);
+  const x = Math.max(START_RADII, metres / radiusMetres);
+  const ratio = START_OVERPRESSURE_RATIO * (Math.min(x, LIMIT_RADII) / START_RADII) ** -.75 * (Math.max(x, LIMIT_RADII) / LIMIT_RADII) ** -.5;
+  return {
+    overpressurePa: ratio * Math.sqrt(pressurePa * receiverPressurePa),
+    durationSeconds: weakShockPulse(radiusMetres, sourcePeriodSeconds, metres, LIMIT_RADII).durationSeconds
+  };
+}
+
+/** The booms of a meteor's track at a receiver, in the frame of the track (heights above the datum). */
+export function meteorBooms(track, meteor, receiver, profile, air) {
+  const receiverPressurePa = pressureAtHeightPa(air, Math.max(0, receiver.z));
+  return stationaryArrivals(track, receiver, profile).map(arrival => ({
+    ...arrival, focus: 1, ...meteorBoom(meteor, air, arrival.point.z, arrival.ray.metres, receiverPressurePa)
+  }));
 }
 
 /**
@@ -96,7 +94,7 @@ export function showerMembers(shower) {
 export function meteorTrack(meteor) {
   const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
   const duration = lengthMetres / speed;
-  const steps = Math.max(2, Math.ceil(duration / .02));
+  const steps = Math.max(2, Math.ceil(duration / TRACK_STEP_SECONDS));
   const step = duration / steps;
   const track = { seconds: [], x: [], y: [], z: [], step };
   for (let index = 0; index <= steps; index += 1) {

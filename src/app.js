@@ -19,6 +19,7 @@ import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODIES, BODY_TYPES, carlsonBoom } from './domain/flight.js';
+import { meteorBoom, showerMembers } from './domain/meteor.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
@@ -1519,6 +1520,13 @@ function wavefrontAmplitudes(emitter) {
     // A boom's pressure 1 km away times 1 km, so that the fronts fade roughly with it.
     const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom.overpressurePa * 1000]));
+  }
+  if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
+    // Each meteor's boom straight below the end of its trail times that distance.
+    return new Map(showerMembers(emitter).map((meteor, index) => {
+      const height = meteor.endHeightMetres;
+      return [`${emitter.id}:${index}`, meteorBoom(meteor, air, height, height, air.pressureKpa * 1000).overpressurePa * height];
+    }));
   }
   if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastSources(round, air)[0].amplitudePaMetres]));
   const energy = new Map();
