@@ -46,10 +46,14 @@ function addPolygon(path, points) {
   path.closePath();
 }
 
-/** Every channel point of an emitter, or its blast point, for outlines on the floor. */
+const flashPoints = new WeakMap();
+
+/** Every channel point of an emitter, or its blast point, for outlines on the floor; kept per generated geometry. */
 function emitterPoints(emitter) {
   if (emitter.kind === 'blast') return [emitter.positionMetres];
-  return cachedFlashes(emitter).flatMap(flash => flash.channels.flatMap(channel => channel.points));
+  const flashes = cachedFlashes(emitter);
+  if (!flashPoints.has(flashes)) flashPoints.set(flashes, flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
+  return flashPoints.get(flashes);
 }
 
 /** The tip of a binaural receiver's look arrow, at a length relative to the box. */

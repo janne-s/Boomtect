@@ -2,6 +2,7 @@ import { atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtH
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
+import { sourcePosition, sourceTable } from './source-table.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
@@ -49,9 +50,12 @@ export const MISSING_PHENOMENA = Object.freeze([
   'Absolute calibration of sound pressure level'
 ]);
 
-/** Expands every enabled emitter into point sources. Pure and deterministic from the scene. */
+/**
+ * Expands every enabled emitter into point sources, kept as a typed table so that the flash
+ * geometry behind them can be released. Pure and deterministic from the scene.
+ */
 export function prepareScene(scene) {
-  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => ({ emitter, ...emitterSources(emitter, scene.air) }));
+  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => ({ emitter, sources: sourceTable(emitterSources(emitter, scene.air).sources) }));
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   if (count > MAXIMUM_SOURCES) throw new RangeError(`The scene has ${count} point sources; the limit is ${MAXIMUM_SOURCES}.`);
   return prepared;
@@ -97,8 +101,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
   const r = receiver.positionMetres;
   const impedance = receiverImpedanceFactor(scene.air, profile, r.z);
   let index = 0;
-  const add = (emitterIndex, sourceIndex, source, kind, path) => {
-    const d = source.direction;
+  const add = (emitterIndex, sourceIndex, sources, kind, path) => {
     const { departure, arrival } = path;
     paths.emitter[index] = emitterIndex;
     paths.source[index] = sourceIndex;
@@ -106,34 +109,36 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     paths.metres[index] = path.metres;
     paths.spreadMetres[index] = path.spreadMetres / impedance;
     paths.creepMetres[index] = path.creepMetres ?? 0;
-    paths.seconds[index] = source.emissionSeconds + path.seconds;
+    paths.seconds[index] = sources.emissionSeconds[sourceIndex] + path.seconds;
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
-    paths.directivityCos[index] = d ? (d.x * departure.x + d.y * departure.y + d.z * departure.z) * profile.groundSpeed / speedAt(profile, source.positionMetres.z) : 0;
+    paths.directivityCos[index] = sources.directed[sourceIndex]
+      ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
+      : 0;
     paths.cosIncidence[index] = path.groundSine ?? 1;
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
-    if (source.weakShock) {
-      const { relaxationRadius, sourcePeriodSeconds, limitRadii } = source.weakShock;
-      const pulse = weakShockPulse(relaxationRadius, sourcePeriodSeconds, path.metres, limitRadii);
+    if (sources.relaxationRadius[sourceIndex] > 0) {
+      const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
       paths.duration[index] = pulse.durationSeconds;
       paths.amplitudeScale[index] = pulse.amplitudeScale;
     } else {
-      paths.duration[index] = source.durationSeconds;
+      paths.duration[index] = sources.durationSeconds[sourceIndex];
       paths.amplitudeScale[index] = 1;
     }
     index += 1;
   };
   preparedEmitters.forEach((prepared, emitterIndex) => {
-    prepared.sources.forEach((source, sourceIndex) => {
-      const p = source.positionMetres;
+    const { sources } = prepared;
+    for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
+      const p = sourcePosition(sources, sourceIndex);
       if (inShadow(profile, p, r)) {
-        add(emitterIndex, sourceIndex, source, PATH_SHADOW, shadowPath(profile, p, r));
-        return;
+        add(emitterIndex, sourceIndex, sources, PATH_SHADOW, shadowPath(profile, p, r));
+        continue;
       }
-      add(emitterIndex, sourceIndex, source, PATH_DIRECT, rayBetween(profile, p, r));
-      if (!ground) return;
+      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(profile, p, r));
+      if (!ground) continue;
       const reflected = reflectedRay(profile, p, r);
-      if (reflected) add(emitterIndex, sourceIndex, source, PATH_GROUND, reflected);
-    });
+      if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected);
+    }
   });
   paths.count = index;
   return paths;
@@ -150,9 +155,9 @@ export function arrivalTable(preparedEmitters, receiver, scene) {
   const creep = creepingCoefficient(soundSpeedProfile(scene.air));
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   for (let index = 0; index < paths.count; index += 1) {
-    const source = preparedEmitters[paths.emitter[index]].sources[paths.source[index]];
-    heights[index] = source.positionMetres.z;
-    levels[index] = 20 * Math.log10(source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
+    const { sources } = preparedEmitters[paths.emitter[index]];
+    heights[index] = sources.z[paths.source[index]];
+    levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
       + (paths.creepMetres[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, creep * paths.creepMetres[index], floor))) : 0);
   }
   return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, kinds: paths.kind.slice(0, paths.count) };
@@ -193,11 +198,12 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene) {
   let longestElement = 0;
   let longestSpan = 0;
   let longestCreep = 0;
-  for (const source of prepared.sources) longestElement = Math.max(longestElement, source.elementMetres);
+  const { sources } = prepared;
+  for (let index = 0; index < sources.length; index += 1) longestElement = Math.max(longestElement, sources.elementMetres[index]);
   for (let index = 0; index < paths.count; index += 1) {
     if (frameGroup(paths, index) !== group) continue;
-    const source = prepared.sources[paths.source[index]];
-    longestSpan = Math.max(longestSpan, source.weakShock ? paths.duration[index] : source.spanSeconds);
+    const source = paths.source[index];
+    longestSpan = Math.max(longestSpan, sources.relaxationRadius[source] > 0 ? paths.duration[index] : sources.spanSeconds[source]);
     longestCreep = Math.max(longestCreep, paths.creepMetres[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
@@ -275,13 +281,13 @@ function shadowFromExponent(loss, lag, beta, floor) {
  * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
  * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
  */
-function accumulatePath(spectra, gains, plan, source, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
+function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
   const channels = spectra.length;
   const metres = paths.metres[index];
   const limit = absorptionLimit(plan, metres);
   if (limit < 2) return;
   const { absorption, smoothing, gridPosition, binHz, size } = plan;
-  const gain = source.amplitudePaMetres * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
+  const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
   const creepMetres = paths.creepMetres[index];
   const { creeping, shadow, shadowFloor } = plan;
@@ -298,7 +304,7 @@ function accumulatePath(spectra, gains, plan, source, paths, index, offsetSample
       const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
       const lower = Math.min(TURBULENCE_KNOTS - 2, Math.floor(position));
       const deviate = knots[lower] + (knots[lower + 1] - knots[lower]) * (position - lower);
-      const phase = turbulent ? deviate * Math.sqrt(turbulentPhaseVariance(frequency, metres, source.positionMetres.z, receiverHeight, scene.air, speed)) : 0;
+      const phase = turbulent ? deviate * Math.sqrt(turbulentPhaseVariance(frequency, metres, sources.z[sourceIndex], receiverHeight, scene.air, speed)) : 0;
       groundRe[point] = q[0] * Math.cos(phase) - q[1] * Math.sin(phase);
       groundIm[point] = q[0] * Math.sin(phase) + q[1] * Math.cos(phase);
     }
@@ -309,22 +315,23 @@ function accumulatePath(spectra, gains, plan, source, paths, index, offsetSample
   let phaseRe = phaseStepRe;
   let phaseIm = phaseStepIm;
 
-  const directivityStep = Math.PI * binHz * source.elementMetres * paths.directivityCos[index] / speed;
-  const directive = source.elementMetres > 0 && Math.abs(directivityStep) > 1e-12;
+  const elementMetres = sources.elementMetres[sourceIndex];
+  const directivityStep = Math.PI * binHz * elementMetres * paths.directivityCos[index] / speed;
+  const directive = elementMetres > 0 && Math.abs(directivityStep) > 1e-12;
   const directivityStepRe = Math.cos(directivityStep);
   const directivityStepIm = Math.sin(directivityStep);
   let directivityRe = directivityStepRe;
   let directivityIm = directivityStepIm;
 
   const omegaStep = 2 * Math.PI * binHz;
-  const nWave = source.pulse === 'n-wave';
+  const nWave = sources.friedlander[sourceIndex] === 0;
   const duration = paths.duration[index];
   const pulseStep = omegaStep * duration;
   const pulseStepRe = Math.cos(pulseStep);
   const pulseStepIm = Math.sin(pulseStep);
   let pulseCos = pulseStepRe;
   let pulseSin = pulseStepIm;
-  const friedlanderRe = source.decay / duration;
+  const friedlanderRe = sources.decay[sourceIndex] / duration;
 
   for (let bin = 1; bin < limit; bin += 1) {
     const omega = omegaStep * bin;
@@ -427,8 +434,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     frameOf[index] = frame;
     first = Math.min(first, frame * plan.hop);
     last = Math.max(last, frame * plan.hop + plan.size);
-    const source = preparedEmitters[paths.emitter[index]].sources[paths.source[index]];
-    if (paths.metres[index] < source.linearRadiusMetres) nonlinearPaths += 1;
+    if (paths.metres[index] < preparedEmitters[paths.emitter[index]].sources.linearRadiusMetres[paths.source[index]]) nonlinearPaths += 1;
   }
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
@@ -450,10 +456,10 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
-      const source = preparedEmitters[emitterIndex].sources[paths.source[index]];
+      const { sources } = preparedEmitters[emitterIndex];
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
-      accumulatePath(spectra, gains, plan, source, paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);
+      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);
       cursor += 1;
     }
     const at = frame * plan.hop - first;
@@ -498,14 +504,15 @@ export function combineSegments(segments, sampleRate) {
   return { startSeconds: start / sampleRate, channels, peakPa };
 }
 
-/** Time boundaries that split all arrivals at every receiver into `count` parts of equal size. */
-export function partitionSeconds(preparedEmitters, scene, count) {
-  const times = [];
-  for (const receiver of scene.receivers) {
-    const paths = receiverPaths(preparedEmitters, receiver, scene);
-    for (let index = 0; index < paths.count; index += 1) times.push(paths.seconds[index]);
-  }
-  times.sort((a, b) => a - b);
+/**
+ * Time boundaries that split all arrivals at every receiver into `count` parts of equal size. Pass
+ * the receivers' arrival tables when they exist, so that their paths are not traced again.
+ */
+export function partitionSeconds(preparedEmitters, scene, count, tables = scene.receivers.map(receiver => arrivalTable(preparedEmitters, receiver, scene))) {
+  const times = new Float64Array(tables.reduce((sum, table) => sum + table.count, 0));
+  let at = 0;
+  for (const table of tables) { times.set(table.seconds, at); at += table.count; }
+  times.sort();
   const boundaries = [-Infinity];
   for (let part = 1; part < count; part += 1) boundaries.push(times[Math.floor(part / count * times.length)] ?? Infinity);
   boundaries.push(Infinity);

@@ -237,3 +237,27 @@ test('the view\u2019s travel time equals the first arrival\u2019s, lit and in th
     assert.ok(Math.abs(travelSeconds(isa, source, receiver) - firstArrival(isa, source, receiver).seconds) < 1e-9);
   }
 });
+
+test('every path is finite or absent for random and edge-case geometry in all three kinds of air', async () => {
+  const { createRandom } = await import('../src/domain/random.js');
+  const random = createRandom(42);
+  const profiles = [isa, inversion, soundSpeedProfile(air({ refraction: false })), soundSpeedProfile(air({ lapseRateKelvinPerMetre: .012 })), soundSpeedProfile(air({ lapseRateKelvinPerMetre: -.02 }))];
+  const finite = path => [path.seconds, path.metres, path.departure.x, path.departure.z, path.arrival.x, path.arrival.z].every(Number.isFinite) && path.spreadMetres > 0;
+  const cases = [];
+  for (let index = 0; index < 400; index += 1) {
+    const height = () => [0, 1.7, random() * 20000][Math.floor(random() * 3)];
+    const span = [0, 1, random() * 50000][Math.floor(random() * 3)];
+    const angle = 2 * Math.PI * random();
+    cases.push([{ x: 0, y: 0, z: height() }, { x: span * Math.cos(angle), y: span * Math.sin(angle), z: height() }]);
+  }
+  for (const profile of profiles) {
+    for (const [a, b] of cases) {
+      if (a.x === b.x && a.y === b.y && a.z === b.z) continue;
+      const first = firstArrival(profile, a, b);
+      assert.ok(finite(first), `first arrival ${JSON.stringify([a, b])}`);
+      assert.ok(Number.isFinite(travelSeconds(profile, a, b)));
+      const reflected = reflectedRay(profile, a, b);
+      if (reflected) assert.ok(finite(reflected) || reflected.spreadMetres === Infinity, `reflection ${JSON.stringify([a, b])}`);
+    }
+  }
+});

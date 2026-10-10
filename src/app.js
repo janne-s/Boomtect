@@ -38,10 +38,10 @@ const ENVELOPE_RANGE_DB = 40;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
 /**
  * Every worker holds the whole scene, so very large scenes use fewer of them to bound memory: a
- * worker was measured at about 1.8 kB per point source (230 MB for 130 912 sources), and the
- * budget keeps all workers together near 800 MB.
+ * worker peaks at about 0.8 kB per point source while it prepares the sources (102 MB for 130 912
+ * sources, measured on heap and buffers), and the budget keeps all workers together near 800 MB.
  */
-const SOURCE_COPIES_BUDGET = 450000;
+const SOURCE_COPIES_BUDGET = 1000000;
 /** A render whose workers have sent nothing for this long has failed, for example out of memory. */
 const RENDER_STALL_SECONDS = 60;
 
@@ -202,12 +202,14 @@ function startRender() {
   }
   let prepared;
   let boundaries;
+  let arrivals;
   let workerCount = WORKER_COUNT;
   try {
     prepared = prepareScene(scene);
     const total = prepared.reduce((sum, item) => sum + item.sources.length, 0);
     workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(SOURCE_COPIES_BUDGET / Math.max(1, total))));
-    boundaries = partitionSeconds(prepared, scene, workerCount);
+    arrivals = scene.receivers.map(receiver => arrivalTable(prepared, receiver, scene));
+    boundaries = partitionSeconds(prepared, scene, workerCount, arrivals);
   } catch (error) {
     setStatus(error.message, true);
     drawResults();
@@ -247,7 +249,7 @@ function startRender() {
       parts[index] = data.segments;
       worker.terminate();
       remaining -= 1;
-      if (remaining === 0) finishRender(scene, prepared, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
+      if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
     });
     worker.addEventListener('error', event => {
       if (revision !== state.revision) return;
@@ -258,12 +260,12 @@ function startRender() {
   }
 }
 
-function finishRender(scene, prepared, parts, info) {
+function finishRender(scene, arrivals, parts, info) {
   state.workers = [];
   clearInterval(state.watchdog);
   const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
-    state.results = new Map(scene.receivers.map(receiver => {
+    state.results = new Map(scene.receivers.map((receiver, receiverIndex) => {
       const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id));
       const combined = combineSegments(segments, scene.render.sampleRate);
       return [receiver.id, {
@@ -272,7 +274,7 @@ function finishRender(scene, prepared, parts, info) {
         ...combined,
         samples: combined.channels[0],
         speedOfSound,
-        arrivals: arrivalTable(prepared, receiver, scene),
+        arrivals: arrivals[receiverIndex],
         nonlinearPaths: segments.reduce((sum, segment) => sum + segment.nonlinearPaths, 0),
         modelVersion: MODEL_VERSION
       }];
