@@ -112,11 +112,10 @@ function facingTip(receiver, box) {
   const heading = receiver.headingDegrees * Math.PI / 180;
   const pitch = receiver.pitchDegrees * Math.PI / 180;
   const base = placed(receiver.positionMetres);
-  return {
-    x: base.x + Math.sin(heading) * Math.cos(pitch) * length,
-    y: base.y + Math.cos(heading) * Math.cos(pitch) * length,
-    z: Math.max(ground(base.x, base.y), base.z + Math.sin(pitch) * length)
-  };
+  const x = base.x + Math.sin(heading) * Math.cos(pitch) * length;
+  const y = base.y + Math.cos(heading) * Math.cos(pitch) * length;
+  // A downward look stops at the ground under the tip.
+  return { x, y, z: Math.max(ground(x, y), base.z + Math.sin(pitch) * length) };
 }
 
 /** Draggable points: blast positions, channel ends, storm edges, receivers, and look arrows. */
@@ -1129,7 +1128,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     if (handle.role === 'facing') {
       const owner = scene.receivers.find(receiver => receiver.id === handle.id);
-      const base = frame.project(owner.positionMetres);
+      // Along the drawn arrow, which starts at the microphone where it stands on the terrain.
+      const base = frame.project(placed(owner.positionMetres));
       const angle = Math.atan2(p.y - base.y, p.x - base.x);
       const size = ARROWHEAD_PIXELS;
       context.moveTo(p.x + Math.cos(angle) * size * .6, p.y + Math.sin(angle) * size * .6);
