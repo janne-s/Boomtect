@@ -192,3 +192,22 @@ test('merged scattered echoes do not fall on a regular grid of arrival times, wh
   assert.ok(count > 500, `${count}`);
   assert.ok(Math.hypot(re, im) / count < .1, `${Math.hypot(re, im) / count}`);
 });
+
+test('a blast on rigid ground hears its echoes with the ground images at both ends, close to +12 dB', () => {
+  // A ridge 1.5 km away; blast 1 m and microphone 1.7 m above level ground, so both images merge with the echo.
+  const ridge = x => Math.max(0, .4 * (x - 1500));
+  const echoEnergy = groundEnabled => {
+    const scene = defaultScene('blast');
+    scene.terrain = terrain(ridge, { cells: 120, extentMetres: 6000, scattering: 1 });
+    scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
+    scene.ground = { enabled: groundEnabled, type: 'rigid' };
+    scene.receivers[0].positionMetres = { x: -400, y: 0, z: 1.7 };
+    const parsed = parseScene(scene);
+    const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+    // From well after the direct sound and its tail, before which no echo can arrive.
+    const from = Math.round((2.5 - result.startSeconds) * result.sampleRate);
+    return result.samples.slice(from).reduce((sum, value) => sum + value * value, 0);
+  };
+  const gain = 10 * Math.log10(echoEnergy(true) / echoEnergy(false));
+  assert.ok(gain > 10.5 && gain < 12.1, `${gain}`);
+});

@@ -65,6 +65,13 @@ const OLD_AGE_DURATION_RATIO = 2;
 const CREEPING_RADII = 8;
 /** The largest lag of the creeping mode over soft ground relative to rigid ground, measured 3.14 (snow to stony ground, 10 Hz–20 kHz). */
 const SOFT_CREEP_LAG = 3.5;
+/**
+ * An echo leaves a source near the ground and reaches a receiver near it together with its image in
+ * the ground there: each end adds the ground's reflection delayed by 2·h·sin φ, the image's extra
+ * path (class B, the same reflection as the direct sound's). Ends whose image lags more than this
+ * arrive as echoes of their own, which are not traced (class C).
+ */
+const END_IMAGE_SECONDS = .02;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
@@ -159,7 +166,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) : [];
   const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
   // Arrays per path and how many entries each holds; they grow when rays with several contacts add more.
-  const widths = { direction: 3, edges: MAXIMUM_EDGES };
+  const widths = { direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 };
   const paths = {
     count: 0,
     emitter: new Uint16Array(capacity),
@@ -180,7 +187,12 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     edgeCount: new Uint8Array(capacity),
     edges: new Float64Array(MAXIMUM_EDGES * capacity),
     /** Ground contacts of a reflected path: 1, or more where the air bends rays back down. */
-    bounces: new Uint8Array(capacity)
+    bounces: new Uint8Array(capacity),
+    /** An echo's image path differences at its source and receiver ends, metres, and the sines of its legs there. */
+    endLift: new Float64Array(2 * capacity),
+    endSine: new Float64Array(2 * capacity),
+    /** The echo's source height above its ground, which reflects as rigid ground within the source's linearization radius. */
+    sourceHeight: new Float64Array(capacity)
   };
   let room = capacity;
   const grow = () => {
@@ -214,6 +226,11 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
       ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
       : 0;
     paths.cosIncidence[index] = path.groundSine ?? 1;
+    paths.endLift[2 * index] = path.sourceLift ?? 0;
+    paths.endLift[2 * index + 1] = path.receiverLift ?? 0;
+    paths.endSine[2 * index] = path.sourceSine ?? 0;
+    paths.endSine[2 * index + 1] = path.receiverSine ?? 0;
+    paths.sourceHeight[index] = path.sourceHeight ?? 0;
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
     if (sources.relaxationRadius[sourceIndex] > 0) {
       const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
@@ -279,7 +296,11 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
     // Place by place, so that only one place's traced paths are held at a time.
     for (let place = 0; place < places.length; place += 1) {
       tick();
-      const traced = echoPaths(field, { x: places.x[place], y: places.y[place], z: places.z[place] });
+      const point = { x: places.x[place], y: places.y[place], z: places.z[place] };
+      const traced = echoPaths(field, point);
+      const sourceHeight = Math.max(0, point.z - surface.heightAt(point.x, point.y));
+      const receiverHeight = Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y));
+      for (const path of traced) Object.assign(path, endImages(path, sourceHeight, receiverHeight));
       for (const cell of cellsOf[place]) {
         for (const path of traced) {
           if (path.kind === PATH_SCATTER) mergeScattered(scattered, cells, cell, path);
@@ -290,6 +311,13 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
     for (const merged of scattered.values()) list.push({ emitterIndex, cell: merged.cell, kind: PATH_SCATTER, path: mergedPath(merged, cells) });
   });
   return list;
+}
+
+/** The image path differences and leg sines at an echo's two ends, over the ground taken level there (class C). */
+function endImages(path, sourceHeight, receiverHeight) {
+  const sourceSine = Math.abs(path.departure.z);
+  const receiverSine = Math.abs(path.arrival.z);
+  return { sourceHeight, sourceSine, receiverSine, sourceLift: 2 * sourceHeight * sourceSine, receiverLift: 2 * receiverHeight * receiverSine };
 }
 
 /**
@@ -307,7 +335,7 @@ function mergeScattered(merged, cells, cell, path) {
   const energy = (cells.amplitudePaMetres[cell] / path.spreadMetres) ** 2;
   let entry = merged.get(key);
   if (!entry) {
-    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, cell, strongest: 0 };
+    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, sourceLift: 0, receiverLift: 0, sourceSine: 0, receiverSine: 0, sourceHeight: 0, cell, strongest: 0 };
     merged.set(key, entry);
   }
   entry.energy += energy;
@@ -316,6 +344,7 @@ function mergeScattered(merged, cells, cell, path) {
   entry.x += energy * path.arrival.x;
   entry.y += energy * path.arrival.y;
   entry.z += energy * path.arrival.z;
+  for (const key of ['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight']) entry[key] += energy * path[key];
   if (energy > entry.strongest) Object.assign(entry, { strongest: energy, cell, seconds: path.seconds });
 }
 
@@ -329,7 +358,12 @@ function mergedPath(entry, cells) {
     spreadMetres: cells.amplitudePaMetres[cell] / Math.sqrt(energy),
     departure: arrival,
     arrival,
-    groundSine: entry.cosine / energy
+    groundSine: entry.cosine / energy,
+    sourceLift: entry.sourceLift / energy,
+    receiverLift: entry.receiverLift / energy,
+    sourceSine: entry.sourceSine / energy,
+    receiverSine: entry.receiverSine / energy,
+    sourceHeight: entry.sourceHeight / energy
   };
 }
 
@@ -595,7 +629,7 @@ function shadowFromExponent(loss, lag, beta, floor) {
  * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
  * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
  */
-function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight, receiverZ) {
+function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ) {
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, sources.z[sourceIndex], receiverZ);
@@ -644,6 +678,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       groundIm[point] = q[0] * Math.sin(phase) + q[1] * Math.cos(phase);
     }
   }
+  // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
+  const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
   const phaseStepIm = Math.sin(phaseStep);
@@ -720,6 +756,23 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       im = re * cIm + im * cRe;
       re = nextRe;
     }
+    for (let end = 0; end < endCount; end += 1) {
+      const { re: gridRe, im: gridIm, rotation } = ends[end];
+      const position = gridPosition[bin];
+      const lower = Math.floor(position);
+      const mix = position - lower;
+      const qRe = gridRe[lower] + (gridRe[lower + 1] - gridRe[lower]) * mix;
+      const qIm = gridIm[lower] + (gridIm[lower + 1] - gridIm[lower]) * mix;
+      // 1 + Q·e^(−iωΔ/c), with the delay's phase advanced by rotation.
+      const fRe = 1 + qRe * rotation.re - qIm * rotation.im;
+      const fIm = qRe * rotation.im + qIm * rotation.re;
+      const nextRe = re * fRe - im * fIm;
+      im = re * fIm + im * fRe;
+      re = nextRe;
+      const nextRotationRe = rotation.re * rotation.stepRe - rotation.im * rotation.stepIm;
+      rotation.im = rotation.re * rotation.stepIm + rotation.im * rotation.stepRe;
+      rotation.re = nextRotationRe;
+    }
     if (ground || turbulent) {
       const position = gridPosition[bin];
       const lower = Math.floor(position);
@@ -740,6 +793,33 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     phaseIm = phaseRe * phaseStepIm + phaseIm * phaseStepRe;
     phaseRe = nextPhaseRe;
   }
+}
+
+/**
+ * Fills `ends` with the ground images an echo carries at its source and receiver ends and returns
+ * how many. A source within its linearization radius of the ground meets it while still a strong
+ * shock, so its image merges with it as from rigid ground (class C).
+ */
+function echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) {
+  if (!scene.ground.enabled) return 0;
+  let count = 0;
+  for (let side = 0; side < 2; side += 1) {
+    const lift = paths.endLift[2 * index + side];
+    if (!(lift > 0) || lift / speed > END_IMAGE_SECONDS) continue;
+    const rigid = isReflecting(scene.ground.type) || (side === 0 && paths.sourceHeight[index] < sources.linearRadiusMetres[sourceIndex]);
+    const sine = paths.endSine[2 * index + side];
+    const end = ends[count];
+    for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
+      const [qRe, qIm] = rigid ? [1, 0] : sphericalReflectionCoefficient(plan.groundFrequencies[point], scene.ground.type, sine, metres, speed);
+      end.re[point] = qRe;
+      end.im[point] = qIm;
+    }
+    // The delay's phase at bin 1, which the loop starts from, and its step.
+    const step = -2 * Math.PI * plan.binHz * lift / speed;
+    end.rotation = { re: Math.cos(step), im: Math.sin(step), stepRe: Math.cos(step), stepIm: Math.sin(step) };
+    count += 1;
+  }
+  return count;
 }
 
 /** Inverse transform of a continuous-time spectrum sampled at bins: x[n] = fs · IDFT(X). */
@@ -797,6 +877,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
+  const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
   let cursor = 0;
   while (cursor < selected.length) {
     const group = frameGroup(paths, selected[cursor]);
@@ -809,7 +890,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const sources = pathSources(preparedEmitters[emitterIndex], paths.kind[index]);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
-      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z, receiverZ);
+      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ);
       cursor += 1;
     }
     const at = frame * plan.hop - first;
