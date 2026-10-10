@@ -99,12 +99,12 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
-- **Humidity scale height** — How quickly the water vapour thins out with
-  height, which changes how much the upper air absorbs.
+- **Vapour height** — How quickly the water vapour thins out with height,
+  which changes how much the upper air absorbs.
 - **Tropopause** — Where the temperature stops falling; above it the air keeps
   one temperature.
-- **Ground layer** and **Ground layer lapse** — A layer of air next to the
-  ground with its own lapse rate, such as a low inversion on a calm night.
+- **Ground layer** and **Layer lapse** — A layer of air next to the ground with
+  its own lapse rate, such as a low inversion on a calm night.
 
 ## Terrain
 
