@@ -58,3 +58,31 @@ export function fft(real, imaginary, inverse = false) {
   }
   if (inverse) for (let index = 0; index < length; index += 1) { real[index] /= length; imaginary[index] /= length; }
 }
+
+/**
+ * Adds the linear convolution of `signal` with `kernel` into `target` from its first sample, as far
+ * as `target` reaches.
+ */
+export function convolveAdd(target, signal, kernel) {
+  const size = nextPowerOfTwo(signal.length + kernel.length);
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  re.set(signal);
+  im.set(kernel);
+  // Both real inputs in one transform: X = (Z(k) + Z*(−k))/2, K = (Z(k) − Z*(−k))/(2i).
+  fft(re, im);
+  const productRe = new Float64Array(size);
+  const productIm = new Float64Array(size);
+  for (let bin = 0; bin < size; bin += 1) {
+    const mirror = (size - bin) % size;
+    const xRe = (re[bin] + re[mirror]) / 2;
+    const xIm = (im[bin] - im[mirror]) / 2;
+    const kRe = (im[bin] + im[mirror]) / 2;
+    const kIm = (re[mirror] - re[bin]) / 2;
+    productRe[bin] = xRe * kRe - xIm * kIm;
+    productIm[bin] = xRe * kIm + xIm * kRe;
+  }
+  fft(productRe, productIm, true);
+  const length = Math.min(target.length, signal.length + kernel.length - 1);
+  for (let index = 0; index < length; index += 1) target[index] += productRe[index];
+}

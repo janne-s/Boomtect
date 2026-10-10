@@ -69,26 +69,3 @@ export function fireballSamples(seed, durationSeconds, sampleRate) {
   for (let index = 0; index < length; index += 1) samples[index] *= scale;
   return samples;
 }
-
-const spectra = new Map();
-const MAXIMUM_CACHED = 8;
-
-/**
- * The roar's continuous-time spectrum on a frame of `size` samples, S(f) = DFT/fs in the forward
- * convention of `fft.js`, time zero at the shock; bins 0 … size/2. Cached by seed, duration, and size.
- */
-export function fireballSpectrum(seed, durationSeconds, size, sampleRate) {
-  const key = `${seed}:${durationSeconds}:${size}:${sampleRate}`;
-  let spectrum = spectra.get(key);
-  if (spectrum) return spectrum;
-  const samples = fireballSamples(seed, durationSeconds, sampleRate);
-  if (samples.length > size) throw new RangeError('The fireball is longer than its frame.');
-  const re = new Float64Array(size);
-  const im = new Float64Array(size);
-  re.set(samples);
-  fft(re, im);
-  spectrum = { re: re.subarray(0, size / 2 + 1).map(value => value / sampleRate), im: im.subarray(0, size / 2 + 1).map(value => value / sampleRate) };
-  if (spectra.size >= MAXIMUM_CACHED) spectra.delete(spectra.keys().next().value);
-  spectra.set(key, spectrum);
-  return spectrum;
-}

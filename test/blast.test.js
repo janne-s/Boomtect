@@ -95,3 +95,16 @@ test('at the microphone the roar peaks its Fireball level below the shock’s li
   const level = 20 * Math.log10(largest / linear);
   assert.ok(Math.abs(level + 20) < 1, `${level}`);
 });
+
+test('convolution adds the linear convolution of two signals, as a direct sum does', async () => {
+  const { convolveAdd } = await import('../src/domain/fft.js');
+  const signal = Float64Array.from({ length: 37 }, (_, index) => Math.sin(index * .7) + (index % 5));
+  const kernel = Float64Array.from({ length: 23 }, (_, index) => Math.cos(index * 1.3) / (index + 1));
+  const target = new Float64Array(70).fill(1);
+  convolveAdd(target, signal, kernel);
+  for (let index = 0; index < target.length; index += 1) {
+    let sum = 1;
+    for (let k = 0; k < kernel.length; k += 1) if (index - k >= 0 && index - k < signal.length) sum += signal[index - k] * kernel[k];
+    assert.ok(Math.abs(target[index] - sum) < 1e-9, `${index}`);
+  }
+});

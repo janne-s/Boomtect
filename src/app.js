@@ -854,7 +854,7 @@ function detailSections(emitter) {
       numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
       checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
     }),
-    section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerCubeRootKilogram']))
+    section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram']))
   ];
 }
 

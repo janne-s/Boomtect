@@ -45,7 +45,10 @@ export function blastSources(emitter, air, surface = null) {
   };
   const primary = shock(emitter.chargeKilograms);
   const secondary = { ...shock(SECONDARY_MASS_SHARE * emitter.chargeKilograms), secondaryShock: secondaryShockFactors(emitter.explosive, emitter.chargeKilograms) };
-  const roarSeconds = emitter.fireballSecondsPerCubeRootKilogram * Math.cbrt(emitter.chargeKilograms);
+  // A large fireball burns as its buoyancy lifts it, in a time that grows as the sixth root of its mass
+  // (Fay & Lewis 1976); a momentum-driven one as the cube root (Roberts 1981). The roar follows the
+  // first (class C), from 1.2 s at 5 kg as fitted to the recordings to about 9 s at 1 000 t.
+  const roarSeconds = emitter.fireballSecondsPerSixthRootKilogram * emitter.chargeKilograms ** (1 / 6);
   const roar = {
     flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds,
     amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * primary.amplitudePaMetres,

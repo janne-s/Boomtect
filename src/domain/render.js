@@ -6,11 +6,11 @@ import { knifeEdge } from './diffraction.js';
 import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
-import { fireballSpectrum } from './fireball.js';
+import { fireballSamples } from './fireball.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
-import { fft, nextPowerOfTwo } from './fft.js';
+import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { GROUND_FLOW_RESISTIVITY, isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
@@ -105,13 +105,18 @@ export function shadowTailSeconds(nepersAtOneHertz) {
 
 /**
  * Paths are framed per emitter, separately for shadow paths, whose response needs a longer tail, and
- * for echoes, whose sources are the emitter's cells.
+ * for echoes, whose sources are the emitter's cells. A blast's roar lasts seconds, which would make
+ * its frames as long: its paths are framed as impulses in groups of their own, and their sum is
+ * convolved once with the roar, separately for its ground reflections, which carry a roar of their
+ * own seed (see accumulatePath).
  */
-const FRAME_GROUPS = 3;
+const FRAME_GROUPS = 5;
+const ROAR_GROUP = 3;
 /** Share of a render's progress given to tracing its paths. */
 const TRACE_SHARE = .3;
 const isEcho = kind => kind === PATH_ECHO || kind === PATH_SCATTER;
-const frameGroup = (paths, index) => FRAME_GROUPS * paths.emitter[index] + (isEcho(paths.kind[index]) ? 2 : paths.creepNepers[index] > 0 ? 1 : 0);
+const frameGroup = (paths, index) => FRAME_GROUPS * paths.emitter[index]
+  + (paths.roar[index] ? ROAR_GROUP + paths.roar[index] - 1 : isEcho(paths.kind[index]) ? 2 : paths.creepNepers[index] > 0 ? 1 : 0);
 /** The point sources a path starts from: the emitter's sources, or its cells for an echo. */
 const pathSources = (prepared, kind) => (isEcho(kind) ? prepared.cells : prepared.sources);
 
@@ -207,7 +212,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     /** The echo's source height above its ground, which reflects as rigid ground within the source's linearization radius. */
     sourceHeight: new Float64Array(capacity),
     /** Length of the path under a forest's canopy, metres. */
-    foliageMetres: new Float64Array(capacity)
+    foliageMetres: new Float64Array(capacity),
+    /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
+    roar: new Uint8Array(capacity)
   };
   let room = capacity;
   const grow = () => {
@@ -234,6 +241,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.emitter[index] = emitterIndex;
     paths.source[index] = sourceIndex;
     paths.kind[index] = kind;
+    paths.roar[index] = sources.pulse[sourceIndex] === PULSE_NOISE ? (kind === PATH_GROUND ? 2 : 1) : 0;
     paths.metres[index] = path.metres;
     paths.spreadMetres[index] = path.spreadMetres / impedance;
     paths.creepNepers[index] = path.creepNepers ?? 0;
@@ -491,13 +499,16 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   let largestCreep = 0;
   let smallestRadius = Infinity;
   let largestRadius = 0;
-  const sources = group % FRAME_GROUPS === 2 ? prepared.cells ?? prepared.sources : prepared.sources;
-  for (let index = 0; index < sources.length; index += 1) longestElement = Math.max(longestElement, sources.elementMetres[index]);
+  for (const table of [prepared.sources, prepared.cells].filter(Boolean)) {
+    for (let index = 0; index < table.length; index += 1) longestElement = Math.max(longestElement, table.elementMetres[index]);
+  }
   for (let index = 0; index < paths.count; index += 1) {
     if (frameGroup(paths, index) !== group) continue;
+    const sources = pathSources(prepared, paths.kind[index]);
     const source = paths.source[index];
-    // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase.
-    const span = sources.relaxationRadius[source] > 0 ? paths.duration[index]
+    // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase; the
+    // roar is framed as an impulse.
+    const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : sources.spanSeconds[source];
     longestSpan = Math.max(longestSpan, span);
@@ -749,10 +760,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
 
   const omegaStep = 2 * Math.PI * binHz;
   const nWave = pulseKind === PULSE_NWAVE;
-  // The roar comes from the whole moving fireball and debris cloud, so its ground reflection does not
-  // interfere with it as a point's would: the reflection is noise of its own seed (class C).
-  const noiseSeed = (sources.noiseSeed[sourceIndex] + (paths.kind[index] === PATH_GROUND ? 1 : 0)) >>> 0;
-  const noise = pulseKind === PULSE_NOISE ? fireballSpectrum(noiseSeed, paths.duration[index], size, binHz * size) : null;
+  // The roar is framed as a unit impulse and convolved with its noise later (see FRAME_GROUPS).
+  const noise = pulseKind === PULSE_NOISE;
   const duration = paths.duration[index];
   const pulseStep = omegaStep * duration;
   const pulseStepRe = Math.cos(pulseStep);
@@ -766,8 +775,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     let re;
     let im;
     if (noise) {
-      re = noise.re[bin];
-      im = noise.im[bin];
+      // A unit sample: the frame's synthesis multiplies by the sample rate.
+      re = 1 / (binHz * size);
+      im = 0;
     } else if (nWave) {
       const x = pulseStep * bin;
       if (x < SMALL_ARGUMENT) {
@@ -917,7 +927,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   // Progress as a share: tracing the paths, then rendering them.
   const paths = receiverPaths(preparedEmitters, receiver, scene, { onProgress: onProgress && (share => onProgress(TRACE_SHARE * share)) });
   const receiverZ = onGround(terrainSurface(scene.terrain), receiver.positionMetres).z;
-  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1, 2].map(part => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
+  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => Array.from({ length: FRAME_GROUPS }, (_, part) => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);
@@ -941,7 +951,18 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
   }
   const forest = scene.ground.forest ? forestResponses(forestSeed(receiver.id), channels, sampleRate) : null;
-  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + (forest ? forest[0].length : 0)));
+  // Each emitter's roar, which its impulses are convolved with; its ground reflection has a roar of its
+  // own seed, because the roar comes from the whole moving fireball and debris cloud rather than a
+  // point, and so does not interfere with its reflection (class C).
+  const roars = preparedEmitters.map(({ sources }) => {
+    let index = 0;
+    while (index < sources.length && sources.pulse[index] !== PULSE_NOISE) index += 1;
+    if (index === sources.length) return null;
+    const seconds = sources.durationSeconds[index];
+    return [0, 1].map(part => ({ samples: fireballSamples((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate), impulses: null }));
+  });
+  const roarLength = Math.max(0, ...roars.map(roar => (roar ? roar[0].samples.length : 0)));
+  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + roarLength + (forest ? forest[0].length : 0)));
   const gains = new Float64Array(channels);
   selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
@@ -963,14 +984,26 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       cursor += 1;
     }
     const at = frame * plan.hop - first;
+    const part = group % FRAME_GROUPS - ROAR_GROUP;
+    let target = outputs;
+    if (part >= 0) {
+      const roar = roars[emitterIndex][part];
+      roar.impulses ??= Array.from({ length: channels }, () => new Float64Array(last - first));
+      target = roar.impulses;
+    }
     spectra.forEach(({ real, imaginary }, channel) => {
       const block = synthesizeFrame(real, imaginary, plan.size, sampleRate);
-      const output = outputs[channel];
+      const output = target[channel];
       for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
     });
     onProgress?.(TRACE_SHARE + (1 - TRACE_SHARE) * cursor / selected.length);
   }
-  // The forest's tail is linear in what arrives, so each range adds its own and their sum is exact.
+  // The roar and the forest's tail are linear in what arrives, so each range adds its own and their sum is exact.
+  for (const roar of roars) {
+    for (const { samples, impulses } of roar ?? []) {
+      if (impulses) impulses.forEach((impulse, channel) => convolveAdd(outputs[channel], impulse, samples));
+    }
+  }
   if (forest) addForestTail(outputs, forest);
   return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }

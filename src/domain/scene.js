@@ -8,7 +8,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 14;
+export const SCENE_VERSION = 15;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -90,7 +90,7 @@ export const PARAMETERS = Object.freeze({
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
-  fireballSecondsPerCubeRootKilogram: { minimum: .05, maximum: 3, unit: 's/kg^⅓', label: 'Fireball duration', reliability: 'C' },
+  fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
@@ -113,7 +113,7 @@ const STORM_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres',
   'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS, ...GROUND_FLASH_NUMBERS
 ]);
-const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds', 'fireballDecibels', 'fireballSecondsPerCubeRootKilogram']);
+const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram']);
 
 export class SceneError extends Error {}
 
@@ -203,7 +203,7 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
     explosive: 'tnt',
     secondaryShock: true,
     fireballDecibels: -20,
-    fireballSecondsPerCubeRootKilogram: .7,
+    fireballSecondsPerSixthRootKilogram: .92,
     linearScaledDistance: 20,
     durationSecondsPerCubeRootKilogram: .006,
     decay: 1,
