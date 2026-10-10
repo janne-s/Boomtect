@@ -3,12 +3,13 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { GAMMA_AIR, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
+import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES } from './forest.js';
 import { sourcePosition, sourceTable } from './source-table.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
-import { creepingTransitionHz, softExponent } from './creeping.js';
+import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { GROUND_FLOW_RESISTIVITY, isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
@@ -192,7 +193,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     endLift: new Float64Array(2 * capacity),
     endSine: new Float64Array(2 * capacity),
     /** The echo's source height above its ground, which reflects as rigid ground within the source's linearization radius. */
-    sourceHeight: new Float64Array(capacity)
+    sourceHeight: new Float64Array(capacity),
+    /** Length of the path under a forest's canopy, metres. */
+    foliageMetres: new Float64Array(capacity)
   };
   let room = capacity;
   const grow = () => {
@@ -206,6 +209,8 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   };
   const shielding = !surface.flat && scene.terrain.shielding;
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
+  const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
+  const receiverLift = receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y);
   let index = 0;
   const add = (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
     if (index >= room) grow();
@@ -231,6 +236,8 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.endSine[2 * index] = path.sourceSine ?? 0;
     paths.endSine[2 * index + 1] = path.receiverSine ?? 0;
     paths.sourceHeight[index] = path.sourceHeight ?? 0;
+    paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
+      : foliageMetres(path.metres, sources.z[sourceIndex] - surface.heightAt(sources.x[sourceIndex], sources.y[sourceIndex]), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
     if (sources.relaxationRadius[sourceIndex] > 0) {
       const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
@@ -286,6 +293,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
  */
 function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) {
   const field = echoField(surface, profile, receiverPosition, { scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit });
+  const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
   const list = [];
   preparedEmitters.forEach(({ cells }, emitterIndex) => {
     if (!cells) return;
@@ -300,7 +308,7 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
       const traced = echoPaths(field, point);
       const sourceHeight = Math.max(0, point.z - surface.heightAt(point.x, point.y));
       const receiverHeight = Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y));
-      for (const path of traced) Object.assign(path, endImages(path, sourceHeight, receiverHeight));
+      for (const path of traced) Object.assign(path, endImages(path, sourceHeight, receiverHeight, treeHeight));
       for (const cell of cellsOf[place]) {
         for (const path of traced) {
           if (path.kind === PATH_SCATTER) mergeScattered(scattered, cells, cell, path);
@@ -313,11 +321,16 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
   return list;
 }
 
-/** The image path differences and leg sines at an echo's two ends, over the ground taken level there (class C). */
-function endImages(path, sourceHeight, receiverHeight) {
+/**
+ * The image path differences and leg sines at an echo's two ends, over the ground taken level there
+ * (class C), and the length of its two legs under the forest's canopy.
+ */
+function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   const sourceSine = Math.abs(path.departure.z);
   const receiverSine = Math.abs(path.arrival.z);
-  return { sourceHeight, sourceSine, receiverSine, sourceLift: 2 * sourceHeight * sourceSine, receiverLift: 2 * receiverHeight * receiverSine };
+  const [down, up] = path.legMetres;
+  const foliage = treeHeight ? foliageMetres(down, sourceHeight, 0, treeHeight) + foliageMetres(up, 0, receiverHeight, treeHeight) : 0;
+  return { sourceHeight, sourceSine, receiverSine, sourceLift: 2 * sourceHeight * sourceSine, receiverLift: 2 * receiverHeight * receiverSine, foliageMetres: foliage };
 }
 
 /**
@@ -335,7 +348,7 @@ function mergeScattered(merged, cells, cell, path) {
   const energy = (cells.amplitudePaMetres[cell] / path.spreadMetres) ** 2;
   let entry = merged.get(key);
   if (!entry) {
-    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, sourceLift: 0, receiverLift: 0, sourceSine: 0, receiverSine: 0, sourceHeight: 0, cell, strongest: 0 };
+    entry = { energy: 0, seconds: 0, metres: 0, cosine: 0, x: 0, y: 0, z: 0, sourceLift: 0, receiverLift: 0, sourceSine: 0, receiverSine: 0, sourceHeight: 0, foliageMetres: 0, cell, strongest: 0 };
     merged.set(key, entry);
   }
   entry.energy += energy;
@@ -344,9 +357,11 @@ function mergeScattered(merged, cells, cell, path) {
   entry.x += energy * path.arrival.x;
   entry.y += energy * path.arrival.y;
   entry.z += energy * path.arrival.z;
-  for (const key of ['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight']) entry[key] += energy * path[key];
+  for (const key of MERGED_END_KEYS) entry[key] += energy * path[key];
   if (energy > entry.strongest) Object.assign(entry, { strongest: energy, cell, seconds: path.seconds });
 }
+
+const MERGED_END_KEYS = Object.freeze(['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight', 'foliageMetres']);
 
 function mergedPath(entry, cells) {
   const { energy, cell } = entry;
@@ -359,11 +374,7 @@ function mergedPath(entry, cells) {
     departure: arrival,
     arrival,
     groundSine: entry.cosine / energy,
-    sourceLift: entry.sourceLift / energy,
-    receiverLift: entry.receiverLift / energy,
-    sourceSine: entry.sourceSine / energy,
-    receiverSine: entry.receiverSine / energy,
-    sourceHeight: entry.sourceHeight / energy
+    ...Object.fromEntries(MERGED_END_KEYS.map(key => [key, entry[key] / energy]))
   };
 }
 
@@ -475,6 +486,8 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
+  const foliage = scene.ground.forest ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
+  if (foliage) for (let bin = 1; bin < bins; bin += 1) [foliage.loss[bin], foliage.lag[bin]] = foliageExponent(bin * sampleRate / size);
   const groundFrequencies = Float64Array.from({ length: GROUND_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (GROUND_GRID_POINTS - 1)));
   const layered = scene.air.absorption && scene.air.refraction ? layeredAbsorption(scene.air, lowest, sampleRate / 2, bins, sampleRate / size, highest) : null;
   const shadowFloor = 10 ** (-scene.air.shadowFloorDecibels / 20);
@@ -483,7 +496,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
     if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
-  return { preRoll, hop, size, bins, absorption, layered, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
+  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
 }
 
 /**
@@ -610,13 +623,7 @@ export function shadowResponse(frequencyHz, nepersAtOneHertz, floor, transitionH
 const creepingBeta = nepersAtOneHertz => 2 * nepersAtOneHertz / (Math.sqrt(3) * Math.cbrt(2 * Math.PI));
 
 /** Real and imaginary parts of s·(s + ω_c)^(−2/3) at s = iω, which depend on frequency alone. */
-function shadowExponent(frequencyHz) {
-  const omega = 2 * Math.PI * frequencyHz;
-  const cutoff = 2 * Math.PI * SHADOW_REGULARIZATION_HZ;
-  const size = omega * Math.hypot(cutoff, omega) ** (-2 / 3);
-  const angle = Math.PI / 2 - 2 / 3 * Math.atan2(omega, cutoff);
-  return [size * Math.cos(angle), size * Math.sin(angle)];
-}
+const shadowExponent = frequencyHz => cubeRootExponent(frequencyHz, SHADOW_REGULARIZATION_HZ);
 
 function shadowFromExponent(loss, lag, beta, floor) {
   const magnitude = (1 - floor) * Math.exp(-beta * loss);
@@ -633,7 +640,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, sources.z[sourceIndex], receiverZ);
-  const { absorption, layered, smoothing, gridPosition, binHz, size } = plan;
+  const { absorption, layered, foliage, smoothing, gridPosition, binHz, size } = plan;
+  // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
+  const underCanopy = foliage ? Math.min(paths.foliageMetres[index], MAXIMUM_FOLIAGE_METRES) : 0;
   // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
@@ -728,7 +737,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * metres));
+    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * metres) - (underCanopy ? foliage.loss[bin] * underCanopy : 0));
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
@@ -737,6 +746,14 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
     re *= factor;
     im *= factor;
+    if (underCanopy) {
+      const phase = -foliage.lag[bin] * underCanopy;
+      const cos = Math.cos(phase);
+      const sin = Math.sin(phase);
+      const nextRe = re * cos - im * sin;
+      im = re * sin + im * cos;
+      re = nextRe;
+    }
     for (let edge = 0; edge < edgeCount; edge += 1) {
       const [eRe, eIm] = knifeEdge(paths.edges[MAXIMUM_EDGES * index + edge] * Math.sqrt(bin * binHz));
       const nextRe = re * eRe - im * eIm;
@@ -872,7 +889,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   if ((last - first) / sampleRate > MAXIMUM_RENDER_SECONDS) {
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
   }
-  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first));
+  const forest = scene.ground.forest ? forestResponses(forestSeed(receiver.id), channels, sampleRate) : null;
+  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + (forest ? forest[0].length : 0)));
   const gains = new Float64Array(channels);
   selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
@@ -901,6 +919,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     });
     onProgress?.(TRACE_SHARE + (1 - TRACE_SHARE) * cursor / selected.length);
   }
+  // The forest's tail is linear in what arrives, so each range adds its own and their sum is exact.
+  if (forest) addForestTail(outputs, forest);
   return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }
 

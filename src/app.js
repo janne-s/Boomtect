@@ -1157,6 +1157,8 @@ function rebuildPanel() {
     options: GROUND_TYPES.map(type => [type, GROUND_LABELS[type]]),
     onCommit: value => commit(next => { next.ground.type = value; })
   });
+  checkboxField(environment, { label: 'Forest', value: scene.ground.forest, reliability: 'B', onCommit: value => commit(next => { next.ground.forest = value; }) });
+  if (scene.ground.forest) numberField(environment, { key: 'treeHeightMetres', value: scene.ground.treeHeightMetres, onCommit: value => commit(next => { next.ground.treeHeightMetres = value; }) });
 
   const terrainFields = $('terrain-fields');
   terrainFields.replaceChildren();

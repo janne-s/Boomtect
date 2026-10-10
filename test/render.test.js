@@ -7,7 +7,7 @@ import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseSce
 
 function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false, refraction = false }) {
   const base = defaultScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
-  return parseScene({ ...base, air: { ...base.air, absorption, refraction, turbulenceStrength: 0 }, ground, emitters: [emitter], receivers });
+  return parseScene({ ...base, air: { ...base.air, absorption, refraction, turbulenceStrength: 0 }, ground: { ...base.ground, ...ground }, emitters: [emitter], receivers });
 }
 
 const receiverAt = (id, positionMetres) => ({ ...defaultReceiver(id, id), positionMetres });

@@ -116,13 +116,23 @@ export function creepingTransitionHz(flowResistivity, speed, radiusMetres) {
 }
 
 /**
+ * s·(s + ω_c)^(−2/3) at s = iω, as [loss, lag] in the e^(+iωt) convention of `fft.js`: a loss that
+ * grows as ω^(1/3) above the cutoff with the phase lag that keeps exp(−β·…) causal, and that becomes
+ * a plain delay well below it.
+ */
+export function cubeRootExponent(frequencyHz, cutoffHz) {
+  const omega = 2 * Math.PI * frequencyHz;
+  const cutoff = 2 * Math.PI * cutoffHz;
+  const size = omega * Math.hypot(cutoff, omega) ** (-2 / 3);
+  const angle = Math.PI / 2 - 2 / 3 * Math.atan2(omega, cutoff);
+  return [size * Math.cos(angle), size * Math.sin(angle)];
+}
+
+/**
  * (SOFT_RATIO − 1)·s·(s + ω_t)^(−2/3) at s = iω, as [loss, lag] in the e^(+iωt) convention of
  * `fft.js`, to add to the rigid exponent.
  */
 export function softExponent(frequencyHz, transitionHz) {
-  const omega = 2 * Math.PI * frequencyHz;
-  const cutoff = 2 * Math.PI * transitionHz;
-  const size = (SOFT_RATIO - 1) * omega * Math.hypot(cutoff, omega) ** (-2 / 3);
-  const angle = Math.PI / 2 - 2 / 3 * Math.atan2(omega, cutoff);
-  return [size * Math.cos(angle), size * Math.sin(angle)];
+  const [loss, lag] = cubeRootExponent(frequencyHz, transitionHz);
+  return [(SOFT_RATIO - 1) * loss, (SOFT_RATIO - 1) * lag];
 }

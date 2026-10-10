@@ -104,6 +104,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Shadow floor** — How far below the unbent level the shadow can go, set by
   turbulent scattering.
 - **Ground** — What the ground is made of. Water reflects like rigid ground.
+- **Forest** and **Tree height** — Trees around the scene: sound under their
+  canopy is muffled, and the forest answers every sound with a reverberant tail.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
@@ -182,6 +184,8 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
+| Forest, under the canopy | ISO 9613-2 foliage attenuation as `0.006·f^(1/3)` dB/m, up to 200 m, with a causal phase | B |
+| Forest reverberation | seeded diffuse tail at the microphone, octave times around 1.5 s at 1 kHz (Koli, Finland) | B/C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
@@ -197,7 +201,8 @@ Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
 ridges, rounded ridges (they shield more than thin edges), terrain finer than
 the heightfield, gusts, more than six ground contacts, repeated contacts over
 sloping ground, rays bending through several layers in turn, nonlinear
-propagation beyond the linearization radius.
+propagation beyond the linearization radius, the forest's reverberation around
+the source, a forest that covers only part of the terrain.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

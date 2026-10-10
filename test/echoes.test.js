@@ -200,7 +200,7 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
     const scene = defaultScene('blast');
     scene.terrain = terrain(ridge, { cells: 120, extentMetres: 6000, scattering: 1 });
     scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
-    scene.ground = { enabled: groundEnabled, type: 'rigid' };
+    scene.ground = { ...scene.ground, enabled: groundEnabled, type: 'rigid' };
     scene.receivers[0].positionMetres = { x: -400, y: 0, z: 1.7 };
     const parsed = parseScene(scene);
     const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);

@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 12;
+export const SCENE_VERSION = 13;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -38,6 +38,7 @@ export const PARAMETERS = Object.freeze({
   groundLayerMetres: { minimum: 0, maximum: 2000, unit: 'm', label: 'Ground layer', reliability: 'C' },
   groundLayerLapseKelvinPerMetre: { minimum: -.05, maximum: .012, unit: 'K/m', label: 'Layer lapse', reliability: 'C' },
   tropopauseMetres: { minimum: 5000, maximum: 20000, unit: 'm', label: 'Tropopause', reliability: 'B' },
+  treeHeightMetres: { minimum: 2, maximum: 50, unit: 'm', label: 'Tree height', reliability: 'C' },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
   windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
@@ -225,7 +226,7 @@ export function defaultScene(mode = 'thunder') {
       windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, humidityScaleHeightMetres: 2000,
       groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
     },
-    ground: { enabled: true, type: 'grass' },
+    ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15 },
     terrain: null,
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
@@ -374,6 +375,7 @@ export function parseScene(value) {
   const ground = value.ground ?? {};
   check(typeof ground.enabled === 'boolean', 'ground.enabled must be true or false.');
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
+  check(typeof ground.forest === 'boolean', 'ground.forest must be true or false.');
   check(Array.isArray(value.emitters) && value.emitters.length >= 1 && value.emitters.length <= MAXIMUM_EMITTERS,
     `A scene needs 1–${MAXIMUM_EMITTERS} emitters.`);
   check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= MAXIMUM_RECEIVERS,
@@ -399,7 +401,7 @@ export function parseScene(value) {
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
       ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
     },
-    ground: { enabled: ground.enabled, type: ground.type },
+    ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres') },
     terrain: terrain(value.terrain),
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),
