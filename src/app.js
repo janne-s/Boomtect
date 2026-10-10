@@ -1,7 +1,6 @@
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
-import { TERRAIN_PROVIDER } from './domain/terrain.js';
 import { newSeed } from './domain/random.js';
 import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
@@ -13,6 +12,7 @@ import { encodeFloat32Wav } from './domain/wav.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { captureTerrain, searchPlace } from './ui/terrain-loader.js';
+import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes, currentSurface, useTerrain } from './ui/geometry-cache.js';
 import { macrosFor } from './ui/macros.js';
@@ -70,7 +70,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, mode: 'thunder',
+  realDelay: true, wavefront: false, contours: true, names: true, mode: 'thunder',
   terrainDraft: { place: 'Tampere', latitude: 61.4978, longitude: 23.761, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -129,7 +129,8 @@ const views = [createCubeView($('cube'), {
   },
   onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
   focus: () => focusReceiver(),
-  contours: () => state.preferences.contours
+  contours: () => state.preferences.contours,
+  names: () => state.preferences.names
 })];
 
 /** Whether a point is stored as a height above the ground under it rather than above the datum. */
@@ -803,7 +804,7 @@ function scheduleTerrainCoverage() {
     terrainCoverageRunning = true;
     try {
       const draft = { place: terrain.place, latitude: terrain.latitude, longitude: terrain.longitude, extentMetres: needed, cellMetres: state.preferences.terrainDraft.cellMetres };
-      const wider = await captureTerrain(draft, { onProgress: share => setStatus(`Widening the terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`) });
+      const wider = await captureTerrain(draft, { onProgress: share => setStatus(`Widening the terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`), onNames: () => setStatus('Loading place names…') });
       Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
       savePreferences();
       commit(next => { next.terrain = { ...wider, enabled: next.terrain?.enabled ?? true, shielding: next.terrain?.shielding ?? true }; });
@@ -823,7 +824,7 @@ function terrainPanel(container) {
   const load = async trigger => {
     trigger.disabled = true;
     try {
-      const terrain = await captureTerrain(draft, { onProgress: share => setStatus(`Loading terrain ${Math.round(share * 100)} %`) });
+      const terrain = await captureTerrain(draft, { onProgress: share => setStatus(`Loading terrain ${Math.round(share * 100)} %`), onNames: () => setStatus('Loading place names…') });
       commit(next => { next.terrain = terrain; });
     } catch (error) {
       setStatus(`The terrain could not be loaded: ${error.message}`, true);
@@ -831,8 +832,12 @@ function terrainPanel(container) {
       trigger.disabled = false;
     }
   };
+  const mapButton = button('', () => openPlaceDialog(load), { title: 'Choose on a map' });
+  mapButton.className = 'map-button';
+  mapButton.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 3l4-2 4 2 4-2v10l-4 2-4-2-4 2z M5 1v10 M9 3v10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+  mapButton.setAttribute('aria-label', 'Choose on a map');
   actionField(container, {
-    label: 'Place', value: draft.place, action: 'Find',
+    label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
       setStatus(`Finding ${text}…`);
@@ -866,6 +871,50 @@ function terrainPanel(container) {
   checkboxField(container, { label: 'Contours', value: state.preferences.contours, onCommit: value => { state.preferences.contours = value; savePreferences(); redrawViews(); } });
 }
 
+const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates });
+let placeLoad = null;
+
+function showPlaceCoordinates({ latitude, longitude }) {
+  $('place-coordinates').textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+}
+
+/** Opens the map at the draft place; Load takes the map's centre as the origin and loads its terrain. */
+function openPlaceDialog(load) {
+  const draft = state.preferences.terrainDraft;
+  placeLoad = load;
+  $('place-query').value = draft.place;
+  $('place-dialog').showModal();
+  // The dialog itself takes focus, so its first control is not ringed when it opens.
+  $('place-dialog').focus();
+  placeMap.show(draft, draft.extentMetres);
+  showPlaceCoordinates(draft);
+}
+
+$('place-search').addEventListener('submit', async event => {
+  event.preventDefault();
+  const text = $('place-query').value.trim();
+  if (!text) return;
+  try {
+    const found = await searchPlace(text);
+    if (!found) { setStatus(`No place found for ${text}`, true); return; }
+    placeMap.show(found, state.preferences.terrainDraft.extentMetres);
+    showPlaceCoordinates(found);
+  } catch (error) {
+    setStatus(`The place search failed: ${error.message}`, true);
+  }
+});
+$('place-cancel').addEventListener('click', () => $('place-dialog').close());
+$('place-done').addEventListener('click', () => {
+  const { latitude, longitude } = placeMap.centre();
+  const draft = state.preferences.terrainDraft;
+  const typed = $('place-query').value.trim();
+  Object.assign(draft, { latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5), place: typed || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` });
+  savePreferences();
+  $('place-dialog').close();
+  refreshPanel();
+  placeLoad?.($('place-done'));
+});
+
 function refreshPanel() {
   useTerrain(state.scene.terrain);
   const { scene, selection } = state;
@@ -896,12 +945,8 @@ function refreshPanel() {
   const terrainFields = $('terrain-fields');
   terrainFields.replaceChildren();
   terrainPanel(terrainFields);
-  const attribution = $('cube-attribution');
-  attribution.hidden = !scene.terrain?.enabled;
-  if (scene.terrain?.enabled && !attribution.childElementCount) {
-    const link = Object.assign(document.createElement('a'), { href: TERRAIN_PROVIDER.attributionUrl, target: '_blank', rel: 'noopener', textContent: TERRAIN_PROVIDER.attribution });
-    attribution.append(link);
-  }
+  $('cube-attribution').hidden = !scene.terrain;
+  $('names-toggle').hidden = !scene.terrain;
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -1351,6 +1396,13 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   startRender();
 }));
 
+$('names').checked = state.preferences.names;
+$('names').addEventListener('change', () => { state.preferences.names = $('names').checked; savePreferences(); redrawViews(); });
+$('attribution-button').addEventListener('click', () => {
+  const open = $('attribution-text').hidden;
+  $('attribution-text').hidden = !open;
+  $('attribution-button').setAttribute('aria-expanded', String(open));
+});
 $('wavefront').checked = state.preferences.wavefront;
 $('wavefront').addEventListener('change', () => { state.preferences.wavefront = $('wavefront').checked; savePreferences(); redrawViews(); });
 $('real-delay').checked = state.preferences.realDelay;

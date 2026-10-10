@@ -56,7 +56,9 @@ Thunder and Blast are separate modes, each with its own scene.
   arrives. Off: the silence before the first sound is skipped, and the channel
   glows where the sound being heard comes from.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
-  they cross the floor and the walls.
+  they cross the floor, the terrain, and the walls.
+- **Names** — Place names, peaks, and lakes on the terrain.
+- **i** — The sources of the terrain and map data.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
@@ -95,7 +97,8 @@ Thunder and Blast are separate modes, each with its own scene.
 
 ## Terrain
 
-- **Place** — Where the scene's origin lies.
+- **Place** — Where the scene's origin lies. The map button opens a map to
+  move under the centre mark, with the area to be loaded around it.
 - **Area** and **Resolution** — The size of the square of terrain around the
   origin and the spacing of its heights.
 - **Find** — Finds a place by name, or takes "latitude, longitude", and loads
@@ -169,6 +172,8 @@ Open http://localhost:8000/. Run the tests with `npm test`.
 Terrain heights: [Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)
 by Mapzen on AWS Open Data (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, and national
 datasets). Place search: [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/).
+Map and place names: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+contributors, through the Overpass API for the names.
 Both are fetched only when asked for.
 
 ## Third-party code

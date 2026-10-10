@@ -19,6 +19,7 @@
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
       <label class="toggle" title="Off: skip the silence before the first sound"><input type="checkbox" id="real-delay" checked /> Real delay</label>
       <label class="toggle"><input type="checkbox" id="wavefront" /> Wavefront</label>
+      <label class="toggle" id="names-toggle" hidden><input type="checkbox" id="names" /> Names</label>
       <span id="listen-label" class="listen-label"></span>
       <span id="status" class="status" role="status" aria-live="polite"></span>
       <span class="spacer"></span>
@@ -32,7 +33,13 @@
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
-        <div class="overlay overlay-attribution" id="cube-attribution" hidden></div>
+        <div class="attribution" id="cube-attribution" hidden>
+          <button type="button" class="info-button" id="attribution-button" aria-expanded="false" aria-controls="attribution-text" title="Data sources">i</button>
+          <div class="attribution-text" id="attribution-text" hidden>
+            <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Terrain Tiles: Mapzen / AWS Open Data</a> (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, national datasets)<br />
+            Place names and search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+          </div>
+        </div>
         <div class="overlay overlay-timeline" id="cube-timeline" hidden>
           <span id="cube-timeline-time"></span>
           <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
@@ -90,6 +97,23 @@
         </figure>
       </section>
     </main>
+
+    <dialog id="place-dialog" class="place-dialog" aria-label="Place" tabindex="-1">
+      <header class="details-header">
+        <form class="place-search" id="place-search">
+          <input type="text" id="place-query" maxlength="120" aria-label="Place" />
+          <button type="submit">Find</button>
+        </form>
+        <span class="place-coordinates" id="place-coordinates"></span>
+        <button type="button" id="place-cancel">Cancel</button>
+        <button type="button" id="place-done" class="primary">Load</button>
+      </header>
+      <div class="place-map">
+        <canvas id="place-map" aria-hidden="true"></canvas>
+        <canvas id="place-overlay" aria-label="Map"></canvas>
+        <span class="place-credit">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></span>
+      </div>
+    </dialog>
 
     <dialog id="details" aria-labelledby="details-title" tabindex="-1">
       <header class="details-header">

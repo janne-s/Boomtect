@@ -146,7 +146,7 @@ export function checkboxField(container, { label, value, onCommit, reliability =
 }
 
 /** A text row with a button beside it that acts on the text, as for a place search. */
-export function actionField(container, { label, value, action, onAction }) {
+export function actionField(container, { label, value, action, onAction, extra = null }) {
   const id = `field-${fieldCounter += 1}`;
   const holder = document.createElement('div');
   holder.className = 'seed';
@@ -162,6 +162,7 @@ export function actionField(container, { label, value, action, onAction }) {
   button.addEventListener('click', run);
   input.addEventListener('keydown', event => { if (event.key === 'Enter') run(); });
   holder.append(input, button);
+  if (extra) holder.append(extra);
   append(container, labelFor(label, '', id), holder, badge(null));
 }
 

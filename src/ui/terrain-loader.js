@@ -1,5 +1,9 @@
 import { decodePngRgb } from '../domain/png.js';
-import { buildHeightfield, decodeTerrarium, encodeHeights, TERRAIN_PROVIDER, terrainPlan, TILE_SIZE } from '../domain/terrain.js';
+import { PLACE_NAME_KINDS } from '../domain/scene.js';
+import { buildHeightfield, decodeTerrarium, encodeHeights, metresPerDegree, TERRAIN_PROVIDER, terrainPlan, TILE_SIZE } from '../domain/terrain.js';
+
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const MAXIMUM_NAMES = 400;
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
@@ -35,6 +39,37 @@ export async function searchPlace(text, { signal } = {}) {
   return found;
 }
 
+/**
+ * Named places, peaks, and lakes inside a square around a centre, from OpenStreetMap through the
+ * Overpass API, in the scene frame. An empty list when the service cannot be reached.
+ */
+async function placeNames({ latitude, longitude, extentMetres }, signal) {
+  const { north, east } = metresPerDegree(latitude);
+  const half = extentMetres / 2;
+  const box = [latitude - half / north, longitude - half / east, latitude + half / north, longitude + half / east].map(value => value.toFixed(6)).join(',');
+  const query = `[out:json][timeout:25];(node["place"~"^(city|town|village|hamlet|locality)$"]["name"](${box});node["natural"="peak"]["name"](${box});way["natural"="water"]["name"](${box});relation["natural"="water"]["name"](${box}););out center ${MAXIMUM_NAMES};`;
+  try {
+    const response = await fetch(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: query }), signal });
+    if (!response.ok) return [];
+    const { elements = [] } = await response.json();
+    return elements.flatMap(element => {
+      const tags = element.tags ?? {};
+      const kind = tags.natural === 'peak' ? 'peak' : tags.natural === 'water' ? 'water' : tags.place;
+      const lat = element.lat ?? element.center?.lat;
+      const lon = element.lon ?? element.center?.lon;
+      if (!PLACE_NAME_KINDS.includes(kind) || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+      const x = (lon - longitude) * east;
+      const y = (lat - latitude) * north;
+      if (Math.abs(x) > half || Math.abs(y) > half) return [];
+      const elevation = Number.parseFloat(tags.ele);
+      return [{ name: (tags.name ?? '').slice(0, 80), kind, x, y, elevationMetres: kind === 'peak' && Number.isFinite(elevation) ? elevation : null }];
+    }).filter(item => item.name).slice(0, MAXIMUM_NAMES);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return [];
+  }
+}
+
 async function decodeTile(response) {
   const { width, height, rgb } = await decodePngRgb(await response.arrayBuffer());
   if (width !== TILE_SIZE || height !== TILE_SIZE) throw new Error('A terrain tile has an unexpected size.');
@@ -47,7 +82,7 @@ async function decodeTile(response) {
  * Fetches the Terrarium tiles around a centre and returns the captured terrain for the scene.
  * Adapted from Echotect `captureTerrain` (commit cb712ef) to a square capture around a point.
  */
-export async function captureTerrain({ latitude, longitude, extentMetres, cellMetres, place }, { signal, onProgress } = {}) {
+export async function captureTerrain({ latitude, longitude, extentMetres, cellMetres, place }, { signal, onProgress, onNames } = {}) {
   const plan = terrainPlan({ latitude, longitude, extentMetres, cellMetres });
   const { tiles, zoom } = plan;
   const entries = [];
@@ -70,10 +105,13 @@ export async function captureTerrain({ latitude, longitude, extentMetres, cellMe
     return byKey.get(`${Math.floor(x / TILE_SIZE)}/${Math.floor(y / TILE_SIZE)}`)[(y % TILE_SIZE) * TILE_SIZE + (x % TILE_SIZE)];
   };
   const values = buildHeightfield(plan, elevationAt);
+  onNames?.();
+  const names = await placeNames({ latitude, longitude, extentMetres: plan.extentMetres }, signal);
   return {
     enabled: true,
     shielding: true,
     place: (place ?? '').slice(0, 120),
+    names,
     latitude,
     longitude,
     extentMetres: plan.extentMetres,

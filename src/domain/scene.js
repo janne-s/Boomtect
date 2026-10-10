@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 7;
+export const SCENE_VERSION = 8;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -18,6 +18,9 @@ export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 export const MINIMUM_CLOUD_DEPTH_METRES = 100;
 /** Largest terrain grid side, matching the capture limit in terrain.js. */
 const MAXIMUM_TERRAIN_CELLS = 600;
+/** Place names kept with a terrain, from OpenStreetMap, and their kinds in drawing priority. */
+const MAXIMUM_PLACE_NAMES = 400;
+export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak', 'water', 'hamlet', 'locality']);
 
 /**
  * Every bounded number in a scene: unit, range, and reliability class of the value it controls.
@@ -296,10 +299,21 @@ function terrain(value) {
   check(Number.isInteger(value.zoom) && value.zoom >= 1 && value.zoom <= 15, 'terrain.zoom must be a tile zoom level.');
   check(typeof value.heights === 'string' && value.heights.length === 4 * Math.ceil(columns * rows * 4 / 3), 'terrain.heights do not match the grid.');
   check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && Math.abs(value.cellMetres * columns - value.extentMetres) < 1e-6 * value.extentMetres, 'terrain.cellMetres does not match the area.');
+  check(Array.isArray(value.names) && value.names.length <= MAXIMUM_PLACE_NAMES, 'terrain.names must be a list of place names.');
+  const half = value.extentMetres / 2;
+  const names = value.names.map((item, index) => {
+    const path = `terrain.names[${index}]`;
+    check(item && typeof item.name === 'string' && item.name.length > 0 && item.name.length <= 80, `${path}.name must be a short text.`);
+    check(PLACE_NAME_KINDS.includes(item.kind), `${path}.kind is not supported.`);
+    check([item.x, item.y].every(Number.isFinite) && Math.abs(item.x) <= half && Math.abs(item.y) <= half, `${path} must lie within the terrain.`);
+    check(item.elevationMetres === null || Number.isFinite(item.elevationMetres), `${path}.elevationMetres must be a number or null.`);
+    return { name: item.name, kind: item.kind, x: item.x, y: item.y, elevationMetres: item.elevationMetres };
+  });
   return {
     enabled: value.enabled,
     shielding: value.shielding,
     place: value.place,
+    names,
     latitude: number(value.latitude, 'latitude', 'terrain.latitude'),
     longitude: number(value.longitude, 'longitude', 'terrain.longitude'),
     extentMetres: number(value.extentMetres, 'terrainExtentMetres', 'terrain.extentMetres'),

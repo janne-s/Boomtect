@@ -38,6 +38,9 @@ const TERRAIN_DRAW_CELLS = 110;
 const TERRAIN_LIGHT = (() => { const length = Math.hypot(-1, 1, 1.6); return { x: -1 / length, y: 1 / length, z: 1.6 / length }; })();
 /** Contour stripes: roughly this many bands over the terrain's height range. */
 const CONTOUR_BANDS = 12;
+/** Place names drawn at most, in the order of PLACE_NAME_KINDS, without overlapping. */
+const MAXIMUM_LABELS = 60;
+const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
 /** A wavefront crossing a face is drawn as a ripple: the front and fading rings behind it. */
 const RIPPLE_ALPHAS = Object.freeze([.5, .3, .16, .07]);
 /** Spacing of the ripple rings as a share of the box. */
@@ -124,7 +127,7 @@ function frontArc(step, elapsed, routeLength) {
  * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
  * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false }) {
   let scene = null;
   let selection = null;
   let view = { ...DEFAULT_CUBE_VIEW };
@@ -568,6 +571,35 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
+  /** Place names on the terrain, most important first, each skipped where it would overlap another. */
+  function drawNames(context, colors) {
+    const list = scene.terrain?.enabled ? scene.terrain.names : [];
+    if (!names() || !list?.length) return;
+    const placed = [];
+    context.font = '10px system-ui, sans-serif';
+    context.textBaseline = 'middle';
+    const sorted = [...list].sort((a, b) => LABEL_PRIORITY[a.kind] - LABEL_PRIORITY[b.kind]);
+    for (const item of sorted) {
+      if (placed.length >= MAXIMUM_LABELS) break;
+      const p = frame.project({ x: item.x, y: item.y, z: ground(item.x, item.y) });
+      const text = item.kind === 'peak' && item.elevationMetres !== null ? `${item.name} ${Math.round(item.elevationMetres)} m` : item.name;
+      const width = context.measureText(text).width;
+      const box = { x0: p.x - 3, x1: p.x + 7 + width, y0: p.y - 7, y1: p.y + 7 };
+      if (placed.some(other => box.x0 < other.x1 && box.x1 > other.x0 && box.y0 < other.y1 && box.y1 > other.y0)) continue;
+      placed.push(box);
+      context.fillStyle = item.kind === 'water' ? colors.direct : colors.muted;
+      context.globalAlpha = item.kind === 'hamlet' || item.kind === 'locality' ? .6 : .85;
+      if (item.kind === 'peak') {
+        context.beginPath(); context.moveTo(p.x, p.y - 3); context.lineTo(p.x + 3, p.y + 2); context.lineTo(p.x - 3, p.y + 2); context.closePath(); context.fill();
+      } else if (item.kind !== 'water') {
+        context.beginPath(); context.arc(p.x, p.y, 1.6, 0, 2 * Math.PI); context.fill();
+      }
+      context.fillText(text, p.x + 6, p.y);
+    }
+    context.globalAlpha = 1;
+    context.textBaseline = 'alphabetic';
+  }
+
   /** The selected item's points above the ground: a microphone, a blast, or a channel's ends. */
   function selectedPoints() {
     if (selection?.type === 'receiver') {
@@ -855,6 +887,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
     drawBox(context, colors);
     drawTerrain(context, colors);
+    drawNames(context, colors);
     drawShadowBoundary(context, colors);
     if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);
     for (const emitter of scene.emitters) {
