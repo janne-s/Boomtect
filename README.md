@@ -71,7 +71,8 @@ Thunder and Blast are separate modes, each with its own scene.
   arrives. Off: the silence before the first sound is skipped, and the channel
   glows where the sound being heard comes from.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
-  they cross the floor, the terrain, and the walls.
+  they cross the floor, the terrain, and the walls, fading as their sound
+  spreads out and the air absorbs it.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
   terrain without names, it asks for them again.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.

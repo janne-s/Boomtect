@@ -839,7 +839,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const group of groups.values()) drawFronts(context, colors, profile, group, terrainStride);
   }
 
+  /** One flash's or blast's fronts, as strong as their sound where they have spread to (`strength`). */
   function drawFronts(context, colors, profile, spheres, terrainStride) {
+    const strength = Math.max(0, ...spheres.map(sphere => sphere.strength ?? 1));
+    if (!(strength > 0)) return;
     const { box, farX, farY } = frame;
     const faces = [
       ...(currentSurface().flat ? [{ fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] }] : []),
@@ -847,7 +850,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
     const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * RIPPLE_SPACING_SHARE;
-    if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing);
+    if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing, strength);
     for (const face of faces) {
       const [u, v] = face.axes;
       const place = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
@@ -871,7 +874,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
             return place(centre[u] + radius * Math.cos(angle), centre[v] + radius * Math.sin(angle));
           }));
         }
-        if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
+        if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength });
       });
       context.restore();
     }
@@ -882,7 +885,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * distance at which the ground lies exactly one radius from the centre, by bisection. Drawn as
    * ripples like on the walls into a layer of their own, which then fades with the terrain's fog.
    */
-  function drawTerrainRipples(context, colors, spheres, spacing) {
+  function drawTerrainRipples(context, colors, spheres, spacing, strength = 1) {
     const ratio = window.devicePixelRatio || 1;
     rippleLayer ??= document.createElement('canvas');
     if (rippleLayer.width !== canvas.width || rippleLayer.height !== canvas.height) {
@@ -922,7 +925,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         any = true;
         addPolygon(path, points);
       }
-      if (any) unionOutline(paint, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
+      if (any) unionOutline(paint, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength });
     });
     paint.setTransform(1, 0, 0, 1, 0, 0);
     paint.globalCompositeOperation = 'destination-in';

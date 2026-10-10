@@ -1,4 +1,6 @@
+import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
+import { blastSources, emitterSources } from './domain/emitters.js';
 import { EXPLOSIVE_TYPES, EXPLOSIVES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
@@ -1430,6 +1432,28 @@ function animationState() {
 }
 
 const wavefrontSources = new WeakMap();
+/**
+ * A wavefront is drawn as strong as its sound where it has spread to: the pressure of its flash or
+ * blast after spreading as 1/r and air absorption at WAVEFRONT_FREQUENCY_HZ, fully at the top level
+ * and gone at the floor (display only; model pascals, not calibrated).
+ */
+const WAVEFRONT_FREQUENCY_HZ = 1000;
+const WAVEFRONT_TOP_DB = 140;
+const WAVEFRONT_FLOOR_DB = 60;
+const REFERENCE_PRESSURE_PA = 20e-6;
+
+/** Each flash's and blast's amplitude at 1 m, Pa·m: a flash's from the energy of all its sources. */
+function wavefrontAmplitudes(emitter) {
+  const air = state.scene.air;
+  if (emitter.kind === 'blast') return new Map([[emitter.id, blastSources(emitter, air)[0].amplitudePaMetres]]);
+  if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastSources(round, air)[0].amplitudePaMetres]));
+  const energy = new Map();
+  for (const source of emitterSources(emitter, air, currentSurface()).sources) {
+    const group = `${emitter.id}:${source.flash}`;
+    energy.set(group, (energy.get(group) ?? 0) + source.amplitudePaMetres ** 2);
+  }
+  return new Map([...energy].map(([group, value]) => [group, Math.sqrt(value)]));
+}
 
 /**
  * Every enabled emitter's sampled source points with their emission times: a blast's point, and
@@ -1438,8 +1462,10 @@ const wavefrontSources = new WeakMap();
 function wavefrontCandidates(scene) {
   if (wavefrontSources.has(scene)) return wavefrontSources.get(scene);
   const candidates = [];
+  const amplitudes = new Map();
   for (const emitter of scene.emitters) {
     if (!emitter.enabled) continue;
+    for (const [group, amplitude] of wavefrontAmplitudes(emitter)) amplitudes.set(group, amplitude);
     if (emitter.kind === 'blast') { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); continue; }
     if (emitter.kind === 'barrage') {
       cachedRounds(emitter).forEach(round => candidates.push({ point: placedPoint(round.positionMetres), emitted: round.startSeconds, group: round.id }));
@@ -1458,7 +1484,7 @@ function wavefrontCandidates(scene) {
   }
   const stride = Math.max(1, Math.ceil(candidates.length / WAVEFRONT_SPHERES));
   // Each keeps its place in the list, so that views can thin the fronts the same way in every frame.
-  const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order }));
+  const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, amplitude: amplitudes.get(candidate.group) ?? 0 }));
   wavefrontSources.set(scene, sampled);
   return sampled;
 }
@@ -1466,10 +1492,16 @@ function wavefrontCandidates(scene) {
 const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, point.y) + point.z });
 
 function wavefrontSpheres(now, profile) {
+  const absorption = state.scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(WAVEFRONT_FREQUENCY_HZ, state.scene.air) * 20 / Math.LN10 : 0;
+  const strengthAt = (amplitude, radius) => {
+    const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_PRESSURE_PA) - absorption * radius;
+    return Math.min(1, Math.max(0, (level - WAVEFRONT_FLOOR_DB) / (WAVEFRONT_TOP_DB - WAVEFRONT_FLOOR_DB)));
+  };
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted, group, order }) => {
-      const front = wavefront(profile, point, now - emitted);
+    .map(({ point, emitted, group, order, amplitude }) => {
+      const front = { ...wavefront(profile, point, now - emitted) };
+      front.strength = strengthAt(amplitude, front.radiusMetres);
       if (!profile.wind) return { source: point, group, order, ...front };
       // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
       const seconds = now - emitted;
