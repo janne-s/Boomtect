@@ -32,6 +32,8 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
+/** A press that moves less than this is a click rather than a turn of the view. */
+const CLICK_PIXELS = 4;
 /** The terrain is drawn on a grid of at most this many cells a side, separate from its heightfield. */
 const TERRAIN_DRAW_CELLS = 110;
 /** Direction the terrain is lit from: north-west and above. */
@@ -54,7 +56,6 @@ const RIPPLE_SPACING_SHARE = .018;
 /** Over terrain, where a front meets the ground is solved per direction, so fewer fronts are drawn. */
 const TERRAIN_RIPPLE_SPHERES = 80;
 const TERRAIN_RIPPLE_ITERATIONS = 14;
-const TERRAIN_EDGE_SAMPLES = 24;
 const BOUNDARY_EDGE_ALPHA = .7;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
@@ -145,6 +146,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let held = false;
   let lastBox = null;
   let terrainLayer = null;
+  let rippleLayer = null;
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -546,7 +548,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const striped = contours();
     const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground, colors.panel].join('|');
     if (terrainLayer?.key === key && terrainLayer.surface === surface) return terrainLayer;
-    const layers = (terrainLayer?.layers ?? [document.createElement('canvas'), document.createElement('canvas')]).map(layer => {
+    // Back, front, and the fog mask: white with the opacity the ground keeps through the fog.
+    const layers = (terrainLayer?.layers ?? [document.createElement('canvas'), document.createElement('canvas'), document.createElement('canvas')]).map(layer => {
       layer.width = canvas.width;
       layer.height = canvas.height;
       const paint = layer.getContext('2d');
@@ -601,20 +604,20 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         const stripe = striped && Math.floor((height - lowest) / band) % 2 === 1 ? .82 : 1;
         const shaded = mixColors(dark, light, lit * lit).map(value => value * stripe);
         const [r, g, b] = mixColors(shaded, fogColor, fog);
-        quads.push({ projected, depth, layer: behind(centreX, centreY) ? 0 : 1, color: `rgb(${r},${g},${b})` });
+        quads.push({ projected, depth, layer: behind(centreX, centreY) ? 0 : 1, color: `rgb(${r},${g},${b})`, mask: `rgba(255,255,255,${(1 - fog).toFixed(3)})` });
       }
     }
     quads.sort((a, b) => b.depth - a.depth);
     const paints = layers.map(layer => layer.getContext('2d'));
-    for (const { projected, color, layer } of quads) {
-      const paint = paints[layer];
-      paint.beginPath();
-      projected.forEach((p, index) => (index ? paint.lineTo(p.x, p.y) : paint.moveTo(p.x, p.y)));
-      paint.closePath();
-      paint.fillStyle = color;
-      paint.strokeStyle = color;
-      paint.fill();
-      paint.stroke();
+    for (const { projected, color, layer, mask } of quads) {
+      for (const [paint, style] of [[paints[layer], color], [paints[2], mask]]) {
+        paint.beginPath();
+        projected.forEach((p, index) => (index ? paint.lineTo(p.x, p.y) : paint.moveTo(p.x, p.y)));
+        paint.closePath();
+        paint.fillStyle = style;
+        paint.fill();
+        if (paint !== paints[2]) { paint.strokeStyle = style; paint.stroke(); }
+      }
     }
     terrainLayer = { key, surface, layers };
     return terrainLayer;
@@ -659,7 +662,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.textBaseline = 'alphabetic';
   }
 
-  /** The selected item's points above the ground: a microphone, a blast, or a channel's ends. */
+  /** The selected item's points: a microphone, a blast, or a channel's ends, also those on the ground. */
   function selectedPoints() {
     if (selection?.type === 'receiver') {
       const receiver = scene.receivers.find(item => item.id === selection.id);
@@ -667,8 +670,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
     if (!emitter || emitter.kind === 'storm') return [];
-    const points = emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
-    return points.filter(point => point.z > ground(point.x, point.y) + .01);
+    return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
   }
 
   function drawShadowBoundary(context, colors) {
@@ -705,22 +707,26 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
    * floor the circle stops at the shadow boundary.
    */
-  function drawWavefronts(context, colors, { profile, spheres }) {
+  function drawWavefronts(context, colors, { profile, spheres, total }) {
     // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
-    // one inside it; fronts that have left the box are dropped.
+    // one inside it; fronts that have left the box and the terrain around it are dropped.
     const { box } = frame;
+    const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
+    const bounds = { x0: Math.min(box.x0, -half), x1: Math.max(box.x1, half), y0: Math.min(box.y0, -half), y1: Math.max(box.y1, half) };
+    // Fronts over terrain are thinned by their fixed order, so the same ones are drawn in every frame.
+    const terrainStride = Math.max(1, Math.ceil(total / TERRAIN_RIPPLE_SPHERES));
     const groups = new Map();
     for (const sphere of spheres) {
       const { centre, radiusMetres } = sphere;
-      const farthest = Math.hypot(Math.max(centre.x - box.x0, box.x1 - centre.x), Math.max(centre.y - box.y0, box.y1 - centre.y), Math.max(centre.z - box.z0, box.z1 - centre.z));
+      const farthest = Math.hypot(Math.max(centre.x - bounds.x0, bounds.x1 - centre.x), Math.max(centre.y - bounds.y0, bounds.y1 - centre.y), Math.max(centre.z - box.z0, box.z1 - centre.z));
       if (radiusMetres > farthest) continue;
       if (!groups.has(sphere.group)) groups.set(sphere.group, []);
       groups.get(sphere.group).push(sphere);
     }
-    for (const group of groups.values()) drawFronts(context, colors, profile, group);
+    for (const group of groups.values()) drawFronts(context, colors, profile, group, terrainStride);
   }
 
-  function drawFronts(context, colors, profile, spheres) {
+  function drawFronts(context, colors, profile, spheres, terrainStride) {
     const { box, farX, farY } = frame;
     const faces = [
       ...(currentSurface().flat ? [{ fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] }] : []),
@@ -728,7 +734,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
     const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * RIPPLE_SPACING_SHARE;
-    if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres, spacing);
+    if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing);
     for (const face of faces) {
       const [u, v] = face.axes;
       const place = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
@@ -761,29 +767,24 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   /**
    * Where the fronts meet the terrain: for every direction from a sphere's centre, the horizontal
    * distance at which the ground lies exactly one radius from the centre, by bisection. Drawn as
-   * ripples like on the walls, within the terrain's square.
+   * ripples like on the walls into a layer of their own, which then fades with the terrain's fog.
    */
   function drawTerrainRipples(context, colors, spheres, spacing) {
-    const surface = currentSurface();
-    const stride = Math.max(1, Math.ceil(spheres.length / TERRAIN_RIPPLE_SPHERES));
-    const half = surface.halfExtentMetres;
-    const edge = [];
-    for (const [fromX, fromY, toX, toY] of [[-half, -half, half, -half], [half, -half, half, half], [half, half, -half, half], [-half, half, -half, -half]]) {
-      for (let step = 0; step < TERRAIN_EDGE_SAMPLES; step += 1) {
-        const x = fromX + (toX - fromX) * step / TERRAIN_EDGE_SAMPLES;
-        const y = fromY + (toY - fromY) * step / TERRAIN_EDGE_SAMPLES;
-        edge.push(frame.project({ x, y, z: ground(x, y) }));
-      }
+    const ratio = window.devicePixelRatio || 1;
+    rippleLayer ??= document.createElement('canvas');
+    if (rippleLayer.width !== canvas.width || rippleLayer.height !== canvas.height) {
+      rippleLayer.width = canvas.width;
+      rippleLayer.height = canvas.height;
     }
-    const outline = new Path2D();
-    addPolygon(outline, edge);
-    context.save();
-    context.clip(outline);
+    const paint = rippleLayer.getContext('2d');
+    paint.setTransform(1, 0, 0, 1, 0, 0);
+    paint.globalCompositeOperation = 'source-over';
+    paint.clearRect(0, 0, rippleLayer.width, rippleLayer.height);
+    paint.setTransform(ratio, 0, 0, ratio, 0, 0);
     RIPPLE_ALPHAS.forEach((alpha, ring) => {
       const path = new Path2D();
       let any = false;
-      for (let index = 0; index < spheres.length; index += stride) {
-        const { centre, radiusMetres } = spheres[index];
+      for (const { centre, radiusMetres } of spheres) {
         const radius = radiusMetres - ring * spacing;
         if (!(radius > 0)) continue;
         const points = [];
@@ -808,8 +809,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         any = true;
         addPolygon(path, points);
       }
-      if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
+      if (any) unionOutline(paint, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
     });
+    paint.setTransform(1, 0, 0, 1, 0, 0);
+    paint.globalCompositeOperation = 'destination-in';
+    paint.drawImage(terrainLayers(colors).layers[2], 0, 0);
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(rippleLayer, 0, 0);
     context.restore();
   }
 
@@ -1147,8 +1154,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (!drag) return;
     const finished = drag;
     drag = null;
-    if (finished.kind === 'point') onCommit(finished);
-    else { onView(view); frame = null; draw(); }
+    if (finished.kind === 'point') { onCommit(finished); return; }
+    // A click on empty space, without turning the view, clears the selection.
+    if (finished.kind === 'rotate' && event.type === 'pointerup') {
+      const { x, y } = localPoint(event);
+      if (Math.hypot(x - finished.x, y - finished.y) < CLICK_PIXELS) onSelect({ type: null, id: null });
+    }
+    onView(view); frame = null; draw();
   };
   canvas.addEventListener('pointerup', finish);
   canvas.addEventListener('pointercancel', finish);

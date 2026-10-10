@@ -5,7 +5,7 @@ import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
 import { defaultBlast, defaultScene, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
-import { echoPaths, CELL_SECONDS, clearBetween, echoField, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+import { CELL_SECONDS, clearBetween, echoField, echoPaths, echoSurface, SCATTER_BIN_SECONDS, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
 
 function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
   const cellMetres = extentMetres / cells;
@@ -169,4 +169,26 @@ test('echoes over hills render finite, reproducible, and later than the direct s
   const quiet = renderReceiver(prepareScene({ ...parsed, terrain: { ...parsed.terrain, echoes: false } }), parsed.receivers[0], parsed);
   const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
   assert.ok(energy(first.samples) > energy(quiet.samples));
+});
+
+test('merged scattered echoes do not fall on a regular grid of arrival times, which would sound as a tone', () => {
+  const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
+  const scene = defaultScene('thunder');
+  scene.terrain = terrain(hills, { cells: 120, extentMetres: 6000, scattering: 1 });
+  const parsed = parseScene(scene);
+  const prepared = prepareScene(parsed);
+  const paths = receiverPaths(prepared, parsed.receivers[0], parsed);
+  // Phases of the arrivals within the merging bin: spread evenly, their mean vector is short.
+  let re = 0;
+  let im = 0;
+  let count = 0;
+  for (let index = 0; index < paths.count; index += 1) {
+    if (paths.kind[index] !== PATH_SCATTER) continue;
+    const phase = 2 * Math.PI * paths.seconds[index] / SCATTER_BIN_SECONDS;
+    re += Math.cos(phase);
+    im += Math.sin(phase);
+    count += 1;
+  }
+  assert.ok(count > 500, `${count}`);
+  assert.ok(Math.hypot(re, im) / count < .1, `${Math.hypot(re, im) / count}`);
 });

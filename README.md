@@ -27,7 +27,7 @@ Thunder and Blast are separate modes, each with its own scene.
   one. A storm's edge handle sets its size, and its grey handles move the
   cloud base and top up and down.
 - **Selection** — Dashed lines lead from a selected microphone, blast, or channel
-  end to its shadows on the floor and walls.
+  end to its shadows on the floor and walls. A click on empty space clears it.
 - **Shadow boundary** — The line on the floor beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 

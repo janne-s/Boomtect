@@ -774,14 +774,6 @@ details summary {
   }
 }
 
-.details-limits {
-  grid-column: 1 / -1;
-  color: var(--faint);
-}
-.details-limits p {
-  margin: 0;
-}
-
 
 .place-dialog {
   width: min(960px, calc(100% - 32px));

@@ -3,7 +3,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { PATH_DIRECT, PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
+import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -71,7 +71,7 @@ function restoredScene(mode) {
 
 const preferences = {
   realDelay: true, wavefront: false, contours: true, names: true, mode: 'thunder',
-  terrainDraft: { place: 'Tampere', latitude: 61.4978, longitude: 23.761, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
+  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -800,24 +800,7 @@ function renderDetails() {
     group.append(fields);
     return group;
   }));
-  const limits = element('section', 'details-section details-limits');
-  limits.append(element('h3', '', 'Not modelled'), element('p', '', missingPhenomena().join(' · ')));
-  body.append(limits);
   body.scrollTop = scroll;
-}
-
-function missingPhenomena() {
-  const missing = [...MISSING_PHENOMENA];
-  if (!state.scene.terrain?.enabled) missing.unshift('Terrain');
-  else {
-    if (!state.scene.terrain.echoes) missing.unshift('Terrain echoes');
-    if (!state.scene.terrain.shielding) missing.unshift('Terrain shielding');
-  }
-  if (state.scene.air.refraction) missing.push('Several ground reflections in an inversion', 'Temperature profile other than linear');
-  else missing.unshift('Temperature stratification and refraction');
-  if (!state.scene.air.absorption) missing.unshift('Air absorption');
-  if (!state.scene.ground.enabled) missing.unshift('Ground reflection');
-  return missing;
 }
 
 /** The terrain is widened when the scene reaches this close to its edge, by this margin. */
@@ -931,6 +914,8 @@ function terrainPanel(container) {
 
 const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates });
 let placeLoad = null;
+/** The text whose place the map shows, so that Load can tell a name typed but not yet found. */
+let placeShown = '';
 
 function showPlaceCoordinates({ latitude, longitude }) {
   $('place-coordinates').textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
@@ -941,6 +926,7 @@ function openPlaceDialog(load) {
   const draft = state.preferences.terrainDraft;
   placeLoad = load;
   $('place-query').value = draft.place;
+  placeShown = draft.place;
   $('place-dialog').showModal();
   // The dialog itself takes focus, so its first control is not ringed when it opens.
   $('place-dialog').focus();
@@ -948,21 +934,32 @@ function openPlaceDialog(load) {
   showPlaceCoordinates(draft);
 }
 
-$('place-search').addEventListener('submit', async event => {
-  event.preventDefault();
-  const text = $('place-query').value.trim();
-  if (!text) return;
+/** Moves the map to a place found by name; false when none is found. */
+async function showFoundPlace(text) {
   try {
     const found = await searchPlace(text);
-    if (!found) { setStatus(`No place found for ${text}`, true); return; }
+    if (!found) { setStatus(`No place found for ${text}`, true); return false; }
     placeMap.show(found, state.preferences.terrainDraft.extentMetres);
     showPlaceCoordinates(found);
+    placeShown = text;
+    return true;
   } catch (error) {
     setStatus(`The place search failed: ${error.message}`, true);
+    return false;
   }
+}
+
+$('place-search').addEventListener('submit', event => {
+  event.preventDefault();
+  const text = $('place-query').value.trim();
+  if (text) showFoundPlace(text);
 });
+// Moving the map makes its centre the place, whatever name the field holds.
+$('place-overlay').addEventListener('pointerdown', () => { placeShown = $('place-query').value.trim(); });
 $('place-cancel').addEventListener('click', () => $('place-dialog').close());
-$('place-done').addEventListener('click', () => {
+$('place-done').addEventListener('click', async () => {
+  const text = $('place-query').value.trim();
+  if (text && text !== placeShown && !(await showFoundPlace(text))) return;
   const { latitude, longitude } = placeMap.centre();
   const draft = state.preferences.terrainDraft;
   const typed = $('place-query').value.trim();
@@ -1217,7 +1214,7 @@ function animationState() {
   for (const [id, envelopeData] of state.envelopes) {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
-  const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile) } : null;
+  const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
   return { strokes, fronts, receivers, sound, wavefronts };
 }
 
@@ -1245,7 +1242,8 @@ function wavefrontCandidates(scene) {
     }
   }
   const stride = Math.max(1, Math.ceil(candidates.length / WAVEFRONT_SPHERES));
-  const sampled = candidates.filter((_, index) => index % stride === 0);
+  // Each keeps its place in the list, so that views can thin the fronts the same way in every frame.
+  const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order }));
   wavefrontSources.set(scene, sampled);
   return sampled;
 }
@@ -1255,7 +1253,7 @@ const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, 
 function wavefrontSpheres(now, profile) {
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted, group }) => ({ source: point, group, ...wavefront(profile, point, now - emitted) }));
+    .map(({ point, emitted, group, order }) => ({ source: point, group, order, ...wavefront(profile, point, now - emitted) }));
 }
 
 views.forEach(view => view.setAnimation(animationState));

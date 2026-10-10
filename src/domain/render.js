@@ -57,15 +57,6 @@ const pathSources = (prepared, kind) => (isEcho(kind) ? prepared.cells : prepare
 /** Whether a scene traces terrain echoes. */
 export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.terrain.echoes);
 
-export const MISSING_PHENOMENA = Object.freeze([
-  'Echoes from buildings and clouds, and repeated echoes',
-  'Diffraction by buildings and rounded ridges',
-  'Wind',
-  'Turbulent scattering of the direct sound',
-  'Nonlinear propagation beyond the linearization radius',
-  'Absolute calibration of sound pressure level'
-]);
-
 /**
  * Expands every enabled emitter into point sources, kept as a typed table so that the flash
  * geometry behind them can be released, and pools them into cells when terrain echoes are traced.
@@ -216,9 +207,11 @@ function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPositi
 /**
  * Scattered echoes from all of an emitter's cells that reach the receiver within one
  * SCATTER_BIN_SECONDS and from one direction sector merge into one path (class C): its energy is
- * their sum, its arrival, direction, length, and incidence their energy-weighted means, and its
- * pulse that of the strongest. Scattering is incoherent, so this keeps the tail's energy and
+ * their sum, its direction, length, and incidence their energy-weighted means, and its arrival and
+ * pulse those of the strongest. Scattering is incoherent, so this keeps the tail's energy and
  * density while the number of paths stays bounded by time and direction rather than by cells.
+ * A mean arrival would settle near the middle of each bin and space the paths evenly, which sounds
+ * as a tone at 1/SCATTER_BIN_SECONDS (measured: 100 Hz, 40 dB above the tail's spectrum).
  */
 function mergeScattered(merged, cells, cell, path) {
   const arrival = cells.emissionSeconds[cell] + path.seconds;
@@ -230,13 +223,12 @@ function mergeScattered(merged, cells, cell, path) {
     merged.set(key, entry);
   }
   entry.energy += energy;
-  entry.seconds += energy * arrival;
   entry.metres += energy * path.metres;
   entry.cosine += energy * path.groundSine;
   entry.x += energy * path.arrival.x;
   entry.y += energy * path.arrival.y;
   entry.z += energy * path.arrival.z;
-  if (energy > entry.strongest) { entry.strongest = energy; entry.cell = cell; }
+  if (energy > entry.strongest) Object.assign(entry, { strongest: energy, cell, seconds: path.seconds });
 }
 
 function mergedPath(entry, cells) {
@@ -244,7 +236,7 @@ function mergedPath(entry, cells) {
   const length = Math.hypot(entry.x, entry.y, entry.z);
   const arrival = { x: entry.x / length, y: entry.y / length, z: entry.z / length };
   return {
-    seconds: entry.seconds / energy - cells.emissionSeconds[cell],
+    seconds: entry.seconds,
     metres: entry.metres / energy,
     spreadMetres: cells.amplitudePaMetres[cell] / Math.sqrt(energy),
     departure: arrival,
