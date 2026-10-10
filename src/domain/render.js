@@ -292,7 +292,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
  * kept per cell, and scattered ones merged across cells (`mergeScattered`).
  */
 function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) {
-  const field = echoField(surface, profile, receiverPosition, { scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit });
+  const field = echoField(surface, profile, receiverPosition, {
+    scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit, shadowFloor: 10 ** (-scene.air.shadowFloorDecibels / 20)
+  });
   const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
   const list = [];
   preparedEmitters.forEach(({ cells }, emitterIndex) => {

@@ -191,6 +191,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
 | Terrain echoes, scattered | Lambert's law per patch of ground | B |
 | Echoes near the ground | the ground's image at the source and microphone ends, rigid within a blast's nonlinear radius | B/C |
+| Echoes through the shadow | a leg in the refraction shadow keeps the shadow floor, as the direct sound | C |
 | Echo cells and merging | sources pooled in cells; scattered echoes merged by arrival and direction | C |
 | Turbulence | phase fluctuation of the ground reflection | B/C |
 | Ambisonics | spherical harmonics, AmbiX | A |

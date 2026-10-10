@@ -211,3 +211,22 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
   const gain = 10 * Math.log10(echoEnergy(true) / echoEnergy(false));
   assert.ok(gain > 10.5 && gain < 12.1, `${gain}`);
 });
+
+test('an echo whose legs pass through the refraction shadow keeps the shadow floor on each leg', () => {
+  // A low slope from 3 km on in ISA air, at most 20 m high: from 1 m and 1.7 m above level ground both
+  // legs to it lie in the shadow. Only its echoes count, not the level ground's near the two ends.
+  const surface = terrainSurface(terrain(x => Math.max(0, .02 * (x - 3000)), { cells: 120, extentMetres: 8000 }));
+  const profile = { groundSpeed: 340.3, gradient: -.0039 };
+  const R = { x: -500, y: 0, z: 1.7 };
+  const S = { x: 0, y: 0, z: 1 };
+  const fromSlope = paths => paths.filter(path => path.metres > 5500);
+  const strongest = paths => Math.max(0, ...fromSlope(paths).map(path => 1 / path.spreadMetres));
+  const dropped = echoPaths(echoField(surface, profile, R, { scattering: 1, limit: 2000 }), S);
+  assert.equal(fromSlope(dropped).length, 0);
+  const floor = .1;
+  const kept = echoPaths(echoField(surface, profile, R, { scattering: 1, limit: 2000, shadowFloor: floor }), S);
+  const lit = echoPaths(echoField(surface, homogeneous, R, { scattering: 1, limit: 2000 }), S);
+  assert.ok(fromSlope(kept).length > 0);
+  const ratio = strongest(kept) / strongest(lit);
+  assert.ok(ratio > .5 * floor ** 2 && ratio < 2 * floor ** 2, `${ratio}`);
+});

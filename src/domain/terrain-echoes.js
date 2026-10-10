@@ -224,7 +224,7 @@ function visibleFromFacet(echo, facet, facetPoint, point) {
  * Everything about one receiver's echoes that does not depend on the source: the facets it sees,
  * outside the ground under it, with their distance, exit cosine, and direction sector.
  */
-export function echoField(surface, profile, receiverPosition, { scattering, limit }) {
+export function echoField(surface, profile, receiverPosition, { scattering, limit, shadowFloor = 0 }) {
   const echo = echoSurface(surface);
   const R = receiverPosition;
   const exclusion = EXCLUSION_SPACINGS * echo.spacing;
@@ -254,7 +254,7 @@ export function echoField(surface, profile, receiverPosition, { scattering, limi
   const groundPlane = { point: ground, normal: surface.normalAt(R.x, R.y) };
   const seen = new Uint8Array(echo.count);
   for (const facet of visible) seen[facet] = 1;
-  return { echo, profile, surface, R, groundPlane, scattering, limit, visible: Int32Array.from(visible), seen, distance, exitCosine, sector };
+  return { echo, profile, surface, R, groundPlane, scattering, limit, shadowFloor, visible: Int32Array.from(visible), seen, distance, exitCosine, sector };
 }
 
 /** The horizontal gradient of the S → point → R path length for a point that follows the surface. */
@@ -358,17 +358,24 @@ function onGroundPlane(field, point, normal) {
 const LEG_PLANE_SAMPLES = 8;
 
 /**
- * One leg of an echo, timed along the refracted ray. Null when it would pass through the refraction
- * shadow, judged from the mean ground plane under it as for the direct sound.
+ * One leg of an echo, timed along the refracted ray, with `floor`, its amplitude factor. A leg through
+ * the refraction shadow, judged from the mean ground plane under it as for the direct sound, keeps
+ * the shadow floor: turbulence scatters sound into the shadow from the lit air above, with a front
+ * as steep as the lit one (class C, as the direct sound's floor; Karzova et al., laboratory N-waves).
+ * Without a floor such a leg is null.
  */
 function echoLeg(field, a, b, trace = rayBetween) {
   const { echo } = field;
   const profile = pathProfile(field.profile, a, b);
+  let floor = 1;
   if (profile.gradient < 0) {
     const frame = meanPlaneFrame(profile, echo.heightAt, a, b, LEG_PLANE_SAMPLES);
-    if (inShadow(frame.profile, frame.from, frame.to)) return null;
+    if (inShadow(frame.profile, frame.from, frame.to)) {
+      if (!(field.shadowFloor > 0)) return null;
+      floor = field.shadowFloor;
+    }
   }
-  return trace(profile, a, b);
+  return { ...trace(profile, a, b), floor };
 }
 
 /**
@@ -474,7 +481,7 @@ export function echoPaths(field, S) {
         seconds: down.seconds + up.seconds,
         metres: r1 + r2,
         legMetres: [r1, r2],
-        spreadMetres: (r1 + r2) / Math.sqrt(candidate.energy) * down.spreadMetres * up.spreadMetres / (r1 * r2),
+        spreadMetres: (r1 + r2) / Math.sqrt(candidate.energy) * down.spreadMetres * up.spreadMetres / (r1 * r2) / (down.floor * up.floor),
         departure: { x: (point.x - S.x) / r1, y: (point.y - S.y) / r1, z: (point.z - S.z) / r1 },
         arrival,
         groundSine: candidate.cosine
@@ -485,7 +492,7 @@ export function echoPaths(field, S) {
     const up = down && echoLeg(field, point, R);
     if (!up) continue;
     // Spreading of the image source in homogeneous air, r₁ + r₂, carried over to refracted legs.
-    const spreadMetres = (down.spreadMetres + up.spreadMetres) / Math.sqrt(candidate.energy);
+    const spreadMetres = (down.spreadMetres + up.spreadMetres) / Math.sqrt(candidate.energy) / (down.floor * up.floor);
     paths.push({
       kind: PATH_ECHO,
       seconds: down.seconds + up.seconds,
