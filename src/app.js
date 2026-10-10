@@ -8,7 +8,7 @@ import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
-import { encodeFloat32Wav } from './domain/wav.js';
+import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
@@ -18,7 +18,7 @@ import { cachedFlashes, currentSurface, useTerrain } from './ui/geometry-cache.j
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
-import { createPlayer, renderComposition } from './ui/player.js';
+import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
 
@@ -29,7 +29,6 @@ const RENDER_DEBOUNCE_MILLISECONDS = 200;
 const PEAK_TARGET = 10 ** (-3 / 20);
 /** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
 const BINAURAL_HEADROOM = 10 ** (-3 / 20);
-const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 /** Source points whose wavefronts are drawn on the box's faces, at most. */
 const WAVEFRONT_SPHERES = 360;
 /** How long a stroke stays on screen after it has run its route. */
@@ -1522,7 +1521,6 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const slug = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'receiver';
 
 $('save').addEventListener('click', () => {
   download('boomtect-scene.json', new Blob([serializeScene(state.scene)], { type: 'application/json' }));
@@ -1549,50 +1547,106 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
-$('export').addEventListener('click', async () => {
+const EXPORT_LABELS = Object.freeze({ scene: 'Scene', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics' });
+const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
+let exportState = null;
+
+function exportSelection() {
+  return new Set([...document.querySelectorAll('#export-list input:checked')].map(input => input.value));
+}
+
+/** Sizes, the file count, and the format line for the current selection. */
+function updateExportSummary() {
+  const { plan } = exportState;
+  const selected = exportSelection();
+  const sizes = exportSizes(plan, selected);
+  for (const item of availableItems(plan)) $(`export-size-${item}`).textContent = formatBytes(sizes[item]);
+  const count = [...selected].reduce((sum, item) => sum + (item === 'microphones' || item === 'ambix' ? plan.microphones.length : 1), 0);
+  const bytes = [...selected].reduce((sum, item) => sum + sizes[item], 0);
+  $('export-summary').textContent = selected.size ? `${count} file${count === 1 ? '' : 's'} · ≈ ${formatBytes(bytes)}${count > 1 ? ' · ZIP' : ''}` : '';
+  const aligned = selected.has('microphones') || selected.has('ambix');
+  const timeline = aligned ? plan.everyone : plan.listening;
+  $('export-contract').textContent = `${timeline.sampleRate / 1000} kHz · 32-bit float · full scale ${Number((1 / plan.gain).toPrecision(3)).toLocaleString('en')} Pa · from ${formatSeconds(timeline.startSeconds)} after the flash`;
+  $('export-submit').disabled = selected.size === 0;
+}
+
+$('export').addEventListener('click', () => {
   const current = listening();
   if (!current) return;
-  const { composition, gain } = current;
-  const base = `boomtect-${slug(composition.kind)}`;
-  const files = [];
-  const wav = (suffix, channels, description) => {
-    const file = `${base}${suffix}.wav`;
-    download(file, new Blob([encodeFloat32Wav(channels, composition.sampleRate)], { type: 'audio/wav' }));
-    files.push({ file, channels: channels.length, description });
-  };
-  const scaled = channel => channel.map(value => value * gain);
+  const plan = exportPlan(state.scene, state.results, current.gain);
+  if (!plan) return;
+  exportState = { plan, composition: current.composition };
+  const chosen = new Set(state.preferences.exportItems ?? ['scene', 'stereo']);
+  $('export-list').replaceChildren(...availableItems(plan).map(item => {
+    const row = element('label');
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: item, checked: chosen.has(item) });
+    box.addEventListener('change', updateExportSummary);
+    const text = element('span');
+    text.append(element('strong', '', EXPORT_LABELS[item]));
+    const size = element('small');
+    size.id = `export-size-${item}`;
+    row.append(box, text, size);
+    return row;
+  }));
+  $('export-name').value = state.preferences.exportName ?? `boomtect-${state.scene.mode}`;
+  $('export-error').hidden = true;
+  updateExportSummary();
+  $('export-dialog').showModal();
+  // The dialog itself takes focus, so its first control is not ringed when it opens.
+  $('export-dialog').focus();
+});
+
+$('export-all').addEventListener('click', () => {
+  document.querySelectorAll('#export-list input').forEach(input => { input.checked = true; });
+  updateExportSummary();
+});
+
+$('export-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (event.submitter?.value === 'cancel') { $('export-dialog').close(); return; }
+  const name = $('export-name').value.trim();
+  if (!name) { $('export-name').reportValidity(); return; }
+  const selected = exportSelection();
+  if (!selected.size) return;
+  state.preferences.exportItems = [...selected];
+  state.preferences.exportName = name;
+  savePreferences();
+  const submit = $('export-submit');
+  submit.disabled = true;
+  $('export-error').hidden = true;
+  operation('export', 'Exporting');
   try {
-    if (composition.heads.length) {
-      wav('', await renderComposition(composition, gain), composition.kind === 'mix' ? 'Binaural mix, left and right' : 'Binaural, left and right');
-      for (const head of composition.heads) {
-        wav(`-${slug(head.name)}-ambix`, head.channels.map(scaled), `${head.name}: ${AMBISONIC_CONVENTION}, order ${composition.order}`);
+    const { plan, composition } = exportState;
+    const stem = fileStem(name);
+    const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
+      ...parseScene(state.scene),
+      export: {
+        listening: composition.kind,
+        heads: composition.heads.map(head => ({ receiverId: head.receiverId, headingDegrees: head.headingDegrees, pitchDegrees: head.pitchDegrees })),
+        omnis: composition.omnis.map(omni => omni.receiverId),
+        files: written,
+        ambisonics: plan.order > 0 ? AMBISONIC_CONVENTION : null,
+        sampleRate,
+        sampleFormat: 'ieee-float32',
+        startSeconds,
+        fullScalePa: 1 / plan.gain,
+        peakPa: composition.peakPa,
+        speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
+        soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
+        modelVersion: MODEL_VERSION,
+        exportedAt: new Date().toISOString()
       }
-    } else {
-      wav('', composition.omnis.map(omni => scaled(omni.channel)), `One channel per microphone: ${composition.omnis.map(omni => omni.name).join(', ')}`);
-    }
+    }));
+    const { name: fileName, blob } = exportDownload(files, stem);
+    download(fileName, blob);
+    $('export-dialog').close();
   } catch (error) {
-    setStatus(`Export failed: ${error.message}`, true);
-    return;
+    $('export-error').textContent = error instanceof Error ? error.message : String(error);
+    $('export-error').hidden = false;
+  } finally {
+    submit.disabled = false;
+    operation('export', null);
   }
-  const exportDocument = {
-    ...parseScene(state.scene),
-    export: {
-      listening: composition.kind,
-      heads: composition.heads.map(head => ({ receiverId: head.receiverId, headingDegrees: head.headingDegrees, pitchDegrees: head.pitchDegrees })),
-      omnis: composition.omnis.map(omni => omni.receiverId),
-      files,
-      sampleRate: composition.sampleRate,
-      sampleFormat: 'ieee-float32',
-      startSeconds: composition.startSeconds,
-      fullScalePa: 1 / gain,
-      peakPa: composition.peakPa,
-      speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
-      soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
-      modelVersion: MODEL_VERSION,
-      exportedAt: new Date().toISOString()
-    }
-  };
-  download(`${base}.json`, new Blob([JSON.stringify(exportDocument, null, 2)], { type: 'application/json' }));
 });
 
 /* Controls */

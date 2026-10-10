@@ -27,7 +27,7 @@
       <span class="spacer"></span>
       <button type="button" id="open">Open</button>
       <button type="button" id="save">Save</button>
-      <button type="button" id="export" disabled>Export WAV</button>
+      <button type="button" id="export" disabled>Export</button>
       <input type="file" id="open-file" accept="application/json,.json" hidden />
     </header>
 
@@ -120,6 +120,25 @@
       </div>
     </dialog>
 
+    <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title" tabindex="-1">
+      <form id="export-form" method="dialog">
+        <header class="details-header">
+          <h2 id="export-title">Export</h2>
+          <button type="button" id="export-all">Select all</button>
+        </header>
+        <div class="export-body">
+          <label class="export-name"><span>Name</span><input type="text" id="export-name" maxlength="80" required /></label>
+          <div class="export-list" id="export-list"></div>
+          <p class="export-contract" id="export-contract"></p>
+          <p class="export-summary" id="export-summary"></p>
+          <p class="export-error" id="export-error" role="alert" hidden></p>
+        </div>
+        <footer class="export-actions">
+          <button type="submit" value="cancel">Cancel</button>
+          <button type="submit" id="export-submit" class="primary" value="export">Export</button>
+        </footer>
+      </form>
+    </dialog>
     <dialog id="details" aria-labelledby="details-title" tabindex="-1">
       <header class="details-header">
         <h2 id="details-title"></h2>

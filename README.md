@@ -141,16 +141,24 @@ Thunder and Blast are separate modes, each with its own scene.
 
 ## Export
 
-**Export WAV** writes 32-bit float WAV files of what plays — mono, a pair, one
-channel per omni microphone, or binaural stereo with an AmbiX file per binaural
-microphone (ACN, SN3D; front is north, left is west) — and a JSON file with the
-full scene, the time of the first sample after the flash, and the pascals at
-full scale. The JSON opens as a scene.
+**Export** packs the chosen files, several of them in a ZIP:
+
+- **Scene** — The full scene as JSON, with the files, the time of their first
+  sample after the flash, and the pascals at full scale. It opens as a scene.
+- **Stereo** — What plays, in two channels: mono on both, a pair left and right,
+  more microphones panned, binaural as heard on headphones.
+- **Microphones** — One file per microphone: an omni's pressure in mono, a
+  binaural microphone in stereo.
+- **Ambisonics** — One AmbiX file per microphone (ACN, SN3D; front is north,
+  left is west), when the render is spatial.
+
+All files are 32-bit float at one full scale. With per-microphone files, every
+file starts at the same moment.
 
 ## Echotect
 
 To place a Boomtect sound in an [Echotect](https://github.com/janne-s/Echotect)
-echo field, export a mono WAV and load it in Echotect as the source sound.
+echo field, export a microphone's file and load it in Echotect as the source sound.
 
 ## Model
 

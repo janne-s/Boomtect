@@ -858,3 +858,61 @@ details summary {
 .map-button {
   padding: 4px 6px;
 }
+
+.export-dialog {
+  width: min(460px, calc(100% - 32px));
+}
+.export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.export-name {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.export-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.export-list label {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: 4px;
+}
+.export-list label:hover {
+  background: var(--raised);
+}
+.export-list small,
+.export-contract,
+.export-summary {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.export-list strong {
+  font-weight: 500;
+}
+.export-contract,
+.export-summary,
+.export-error {
+  margin: 0;
+}
+.export-error {
+  color: var(--accent);
+}
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 12px 16px;
+}
