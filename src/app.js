@@ -1350,7 +1350,7 @@ function strokeTimeline(emitter) {
 
 /**
  * What the scene view shows at the playback clock: every stroke that has started and not yet
- * faded, the blast fronts, and the listening receiver's level. A stroke's light runs its route
+ * faded, and the listening receiver's level. A stroke's light runs its route
  * figuratively in FLASH_TRAVERSE_SECONDS; physically a return stroke takes microseconds.
  */
 function animationState() {
@@ -1358,7 +1358,6 @@ function animationState() {
   if (!clock) return null;
   const now = clock.sceneSeconds();
   const strokes = new Map();
-  const fronts = new Map();
   const result = state.results?.get(focusReceiver().id);
   const profile = soundSpeedProfile(state.scene.air);
   const realDelay = !clock.skippedSeconds && state.preferences.realDelay;
@@ -1370,9 +1369,6 @@ function animationState() {
         .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(emitter) }))
         .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS));
     }
-    if (emitter.kind === 'blast' && result && now >= emitter.startSeconds && realDelay) {
-      fronts.set(emitter.id, wavefront(profile, emitter.positionMetres, now - emitter.startSeconds));
-    }
   }
   const receiver = focusReceiver().positionMetres;
   const sound = !realDelay && result ? { seconds: now, travelSeconds: point => travelSeconds(profile, point, receiver) } : null;
@@ -1381,7 +1377,7 @@ function animationState() {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
   const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
-  return { strokes, fronts, receivers, sound, wavefronts };
+  return { strokes, receivers, sound, wavefronts };
 }
 
 const wavefrontSources = new WeakMap();

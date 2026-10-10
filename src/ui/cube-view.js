@@ -1100,14 +1100,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.shadowBlur = 0;
       context.globalAlpha = 1;
     }
-    const front = state?.fronts.get(emitter.id);
-    if (front && !state.wavefronts) {
-      const middle = frame.project(front.centre);
-      context.strokeStyle = colors.accent;
-      context.globalAlpha = .5;
-      context.beginPath(); context.arc(middle.x, middle.y, front.radiusMetres * frame.scale, 0, 2 * Math.PI); context.stroke();
-      context.globalAlpha = 1;
-    }
   }
 
   function drawHandle(context, handle, colors, selected, usable) {
