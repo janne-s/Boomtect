@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 9;
+export const SCENE_VERSION = 10;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -35,6 +35,9 @@ export const PARAMETERS = Object.freeze({
   turbulenceScaleMetres: { minimum: .1, maximum: 10, unit: 'm', label: 'Turbulence scale', reliability: 'C' },
   lapseRateKelvinPerMetre: { minimum: -.02, maximum: .012, unit: 'K/m', label: 'Lapse rate', reliability: 'B' },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
+  windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
+  windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
+  windShearPerSecond: { minimum: -.02, maximum: .02, unit: '1/s', label: 'Wind shear', reliability: 'C' },
   latitude: { minimum: -85, maximum: 85, unit: '°', label: 'Latitude', reliability: null },
   longitude: { minimum: -180, maximum: 180, unit: '°', label: 'Longitude', reliability: null },
   terrainExtentMetres: { minimum: 500, maximum: 20000, unit: 'm', label: 'Area', reliability: null },
@@ -214,7 +217,8 @@ export function defaultScene(mode = 'thunder') {
     modelVersion: MODEL_VERSION,
     air: {
       temperatureCelsius: 15, lapseRateKelvinPerMetre: ISA_LAPSE_RATE_KELVIN_PER_METRE, relativeHumidityPercent: 70, pressureKpa: 101.325,
-      refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1
+      refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1,
+      windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0
     },
     ground: { enabled: true, type: 'grass' },
     terrain: null,
@@ -387,7 +391,8 @@ export function parseScene(value) {
       shadowFloorDecibels: number(air.shadowFloorDecibels, 'shadowFloorDecibels', 'air.shadowFloorDecibels'),
       absorption: air.absorption,
       turbulenceStrength: number(air.turbulenceStrength, 'turbulenceStrength', 'air.turbulenceStrength'),
-      turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres')
+      turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
+      ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond'], 'air')
     },
     ground: { enabled: ground.enabled, type: ground.type },
     terrain: terrain(value.terrain),

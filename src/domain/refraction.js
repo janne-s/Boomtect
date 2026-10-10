@@ -40,12 +40,45 @@ export const PATH_SHADOW = 2;
 export const PATH_ECHO = 3;
 export const PATH_SCATTER = 4;
 
-/** The linear sound-speed profile of the scene's air: ground speed c₀ and gradient g. */
+/**
+ * The linear sound-speed profile of the scene's air: ground speed c₀ and gradient g, and the wind
+ * as the vectors it blows toward at the ground (`wind`, m/s, x east and y north) and its shear
+ * (`shear`, 1/s), or null in still air. Without refraction the air is homogeneous and still.
+ */
 export function soundSpeedProfile(air) {
   const groundSpeed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   if (!air.refraction) return { groundSpeed, gradient: 0 };
   const topSpeed = Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, PROFILE_FIT_HEIGHT_METRES));
-  return { groundSpeed, gradient: (topSpeed - groundSpeed) / PROFILE_FIT_HEIGHT_METRES };
+  const gradient = (topSpeed - groundSpeed) / PROFILE_FIT_HEIGHT_METRES;
+  if (!air.windSpeedMetresPerSecond && !air.windShearPerSecond) return { groundSpeed, gradient };
+  // Wind from a compass bearing blows toward the opposite one: from the north (0°) toward −y.
+  const bearing = air.windFromDegrees * Math.PI / 180;
+  const toward = { x: -Math.sin(bearing), y: -Math.cos(bearing) };
+  return {
+    groundSpeed,
+    gradient,
+    wind: { x: toward.x * air.windSpeedMetresPerSecond, y: toward.y * air.windSpeedMetresPerSecond },
+    shear: { x: toward.x * air.windShearPerSecond, y: toward.y * air.windShearPerSecond }
+  };
+}
+
+/**
+ * The profile for sound travelling horizontally along (dx, dy): the effective sound speed
+ * c(z) + u(z)·n, with n the unit horizontal direction, which stays linear in height (class B, the
+ * effective-sound-speed approximation, e.g. Salomons, Computational Atmospheric Acoustics, 2001; it
+ * holds for small Mach numbers and paths near the horizontal, and overstates the wind on steep ones).
+ * In still air, or straight up or down, it is the profile itself.
+ */
+export function alongProfile(profile, dx, dy) {
+  if (!profile.wind) return profile;
+  const horizontal = Math.hypot(dx, dy);
+  if (!(horizontal > 0)) return { groundSpeed: profile.groundSpeed, gradient: profile.gradient };
+  const nx = dx / horizontal;
+  const ny = dy / horizontal;
+  return {
+    groundSpeed: profile.groundSpeed + profile.wind.x * nx + profile.wind.y * ny,
+    gradient: profile.gradient + profile.shear.x * nx + profile.shear.y * ny
+  };
 }
 
 export const speedAt = (profile, heightMetres) => profile.groundSpeed + profile.gradient * heightMetres;

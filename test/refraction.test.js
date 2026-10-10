@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { prepareScene, receiverPaths } from '../src/domain/render.js';
+import { defaultScene } from '../src/domain/scene.js';
 import {
-  creepingCoefficient, firstArrival, grazingRange, inShadow, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt, travelSeconds, wavefront
+  alongProfile, creepingCoefficient, firstArrival, grazingRange, inShadow, PATH_DIRECT, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt, travelSeconds, wavefront
 } from '../src/domain/refraction.js';
 
 const air = (overrides = {}) => ({
@@ -260,4 +262,43 @@ test('every path is finite or absent for random and edge-case geometry in all th
       if (reflected) assert.ok(finite(reflected) || reflected.spreadMetres === Infinity, `reflection ${JSON.stringify([a, b])}`);
     }
   }
+});
+
+test('wind adds its component along the path to the speed and its shear to the gradient, and nothing across it', () => {
+  const air = { ...defaultScene().air, windSpeedMetresPerSecond: 10, windFromDegrees: 270, windShearPerSecond: .004 };
+  const profile = soundSpeedProfile(air);
+  // From the west: blowing toward the east.
+  const east = alongProfile(profile, 1000, 0);
+  const west = alongProfile(profile, -1000, 0);
+  const north = alongProfile(profile, 0, 1000);
+  assert.ok(Math.abs(east.groundSpeed - (profile.groundSpeed + 10)) < 1e-9 && Math.abs(east.gradient - (profile.gradient + .004)) < 1e-12);
+  assert.ok(Math.abs(west.groundSpeed - (profile.groundSpeed - 10)) < 1e-9 && Math.abs(west.gradient - (profile.gradient - .004)) < 1e-12);
+  assert.ok(Math.abs(north.groundSpeed - profile.groundSpeed) < 1e-9 && Math.abs(north.gradient - profile.gradient) < 1e-12);
+  const still = soundSpeedProfile(defaultScene().air);
+  assert.equal(alongProfile(still, 1, 0), still);
+});
+
+test('a uniform wind carries sound along a level path at c + u downwind and c − u upwind', () => {
+  const air = { ...defaultScene().air, lapseRateKelvinPerMetre: 0, windSpeedMetresPerSecond: 15, windFromDegrees: 270, windShearPerSecond: 0 };
+  const profile = soundSpeedProfile(air);
+  const a = { x: 0, y: 0, z: 2 };
+  const b = { x: 3400, y: 0, z: 2 };
+  assert.ok(Math.abs(rayBetween(alongProfile(profile, 1, 0), a, b).seconds - 3400 / (profile.groundSpeed + 15)) < 1e-9);
+  assert.ok(Math.abs(rayBetween(alongProfile(profile, -1, 0), b, a).seconds - 3400 / (profile.groundSpeed - 15)) < 1e-9);
+});
+
+test('a wind shear stronger than the temperature lapse lifts the shadow downwind and brings it closer upwind', () => {
+  const scene = defaultScene('blast');
+  scene.air = { ...scene.air, windSpeedMetresPerSecond: 5, windFromDegrees: 270, windShearPerSecond: .006 };
+  scene.emitters[0].positionMetres = { x: 0, y: 0, z: 2 };
+  const kindAt = x => {
+    const receiver = { ...scene.receivers[0], positionMetres: { x, y: 0, z: 1.7 } };
+    return receiverPaths(prepareScene(scene), receiver, scene).kind[0];
+  };
+  assert.equal(kindAt(5000), PATH_DIRECT);
+  assert.equal(kindAt(-5000), PATH_SHADOW);
+  // Without wind, 5 km from a source 2 m high lies in the shadow either way.
+  scene.air.windSpeedMetresPerSecond = 0;
+  scene.air.windShearPerSecond = 0;
+  assert.equal(kindAt(5000), PATH_SHADOW);
 });

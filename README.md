@@ -95,6 +95,9 @@ Thunder and Blast are separate modes, each with its own scene.
   free-field reference.
 - **Shadow floor** — How far below the unbent level the shadow can go, set by
   turbulent scattering.
+- **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
+  compass direction it comes from, and how much it strengthens with height.
+  Downwind, sound bends down and carries; upwind, the shadow comes closer.
 
 ## Terrain
 
@@ -140,6 +143,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Speed of sound | `c = sqrt(γRT)` | A |
 | Temperature profile | linear in height, fitted to `sqrt(γRT)` up to 3 km | B |
 | Travel time, rays, and spreading | circular rays in a linear `c(z)`, ray tubes; `1/R` without refraction | A |
+| Wind | effective sound speed along each path, linear in height | B/C |
 | Refraction shadow | grazing ray, creeping wave along the ground (Fock), floor; over terrain, heights above the mean ground plane between source and microphone (CNOSSOS-EU) | B/C |
 | Segment directivity | straight line element | A |
 | Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
@@ -163,9 +167,9 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 
 Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
 ridges, rounded ridges (they shield more than thin edges), terrain finer than
-the heightfield, wind, more than one ground reflection in an inversion,
-temperature profiles other than linear, nonlinear propagation beyond the
-linearization radius.
+the heightfield, gusts, more than one ground reflection in an inversion or
+downwind, temperature profiles other than linear, nonlinear propagation beyond
+the linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

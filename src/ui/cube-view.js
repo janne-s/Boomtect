@@ -1,6 +1,6 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
 import { emissionSeconds } from '../domain/lightning.js';
-import { grazingRange, inShadow, soundSpeedProfile } from '../domain/refraction.js';
+import { alongProfile, grazingRange, inShadow, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { cachedFlashes, currentSurface, useTerrain } from './geometry-cache.js';
@@ -683,7 +683,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   function drawShadowBoundary(context, colors) {
     const profile = soundSpeedProfile(scene.air);
     const receiver = focus?.();
-    if (!(profile.gradient < 0) || !receiver) return;
+    // In wind the air casts a shadow in the directions where its effective speed falls with height.
+    const leastGradient = profile.gradient - (profile.shear ? Math.hypot(profile.shear.x, profile.shear.y) : 0);
+    if (!(leastGradient < 0) || !receiver) return;
     const chosen = selection?.type === 'emitter' ? scene.emitters.filter(emitter => emitter.id === selection.id) : scene.emitters.filter(emitter => emitter.enabled);
     const points = chosen.flatMap(emitterPoints);
     if (!points.length) return;
@@ -692,7 +694,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return;
     }
     const stride = Math.ceil(points.length / BOUNDARY_POINTS);
-    const reach = grazingRange(profile, receiver.positionMetres.z);
+    const height = receiver.positionMetres.z;
+    // Outward from a source, so each direction's radius uses the air along it; downwind of a strong shear none is cast.
+    const directions = Array.from({ length: OUTLINE_STEPS }, (_, step) => {
+      const angle = 2 * Math.PI * step / OUTLINE_STEPS;
+      return { cos: Math.cos(angle), sin: Math.sin(angle), along: alongProfile(profile, Math.cos(angle), Math.sin(angle)) };
+    });
     const origin = frame.project({ x: 0, y: 0, z: 0 });
     const east = frame.project({ x: 1, y: 0, z: 0 });
     const north = frame.project({ x: 0, y: 1, z: 0 });
@@ -700,10 +707,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const path = new Path2D();
     for (let index = 0; index < points.length; index += stride) {
       const point = points[index];
-      const radius = grazingRange(profile, point.z) + reach;
-      addPolygon(path, Array.from({ length: OUTLINE_STEPS }, (_, step) => {
-        const angle = 2 * Math.PI * step / OUTLINE_STEPS;
-        return toScreen(point.x + radius * Math.cos(angle), point.y + radius * Math.sin(angle));
+      addPolygon(path, directions.map(({ cos, sin, along }) => {
+        const radius = Math.min(2 * SCENE_EXTENT_METRES, grazingRange(along, point.z) + grazingRange(along, height));
+        return toScreen(point.x + radius * cos, point.y + radius * sin);
       }));
     }
     context.save();
@@ -722,7 +728,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { box } = frame;
     const surface = currentSurface();
     const middle = points[points.length >> 1];
-    const key = [points.length, points[0].x, points[0].z, middle.x, middle.y, middle.z, profile.groundSpeed, profile.gradient, heightAboveGround, box.x0, box.x1, box.y0, box.y1].join('|');
+    const key = [points.length, points[0].x, points[0].z, middle.x, middle.y, middle.z, profile.groundSpeed, profile.gradient, profile.wind?.x, profile.wind?.y, profile.shear?.x, profile.shear?.y, heightAboveGround, box.x0, box.x1, box.y0, box.y1].join('|');
     if (terrainBoundary?.key !== key || terrainBoundary.surface !== surface) {
       const stride = Math.ceil(points.length / BOUNDARY_TERRAIN_SOURCES);
       const sampled = points.filter((_, index) => index % stride === 0);
@@ -735,7 +741,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
           const y = box.y0 + (row + .5) * depth;
           const receiver = { x, y, z: ground(x, y) + heightAboveGround };
           lit[row * BOUNDARY_TERRAIN_CELLS + column] = sampled.some(point => {
-            const plane = meanPlaneFrame(profile, ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
+            const plane = meanPlaneFrame(alongProfile(profile, x - point.x, y - point.y), ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
             return !inShadow(plane.profile, plane.from, plane.to);
           }) ? 1 : 0;
         }

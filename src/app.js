@@ -2,7 +2,7 @@ import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/con
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
-import { PATH_DIRECT, PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { alongProfile, PATH_DIRECT, PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
@@ -988,7 +988,7 @@ function refreshPanel() {
   const airField = key => numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) });
   ['temperatureCelsius', 'lapseRateKelvinPerMetre', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres'].forEach(airField);
   checkboxField(environment, { label: 'Refraction', value: scene.air.refraction, reliability: 'A', onCommit: value => commit(next => { next.air.refraction = value; }) });
-  if (scene.air.refraction) airField('shadowFloorDecibels');
+  if (scene.air.refraction) ['shadowFloorDecibels', 'windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond'].forEach(airField);
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
   selectField(environment, {
@@ -1173,7 +1173,9 @@ function drawPlotTabs(soloId) {
 /** Travel time of a blast's first sound to the receiver the view follows. */
 function arrivalDelay(emitter) {
   if (emitter.kind !== 'blast' || !state.results) return 0;
-  return travelSeconds(soundSpeedProfile(state.scene.air), emitter.positionMetres, focusReceiver().positionMetres);
+  const from = emitter.positionMetres;
+  const to = focusReceiver().positionMetres;
+  return travelSeconds(alongProfile(soundSpeedProfile(state.scene.air), to.x - from.x, to.y - from.y), from, to);
 }
 
 /** Every stroke of an emitter as its flash, scene time, and route. */
@@ -1253,7 +1255,14 @@ const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, 
 function wavefrontSpheres(now, profile) {
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted, group, order }) => ({ source: point, group, order, ...wavefront(profile, point, now - emitted) }));
+    .map(({ point, emitted, group, order }) => {
+      const front = wavefront(profile, point, now - emitted);
+      if (!profile.wind) return { source: point, group, order, ...front };
+      // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
+      const seconds = now - emitted;
+      const drift = axis => (profile.wind[axis] + profile.shear[axis] * point.z) * seconds;
+      return { source: point, group, order, ...front, centre: { ...front.centre, x: front.centre.x + drift('x'), y: front.centre.y + drift('y') } };
+    });
 }
 
 views.forEach(view => view.setAnimation(animationState));

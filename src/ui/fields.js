@@ -16,6 +16,7 @@ const DISPLAY = Object.freeze({
   newTerminationProbability: { scale: 100, unit: '% of strokes' },
   turbulenceStrength: { scale: 1e6, unit: '×10⁻⁶ ⟨μ²⟩' },
   lapseRateKelvinPerMetre: { scale: 1e3, unit: 'K/km' },
+  windShearPerSecond: { scale: 1e3, unit: 'm/s per km' },
   radiusMetres: { scale: 1e-3, unit: 'km' },
   cloudBaseMetres: { scale: 1e-3, unit: 'km' },
   cloudTopMetres: { scale: 1e-3, unit: 'km' },
