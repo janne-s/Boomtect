@@ -951,12 +951,17 @@ function scheduleTerrainCoverage() {
 const neededTerrainExtentMetres = (scene, margin = 1) => Math.min(PARAMETERS.terrainExtentMetres.maximum, Math.ceil(2 * margin * sceneHalfExtentMetres(scene) / 500) * 500);
 const TERRAIN_LOAD_MARGIN = 1.25;
 
+let placeNamesLoading = false;
+
 /**
  * Place names for a terrain, fetched last and on their own: the terrain and the render do not wait for
  * them, they change nothing that is heard, so they join the scene without a new render, and names
  * already shown stay when the service cannot be reached.
  */
 async function loadPlaceNames(terrain) {
+  if (placeNamesLoading) return;
+  placeNamesLoading = true;
+  $('names').disabled = true;
   operation('names', 'Place names', { limitSeconds: PLACE_NAMES_LIMIT_SECONDS });
   let names = null;
   try {
@@ -965,6 +970,8 @@ async function loadPlaceNames(terrain) {
     // Given up at its time limit: the names already shown stay.
   } finally {
     operation('names', null);
+    placeNamesLoading = false;
+    $('names').disabled = false;
   }
   if (!names || state.scene.terrain?.heights !== terrain.heights) return;
   state.scene.terrain.names = names;
@@ -1703,7 +1710,13 @@ $('auto-render').addEventListener('change', () => {
 $('clouds').checked = state.preferences.clouds;
 $('clouds').addEventListener('change', () => { state.preferences.clouds = $('clouds').checked; savePreferences(); redrawViews(); });
 $('names').checked = state.preferences.names;
-$('names').addEventListener('change', () => { state.preferences.names = $('names').checked; savePreferences(); redrawViews(); });
+$('names').addEventListener('change', () => {
+  state.preferences.names = $('names').checked;
+  savePreferences();
+  // Switched on over a terrain without names, it asks for them again: the service may have failed before.
+  if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
+  redrawViews();
+});
 $('attribution-button').addEventListener('click', () => {
   const open = $('attribution-text').hidden;
   $('attribution-text').hidden = !open;
