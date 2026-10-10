@@ -1,4 +1,4 @@
-import { atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
@@ -26,6 +26,13 @@ const TAIL_GUARD_SAMPLES = 2048;
 const NEGLIGIBLE_NEPERS = 14;
 const NEGLIGIBLE_SMOOTHING = 1e-7;
 const GROUND_GRID_POINTS = 64;
+/**
+ * In layered air, absorption is tabulated at heights this far apart and at this many frequencies
+ * spaced evenly in log frequency, and each path takes the mean over the heights it spans. Linear
+ * interpolation between the frequencies is within 0.1 dB of the coefficient up to 3 Np of loss.
+ */
+const ABSORPTION_LAYER_METRES = 250;
+const ABSORPTION_GRID_POINTS = 128;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
@@ -305,8 +312,9 @@ function erf(x) {
  * Frame layout of one frame group at one receiver: hop H and block 2H hold any of its paths with
  * pre-roll and tail. It depends on all of the group's paths, so every time range shares it.
  */
-function framePlan(prepared, group, paths, sampleRate, profile, scene) {
+function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ) {
   const speed = profile.groundSpeed;
+  let highest = receiverZ;
   let longestElement = 0;
   let longestSpan = 0;
   let largestCreep = 0;
@@ -317,6 +325,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene) {
     const source = paths.source[index];
     longestSpan = Math.max(longestSpan, sources.relaxationRadius[source] > 0 ? paths.duration[index] : sources.spanSeconds[source]);
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
+    highest = Math.max(highest, sources.z[source]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
   const shadowTail = Math.ceil(shadowTailSeconds(largestCreep) * sampleRate);
@@ -337,20 +346,82 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene) {
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
   const groundFrequencies = Float64Array.from({ length: GROUND_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (GROUND_GRID_POINTS - 1)));
+  const layered = scene.air.absorption && scene.air.refraction ? layeredAbsorption(scene.air, lowest, sampleRate / 2, bins, sampleRate / size, highest) : null;
   const shadowFloor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   const shadow = largestCreep > 0 ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
   if (shadow) {
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
   }
-  return { preRoll, hop, size, bins, absorption, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
+  return { preRoll, hop, size, bins, absorption, layered, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
 }
 
+/**
+ * Absorption in layered air (class B per layer, ISO 9613-1 with `airAtHeight`): the coefficient at
+ * every ABSORPTION_LAYER_METRES up to `highest` on a log-frequency grid, and its integral over height
+ * from the datum, so that a path's mean over the heights it spans is a difference of two integrals.
+ * `position[bin]` places each FFT bin on the frequency grid.
+ */
+function layeredAbsorption(air, lowest, highestFrequency, bins, binHz, highest) {
+  const layers = Math.max(2, Math.ceil(Math.max(0, highest) / ABSORPTION_LAYER_METRES) + 2);
+  const ratio = Math.log(highestFrequency / lowest);
+  const frequencies = Float64Array.from({ length: ABSORPTION_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (ABSORPTION_GRID_POINTS - 1)));
+  const coefficient = new Float64Array(layers * ABSORPTION_GRID_POINTS);
+  const integral = new Float64Array(layers * ABSORPTION_GRID_POINTS);
+  for (let layer = 0; layer < layers; layer += 1) {
+    const atmosphere = airAtHeight(air, layer * ABSORPTION_LAYER_METRES);
+    for (let point = 0; point < ABSORPTION_GRID_POINTS; point += 1) {
+      const at = layer * ABSORPTION_GRID_POINTS + point;
+      coefficient[at] = atmosphericAbsorptionNepersPerMetre(frequencies[point], atmosphere);
+      integral[at] = layer ? integral[at - ABSORPTION_GRID_POINTS] + (coefficient[at] + coefficient[at - ABSORPTION_GRID_POINTS]) / 2 * ABSORPTION_LAYER_METRES : 0;
+    }
+  }
+  const position = new Float64Array(bins);
+  for (let bin = 1; bin < bins; bin += 1) position[bin] = Math.min(ABSORPTION_GRID_POINTS - 1.000001, Math.max(0, Math.log(bin * binHz / lowest) / ratio * (ABSORPTION_GRID_POINTS - 1)));
+  return { layers, coefficient, integral, position, path: new Float64Array(ABSORPTION_GRID_POINTS) };
+}
+
+/** Fills `layered.path` with the mean absorption between two heights above the datum, in Np/m. */
+function pathAbsorption(layered, fromZ, toZ) {
+  const { layers, coefficient, integral, path } = layered;
+  const top = (layers - 1) * ABSORPTION_LAYER_METRES;
+  const low = Math.min(top, Math.max(0, Math.min(fromZ, toZ)));
+  const high = Math.min(top, Math.max(0, Math.max(fromZ, toZ)));
+  const place = z => {
+    const layer = Math.min(layers - 2, Math.floor(z / ABSORPTION_LAYER_METRES));
+    return [layer * ABSORPTION_GRID_POINTS, z / ABSORPTION_LAYER_METRES - layer];
+  };
+  const [lowAt, lowMix] = place(low);
+  if (high - low < 1) {
+    for (let point = 0; point < ABSORPTION_GRID_POINTS; point += 1) {
+      path[point] = coefficient[lowAt + point] + (coefficient[lowAt + ABSORPTION_GRID_POINTS + point] - coefficient[lowAt + point]) * lowMix;
+    }
+    return path;
+  }
+  const [highAt, highMix] = place(high);
+  for (let point = 0; point < ABSORPTION_GRID_POINTS; point += 1) {
+    const lowIntegral = integral[lowAt + point] + (integral[lowAt + ABSORPTION_GRID_POINTS + point] - integral[lowAt + point]) * lowMix;
+    const highIntegral = integral[highAt + point] + (integral[highAt + ABSORPTION_GRID_POINTS + point] - integral[highAt + point]) * highMix;
+    path[point] = (highIntegral - lowIntegral) / (high - low);
+  }
+  return path;
+}
+
+/** A path's absorption coefficient at a bin: the plan's ground air, or the path's mean in layered air. */
+function binAbsorption(plan, bin) {
+  if (!plan.layered) return plan.absorption[bin];
+  const { position, path } = plan.layered;
+  const at = position[bin];
+  const lower = Math.floor(at);
+  return path[lower] + (path[lower + 1] - path[lower]) * (at - lower);
+}
+
+/** The first bin whose absorption over `metres` is negligible; call after `pathAbsorption` in layered air. */
 function absorptionLimit(plan, metres) {
   let low = 0;
   let high = plan.smoothingLimit;
   while (low < high) {
     const middle = (low + high) >> 1;
-    if (plan.absorption[middle] * metres > NEGLIGIBLE_NEPERS) high = middle; else low = middle + 1;
+    if (binAbsorption(plan, middle) * metres > NEGLIGIBLE_NEPERS) high = middle; else low = middle + 1;
   }
   return low;
 }
@@ -393,12 +464,13 @@ function shadowFromExponent(loss, lag, beta, floor) {
  * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
  * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
  */
-function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight) {
+function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, seed, receiverHeight, receiverZ) {
   const channels = spectra.length;
   const metres = paths.metres[index];
+  if (plan.layered) pathAbsorption(plan.layered, sources.z[sourceIndex], receiverZ);
   const limit = absorptionLimit(plan, metres);
   if (limit < 2) return;
-  const { absorption, smoothing, gridPosition, binHz, size } = plan;
+  const { absorption, layered, smoothing, gridPosition, binHz, size } = plan;
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
   const creepNepers = paths.creepNepers[index];
@@ -474,7 +546,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-absorption[bin] * metres);
+    let factor = gain * smoothing[bin] * Math.exp(-(layered ? binAbsorption(plan, bin) : absorption[bin]) * metres);
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
@@ -542,7 +614,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
   const paths = receiverPaths(preparedEmitters, receiver, scene);
-  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1, 2].map(part => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene)));
+  const receiverZ = onGround(terrainSurface(scene.terrain), receiver.positionMetres).z;
+  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => [0, 1, 2].map(part => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);
@@ -582,7 +655,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const sources = pathSources(preparedEmitters[emitterIndex], paths.kind[index]);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
-      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z);
+      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, seed, receiver.positionMetres.z, receiverZ);
       cursor += 1;
     }
     const at = frame * plan.hop - first;

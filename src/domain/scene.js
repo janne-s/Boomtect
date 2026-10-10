@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 10;
+export const SCENE_VERSION = 11;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -30,6 +30,7 @@ export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak'
 export const PARAMETERS = Object.freeze({
   temperatureCelsius: { minimum: -40, maximum: 50, unit: '°C', label: 'Temperature', reliability: 'A' },
   relativeHumidityPercent: { minimum: 0, maximum: 100, unit: '%', label: 'Humidity', reliability: 'B' },
+  humidityScaleHeightMetres: { minimum: 500, maximum: 10000, unit: 'm', label: 'Humidity scale height', reliability: 'B' },
   pressureKpa: { minimum: 50, maximum: 110, unit: 'kPa', label: 'Pressure', reliability: 'A' },
   turbulenceStrength: { minimum: 0, maximum: 1e-4, unit: '⟨μ²⟩', label: 'Turbulence', reliability: 'C' },
   turbulenceScaleMetres: { minimum: .1, maximum: 10, unit: 'm', label: 'Turbulence scale', reliability: 'C' },
@@ -218,7 +219,7 @@ export function defaultScene(mode = 'thunder') {
     air: {
       temperatureCelsius: 15, lapseRateKelvinPerMetre: ISA_LAPSE_RATE_KELVIN_PER_METRE, relativeHumidityPercent: 70, pressureKpa: 101.325,
       refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1,
-      windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0
+      windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, humidityScaleHeightMetres: 2000
     },
     ground: { enabled: true, type: 'grass' },
     terrain: null,
@@ -392,7 +393,7 @@ export function parseScene(value) {
       absorption: air.absorption,
       turbulenceStrength: number(air.turbulenceStrength, 'turbulenceStrength', 'air.turbulenceStrength'),
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
-      ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond'], 'air')
+      ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres'], 'air')
     },
     ground: { enabled: ground.enabled, type: ground.type },
     terrain: terrain(value.terrain),

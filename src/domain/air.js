@@ -39,6 +39,30 @@ export function pressureAtHeightPa(air, heightMetres) {
   return groundPa * ratio ** (STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * lapse));
 }
 
+/** ISO 9613-1: saturation vapour pressure over the reference pressure, at a temperature in kelvin. */
+const saturationPressureRatio = temperatureKelvin => 10 ** (-6.8346 * (TRIPLE_POINT_TEMPERATURE_KELVIN / temperatureKelvin) ** 1.261 + 4.6151);
+
+/**
+ * The air at a height above the datum for the scene's layered atmosphere: temperature and pressure
+ * from the linear profile, and humidity from water vapour whose density falls as exp(−z/H) with the
+ * scale height H (class B: typically about 2 km, IRAM 30 m handbook; a median of 1.7 ± 0.5 km at
+ * Armazones, arXiv 1103.3025), its relative humidity capped at saturation. Below the datum the
+ * ground air is used (class C).
+ */
+export function airAtHeight(air, heightMetres) {
+  const height = Math.max(0, heightMetres);
+  const groundKelvin = air.temperatureCelsius + KELVIN_OFFSET;
+  const kelvin = temperatureAtHeightKelvin(air, height);
+  // Vapour pressure e = ρᵥ·Rᵥ·T, so it falls with the density and the temperature.
+  const groundVapour = air.relativeHumidityPercent / 100 * saturationPressureRatio(groundKelvin);
+  const vapour = groundVapour * Math.exp(-height / air.humidityScaleHeightMetres) * kelvin / groundKelvin;
+  return {
+    temperatureCelsius: kelvin - KELVIN_OFFSET,
+    pressureKpa: pressureAtHeightPa(air, height) / 1000,
+    relativeHumidityPercent: Math.min(100, 100 * vapour / saturationPressureRatio(kelvin))
+  };
+}
+
 /**
  * Class B: ISO 9613-1 pure-tone atmospheric attenuation coefficient in dB/m.
  * Adopted from Echotect `src/acoustics.js` at commit cb712ef6.
@@ -47,8 +71,7 @@ export function atmosphericAbsorptionDbPerMetre(frequencyHz, { temperatureCelsiu
   const temperatureKelvin = temperatureCelsius + KELVIN_OFFSET;
   const temperatureRatio = temperatureKelvin / REFERENCE_TEMPERATURE_KELVIN;
   const pressureRatio = pressureKpa / REFERENCE_PRESSURE_KPA;
-  const saturationPressureRatio = 10 ** (-6.8346 * (TRIPLE_POINT_TEMPERATURE_KELVIN / temperatureKelvin) ** 1.261 + 4.6151);
-  const waterVapourMolarPercent = relativeHumidityPercent * saturationPressureRatio / pressureRatio;
+  const waterVapourMolarPercent = relativeHumidityPercent * saturationPressureRatio(temperatureKelvin) / pressureRatio;
   const oxygenRelaxationHz = pressureRatio * (24 + 40400 * waterVapourMolarPercent * (.02 + waterVapourMolarPercent) / (.391 + waterVapourMolarPercent));
   const nitrogenRelaxationHz = pressureRatio * temperatureRatio ** -.5
     * (9 + 280 * waterVapourMolarPercent * Math.exp(-4.17 * (temperatureRatio ** (-1 / 3) - 1)));

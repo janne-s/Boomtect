@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { prepareScene, renderReceiver } from '../src/domain/render.js';
+import { defaultScene } from '../src/domain/scene.js';
 import {
-  airDensityKilogramsPerCubicMetre, atmosphericAbsorptionDbPerMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond
+  airAtHeight, airDensityKilogramsPerCubicMetre, atmosphericAbsorptionDbPerMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond
 } from '../src/domain/air.js';
 
 test('speed of sound follows sqrt(γRT)', () => {
@@ -38,4 +40,29 @@ test('ISO 9613-1 absorption matches the 20 °C, 70 % table within 2 %', () => {
     const computed = atmosphericAbsorptionDbPerMetre(Number(frequency), air) * 1000;
     assert.ok(Math.abs(computed / dbPerKm - 1) < .02, `${frequency} Hz: ${computed}`);
   }
+});
+
+test('layered air starts from the ground air, loses its vapour with height, and never exceeds saturation', () => {
+  const air = { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, lapseRateKelvinPerMetre: .0065, humidityScaleHeightMetres: 2000 };
+  const ground = airAtHeight(air, 0);
+  assert.ok(Math.abs(ground.temperatureCelsius - 15) < 1e-12 && Math.abs(ground.pressureKpa - 101.325) < 1e-9 && Math.abs(ground.relativeHumidityPercent - 70) < 1e-9);
+  // At 2 km the vapour pressure is e₀·e⁻¹·T/T₀ and the air 13 K colder.
+  const high = airAtHeight(air, 2000);
+  const saturation = kelvin => 10 ** (-6.8346 * (273.16 / kelvin) ** 1.261 + 4.6151);
+  const expected = 70 * saturation(288.15) * Math.exp(-1) * 275.15 / 288.15 / saturation(275.15);
+  assert.ok(Math.abs(high.relativeHumidityPercent - expected) < 1e-9, `${high.relativeHumidityPercent}`);
+  for (let height = 0; height <= 15000; height += 500) assert.ok(airAtHeight({ ...air, relativeHumidityPercent: 100, humidityScaleHeightMetres: 10000 }, height).relativeHumidityPercent <= 100);
+});
+
+test('near the ground, layered absorption renders a blast within 0.05 dB of the ground air', () => {
+  const energy = air => {
+    const scene = defaultScene('blast');
+    scene.air = { ...scene.air, ...air, lapseRateKelvinPerMetre: 0 };
+    scene.receivers[0].positionMetres = { x: 2000, y: 0, z: 1.7 };
+    const { samples } = renderReceiver(prepareScene(scene), scene.receivers[0], scene);
+    return samples.reduce((sum, value) => sum + value * value, 0);
+  };
+  const layered = energy({ refraction: true });
+  const ground = energy({ refraction: false });
+  assert.ok(Math.abs(10 * Math.log10(layered / ground)) < .05, `${10 * Math.log10(layered / ground)} dB`);
 });

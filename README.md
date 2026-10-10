@@ -98,6 +98,8 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
+- **Humidity scale height** — How quickly the water vapour thins out with
+  height, which changes how much the upper air absorbs.
 
 ## Terrain
 
@@ -154,7 +156,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
-| Air absorption | ISO 9613-1 | B |
+| Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
