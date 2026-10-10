@@ -185,6 +185,7 @@ function commit(change) {
     return;
   }
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  scheduleTerrainCoverage();
   if (state.selection.type && !findItem(state.selection.type, state.selection.id)) state.selection = { type: null, id: null };
   if (state.soloId && !findItem('receiver', state.soloId)) state.soloId = null;
   invalidateResults();
@@ -767,34 +768,59 @@ function missingPhenomena() {
   return missing;
 }
 
+/** The terrain is widened when the scene reaches this close to its edge, by this margin. */
+const TERRAIN_EDGE_MARGIN = 1.1;
+const TERRAIN_MARGIN_METRES = 300;
+const TERRAIN_COVERAGE_DELAY_MILLISECONDS = 800;
+let terrainCoverageTimer = null;
+let terrainCoverageRunning = false;
+
+/** Half the side of the square around the origin that holds every emitter and microphone. */
+function sceneHalfExtentMetres(scene) {
+  let reach = 0;
+  const include = point => { reach = Math.max(reach, Math.abs(point.x), Math.abs(point.y)); };
+  for (const emitter of scene.emitters) {
+    if (emitter.kind === 'blast') include(emitter.positionMetres);
+    else if (emitter.kind === 'storm') { include({ x: Math.abs(emitter.centreMetres.x) + emitter.radiusMetres, y: Math.abs(emitter.centreMetres.y) + emitter.radiusMetres }); }
+    else for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
+  }
+  scene.receivers.forEach(receiver => include(receiver.positionMetres));
+  return reach * TERRAIN_EDGE_MARGIN + TERRAIN_MARGIN_METRES;
+}
+
+/**
+ * Once terrain is in use, a scene that grows past its edge gets a wider capture around the same
+ * origin, at the same resolution and up to the largest area. Nothing is fetched without terrain.
+ */
+function scheduleTerrainCoverage() {
+  clearTimeout(terrainCoverageTimer);
+  terrainCoverageTimer = setTimeout(async () => {
+    const { terrain } = state.scene;
+    if (!terrain?.enabled || terrainCoverageRunning) return;
+    const maximum = PARAMETERS.terrainExtentMetres.maximum;
+    const needed = Math.min(maximum, Math.ceil(2 * sceneHalfExtentMetres(state.scene) / 500) * 500);
+    if (needed <= terrain.extentMetres) return;
+    terrainCoverageRunning = true;
+    try {
+      const draft = { place: terrain.place, latitude: terrain.latitude, longitude: terrain.longitude, extentMetres: needed, cellMetres: state.preferences.terrainDraft.cellMetres };
+      const wider = await captureTerrain(draft, { onProgress: share => setStatus(`Widening the terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`) });
+      Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
+      savePreferences();
+      commit(next => { next.terrain = { ...wider, enabled: next.terrain?.enabled ?? true, shielding: next.terrain?.shielding ?? true }; });
+    } catch (error) {
+      setStatus(`The terrain could not be widened: ${error.message}`, true);
+    } finally {
+      terrainCoverageRunning = false;
+    }
+  }, TERRAIN_COVERAGE_DELAY_MILLISECONDS);
+}
+
 /** Where and how finely terrain is captured next; editing it does not change the loaded terrain. */
 function terrainPanel(container) {
   const { scene } = state;
   const draft = state.preferences.terrainDraft;
   const setDraft = change => { Object.assign(draft, change); savePreferences(); };
-  actionField(container, {
-    label: 'Place', value: draft.place, action: 'Find',
-    onAction: async (text, trigger) => {
-      trigger.disabled = true;
-      try {
-        const found = await searchPlace(text);
-        if (!found) { setStatus(`No place found for ${text}`, true); return; }
-        setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
-        setStatus(found.name);
-        refreshPanel();
-      } catch (error) {
-        setStatus(error.message, true);
-      } finally {
-        trigger.disabled = false;
-      }
-    }
-  });
-  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainExtentMetres', 'extentMetres'], ['terrainCellMetres', 'cellMetres']]) {
-    numberField(container, { key, value: draft[field], onCommit: value => setDraft({ [field]: value }) });
-  }
-  const actions = element('div', 'field-actions');
-  actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', async event => {
-    const trigger = event.currentTarget;
+  const load = async trigger => {
     trigger.disabled = true;
     try {
       const terrain = await captureTerrain(draft, { onProgress: share => setStatus(`Loading terrain ${Math.round(share * 100)} %`) });
@@ -804,7 +830,30 @@ function terrainPanel(container) {
     } finally {
       trigger.disabled = false;
     }
-  }));
+  };
+  actionField(container, {
+    label: 'Place', value: draft.place, action: 'Find',
+    onAction: async (text, trigger) => {
+      trigger.disabled = true;
+      setStatus(`Finding ${text}…`);
+      try {
+        const found = await searchPlace(text);
+        if (!found) { setStatus(`No place found for ${text}`, true); return; }
+        setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
+        setStatus(found.name);
+        await load(trigger);
+      } catch (error) {
+        setStatus(`The place search failed: ${error.message}`, true);
+      } finally {
+        trigger.disabled = false;
+      }
+    }
+  });
+  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainExtentMetres', 'extentMetres'], ['terrainCellMetres', 'cellMetres']]) {
+    numberField(container, { key, value: draft[field], onCommit: value => setDraft({ [field]: value }) });
+  }
+  const actions = element('div', 'field-actions');
+  actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', event => load(event.currentTarget)));
   if (scene.terrain) actions.append(button('Remove', () => commit(next => { next.terrain = null; })));
   container.append(actions);
   if (!scene.terrain) return;
@@ -1080,14 +1129,14 @@ function wavefrontCandidates(scene) {
   const candidates = [];
   for (const emitter of scene.emitters) {
     if (!emitter.enabled) continue;
-    if (emitter.kind === 'blast') { candidates.push({ point: emitter.positionMetres, emitted: emitter.startSeconds }); continue; }
-    for (const flash of cachedFlashes(emitter)) {
+    if (emitter.kind === 'blast') { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); continue; }
+    for (const [flashIndex, flash] of cachedFlashes(emitter).entries()) {
       const [stroke] = flash.strokes;
       for (const step of stroke.route) {
         const channel = flash.channels[step.channel];
         channel.points.forEach((point, index) => {
           const arc = channel.arcs[index];
-          if (arc >= step.fromArc) candidates.push({ point, emitted: emissionSeconds(flash, stroke, step, arc) });
+          if (arc >= step.fromArc) candidates.push({ point, emitted: emissionSeconds(flash, stroke, step, arc), group: `${emitter.id}:${flashIndex}` });
         });
       }
     }
@@ -1098,10 +1147,12 @@ function wavefrontCandidates(scene) {
   return sampled;
 }
 
+const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, point.y) + point.z });
+
 function wavefrontSpheres(now, profile) {
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted }) => ({ source: point, ...wavefront(profile, point, now - emitted) }));
+    .map(({ point, emitted, group }) => ({ source: point, group, ...wavefront(profile, point, now - emitted) }));
 }
 
 views.forEach(view => view.setAnimation(animationState));

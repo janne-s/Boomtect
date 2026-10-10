@@ -95,12 +95,14 @@ Thunder and Blast are separate modes, each with its own scene.
 
 ## Terrain
 
-- **Place** — Finds a place by name and fills in its coordinates. The scene's
-  origin is at the place.
+- **Place** — Where the scene's origin lies.
 - **Area** and **Resolution** — The size of the square of terrain around the
   origin and the spacing of its heights.
+- **Find** — Finds a place by name, or takes "latitude, longitude", and loads
+  its terrain.
 - **Load terrain** — Fetches the elevation and saves it in the scene, so the
-  scene opens the same way later without a connection.
+  scene opens the same way later without a connection. While terrain is on, a
+  scene that grows past its edge loads a wider area around the same origin.
 - **Terrain** — Microphones, blasts, and ground points stand on the ground;
   heights in the cloud are above the ground at the origin. The panel shows both
   heights above the ground and above sea level.

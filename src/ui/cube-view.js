@@ -42,6 +42,10 @@ const CONTOUR_BANDS = 12;
 const RIPPLE_ALPHAS = Object.freeze([.5, .3, .16, .07]);
 /** Spacing of the ripple rings as a share of the box. */
 const RIPPLE_SPACING_SHARE = .018;
+/** Over terrain, where a front meets the ground is solved per direction, so fewer fronts are drawn. */
+const TERRAIN_RIPPLE_SPHERES = 80;
+const TERRAIN_RIPPLE_ITERATIONS = 14;
+const TERRAIN_EDGE_SAMPLES = 24;
 const BOUNDARY_EDGE_ALPHA = .7;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
@@ -92,7 +96,7 @@ function handles(scene, box) {
       list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
       // The cloud layer's base and top, on the far side of the storm from its edge handle; they move only up and down.
       for (const field of ['cloudBaseMetres', 'cloudTopMetres']) {
-        list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true });
+        list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true, ownPlaneOnly: true });
       }
     }
     else {
@@ -610,8 +614,22 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
    * floor the circle stops at the shadow boundary.
    */
-  function drawWavefronts(context, colors, wavefronts) {
-    const { profile, spheres } = wavefronts;
+  function drawWavefronts(context, colors, { profile, spheres }) {
+    // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
+    // one inside it; fronts that have left the box are dropped.
+    const { box } = frame;
+    const groups = new Map();
+    for (const sphere of spheres) {
+      const { centre, radiusMetres } = sphere;
+      const farthest = Math.hypot(Math.max(centre.x - box.x0, box.x1 - centre.x), Math.max(centre.y - box.y0, box.y1 - centre.y), Math.max(centre.z - box.z0, box.z1 - centre.z));
+      if (radiusMetres > farthest) continue;
+      if (!groups.has(sphere.group)) groups.set(sphere.group, []);
+      groups.get(sphere.group).push(sphere);
+    }
+    for (const group of groups.values()) drawFronts(context, colors, profile, group);
+  }
+
+  function drawFronts(context, colors, profile, spheres) {
     const { box, farX, farY } = frame;
     const faces = [
       ...(currentSurface().flat ? [{ fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] }] : []),
@@ -619,6 +637,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
     const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * RIPPLE_SPACING_SHARE;
+    if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres, spacing);
     for (const face of faces) {
       const [u, v] = face.axes;
       const place = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
@@ -646,6 +665,61 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       });
       context.restore();
     }
+  }
+
+  /**
+   * Where the fronts meet the terrain: for every direction from a sphere's centre, the horizontal
+   * distance at which the ground lies exactly one radius from the centre, by bisection. Drawn as
+   * ripples like on the walls, within the terrain's square.
+   */
+  function drawTerrainRipples(context, colors, spheres, spacing) {
+    const surface = currentSurface();
+    const stride = Math.max(1, Math.ceil(spheres.length / TERRAIN_RIPPLE_SPHERES));
+    const half = surface.halfExtentMetres;
+    const edge = [];
+    for (const [fromX, fromY, toX, toY] of [[-half, -half, half, -half], [half, -half, half, half], [half, half, -half, half], [-half, half, -half, -half]]) {
+      for (let step = 0; step < TERRAIN_EDGE_SAMPLES; step += 1) {
+        const x = fromX + (toX - fromX) * step / TERRAIN_EDGE_SAMPLES;
+        const y = fromY + (toY - fromY) * step / TERRAIN_EDGE_SAMPLES;
+        edge.push(frame.project({ x, y, z: ground(x, y) }));
+      }
+    }
+    const outline = new Path2D();
+    addPolygon(outline, edge);
+    context.save();
+    context.clip(outline);
+    RIPPLE_ALPHAS.forEach((alpha, ring) => {
+      const path = new Path2D();
+      let any = false;
+      for (let index = 0; index < spheres.length; index += stride) {
+        const { centre, radiusMetres } = spheres[index];
+        const radius = radiusMetres - ring * spacing;
+        if (!(radius > 0)) continue;
+        const points = [];
+        for (let step = 0; step < OUTLINE_STEPS; step += 1) {
+          const angle = 2 * Math.PI * step / OUTLINE_STEPS;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const excess = distance => distance * distance + (ground(centre.x + distance * cos, centre.y + distance * sin) - centre.z) ** 2 - radius * radius;
+          if (excess(0) > 0) continue;
+          let low = 0;
+          let high = radius;
+          for (let iteration = 0; iteration < TERRAIN_RIPPLE_ITERATIONS; iteration += 1) {
+            const middle = (low + high) / 2;
+            if (excess(middle) > 0) high = middle; else low = middle;
+          }
+          const distance = (low + high) / 2;
+          const x = centre.x + distance * cos;
+          const y = centre.y + distance * sin;
+          points.push(frame.project({ x, y, z: ground(x, y) }));
+        }
+        if (points.length < OUTLINE_STEPS) continue;
+        any = true;
+        addPolygon(path, points);
+      }
+      if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha });
+    });
+    context.restore();
   }
 
   /** Dashed lines from a selected point down to the floor and across to the walls, to its shadows there. */
@@ -745,7 +819,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     if (handle.role === 'level') {
       context.arc(p.x, p.y, HANDLE_RADIUS - 1, 0, 2 * Math.PI);
-      context.fillStyle = colors.muted;
+      context.fillStyle = colors['cloud-handle'];
       context.fill();
       if (selected) {
         context.strokeStyle = colors.accent;

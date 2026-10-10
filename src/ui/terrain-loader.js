@@ -2,17 +2,37 @@ import { decodePngRgb } from '../domain/png.js';
 import { buildHeightfield, decodeTerrarium, encodeHeights, TERRAIN_PROVIDER, terrainPlan, TILE_SIZE } from '../domain/terrain.js';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
+/** Nominatim's usage policy allows one search a second. */
+const SEARCH_INTERVAL_MILLISECONDS = 1000;
+const searchCache = new Map();
+let lastSearchAt = 0;
 
-/** The first place matching a search, from OpenStreetMap Nominatim, or null. */
+/**
+ * The place a search names: coordinates written as "latitude, longitude", or the first match from
+ * OpenStreetMap Nominatim, as in Echotect and GeoFlute. Searches are spaced a second apart and
+ * remembered for the session. Null when nothing matches.
+ */
 export async function searchPlace(text, { signal } = {}) {
+  const coordinates = text.match(COORDINATES);
+  if (coordinates) {
+    const latitude = Number(coordinates[1]);
+    const longitude = Number(coordinates[2]);
+    if (Math.abs(latitude) <= 85 && Math.abs(longitude) <= 180) return { latitude, longitude, name: `${latitude}, ${longitude}` };
+  }
+  const key = text.toLocaleLowerCase();
+  if (searchCache.has(key)) return searchCache.get(key);
+  const wait = Math.max(0, SEARCH_INTERVAL_MILLISECONDS - (Date.now() - lastSearchAt));
+  if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+  lastSearchAt = Date.now();
   const url = new URL(NOMINATIM_URL);
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('q', text);
+  url.search = new URLSearchParams({ q: text, format: 'jsonv2', limit: '1', 'accept-language': 'en' });
   const response = await fetch(url, { signal, headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`The place search failed (${response.status}).`);
+  if (!response.ok) throw new Error(`The place search did not respond (${response.status}).`);
   const [first] = await response.json();
-  return first ? { latitude: Number(first.lat), longitude: Number(first.lon), name: first.display_name } : null;
+  const found = first ? { latitude: Number(first.lat), longitude: Number(first.lon), name: first.display_name } : null;
+  searchCache.set(key, found);
+  return found;
 }
 
 async function decodeTile(response) {

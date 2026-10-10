@@ -24,6 +24,7 @@
   --receiver: #dfe6ee;
   --direct: #8fb6e6;
   --reflected: #6c7c8e;
+  --cloud-handle: #7d95b3;
   /* One cool color per microphone in the plots, in receiver order. */
   --mic-1: #e3e9ef;
   --mic-2: #8fb6e6;
@@ -170,8 +171,8 @@ figcaption {
   opacity: .55;
 }
 .plot-tabs button[aria-pressed="true"] {
-  background: var(--raised);
-  box-shadow: inset 0 -2px 0 var(--mic);
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 var(--mic);
 }
 
 .bar {
