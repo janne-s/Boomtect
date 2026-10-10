@@ -156,6 +156,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
+| Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |

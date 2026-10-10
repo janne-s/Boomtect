@@ -152,7 +152,8 @@ test('turbulence leaves low frequencies coherent and decorrelates high ones', as
 
 test('turbulence fills the grazing ground dip of a distant blast', () => {
   const receivers = [receiverAt('mic', { x: 1000, y: 0, z: 1.7 })];
-  const base = { emitter: { ...defaultBlast(), positionMetres: { x: 0, y: 0, z: 1 } }, receivers, ground: { enabled: true, type: 'grass' } };
+  // A small charge, whose pulse has aged past being a shock by 1 km, so the ground reflects it linearly.
+  const base = { emitter: smallBlast({ x: 0, y: 0, z: 1 }), receivers, ground: { enabled: true, type: 'grass' } };
   const calm = render(scene(base));
   const turbulentScene = scene(base);
   turbulentScene.air.turbulenceStrength = 1e-6;
@@ -249,4 +250,33 @@ test('the shadow response is causal, lossless at low frequencies, f^(1/3) creepi
     assert.ok(after < peak * 1e-4, `${creep} m: tail ${20 * Math.log10(after / peak)} dB`);
     assert.ok(before < peak * 1e-5, `${creep} m: before arrival ${20 * Math.log10(before / peak)} dB`);
   }
+});
+
+test('a strong blast keeps its shock: grazing over grass it merges with its reflection as over rigid ground, and absorption does not round its front', () => {
+  const at = (ground, absorption = true, charge = 10) => {
+    const value = scene({ emitter: { ...defaultBlast(), chargeKilograms: charge, positionMetres: { x: 0, y: 0, z: 1 } }, receivers: [receiverAt('mic', { x: 400, y: 0, z: 1.7 })], ground });
+    value.air.absorption = absorption;
+    value.air.turbulenceStrength = 0;
+    return render(value).samples;
+  };
+  const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
+  const grass = at({ enabled: true, type: 'grass' });
+  const rigid = at({ enabled: true, type: 'rigid' });
+  assert.ok(Math.abs(10 * Math.log10(energy(grass) / energy(rigid))) < .1);
+  // The 10–90 % rise of the front, with and without absorption.
+  const rise = samples => {
+    let peak = 0;
+    let top = 0;
+    samples.forEach((value, index) => { if (value > peak) { peak = value; top = index; } });
+    let low = top;
+    let high = top;
+    while (low > 0 && samples[low] > .1 * peak) low -= 1;
+    while (high > 0 && samples[high] > .9 * peak) high -= 1;
+    return (high - low) / 48000;
+  };
+  const free = { enabled: false, type: 'grass' };
+  assert.ok(rise(at(free)) < 1e-4, `${rise(at(free))} s`);
+  assert.ok(Math.abs(rise(at(free)) - rise(at(free, false))) < 5e-5);
+  // A small charge has aged past a shock by 400 m: grass still reflects it linearly.
+  assert.ok(Math.abs(10 * Math.log10(energy(at({ enabled: true, type: 'grass' }, true, .001)) / energy(at({ enabled: true, type: 'rigid' }, true, .001)))) > 1);
 });

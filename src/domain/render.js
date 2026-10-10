@@ -1,6 +1,6 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
+import { GAMMA_AIR, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
 import { sourcePosition, sourceTable } from './source-table.js';
@@ -34,6 +34,33 @@ const GROUND_GRID_POINTS = 64;
  */
 const ABSORPTION_LAYER_METRES = 250;
 const ABSORPTION_GRID_POINTS = 128;
+/**
+ * A shock keeps a steep front while nonlinear steepening outpaces absorption: its front rises no
+ * slower than the steady rise time τ = SHOCK_RISE_PASCAL_SECONDS / Δp, whatever the linear absorption
+ * along the path (class C; the 1/Δp law of a steady shock, with a constant to verify against Pierce &
+ * Kang 1990 and Blackstock, Fundamentals of Physical Acoustics: 8 µs at 600 Pa, 5 ms at 1 Pa).
+ */
+const SHOCK_RISE_PASCAL_SECONDS = .005;
+/** Gaussian kernel standard deviation per 10–90 % rise time, as in `pulses.js`. */
+const RISE_TIME_PER_SIGMA = 2.5631;
+/** Coefficient of nonlinearity of air, (γ + 1)/2 (class A). */
+const AIR_NONLINEARITY = (GAMMA_AIR + 1) / 2;
+/**
+ * A shock meeting the ground at grazing angle ψ reflects nonlinearly when a = sin ψ/√(2βε) is small,
+ * ε = Δp/(γp₀): the incident and reflected fronts merge into one (von Neumann reflection, regular
+ * above a ≈ √2; Baskar, Coulouvrat & Marchiano 2007, JFM; class B for the criterion). Below
+ * MERGED_PARAMETER the ground reflects the pulse as rigid ground would, above LINEAR_PARAMETER with
+ * its impedance, smoothly between (class C).
+ */
+const MERGED_PARAMETER = 1;
+const LINEAR_PARAMETER = 2;
+/**
+ * Both hold only while the pulse is still a shock: when its steady rise time is short against its
+ * duration T. At T/τ ≥ SHOCK_DURATION_RATIO it acts fully, at T/τ ≤ OLD_AGE_DURATION_RATIO not at all,
+ * where absorption has the last word and the pulse reflects linearly (class C).
+ */
+const SHOCK_DURATION_RATIO = 10;
+const OLD_AGE_DURATION_RATIO = 2;
 /** Refraction radii at which a frame group tabulates its ground's creeping mode when the wind varies them. */
 const CREEPING_RADII = 8;
 /** The largest lag of the creeping mode over soft ground relative to rigid ground, measured 3.14 (snow to stony ground, 10 Hz–20 kHz). */
@@ -484,6 +511,16 @@ function pathTransitionHz(ground, radius) {
   return transitions[row] * (transitions[row + 1] / transitions[row]) ** mix;
 }
 
+/** Share of a grazing shock's reflection that is linear, from its parameter a; smooth between the regimes. */
+function linearShare(parameter) {
+  return smoothStep((parameter - MERGED_PARAMETER) / (LINEAR_PARAMETER - MERGED_PARAMETER));
+}
+
+function smoothStep(x) {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+}
+
 /** The first bin whose absorption over `metres` is negligible; call after `pathAbsorption` in layered air. */
 function absorptionLimit(plan, metres) {
   let low = 0;
@@ -539,11 +576,20 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, sources.z[sourceIndex], receiverZ);
-  const limit = absorptionLimit(plan, metres);
-  if (limit < 2) return;
   const { absorption, layered, smoothing, gridPosition, binHz, size } = plan;
+  // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
+  const mach = gain / (GAMMA_AIR * scene.air.pressureKpa * 1000);
+  // Absorption beyond the steady shock's own smoothing is undone by steepening: the loss is capped at
+  // that of a front rising in SHOCK_RISE_PASCAL_SECONDS / Δp, as far as the pulse is still a shock.
+  const riseSeconds = SHOCK_RISE_PASCAL_SECONDS / gain;
+  const shock = smoothStep((paths.duration[index] / riseSeconds - OLD_AGE_DURATION_RATIO) / (SHOCK_DURATION_RATIO - OLD_AGE_DURATION_RATIO));
+  const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
+  const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
+  const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
+  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, metres), shockLimit));
+  if (limit < 2) return;
   const creepNepers = paths.creepNepers[index];
   const { shadow, shadowFloor } = plan;
   const beta = creepNepers > 0 ? creepingBeta(creepNepers) : 0;
@@ -553,6 +599,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const reflected = kind === PATH_GROUND;
   const ground = (reflected || isEcho(kind)) && scene.ground.type !== 'rigid';
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
+  // Share of the reflection that follows the ground's impedance; the rest merges with the direct front.
+  const merging = reflected ? 1 - shock * (1 - linearShare(paths.cosIncidence[index] / Math.sqrt(2 * AIR_NONLINEARITY * mach))) : 1;
   if (ground || turbulent) {
     const random = createRandom(seed);
     const knots = Float64Array.from({ length: TURBULENCE_KNOTS }, () => normalDeviate(random));
@@ -562,6 +610,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       let q = !ground ? [1, 0]
         : kind === PATH_SCATTER ? [planeReflectionMagnitude(frequency, scene.ground.type, paths.cosIncidence[index]), 0]
           : sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed);
+      if (merging < 1) q = [merging * q[0] + 1 - merging, merging * q[1]];
       // Every contact of a ray that touches the ground several times reflects it at the same angle (class C).
       for (let bounce = 1, single = q; bounce < paths.bounces[index]; bounce += 1) q = [q[0] * single[0] - q[1] * single[1], q[0] * single[1] + q[1] * single[0]];
       const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
@@ -620,7 +669,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-(layered ? binAbsorption(plan, bin) : absorption[bin]) * metres);
+    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * metres));
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
