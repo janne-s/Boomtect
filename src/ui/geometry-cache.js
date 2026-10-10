@@ -1,6 +1,6 @@
 import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes } from '../domain/emitters.js';
-import { flightPath } from '../domain/flight.js';
+import { flightMembers, flightPath } from '../domain/flight.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
 /** Flashes per terrain surface, each keyed by emitter id. */
@@ -46,16 +46,18 @@ export function cachedFlashes(emitter) {
 
 const paths = new Map();
 
-/** A flight's path in the given air, cached by everything except its name and switch. */
-export function cachedFlightPath(emitter, air) {
+/** The paths of a flight's or formation's bodies in the given air, cached by everything except the name and switch. */
+export function cachedFlightPaths(emitter, air) {
   const { name, enabled, ...shape } = emitter;
   const key = JSON.stringify([shape, air]);
   const cached = paths.get(emitter.id);
-  if (cached?.key === key) return cached.path;
-  const value = flightPath(emitter, air);
-  paths.set(emitter.id, { key, path: value });
+  if (cached?.key === key) return cached.paths;
+  const value = flightMembers(emitter).map(member => flightPath(member, air));
+  paths.set(emitter.id, { key, paths: value });
   return value;
 }
+
+export const isFlightKind = emitter => emitter.kind === 'flight' || emitter.kind === 'formation';
 
 const rounds = new Map();
 

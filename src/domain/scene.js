@@ -9,11 +9,11 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 17;
+export const SCENE_VERSION = 18;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
@@ -104,6 +104,9 @@ export const PARAMETERS = Object.freeze({
   flightSeconds: { minimum: 1, maximum: 600, unit: 's', label: 'Flight time', reliability: null },
   lengthMetres: { minimum: 1, maximum: 300, unit: 'm', label: 'Length', reliability: 'B' },
   shapeFactor: { minimum: .01, maximum: 2, unit: '', label: 'Shape factor K_S', reliability: 'B' },
+  memberCount: { minimum: 1, maximum: 24, unit: '', label: 'Aircraft', reliability: null, integer: true },
+  lateralSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Lateral spacing', reliability: null },
+  trailSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Trail spacing', reliability: null },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
@@ -286,6 +289,11 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
   };
 }
 
+/** Four reconnaissance aircraft in a vee, 1 km apart sideways and 1.5 km back per rank. */
+export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 20261014) {
+  return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
+}
+
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
@@ -356,11 +364,12 @@ function emitter(value, index) {
     check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
     return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BLAST_NUMBERS, path) };
   }
-  if (value.kind === 'flight') {
+  if (value.kind === 'flight' || value.kind === 'formation') {
     check(BODY_TYPES.includes(value.body), `${path}.body is not supported.`);
     return {
       ...common, body: value.body, startMetres: point(value.startMetres, `${path}.startMetres`),
-      durationSeconds: number(value.durationSeconds, 'flightSeconds', `${path}.durationSeconds`), ...numbers(value, FLIGHT_NUMBERS, path)
+      durationSeconds: number(value.durationSeconds, 'flightSeconds', `${path}.durationSeconds`), ...numbers(value, FLIGHT_NUMBERS, path),
+      ...(value.kind === 'formation' ? numbers(value, ['memberCount', 'lateralSpacingMetres', 'trailSpacingMetres'], path) : {})
     };
   }
   if (value.kind === 'barrage') {

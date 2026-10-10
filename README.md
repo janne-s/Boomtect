@@ -48,11 +48,14 @@ microphone along the Mach cone.
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
   them away before the ground.
+- **Formation** — Aircraft flying in a vee behind a leader, each with its own
+  booms.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
   salvo, charge, and fireball for a barrage; Mach, height, heading, climb,
-  acceleration, turn, and flight time for a flight.
+  acceleration, turn, and flight time for a flight, and the number of aircraft
+  for a formation.
   Each sets several parameters at once.
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).

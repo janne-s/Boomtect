@@ -34,6 +34,33 @@ export const BODIES = Object.freeze({
 });
 export const BODY_TYPES = Object.freeze(Object.keys(BODIES));
 
+/**
+ * The bodies of a flight emitter: a flight is one; a formation flies in a vee behind its leader,
+ * each rank a lateral and a trailing spacing farther out and back, alternating sides (class C as a
+ * pattern), all at the leader's settings.
+ */
+export function flightMembers(emitter) {
+  if (emitter.kind !== 'formation') return [emitter];
+  const heading = emitter.headingDegrees * Math.PI / 180;
+  const across = { x: Math.cos(heading), y: -Math.sin(heading) };
+  const along = { x: Math.sin(heading), y: Math.cos(heading) };
+  return Array.from({ length: emitter.memberCount }, (_, index) => {
+    const rank = Math.ceil(index / 2);
+    const side = index % 2 ? 1 : -1;
+    const lateral = side * rank * emitter.lateralSpacingMetres;
+    const back = rank * emitter.trailSpacingMetres;
+    return {
+      ...emitter,
+      id: `${emitter.id}:${index}`,
+      startMetres: {
+        x: emitter.startMetres.x + across.x * lateral - along.x * back,
+        y: emitter.startMetres.y + across.y * lateral - along.y * back,
+        z: emitter.startMetres.z
+      }
+    };
+  });
+}
+
 /** Time step of the flight path, seconds, and the most steps kept. */
 const STEP_SECONDS = .05;
 const MAXIMUM_STEPS = 12000;

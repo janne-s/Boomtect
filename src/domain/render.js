@@ -7,7 +7,7 @@ import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestS
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
-import { flightBooms, flightPath } from './flight.js';
+import { flightBooms, flightMembers, flightPath } from './flight.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
@@ -142,7 +142,9 @@ export function prepareScene(scene) {
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const sources = sourceTable(emitterSources(emitter, scene.air, surface).sources);
     // A flight's booms leave its path where each receiver's arrival is stationary; its echoes are not traced.
-    if (emitter.kind === 'flight') return { emitter, sources, cells: null, flightPath: flightPath(emitter, scene.air) };
+    if (emitter.kind === 'flight' || emitter.kind === 'formation') {
+      return { emitter, sources, cells: null, flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air) })) };
+    }
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
@@ -299,16 +301,18 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   };
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
-    if (prepared.flightPath) {
-      tick();
-      for (const boom of flightBooms(prepared.flightPath, prepared.emitter, receiverPosition, profile, scene.air)) {
-        const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
-        add(emitterIndex, 0, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
-        if (!ground) continue;
-        // Its ground reflection carries Carlson's pressure over its own length; the ground model reflects it (K_R).
-        const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
-        if (reflected) add(emitterIndex, 0, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
-      }
+    if (prepared.flights) {
+      prepared.flights.forEach(({ flight, path }, sourceIndex) => {
+        tick();
+        for (const boom of flightBooms(path, flight, receiverPosition, profile, scene.air)) {
+          const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
+          add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
+          if (!ground) continue;
+          // Its ground reflection carries Carlson's pressure over its own length; the ground model reflects it (K_R).
+          const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
+          if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
+        }
+      });
       return;
     }
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {

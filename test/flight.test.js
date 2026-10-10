@@ -78,3 +78,17 @@ test('the rendered N-wave carries Carlson’s overpressure and duration in free 
   assert.ok(Math.abs(-trough / boom.overpressurePa - 1) < .05);
   assert.ok(Math.abs((troughIndex - peakIndex) / result.sampleRate / boom.durationSeconds - 1) < .03);
 });
+
+test('a formation flies in a vee behind its leader, and each of its aircraft leaves its own boom', async () => {
+  const { flightMembers } = await import('../src/domain/flight.js');
+  const { defaultFormation } = await import('../src/domain/scene.js');
+  const formation = { ...defaultFormation(), startMetres: { x: -30000, y: 0, z: 10000 }, headingDegrees: 90, memberCount: 3, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
+  const members = flightMembers(formation);
+  assert.deepEqual(members.map(member => [Math.round(member.startMetres.x), Math.round(member.startMetres.y)]), [[-30000, 0], [-31500, -1000], [-31500, 1000]]);
+  const scene = defaultScene('sonic');
+  scene.emitters = [formation];
+  const parsed = parseScene(scene);
+  const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  assert.equal([...result.arrivals.kinds].filter(kind => kind === 0).length, 3);
+  assert.ok(result.samples.every(Number.isFinite));
+});

@@ -222,10 +222,19 @@ const flightTime = {
   show: item => `${item.durationSeconds} s`
 };
 
+const formationCount = {
+  label: 'Aircraft',
+  read: item => (item.memberCount - 1) / 23,
+  write: (item, t) => { item.memberCount = 1 + Math.round(t * 23); },
+  show: item => String(item.memberCount),
+  steps: 23
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
   if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
+  if (emitter.kind === 'formation') return [formationCount, machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];
   return [charge, blastHeight, fireball];
