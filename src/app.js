@@ -697,6 +697,7 @@ function commitListening(change) {
   }
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
   refreshPanel();
+  drawInfo();
   resumePlayback();
 }
 
@@ -858,6 +859,7 @@ function openDetails(id) {
 }
 
 function renderDetails() {
+  if (deferWhileEditing($('details-body'), renderDetails)) return;
   keepingFocus($('details-body'), rebuildDetails);
 }
 
@@ -1105,8 +1107,25 @@ function keepingFocus(root, rebuild) {
   if (again && again.dataset.key === focused.dataset.key && again.type === focused.type) again.focus({ preventScroll: true });
 }
 
+/**
+ * Rebuilds the panel, but not under a number field that has the focus: replacing it would end its
+ * arrows' and keys' steps (in Safari even with the focus put back). The rebuild waits until the focus
+ * leaves the field, a frame later, so a field clicked next is found again.
+ */
 function refreshPanel() {
-  keepingFocus(document.querySelector('aside.panel'), rebuildPanel);
+  const panel = document.querySelector('aside.panel');
+  if (deferWhileEditing(panel, refreshPanel)) return;
+  keepingFocus(panel, rebuildPanel);
+}
+
+function deferWhileEditing(root, again) {
+  const active = document.activeElement;
+  if (!(root.contains(active) && active.matches('input[type="number"]'))) return false;
+  if (!active.dataset.deferred) {
+    active.dataset.deferred = 'true';
+    active.addEventListener('focusout', () => requestAnimationFrame(again), { once: true });
+  }
+  return true;
 }
 
 function rebuildPanel() {
@@ -1151,10 +1170,11 @@ function rebuildPanel() {
   selectField(output, {
     label: 'Level', value: scene.render.levelMode,
     options: [['peak', 'Peak −3 dBFS'], ['fixed', 'Fixed full scale']],
-    onCommit: value => commit(next => { next.render.levelMode = value; })
+    // The level sets the gain of playback and export only, so the result stays.
+    onCommit: value => commitListening(next => { next.render.levelMode = value; })
   });
   if (scene.render.levelMode === 'fixed') {
-    numberField(output, { key: 'fullScalePa', value: scene.render.fullScalePa, onCommit: value => commit(next => { next.render.fullScalePa = value; }) });
+    numberField(output, { key: 'fullScalePa', value: scene.render.fullScalePa, onCommit: value => commitListening(next => { next.render.fullScalePa = value; }) });
   }
   checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
   checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
