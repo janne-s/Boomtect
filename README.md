@@ -50,12 +50,17 @@ microphone along the Mach cone.
   them away before the ground.
 - **Formation** — Aircraft flying in a vee behind a leader, each with its own
   booms.
+- **Meteor** — A meteoroid entering the atmosphere, its trail a line source of
+  booms down to the height where it ends.
+- **Shower** — Meteoroids from one radiant over an area and a time span.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
   salvo, charge, and fireball for a barrage; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
-  for a formation.
+  for a formation; speed, diameter, entry angle, height, heading, and end height
+  for a meteor; meteors, size, duration, speed, diameter, and entry angle for a
+  shower.
   Each sets several parameters at once.
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).
@@ -207,6 +212,8 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
 | Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
+| Meteor | line source of the drag energy along its trail, blast radius √(E₀/p) (ReVelle), weak shock as for lightning; constant speed | B/C |
+| Shower | trails parallel from one radiant, seeded over a disc and a time span | C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |

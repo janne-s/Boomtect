@@ -9,11 +9,11 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 18;
+export const SCENE_VERSION = 19;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
@@ -104,6 +104,14 @@ export const PARAMETERS = Object.freeze({
   flightSeconds: { minimum: 1, maximum: 600, unit: 's', label: 'Flight time', reliability: null },
   lengthMetres: { minimum: 1, maximum: 300, unit: 'm', label: 'Length', reliability: 'B' },
   shapeFactor: { minimum: .01, maximum: 2, unit: '', label: 'Shape factor K_S', reliability: 'B' },
+  entryDegrees: { minimum: 5, maximum: 90, unit: '°', label: 'Entry angle', reliability: null },
+  speedKilometresPerSecond: { minimum: 11, maximum: 72, unit: 'km/s', label: 'Speed', reliability: 'B' },
+  diameterMetres: { minimum: .001, maximum: 50, unit: 'm', label: 'Diameter', reliability: null },
+  endHeightMetres: { minimum: 0, maximum: 100000, unit: 'm', label: 'End height', reliability: 'C' },
+  dragCoefficient: { minimum: .3, maximum: 3, unit: '', label: 'Drag coefficient', reliability: 'C' },
+  trailSegmentMetres: { minimum: 5, maximum: 1000, unit: 'm', label: 'Trail piece', reliability: 'C' },
+  meteorCount: { minimum: 1, maximum: 200, unit: '', label: 'Meteors', reliability: null, integer: true },
+  diameterSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Diameter spread σ', reliability: 'C' },
   memberCount: { minimum: 1, maximum: 24, unit: '', label: 'Aircraft', reliability: null, integer: true },
   lateralSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Lateral spacing', reliability: null },
   trailSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Trail spacing', reliability: null },
@@ -140,6 +148,9 @@ const BARRAGE_NUMBERS = Object.freeze([
 ]);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
+
+const METEOR_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'entryDegrees', 'speedKilometresPerSecond', 'diameterMetres', 'endHeightMetres', 'dragCoefficient', 'riseTimeSeconds']);
+const SHOWER_NUMBERS = Object.freeze(['meteorCount', 'radiusMetres', 'durationSeconds', 'diameterSpread']);
 
 export class SceneError extends Error {}
 
@@ -289,6 +300,31 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
   };
 }
 
+/**
+ * A bright fireball: a 0.5 m meteoroid entering at 20 km/s and 35° from 100 km, its trail ending at
+ * 25 km. Its shock rises in about a millisecond (class C).
+ */
+export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
+  return {
+    id, name, kind: 'meteor', enabled: true, seed,
+    startSeconds: 0,
+    startMetres: { x: -40000, y: 0, z: 100000 },
+    headingDegrees: 90,
+    entryDegrees: 35,
+    speedKilometresPerSecond: 20,
+    diameterMetres: .5,
+    endHeightMetres: 25000,
+    dragCoefficient: 1,
+    segmentLengthMetres: 100,
+    riseTimeSeconds: .001
+  };
+}
+
+/** Thirty meteoroids of about 0.2 m from one radiant over a minute, entering within 30 km. */
+export function defaultShower(id = 'shower-1', name = 'Shower', seed = 20261016) {
+  return { ...defaultMeteor(id, name, seed), kind: 'shower', diameterMetres: .2, meteorCount: 30, radiusMetres: 30000, durationSeconds: 60, diameterSpread: .8 };
+}
+
 /** Four reconnaissance aircraft in a vee, 1 km apart sideways and 1.5 km back per rank. */
 export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 20261014) {
   return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
@@ -363,6 +399,15 @@ function emitter(value, index) {
     check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
     check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
     return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BLAST_NUMBERS, path) };
+  }
+  if (value.kind === 'meteor' || value.kind === 'shower') {
+    const meteor = {
+      ...common, startMetres: point(value.startMetres, `${path}.startMetres`), ...numbers(value, METEOR_NUMBERS, path),
+      segmentLengthMetres: number(value.segmentLengthMetres, 'trailSegmentMetres', `${path}.segmentLengthMetres`),
+      ...(value.kind === 'shower' ? numbers(value, SHOWER_NUMBERS, path) : {})
+    };
+    check(meteor.endHeightMetres < meteor.startMetres.z, `${path} must end below its start.`);
+    return meteor;
   }
   if (value.kind === 'flight' || value.kind === 'formation') {
     check(BODY_TYPES.includes(value.body), `${path}.body is not supported.`);

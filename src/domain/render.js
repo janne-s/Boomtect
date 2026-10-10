@@ -267,6 +267,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
       ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
+        - (sources.flowCosine?.[sourceIndex] ?? 0)
       : 0;
     paths.cosIncidence[index] = path.groundSine ?? 1;
     paths.endLift[2 * index] = path.sourceLift ?? 0;

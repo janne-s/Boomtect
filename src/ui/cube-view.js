@@ -4,7 +4,7 @@ import { createRandom } from '../domain/random.js';
 import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
-import { cachedFlashes, cachedFlightPaths, cachedRounds, currentSurface, isFlightKind, useTerrain } from './geometry-cache.js';
+import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isTrackKind, useTerrain } from './geometry-cache.js';
 
 const MARGIN = 36;
 const HANDLE_RADIUS = 5;
@@ -122,7 +122,7 @@ function facingTip(receiver, box) {
 function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
-    if (isFlightKind(emitter)) {
+    if (isTrackKind(emitter)) {
       list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: emitter.startMetres, role: 'start' });
       // A handle ahead of the start along the first heading turns it.
       const reach = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) * FACING_LENGTH_SHARE : 1000;
@@ -211,8 +211,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     };
     for (const emitter of scene.emitters) {
       if (emitter.kind === 'blast') { include(placed(emitter.positionMetres)); continue; }
-      if (isFlightKind(emitter)) {
-        for (const path of cachedFlightPaths(emitter, scene.air)) {
+      if (isTrackKind(emitter)) {
+        for (const path of cachedTracks(emitter, scene.air)) {
           for (let index = 0; index < path.x.length; index += 10) include({ x: path.x[index], y: path.y[index], z: path.z[index] });
           include({ x: path.x.at(-1), y: path.y.at(-1), z: path.z.at(-1) });
         }
@@ -743,7 +743,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
     if (!emitter || emitter.kind === 'storm' || emitter.kind === 'barrage') return [];
-    if (isFlightKind(emitter)) return [emitter.startMetres];
+    if (isTrackKind(emitter)) return [emitter.startMetres];
     return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
   }
 
@@ -1152,7 +1152,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   function drawFlight(context, emitter, colors, selected, state) {
     context.strokeStyle = selected ? colors.accent : colors.end;
     context.lineWidth = selected ? 1.4 : 1.2;
-    for (const path of cachedFlightPaths(emitter, scene.air)) {
+    for (const path of cachedTracks(emitter, scene.air)) {
       context.beginPath();
       for (let index = 0; index < path.x.length; index += 1) {
         const p = frame.project({ x: path.x[index], y: path.y[index], z: path.z[index] });
@@ -1271,7 +1271,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (emitter.kind === 'storm') drawStorm(context, emitter, colors, selected);
       if (emitter.kind === 'blast') drawBlast(context, emitter, colors, state);
       else if (emitter.kind === 'barrage') drawBarrage(context, emitter, colors, selected, state);
-      else if (isFlightKind(emitter)) drawFlight(context, emitter, colors, selected, state);
+      else if (isTrackKind(emitter)) drawFlight(context, emitter, colors, selected, state);
       else {
         drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
         if (state?.sound && emitter.enabled) drawSoundGlow(context, emitter, colors, state.sound);
@@ -1322,7 +1322,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
       const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || emitter.kind === 'barrage' ? placed(emitter.centreMetres)
-        : isFlightKind(emitter) ? emitter.startMetres : emitter.topMetres;
+        : isTrackKind(emitter) ? emitter.startMetres : emitter.topMetres;
       const p = frame.project(anchor);
       context.fillText(emitter.name, p.x + 9, p.y - 8);
     }

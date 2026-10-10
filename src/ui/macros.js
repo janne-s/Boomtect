@@ -183,7 +183,11 @@ const machNumber = {
 const flightHeight = {
   label: 'Height',
   read: item => clamp01(logPosition(Math.max(100, item.startMetres.z), [100, 100000])),
-  write: (item, t) => { item.startMetres = { ...item.startMetres, z: Math.round(logValue(t, [100, 100000])) }; },
+  write: (item, t) => {
+    item.startMetres = { ...item.startMetres, z: Math.round(logValue(t, [100, 100000])) };
+    // A meteor's trail keeps ending below its start.
+    if (item.endHeightMetres !== undefined) item.endHeightMetres = Math.min(item.endHeightMetres, Math.max(0, item.startMetres.z - 1000));
+  },
   show: item => metres(item.startMetres.z)
 };
 
@@ -230,10 +234,54 @@ const formationCount = {
   steps: 23
 };
 
+const meteorSpeed = {
+  label: 'Speed',
+  read: item => (item.speedKilometresPerSecond - 11) / 61,
+  write: (item, t) => { item.speedKilometresPerSecond = Math.round(11 + t * 61); },
+  show: item => `${item.speedKilometresPerSecond} km/s`
+};
+
+const meteorDiameter = {
+  label: 'Diameter',
+  read: item => clamp01(logPosition(item.diameterMetres, [.001, 50])),
+  write: (item, t) => { item.diameterMetres = +logValue(t, [.001, 50]).toPrecision(2); },
+  show: item => metres(item.diameterMetres)
+};
+
+const meteorEntry = {
+  label: 'Entry angle',
+  read: item => (item.entryDegrees - 5) / 85,
+  write: (item, t) => { item.entryDegrees = Math.round(5 + t * 85); },
+  show: item => `${item.entryDegrees}°`
+};
+
+const meteorEnd = {
+  label: 'End height',
+  read: item => clamp01(item.endHeightMetres / Math.max(1, item.startMetres.z)),
+  write: (item, t) => { item.endHeightMetres = Math.min(item.startMetres.z - 1000, Math.round(t * item.startMetres.z / 100) * 100); },
+  show: item => metres(item.endHeightMetres)
+};
+
+const showerCount = {
+  label: 'Meteors',
+  read: item => clamp01(logPosition(item.meteorCount, [1, 200])),
+  write: (item, t) => { item.meteorCount = Math.max(1, Math.round(logValue(t, [1, 200]))); },
+  show: item => String(item.meteorCount)
+};
+
+const showerSize = {
+  label: 'Size',
+  read: item => clamp01(logPosition(Math.max(1000, item.radiusMetres), [1000, 30000])),
+  write: (item, t) => { item.radiusMetres = Math.round(logValue(t, [1000, 30000])); },
+  show: item => `${metres(item.radiusMetres)} radius`
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
   if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
+  if (emitter.kind === 'meteor') return [meteorSpeed, meteorDiameter, meteorEntry, flightHeight, flightHeading, meteorEnd];
+  if (emitter.kind === 'shower') return [showerCount, showerSize, stormDuration, meteorSpeed, meteorDiameter, meteorEntry];
   if (emitter.kind === 'formation') return [formationCount, machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];

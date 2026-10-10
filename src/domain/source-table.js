@@ -17,6 +17,8 @@ export function sourceTable(sources) {
     dz: new Float64Array(length),
     directed: new Uint8Array(length),
     elementMetres: new Float64Array(length),
+    /** c₀/v for an element whose emission travels along it at v (a meteor's trail); 0 if it radiates at once. */
+    flowCosine: new Float64Array(length),
     emissionSeconds: new Float64Array(length),
     amplitudePaMetres: new Float64Array(length),
     /** PULSE_NWAVE, PULSE_FRIEDLANDER, or PULSE_NOISE (a blast's roar, from its seed). */
@@ -48,6 +50,7 @@ export function sourceTable(sources) {
       table.directed[index] = 1;
     }
     table.elementMetres[index] = source.elementMetres;
+    table.flowCosine[index] = source.flowCosine ?? 0;
     table.emissionSeconds[index] = source.emissionSeconds;
     table.amplitudePaMetres[index] = source.amplitudePaMetres;
     table.pulse[index] = PULSE_CODES[source.pulse];

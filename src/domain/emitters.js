@@ -2,12 +2,13 @@ import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
 import { SECONDARY_MASS_SHARE, secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
+import { meteorSources, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
 
-export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation']);
+export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower']);
 
 /** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
 const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
@@ -85,6 +86,7 @@ export function emitterFlashes(emitter, surface = null) {
 /** Point sources of an emitter, with the flashes they came from. */
 export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
+  if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: showerMembers(emitter).flatMap((meteor, index) => meteorSources(meteor, air, index)) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   const flashes = emitterFlashes(emitter, surface);
