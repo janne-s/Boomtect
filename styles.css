@@ -483,6 +483,32 @@ input[type="range"]:hover::-moz-range-thumb {
   height: 120px;
   cursor: grab;
 }
+.overlay-attribution {
+  top: 12px;
+  right: 14px;
+  max-width: 40%;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: right;
+  pointer-events: auto;
+}
+.overlay-attribution a {
+  color: inherit;
+}
+.overlay-attribution[hidden] {
+  display: none;
+}
+.fields .field-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+.fields .field-note {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
 .overlay-timeline {
   right: 14px;
   bottom: 12px;

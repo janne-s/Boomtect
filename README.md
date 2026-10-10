@@ -2,7 +2,7 @@
 
 Boomtect simulates the sound of lightning and blasts from their physics. Shape
 a flash or a whole storm in 3D above the ground, place microphones, and hear
-how distance, height, layered air, and ground shape what arrives. Listen in mono, as a
+how distance, height, layered air, terrain, and ground shape what arrives. Listen in mono, as a
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
 
 ## How it works
@@ -93,6 +93,22 @@ Thunder and Blast are separate modes, each with its own scene.
 - **Shadow floor** — How far below the unbent level the shadow can go, set by
   turbulent scattering.
 
+## Terrain
+
+- **Place** — Finds a place by name and fills in its coordinates. The scene's
+  origin is at the place.
+- **Area** and **Resolution** — The size of the square of terrain around the
+  origin and the spacing of its heights.
+- **Load terrain** — Fetches the elevation and saves it in the scene, so the
+  scene opens the same way later without a connection.
+- **Terrain** — Microphones, blasts, and ground points stand on the ground;
+  heights in the cloud are above the ground at the origin. The panel shows both
+  heights above the ground and above sea level.
+- **Shielding** — Hills between a source and a microphone block the direct and
+  the reflected sound, and sound bends over their crests, more at low
+  frequencies.
+- **Contours** — Stripes the terrain by height.
+
 ## Export
 
 **Export WAV** writes 32-bit float WAV files of what plays — mono, a pair, one
@@ -124,13 +140,15 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Lightning level | acoustic share of channel energy | C |
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
 | Air absorption | ISO 9613-1 | B |
-| Ground reflection | Delany–Bazley impedance, spherical-wave coefficient | B |
+| Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
+| Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
 | Turbulence | phase fluctuation of the ground reflection | B/C |
 | Ambisonics | spherical harmonics, AmbiX | A |
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
 | Loudness | Stevens' power law on the level envelope | B/C |
 
-Not modelled: terrain and buildings, diffraction by obstacles, wind, more than
+Not modelled: echoes from terrain, buildings, rounded ridges (they shield more
+than thin edges), terrain finer than the heightfield, wind, more than
 one ground reflection in an inversion, temperature profiles other than linear,
 nonlinear propagation beyond the linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
@@ -143,6 +161,13 @@ npm start
 ```
 
 Open http://localhost:8000/. Run the tests with `npm test`.
+
+## Data
+
+Terrain heights: [Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)
+by Mapzen on AWS Open Data (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, and national
+datasets). Place search: [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/).
+Both are fetched only when asked for.
 
 ## Third-party code
 

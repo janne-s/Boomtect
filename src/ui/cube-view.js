@@ -2,7 +2,7 @@ import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.
 import { emissionSeconds } from '../domain/lightning.js';
 import { grazingRange, soundSpeedProfile } from '../domain/refraction.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
-import { cachedFlashes } from './geometry-cache.js';
+import { cachedFlashes, currentSurface, useTerrain } from './geometry-cache.js';
 
 const MARGIN = 36;
 const HANDLE_RADIUS = 5;
@@ -32,6 +32,12 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
+/** The terrain is drawn on a grid of at most this many cells a side, separate from its heightfield. */
+const TERRAIN_DRAW_CELLS = 110;
+/** Direction the terrain is lit from: north-west and above. */
+const TERRAIN_LIGHT = (() => { const length = Math.hypot(-1, 1, 1.6); return { x: -1 / length, y: 1 / length, z: 1.6 / length }; })();
+/** Contour stripes: roughly this many bands over the terrain's height range. */
+const CONTOUR_BANDS = 12;
 /** A wavefront crossing a face is drawn as a ripple: the front and fading rings behind it. */
 const RIPPLE_ALPHAS = Object.freeze([.5, .3, .16, .07]);
 /** Spacing of the ripple rings as a share of the box. */
@@ -50,22 +56,29 @@ const flashPoints = new WeakMap();
 
 /** Every channel point of an emitter, or its blast point, for outlines on the floor; kept per generated geometry. */
 function emitterPoints(emitter) {
-  if (emitter.kind === 'blast') return [emitter.positionMetres];
+  if (emitter.kind === 'blast') return [placed(emitter.positionMetres)];
   const flashes = cachedFlashes(emitter);
   if (!flashPoints.has(flashes)) flashPoints.set(flashes, flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
   return flashPoints.get(flashes);
 }
+
+/** Height of the ground under a point, above the datum. */
+const ground = (x, y) => currentSurface().heightAt(x, y);
+/** A point stored above the ground under it, placed in the scene frame. */
+const placed = point => ({ ...point, z: ground(point.x, point.y) + point.z });
+/** A ground flash's ground point is stored above the ground; other channel ends above the datum. */
+const channelBase = emitter => (emitter.flashType === 'cloud-to-ground' ? placed(emitter.baseMetres) : emitter.baseMetres);
 
 /** The tip of a binaural receiver's look arrow, at a length relative to the box. */
 function facingTip(receiver, box) {
   const length = Math.max(box.x1 - box.x0, box.y1 - box.y0) * FACING_LENGTH_SHARE;
   const heading = receiver.headingDegrees * Math.PI / 180;
   const pitch = receiver.pitchDegrees * Math.PI / 180;
-  const base = receiver.positionMetres;
+  const base = placed(receiver.positionMetres);
   return {
     x: base.x + Math.sin(heading) * Math.cos(pitch) * length,
     y: base.y + Math.cos(heading) * Math.cos(pitch) * length,
-    z: Math.max(0, base.z + Math.sin(pitch) * length)
+    z: Math.max(ground(base.x, base.y), base.z + Math.sin(pitch) * length)
   };
 }
 
@@ -73,22 +86,22 @@ function facingTip(receiver, box) {
 function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
-    if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: emitter.positionMetres, role: 'source' });
+    if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' });
     else if (emitter.kind === 'storm') {
-      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: emitter.centreMetres, onGround: true, role: 'start' });
-      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: { x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }, onGround: true, role: 'radius' });
+      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
+      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
       // The cloud layer's base and top, on the far side of the storm from its edge handle; they move only up and down.
       for (const field of ['cloudBaseMetres', 'cloudTopMetres']) {
         list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true });
       }
     }
     else {
-      list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: emitter.baseMetres, onGround: emitter.flashType === 'cloud-to-ground', role: 'start' });
+      list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: channelBase(emitter), onGround: emitter.flashType === 'cloud-to-ground', role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres, role: 'end' });
     }
   }
   for (const receiver of scene.receivers) {
-    list.push({ type: 'receiver', id: receiver.id, field: 'positionMetres', point: receiver.positionMetres, role: 'receiver', listening: receiver.listen });
+    list.push({ type: 'receiver', id: receiver.id, field: 'positionMetres', point: placed(receiver.positionMetres), role: 'receiver', listening: receiver.listen });
     if (receiver.type === 'binaural' && box) {
       list.push({ type: 'receiver', id: receiver.id, field: 'headingDegrees', point: facingTip(receiver, box), role: 'facing', ownPlaneOnly: true, listening: receiver.listen });
     }
@@ -107,7 +120,7 @@ function frontArc(step, elapsed, routeLength) {
  * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
  * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false }) {
   let scene = null;
   let selection = null;
   let view = { ...DEFAULT_CUBE_VIEW };
@@ -118,6 +131,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   /** While a control changes the scene continuously, the box keeps its size so the view stays still. */
   let held = false;
   let lastBox = null;
+  let terrainLayer = null;
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -127,7 +141,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       maxZ = Math.max(maxZ, point.z);
     };
     for (const emitter of scene.emitters) {
-      if (emitter.kind === 'blast') { include(emitter.positionMetres); continue; }
+      if (emitter.kind === 'blast') { include(placed(emitter.positionMetres)); continue; }
       if (emitter.kind === 'storm') {
         const { x, y } = emitter.centreMetres;
         const r = emitter.radiusMetres;
@@ -136,9 +150,20 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
     }
-    scene.receivers.forEach(receiver => include(receiver.positionMetres));
+    scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
     include({ x: 0, y: 0, z: 0 });
-    const span = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ);
+    const surface = currentSurface();
+    let minZ = 0;
+    if (!surface.flat) {
+      const half = surface.halfExtentMetres;
+      include({ x: -half, y: -half, z: 0 });
+      include({ x: half, y: half, z: 0 });
+      for (const value of surface.values) {
+        minZ = Math.min(minZ, value - surface.datumMetres);
+        maxZ = Math.max(maxZ, value - surface.datumMetres);
+      }
+    }
+    const span = Math.max(MINIMUM_SPAN_METRES, maxX - minX, maxY - minY, maxZ - minZ);
     const pad = span * BOX_PADDING;
     const grow = (low, high) => {
       const half = Math.max(high - low, MINIMUM_SPAN_METRES) / 2 + pad;
@@ -146,7 +171,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     };
     const [x0, x1] = grow(minX, maxX);
     const [y0, y1] = grow(minY, maxY);
-    return { x0, x1, y0, y1, z0: 0, z1: Math.max(MINIMUM_SPAN_METRES, maxZ) + pad };
+    return { x0, x1, y0, y1, z0: minZ, z1: Math.max(minZ + MINIMUM_SPAN_METRES, maxZ) + pad };
   }
 
   function computeFrame(width, height) {
@@ -191,7 +216,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     ];
   }
 
+  /** A point's shadow on a plane; on the floor it lies on the ground under the point. */
   function onPlane(point, plane) {
+    if (plane.name === 'floor') return { ...point, z: ground(point.x, point.y) };
     return { ...point, [plane.fixed]: plane.value };
   }
 
@@ -235,49 +262,54 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const nearX = farX === box.x1 ? box.x0 : box.x1;
     const nearY = farY === box.y1 ? box.y0 : box.y1;
     context.fillStyle = colors.wall;
-    polygon(context, [{ x: farX, y: box.y0, z: 0 }, { x: farX, y: box.y1, z: 0 }, { x: farX, y: box.y1, z: box.z1 }, { x: farX, y: box.y0, z: box.z1 }]);
+    polygon(context, [{ x: farX, y: box.y0, z: box.z0 }, { x: farX, y: box.y1, z: box.z0 }, { x: farX, y: box.y1, z: box.z1 }, { x: farX, y: box.y0, z: box.z1 }]);
     context.fill();
-    polygon(context, [{ x: box.x0, y: farY, z: 0 }, { x: box.x1, y: farY, z: 0 }, { x: box.x1, y: farY, z: box.z1 }, { x: box.x0, y: farY, z: box.z1 }]);
+    polygon(context, [{ x: box.x0, y: farY, z: box.z0 }, { x: box.x1, y: farY, z: box.z0 }, { x: box.x1, y: farY, z: box.z1 }, { x: box.x0, y: farY, z: box.z1 }]);
     context.fill();
     context.fillStyle = colors.ground;
-    polygon(context, [{ x: box.x0, y: box.y0, z: 0 }, { x: box.x1, y: box.y0, z: 0 }, { x: box.x1, y: box.y1, z: 0 }, { x: box.x0, y: box.y1, z: 0 }]);
+    polygon(context, [{ x: box.x0, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y1, z: box.z0 }, { x: box.x0, y: box.y1, z: box.z0 }]);
     context.fill();
 
-    const step = niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1), 6);
+    const step = niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
+    /** The first height line above the floor, skipping the floor itself. */
+    function firstLevel(bounds, spacing) {
+      const first = Math.ceil(bounds.z0 / spacing) * spacing;
+      return first === bounds.z0 ? first + spacing : first;
+    }
     context.lineWidth = 1;
     context.strokeStyle = colors.grid;
     const line = (a, b) => { const p = frame.project(a); const q = frame.project(b); context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke(); };
     for (let x = Math.ceil(box.x0 / step) * step; x <= box.x1; x += step) {
-      line({ x, y: box.y0, z: 0 }, { x, y: box.y1, z: 0 });
-      line({ x, y: farY, z: 0 }, { x, y: farY, z: box.z1 });
+      if (currentSurface().flat) line({ x, y: box.y0, z: box.z0 }, { x, y: box.y1, z: box.z0 });
+      line({ x, y: farY, z: box.z0 }, { x, y: farY, z: box.z1 });
     }
     for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) {
-      line({ x: box.x0, y, z: 0 }, { x: box.x1, y, z: 0 });
-      line({ x: farX, y, z: 0 }, { x: farX, y, z: box.z1 });
+      if (currentSurface().flat) line({ x: box.x0, y, z: box.z0 }, { x: box.x1, y, z: box.z0 });
+      line({ x: farX, y, z: box.z0 }, { x: farX, y, z: box.z1 });
     }
-    for (let z = step; z <= box.z1; z += step) {
+    for (let z = firstLevel(box, step); z <= box.z1; z += step) {
       line({ x: farX, y: box.y0, z }, { x: farX, y: box.y1, z });
       line({ x: box.x0, y: farY, z }, { x: box.x1, y: farY, z });
     }
     context.strokeStyle = colors.line;
-    line({ x: farX, y: farY, z: 0 }, { x: farX, y: farY, z: box.z1 });
+    line({ x: farX, y: farY, z: box.z0 }, { x: farX, y: farY, z: box.z1 });
 
     context.font = '10px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     const label = (text, point, dx = 4, dy = 12) => { const p = frame.project(point); context.fillText(text, p.x + dx, p.y + dy); };
-    for (let x = Math.ceil(box.x0 / step) * step; x <= box.x1; x += step) label(formatMetres(x), { x, y: nearY, z: 0 });
+    for (let x = Math.ceil(box.x0 / step) * step; x <= box.x1; x += step) label(formatMetres(x), { x, y: nearY, z: box.z0 });
     context.textAlign = 'right';
-    for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: 0 }, -6, 12);
+    for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: box.z0 }, -6, 12);
     context.textAlign = 'left';
-    for (let z = step; z <= box.z1; z += step) label(formatMetres(z), { x: farX, y: farY, z }, 4, -2);
-    const origin = frame.project({ x: 0, y: 0, z: 0 });
+    for (let z = firstLevel(box, step); z <= box.z1; z += step) label(formatMetres(z), { x: farX, y: farY, z }, 4, -2);
+    const origin = frame.project({ x: 0, y: 0, z: ground(0, 0) });
     context.strokeStyle = colors.muted;
     context.beginPath();
     context.moveTo(origin.x - 6, origin.y); context.lineTo(origin.x + 6, origin.y);
     context.moveTo(origin.x, origin.y - 6); context.lineTo(origin.x, origin.y + 6);
     context.stroke();
-    label('E', { x: box.x1, y: nearY, z: 0 }, 6, 24);
-    label('N', { x: nearX, y: box.y1, z: 0 }, 6, 24);
+    label('E', { x: box.x1, y: nearY, z: box.z0 }, 6, 24);
+    label('N', { x: nearX, y: box.y1, z: box.z0 }, 6, 24);
   }
 
   function strokePoints(context, points, transform) {
@@ -310,7 +342,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   function drawChannels(context, emitter, colors, selected, strokes) {
     const shadows = [
-      point => onPlane(point, { fixed: 'z', value: 0 }),
+      point => onPlane(point, { name: 'floor', fixed: 'z', value: 0 }),
       point => onPlane(point, { fixed: 'x', value: frame.farX }),
       point => onPlane(point, { fixed: 'y', value: frame.farY })
     ];
@@ -451,16 +483,97 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * which the ray to the followed microphone's height grazes the ground. Drawn for the selected
    * emitter, or for every enabled one.
    */
+  /** Two colors as [r, g, b] mixed by t. */
+  function mixColors(a, b, t) {
+    return a.map((value, index) => Math.round(value + (b[index] - value) * t));
+  }
+
+  const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+
+  /**
+   * The terrain as a shaded surface on the floor: quads drawn far to near, lit from the north-west,
+   * with optional contour stripes. It is drawn into a layer that is reused until the view, the
+   * size, or the terrain changes, so playback does not redraw it every frame.
+   */
+  function drawTerrain(context, colors) {
+    const surface = currentSurface();
+    if (surface.flat) return;
+    const { box } = frame;
+    const ratio = window.devicePixelRatio || 1;
+    const striped = contours();
+    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground].join('|');
+    if (terrainLayer?.key !== key || terrainLayer.surface !== surface) {
+      const layer = terrainLayer?.canvas ?? document.createElement('canvas');
+      layer.width = canvas.width;
+      layer.height = canvas.height;
+      const paint = layer.getContext('2d');
+      paint.setTransform(ratio, 0, 0, ratio, 0, 0);
+      paint.clearRect(0, 0, layer.width, layer.height);
+      const half = surface.halfExtentMetres;
+      const cells = Math.min(TERRAIN_DRAW_CELLS, surface.columns);
+      const spacing = 2 * half / cells;
+      const vertices = [];
+      for (let row = 0; row <= cells; row += 1) {
+        for (let column = 0; column <= cells; column += 1) {
+          const x = -half + column * spacing;
+          const y = -half + row * spacing;
+          vertices.push({ x, y, z: ground(x, y) });
+        }
+      }
+      let lowest = Infinity;
+      let highest = -Infinity;
+      for (const vertex of vertices) { lowest = Math.min(lowest, vertex.z); highest = Math.max(highest, vertex.z); }
+      const band = niceStep(Math.max(1, highest - lowest), CONTOUR_BANDS);
+      const dark = rgb(colors.ground);
+      const light = mixColors(rgb(colors.line), rgb(colors.muted), .35);
+      const quads = [];
+      for (let row = 0; row < cells; row += 1) {
+        for (let column = 0; column < cells; column += 1) {
+          const at = (r, c) => vertices[r * (cells + 1) + c];
+          const corners = [at(row, column), at(row, column + 1), at(row + 1, column + 1), at(row + 1, column)];
+          const projected = corners.map(frame.project);
+          const depth = projected.reduce((sum, p) => sum + p.depth, 0) / 4;
+          // Normal from the quad's diagonals.
+          const u = { x: corners[2].x - corners[0].x, y: corners[2].y - corners[0].y, z: corners[2].z - corners[0].z };
+          const v = { x: corners[3].x - corners[1].x, y: corners[3].y - corners[1].y, z: corners[3].z - corners[1].z };
+          const n = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };
+          const length = Math.hypot(n.x, n.y, n.z) || 1;
+          const lit = Math.max(0, (n.x * TERRAIN_LIGHT.x + n.y * TERRAIN_LIGHT.y + n.z * TERRAIN_LIGHT.z) / length);
+          const height = corners.reduce((sum, corner) => sum + corner.z, 0) / 4;
+          const stripe = striped && Math.floor((height - lowest) / band) % 2 === 1 ? .82 : 1;
+          const [r, g, b] = mixColors(dark, light, lit * lit).map(value => Math.round(value * stripe));
+          quads.push({ projected, depth, color: `rgb(${r},${g},${b})` });
+        }
+      }
+      quads.sort((a, b) => b.depth - a.depth);
+      paint.lineWidth = .6;
+      for (const { projected, color } of quads) {
+        paint.beginPath();
+        projected.forEach((p, index) => (index ? paint.lineTo(p.x, p.y) : paint.moveTo(p.x, p.y)));
+        paint.closePath();
+        paint.fillStyle = color;
+        paint.strokeStyle = color;
+        paint.fill();
+        paint.stroke();
+      }
+      terrainLayer = { key, surface, canvas: layer };
+    }
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(terrainLayer.canvas, 0, 0);
+    context.restore();
+  }
+
   /** The selected item's points above the ground: a microphone, a blast, or a channel's ends. */
   function selectedPoints() {
     if (selection?.type === 'receiver') {
       const receiver = scene.receivers.find(item => item.id === selection.id);
-      return receiver ? [receiver.positionMetres] : [];
+      return receiver ? [placed(receiver.positionMetres)] : [];
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
     if (!emitter || emitter.kind === 'storm') return [];
-    const points = emitter.kind === 'blast' ? [emitter.positionMetres] : [emitter.baseMetres, emitter.topMetres];
-    return points.filter(point => point.z > 0);
+    const points = emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
+    return points.filter(point => point.z > ground(point.x, point.y) + .01);
   }
 
   function drawShadowBoundary(context, colors) {
@@ -501,7 +614,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { profile, spheres } = wavefronts;
     const { box, farX, farY } = frame;
     const faces = [
-      { fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] },
+      ...(currentSurface().flat ? [{ fixed: 'z', value: 0, axes: ['x', 'y'], corners: [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]] }] : []),
       { fixed: 'x', value: farX, axes: ['y', 'z'], corners: [[box.y0, 0], [box.y1, 0], [box.y1, box.z1], [box.y0, box.z1]] },
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
@@ -538,7 +651,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   /** Dashed lines from a selected point down to the floor and across to the walls, to its shadows there. */
   function drawProjectionLines(context, colors, point) {
     const { farX, farY } = frame;
-    const floor = { ...point, z: 0 };
+    const floor = { ...point, z: ground(point.x, point.y) };
     const line = points => {
       context.beginPath();
       points.map(frame.project).forEach((p, index) => (index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)));
@@ -566,11 +679,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     polygon(context, ring(emitter.cloudTopMetres)); context.fill();
     context.strokeStyle = selected ? colors.accent : colors.line;
     context.lineWidth = 1;
-    polygon(context, ring(0)); context.stroke();
+    polygon(context, ring(0).map(point => ({ ...point, z: ground(point.x, point.y) }))); context.stroke();
   }
 
   function drawBlast(context, emitter, colors, state) {
-    const centre = frame.project(emitter.positionMetres);
+    const centre = frame.project(placed(emitter.positionMetres));
     const stroke = state?.strokes.get(emitter.id)?.[0];
     if (stroke) {
       const level = Math.exp(-stroke.elapsed / FLASH_FADE_SECONDS);
@@ -667,6 +780,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
     drawBox(context, colors);
+    drawTerrain(context, colors);
     drawShadowBoundary(context, colors);
     if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);
     for (const emitter of scene.emitters) {
@@ -684,7 +798,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const receiver of scene.receivers) {
       const level = state?.receivers.get(receiver.id) ?? 0;
       if (level > 0) {
-        const p = frame.project(receiver.positionMetres);
+        const p = frame.project(placed(receiver.positionMetres));
         context.fillStyle = receiver.listen ? colors.accent : colors.muted;
         context.globalAlpha = (receiver.listen ? 1 : .5) * (.2 + .5 * level);
         context.beginPath(); context.arc(p.x, p.y, 6 + 14 * level, 0, 2 * Math.PI); context.fill();
@@ -695,7 +809,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.lineWidth = 1.5;
     for (const receiver of scene.receivers) {
       if (receiver.type !== 'binaural') continue;
-      const a = frame.project(receiver.positionMetres);
+      const a = frame.project(placed(receiver.positionMetres));
       const b = frame.project(facingTip(receiver, frame.box));
       const length = Math.hypot(b.x - a.x, b.y - a.y);
       if (length <= MICROPHONE_RADIUS) continue;
@@ -715,12 +829,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.font = '11px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
-      const anchor = emitter.kind === 'blast' ? emitter.positionMetres : emitter.kind === 'storm' ? emitter.centreMetres : emitter.topMetres;
+      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' ? placed(emitter.centreMetres) : emitter.topMetres;
       const p = frame.project(anchor);
       context.fillText(emitter.name, p.x + 9, p.y - 8);
     }
     for (const receiver of scene.receivers) {
-      const p = frame.project(receiver.positionMetres);
+      const p = frame.project(placed(receiver.positionMetres));
       context.fillText(receiver.name, p.x + 9, p.y - 8);
     }
   }
@@ -900,6 +1014,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   return {
     update(nextScene, nextSelection) {
       scene = nextScene;
+      useTerrain(scene.terrain);
       selection = nextSelection;
       if (!drag) frame = null;
       draw();

@@ -1,6 +1,7 @@
 import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
+import { TERRAIN_PROVIDER } from './domain/terrain.js';
 import { newSeed } from './domain/random.js';
 import { PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, combineSegments, MISSING_PHENOMENA, partitionSeconds, prepareScene } from './domain/render.js';
@@ -10,9 +11,10 @@ import {
 import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
-import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
+import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
+import { captureTerrain, searchPlace } from './ui/terrain-loader.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
-import { cachedFlashes } from './ui/geometry-cache.js';
+import { cachedFlashes, currentSurface, useTerrain } from './ui/geometry-cache.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
@@ -68,7 +70,8 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, mode: 'thunder', cubeView: { ...DEFAULT_CUBE_VIEW },
+  realDelay: true, wavefront: false, contours: true, mode: 'thunder',
+  terrainDraft: { place: 'Tampere', latitude: 61.4978, longitude: 23.761, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -116,15 +119,38 @@ const views = [createCubeView($('cube'), {
       else item.cloudTopMetres = Math.min(top.maximum, Math.max(top.minimum, item.cloudBaseMetres + MINIMUM_CLOUD_DEPTH_METRES, height));
     } else if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
-    } else item[handle.field] = point;
-    liveFields[handle.type]?.[handle.field]?.set(point);
+    } else {
+      item[handle.field] = storedPoint(handle, item, point);
+      liveFields[handle.type]?.[handle.field]?.set(item[handle.field]);
+    }
     invalidateResults();
     redrawViews();
     drawInfo();
   },
   onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
-  focus: () => focusReceiver()
+  focus: () => focusReceiver(),
+  contours: () => state.preferences.contours
 })];
+
+/** Whether a point is stored as a height above the ground under it rather than above the datum. */
+function groundAnchored(handle, item) {
+  if (handle.field === 'centreMetres') return true;
+  if (handle.field === 'baseMetres') return item.flashType === 'cloud-to-ground';
+  return handle.field === 'positionMetres';
+}
+
+/**
+ * The stored form of a dragged point. The view moves points in the scene frame; a point anchored
+ * to the ground keeps its height above the ground while it moves sideways, and on a wall its new
+ * height is measured from the ground under it.
+ */
+function storedPoint(handle, item, point) {
+  if (!groundAnchored(handle, item)) return point;
+  if (handle.onGround) return { ...point, z: 0 };
+  if (handle.plane?.fixed === 'z') return { ...point, z: item[handle.field].z };
+  const above = point.z - currentSurface().heightAt(point.x, point.y);
+  return { ...point, z: Math.round(Math.min(PARAMETERS.heightMetres.maximum, Math.max(0, above)) * 10) / 10 };
+}
 views[0].setView(state.preferences.cubeView);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
   Object.assign(state.preferences, sizes);
@@ -732,6 +758,8 @@ function renderDetails() {
 
 function missingPhenomena() {
   const missing = [...MISSING_PHENOMENA];
+  if (!state.scene.terrain?.enabled) missing.unshift('Terrain');
+  else if (!state.scene.terrain.shielding) missing.unshift('Terrain shielding');
   if (state.scene.air.refraction) missing.push('Several ground reflections in an inversion', 'Temperature profile other than linear');
   else missing.unshift('Temperature stratification and refraction');
   if (!state.scene.air.absorption) missing.unshift('Air absorption');
@@ -739,7 +767,58 @@ function missingPhenomena() {
   return missing;
 }
 
+/** Where and how finely terrain is captured next; editing it does not change the loaded terrain. */
+function terrainPanel(container) {
+  const { scene } = state;
+  const draft = state.preferences.terrainDraft;
+  const setDraft = change => { Object.assign(draft, change); savePreferences(); };
+  actionField(container, {
+    label: 'Place', value: draft.place, action: 'Find',
+    onAction: async (text, trigger) => {
+      trigger.disabled = true;
+      try {
+        const found = await searchPlace(text);
+        if (!found) { setStatus(`No place found for ${text}`, true); return; }
+        setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
+        setStatus(found.name);
+        refreshPanel();
+      } catch (error) {
+        setStatus(error.message, true);
+      } finally {
+        trigger.disabled = false;
+      }
+    }
+  });
+  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainExtentMetres', 'extentMetres'], ['terrainCellMetres', 'cellMetres']]) {
+    numberField(container, { key, value: draft[field], onCommit: value => setDraft({ [field]: value }) });
+  }
+  const actions = element('div', 'field-actions');
+  actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', async event => {
+    const trigger = event.currentTarget;
+    trigger.disabled = true;
+    try {
+      const terrain = await captureTerrain(draft, { onProgress: share => setStatus(`Loading terrain ${Math.round(share * 100)} %`) });
+      commit(next => { next.terrain = terrain; });
+    } catch (error) {
+      setStatus(`The terrain could not be loaded: ${error.message}`, true);
+    } finally {
+      trigger.disabled = false;
+    }
+  }));
+  if (scene.terrain) actions.append(button('Remove', () => commit(next => { next.terrain = null; })));
+  container.append(actions);
+  if (!scene.terrain) return;
+  const { terrain } = scene;
+  const surface = currentSurface();
+  container.append(element('p', 'field-note', `${terrain.place || `${terrain.latitude}, ${terrain.longitude}`} · ${formatMetres(terrain.extentMetres)} at ${formatMetres(terrain.cellMetres)}`
+    + (terrain.enabled ? ` · origin ${Math.round(surface.datumMetres)} m above sea level` : '')));
+  checkboxField(container, { label: 'Terrain', value: terrain.enabled, reliability: 'B', onCommit: value => commit(next => { next.terrain.enabled = value; }) });
+  checkboxField(container, { label: 'Shielding', value: terrain.shielding, reliability: 'B', onCommit: value => commit(next => { next.terrain.shielding = value; }) });
+  checkboxField(container, { label: 'Contours', value: state.preferences.contours, onCommit: value => { state.preferences.contours = value; savePreferences(); redrawViews(); } });
+}
+
 function refreshPanel() {
+  useTerrain(state.scene.terrain);
   const { scene, selection } = state;
   const emitterList = $('emitter-list');
   emitterList.replaceChildren();
@@ -764,6 +843,16 @@ function refreshPanel() {
     options: GROUND_TYPES.map(type => [type, GROUND_LABELS[type]]),
     onCommit: value => commit(next => { next.ground.type = value; })
   });
+
+  const terrainFields = $('terrain-fields');
+  terrainFields.replaceChildren();
+  terrainPanel(terrainFields);
+  const attribution = $('cube-attribution');
+  attribution.hidden = !scene.terrain?.enabled;
+  if (scene.terrain?.enabled && !attribution.childElementCount) {
+    const link = Object.assign(document.createElement('a'), { href: TERRAIN_PROVIDER.attributionUrl, target: '_blank', rel: 'noopener', textContent: TERRAIN_PROVIDER.attribution });
+    attribution.append(link);
+  }
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -820,6 +909,7 @@ function emitterAnchor(emitter) {
 
 /** Short facts around the scene box: the selection, the listening position, and warnings. */
 function drawInfo() {
+  useTerrain(state.scene.terrain);
   drawOrientation();
   const { scene, selection } = state;
   const receiver = focusReceiver();
@@ -836,7 +926,9 @@ function drawInfo() {
     selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
     if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
   } else if (selected) {
-    selectedInfo.append(element('strong', '', selected.name), element('span', '', `${formatMetres(selected.positionMetres.z)} above ground`));
+    const surface = currentSurface();
+    const sea = surface.flat ? '' : ` · ${formatMetres(surface.datumMetres + surface.heightAt(selected.positionMetres.x, selected.positionMetres.y) + selected.positionMetres.z)} above sea level`;
+    selectedInfo.append(element('strong', '', selected.name), element('span', '', `${formatMetres(selected.positionMetres.z)} above ground${sea}`));
     const { metres, direction } = bearing({ x: 0, y: 0 }, selected.positionMetres);
     selectedInfo.append(element('span', '', metres < 1 ? 'At the origin' : `${formatMetres(metres)} ${direction} of the origin`));
   }

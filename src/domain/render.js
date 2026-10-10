@@ -2,7 +2,10 @@ import { atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtH
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
+import { knifeEdge } from './diffraction.js';
 import { sourcePosition, sourceTable } from './source-table.js';
+import { onGround, terrainSurface } from './terrain.js';
+import { shieldingEdges, shiftedProfile, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
@@ -14,6 +17,8 @@ import {
 
 /** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
 const PRE_ROLL_SAMPLES = 512;
+/** Terrain edges kept per path (Deygout's main edge and one on each side). */
+const MAXIMUM_EDGES = 3;
 /** Samples kept after each pulse for the ground-reflection response to settle. */
 const TAIL_GUARD_SAMPLES = 2048;
 /** Attenuation beyond which a bin no longer contributes: 14 Np ≈ 122 dB. */
@@ -42,8 +47,8 @@ export function shadowTailSeconds(nepersAtOneHertz) {
 const frameGroup = (paths, index) => 2 * paths.emitter[index] + (paths.creepMetres[index] > 0 ? 1 : 0);
 
 export const MISSING_PHENOMENA = Object.freeze([
-  'Terrain, buildings, and clouds as reflectors',
-  'Diffraction by terrain and obstacles',
+  'Echoes from terrain, buildings, and clouds',
+  'Diffraction by buildings and rounded ridges',
   'Wind',
   'Turbulent scattering of the direct sound',
   'Nonlinear propagation beyond the linearization radius',
@@ -55,7 +60,8 @@ export const MISSING_PHENOMENA = Object.freeze([
  * geometry behind them can be released. Pure and deterministic from the scene.
  */
 export function prepareScene(scene) {
-  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => ({ emitter, sources: sourceTable(emitterSources(emitter, scene.air).sources) }));
+  const surface = terrainSurface(scene.terrain);
+  const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => ({ emitter, sources: sourceTable(emitterSources(emitter, scene.air, surface).sources) }));
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   if (count > MAXIMUM_SOURCES) throw new RangeError(`The scene has ${count} point sources; the limit is ${MAXIMUM_SOURCES}.`);
   return prepared;
@@ -77,7 +83,11 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
  * or in the refraction shadow the creeping path, and the ground-reflected ray where one exists.
  * Order is emitter, source, then direct before ground, so it is deterministic. `metres` is the
  * length along the path, which absorption and the weak shock use; `spreadMetres` the distance
- * whose inverse is the geometric amplitude.
+ * whose inverse is the geometric amplitude; `edges` the geometric factors of the terrain edges
+ * that shield a direct path (see `diffraction.js`).
+ *
+ * Over terrain, the refraction shadow and the ground reflection are found from the ground under the
+ * receiver, as if the ground there extended level; the shielding checks the actual terrain.
  */
 export function receiverPaths(preparedEmitters, receiver, scene) {
   const profile = soundSpeedProfile(scene.air);
@@ -96,13 +106,23 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     cosIncidence: new Float64Array(capacity),
     duration: new Float64Array(capacity),
     amplitudeScale: new Float64Array(capacity),
-    direction: new Float64Array(3 * capacity)
+    direction: new Float64Array(3 * capacity),
+    edgeCount: new Uint8Array(capacity),
+    edges: new Float64Array(MAXIMUM_EDGES * capacity)
   };
-  const r = receiver.positionMetres;
-  const impedance = receiverImpedanceFactor(scene.air, profile, r.z);
+  const surface = terrainSurface(scene.terrain);
+  const shielding = !surface.flat && scene.terrain.shielding;
+  const receiverPosition = onGround(surface, receiver.positionMetres);
+  const groundHeight = surface.heightAt(receiverPosition.x, receiverPosition.y);
+  const local = shiftedProfile(profile, groundHeight);
+  const shift = point => (groundHeight === 0 ? point : { x: point.x, y: point.y, z: point.z - groundHeight });
+  const r = shift(receiverPosition);
+  const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
   let index = 0;
-  const add = (emitterIndex, sourceIndex, sources, kind, path) => {
+  const add = (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
     const { departure, arrival } = path;
+    paths.edgeCount[index] = edges.length;
+    edges.forEach((edge, edgeIndex) => { paths.edges[MAXIMUM_EDGES * index + edgeIndex] = edge; });
     paths.emitter[index] = emitterIndex;
     paths.source[index] = sourceIndex;
     paths.kind[index] = kind;
@@ -129,19 +149,31 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
-      const p = sourcePosition(sources, sourceIndex);
-      if (inShadow(profile, p, r)) {
-        add(emitterIndex, sourceIndex, sources, PATH_SHADOW, shadowPath(profile, p, r));
+      const position = sourcePosition(sources, sourceIndex);
+      const p = shift(position);
+      if (inShadow(local, p, r)) {
+        add(emitterIndex, sourceIndex, sources, PATH_SHADOW, shadowPath(local, p, r));
         continue;
       }
-      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(profile, p, r));
+      const edges = shielding ? shieldingEdges(profile, surface, position, receiverPosition) : [];
+      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(local, p, r), edges);
       if (!ground) continue;
-      const reflected = reflectedRay(profile, p, r);
-      if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected);
+      // The reflection near the receiver crosses the same ridges as the direct sound (class C).
+      const reflected = surface.flat ? reflectedRay(profile, p, r) : terrainReflection(profile, surface, position, receiverPosition);
+      if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
     }
   });
   paths.count = index;
   return paths;
+}
+
+/** The level change of a path's terrain edges at one frequency, in decibels. */
+function edgeDecibels(paths, index, frequencyHz) {
+  let decibels = 0;
+  for (let edge = 0; edge < paths.edgeCount[index]; edge += 1) {
+    decibels += 20 * Math.log10(Math.hypot(...knifeEdge(paths.edges[MAXIMUM_EDGES * index + edge] * Math.sqrt(frequencyHz))));
+  }
+  return decibels;
 }
 
 /**
@@ -158,7 +190,8 @@ export function arrivalTable(preparedEmitters, receiver, scene) {
     const { sources } = preparedEmitters[paths.emitter[index]];
     heights[index] = sources.z[paths.source[index]];
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
-      + (paths.creepMetres[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, creep * paths.creepMetres[index], floor))) : 0);
+      + (paths.creepMetres[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, creep * paths.creepMetres[index], floor))) : 0)
+      + edgeDecibels(paths, index, DIAGRAM_FREQUENCY_HZ);
   }
   return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, kinds: paths.kind.slice(0, paths.count) };
 }
@@ -292,6 +325,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const creepMetres = paths.creepMetres[index];
   const { creeping, shadow, shadowFloor } = plan;
   const beta = creepMetres > 0 ? creepingBeta(creeping * creepMetres) : 0;
+  const edgeCount = paths.edgeCount[index];
   const ground = paths.kind[index] === PATH_GROUND && scene.ground.type !== 'rigid';
   const reflected = paths.kind[index] === PATH_GROUND;
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
@@ -366,6 +400,12 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
     re *= factor;
     im *= factor;
+    for (let edge = 0; edge < edgeCount; edge += 1) {
+      const [eRe, eIm] = knifeEdge(paths.edges[MAXIMUM_EDGES * index + edge] * Math.sqrt(bin * binHz));
+      const nextRe = re * eRe - im * eIm;
+      im = re * eIm + im * eRe;
+      re = nextRe;
+    }
     if (creepMetres > 0) {
       const [cRe, cIm] = shadowFromExponent(shadow.loss[bin], shadow.lag[bin], beta, shadowFloor);
       const nextRe = re * cRe - im * cIm;

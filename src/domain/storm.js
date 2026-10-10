@@ -35,7 +35,8 @@ const lognormal = (random, sigma) => Math.exp(sigma * normalDeviate(random) - si
  * duration, a seeded mix of ground and cloud flashes, and lognormal energies. Every flash gets
  * its own seed for its channel shape.
  */
-export function stormFlashes(storm) {
+export function stormFlashes(storm, surface = null) {
+  const groundAt = surface ? surface.heightAt : () => 0;
   const random = createRandom(storm.seed);
   const specs = [];
   for (let index = 0; index < storm.flashCount; index += 1) {
@@ -49,7 +50,7 @@ export function stormFlashes(storm) {
     const energy = storm.energyJoulesPerMetre * lognormal(random, storm.energySpread);
     const depth = storm.cloudTopMetres - storm.cloudBaseMetres;
     const shared = {
-      seed, startSeconds,
+      seed, startSeconds, groundAt,
       segmentLengthMetres: storm.segmentLengthMetres,
       tortuosityDegrees: storm.tortuosityDegrees,
       macroStepMetres: storm.macroStepMetres,
@@ -70,7 +71,7 @@ export function stormFlashes(storm) {
       specs.push({
         ...shared,
         type: 'cloud-to-ground',
-        baseMetres: { x, y, z: 0 },
+        baseMetres: { x, y, z: groundAt(x, y) },
         topMetres: { x: x + lean * Math.cos(leanAngle), y: y + lean * Math.sin(leanAngle), z: height },
         branchLengthRatio: STORM.groundBranchLengthRatio,
         energyJoulesPerMetre: energy,

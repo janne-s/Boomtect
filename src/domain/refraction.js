@@ -95,6 +95,23 @@ function planeDirection(along, up, dx, dy, horizontal) {
 }
 
 /**
+ * Height of the ray between two points at horizontal distance `s` from the first, for checking it
+ * against terrain: a straight line in homogeneous air, otherwise the arc around z* = −c₀/g.
+ */
+export function rayHeightAt(profile, a, b, s) {
+  const horizontal = Math.hypot(b.x - a.x, b.y - a.y);
+  if (!(horizontal > 0)) return a.z;
+  const g = profile.gradient;
+  if (flat(profile)) return a.z + (b.z - a.z) * s / horizontal;
+  const zStar = -profile.groundSpeed / g;
+  const fromA = a.z - zStar;
+  const fromB = b.z - zStar;
+  const centre = (horizontal * horizontal + fromB * fromB - fromA * fromA) / (2 * horizontal);
+  const radius = Math.hypot(centre, fromA);
+  return zStar + Math.sign(fromA) * Math.sqrt(Math.max(0, radius * radius - (s - centre) ** 2));
+}
+
+/**
  * Horizontal distance from a height down to where a ray grazes the ground, in air whose speed
  * falls with height; Infinity otherwise. The direct ray from height z₁ to height z₂ stays above the
  * ground up to a horizontal distance of grazingRange(z₁) + grazingRange(z₂); beyond lies the

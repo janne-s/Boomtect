@@ -1,6 +1,7 @@
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { friedlanderSpanSeconds } from './pulses.js';
 import { stormFlashes } from './storm.js';
+import { onGround } from './terrain.js';
 
 export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast']);
 
@@ -19,14 +20,14 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
  * The positive phase scales with the cube root of the charge (Hopkinson–Cranz, class B) from a
  * reference duration (class C until the Kinney & Graham duration fit is verified).
  */
-export function blastSources(emitter, air) {
+export function blastSources(emitter, air, surface = null) {
   const cubeRoot = Math.cbrt(emitter.chargeKilograms);
   const linearRadiusMetres = emitter.linearScaledDistance * cubeRoot;
   const overpressurePa = air.pressureKpa * 1000 * kinneyGrahamOverpressureRatio(emitter.linearScaledDistance);
   const durationSeconds = emitter.durationSecondsPerCubeRootKilogram * cubeRoot;
   return [{
     flash: 0,
-    positionMetres: emitter.positionMetres,
+    positionMetres: surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres,
     direction: null,
     elementMetres: 0,
     emissionSeconds: emitter.startSeconds,
@@ -39,16 +40,19 @@ export function blastSources(emitter, air) {
   }];
 }
 
-/** Channels and strokes of an emitter; a blast has none. Deterministic from the emitter. */
-export function emitterFlashes(emitter) {
-  if (emitter.kind === 'lightning') return lightningEmitterFlashes(emitter);
-  if (emitter.kind === 'storm') return stormFlashes(emitter);
+/**
+ * Channels and strokes of an emitter over a terrain surface (flat ground when null); a blast has
+ * none. Deterministic from the emitter and the surface.
+ */
+export function emitterFlashes(emitter, surface = null) {
+  if (emitter.kind === 'lightning') return lightningEmitterFlashes(emitter, surface);
+  if (emitter.kind === 'storm') return stormFlashes(emitter, surface);
   return [];
 }
 
 /** Point sources of an emitter, with the flashes they came from. */
-export function emitterSources(emitter, air) {
-  if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air) };
-  const flashes = emitterFlashes(emitter);
+export function emitterSources(emitter, air, surface = null) {
+  if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
+  const flashes = emitterFlashes(emitter, surface);
   return { flashes, sources: flashSources(flashes, emitter, air) };
 }

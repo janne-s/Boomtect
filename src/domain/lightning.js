@@ -49,15 +49,19 @@ const STEP_TOLERANCE = 1e-9;
 const GROUND_CLEARANCE_METRES = 1;
 
 const toRadians = degrees => degrees * Math.PI / 180;
+const FLAT_GROUND = () => 0;
 const uniform = (random, [low, high]) => low + random() * (high - low);
 
 /**
  * Class C: a deterministic tortuous path. Each step leaves the direction toward the end by a
  * half-normal angle with the given mean and a uniform azimuth, so the path wanders but reaches
- * its end. A path that would go below the ground is reflected above it, or ends when
- * `endAtGround` is set.
+ * its end. A path that would go below the ground (`groundAt(x, y)`, the plane z = 0 by default) is
+ * reflected above it, or ends when `endAtGround` is set; a target below the ground is lifted onto it.
  */
-export function tortuousPath(random, start, end, stepMetres, tortuosityDegrees, { endAtGround = false, budget = MAXIMUM_SEGMENTS_PER_EMITTER } = {}) {
+export function tortuousPath(random, start, target, stepMetres, tortuosityDegrees, { endAtGround = false, budget = MAXIMUM_SEGMENTS_PER_EMITTER, groundAt = FLAT_GROUND } = {}) {
+  // A target inside rising ground could never be reached by a walk kept above it; it moves up onto the ground.
+  const groundAtTarget = groundAt(target.x, target.y);
+  const end = target.z < groundAtTarget ? { ...target, z: groundAtTarget } : target;
   const total = distance(start, end);
   if (tortuosityDegrees === 0) {
     const count = Math.max(1, Math.ceil(total / stepMetres - STEP_TOLERANCE));
@@ -74,11 +78,12 @@ export function tortuousPath(random, start, end, stepMetres, tortuosityDegrees, 
     }
     const direction = deflected(unit(subtract(end, position)), Math.abs(normalDeviate(random)) * sigma, 2 * Math.PI * random());
     position = add(position, scaled(direction, stepMetres));
-    if (position.z < GROUND_CLEARANCE_METRES && endAtGround) {
-      points.push({ ...position, z: Math.max(0, position.z) });
+    const ground = groundAt(position.x, position.y);
+    if (position.z < ground + GROUND_CLEARANCE_METRES && endAtGround) {
+      points.push({ ...position, z: Math.max(ground, position.z) });
       return points;
     }
-    if (position.z < 0) position.z = -position.z;
+    if (position.z < ground) position.z = 2 * ground - position.z;
     points.push({ ...position });
   }
   throw new RangeError(`A lightning channel needs more than ${budget} segments. Lengthen the segments or shorten the channel.`);
@@ -89,10 +94,10 @@ export function tortuousPath(random, start, end, stepMetres, tortuosityDegrees, 
  * zigzag; a fine walk between its corners adds the small-scale tortuosity.
  */
 function channelPath(random, start, end, spec, budget, options = {}) {
-  const corners = tortuousPath(random, start, end, spec.macroStepMetres, spec.macroTortuosityDegrees, options);
+  const corners = tortuousPath(random, start, end, spec.macroStepMetres, spec.macroTortuosityDegrees, { ...options, groundAt: spec.groundAt });
   const points = [corners[0]];
   for (let index = 1; index < corners.length; index += 1) {
-    const piece = tortuousPath(random, corners[index - 1], corners[index], spec.segmentLengthMetres, spec.tortuosityDegrees, { budget: budget.remaining });
+    const piece = tortuousPath(random, corners[index - 1], corners[index], spec.segmentLengthMetres, spec.tortuosityDegrees, { budget: budget.remaining, groundAt: spec.groundAt });
     budget.remaining -= piece.length - 1;
     points.push(...piece.slice(1));
   }
@@ -156,7 +161,7 @@ function growBranches(random, spec, budget, parent, level, channels) {
       const elevation = toRadians((2 * random() - 1) * CLOUD_BRANCH_ELEVATION_DEGREES);
       direction = { x: Math.cos(elevation) * Math.cos(azimuth), y: Math.cos(elevation) * Math.sin(azimuth), z: Math.sin(elevation) };
     }
-    const reach = direction.z < 0 ? Math.min(nominal, (junction.z - GROUND_CLEARANCE_METRES) / -direction.z) : nominal;
+    const reach = direction.z < 0 ? Math.min(nominal, (junction.z - spec.groundAt(junction.x, junction.y) - GROUND_CLEARANCE_METRES) / -direction.z) : nominal;
     if (!(reach > spec.segmentLengthMetres) || reach * BUDGET_MARGIN / spec.segmentLengthMetres > budget.remaining) continue;
     const points = channelPath(random, junction, add(junction, scaled(direction, reach)), spec, budget, { endAtGround: true, budget: budget.remaining });
     const channel = {
@@ -181,7 +186,8 @@ function growBranches(random, spec, budget, parent, level, channels) {
  * Every stroke lists its route: which channels it lights, from which arc, and with which
  * emission offset.
  */
-export function lightningFlash(spec) {
+export function lightningFlash(input) {
+  const spec = { groundAt: FLAT_GROUND, ...input };
   const random = createRandom(spec.seed);
   const budget = { remaining: MAXIMUM_SEGMENTS_PER_EMITTER };
   const mainPoints = channelPath(random, spec.baseMetres, spec.topMetres, spec, budget);
@@ -217,10 +223,13 @@ export function lightningFlash(spec) {
       if (ground && random() < spec.newTerminationProbability) {
         const junctionArc = mainLength * uniform(random, TERMINATION_JUNCTION_RANGE);
         const { point: junction } = pointAtArc(mainPoints, junctionArc);
-        const reach = junction.z * uniform(random, TERMINATION_REACH_RANGE);
+        const above = junction.z - spec.groundAt(junction.x, junction.y);
+        const reach = above * uniform(random, TERMINATION_REACH_RANGE);
         const azimuth = 2 * Math.PI * random();
-        const groundPoint = { x: junction.x + reach * Math.cos(azimuth), y: junction.y + reach * Math.sin(azimuth), z: 0 };
-        if (junction.z * BUDGET_MARGIN / spec.segmentLengthMetres < budget.remaining) {
+        const groundX = junction.x + reach * Math.cos(azimuth);
+        const groundY = junction.y + reach * Math.sin(azimuth);
+        const groundPoint = { x: groundX, y: groundY, z: spec.groundAt(groundX, groundY) };
+        if (above * BUDGET_MARGIN / spec.segmentLengthMetres < budget.remaining) {
           const lower = channelPath(random, groundPoint, junction, spec, budget);
           channels.push({ points: lower, main: true, level: 0, energyScale: 1, emissionOffsetMetres: 0, mainLength, termination: true });
           route = [
@@ -339,7 +348,13 @@ export function flashSources(flashes, physics, air, sources = []) {
   return sources;
 }
 
-/** The flash of a single lightning emitter. */
-export function lightningEmitterFlashes(emitter) {
-  return [lightningFlash({ ...emitter, type: emitter.flashType })];
+/**
+ * The flash of a single lightning emitter over a terrain surface. A ground flash's ground point is
+ * stored above the ground (at it) and lands on the surface; heights in the cloud are above the datum.
+ */
+export function lightningEmitterFlashes(emitter, surface = null) {
+  const groundAt = surface ? surface.heightAt : FLAT_GROUND;
+  const ground = emitter.flashType === 'cloud-to-ground';
+  const baseMetres = ground ? { ...emitter.baseMetres, z: groundAt(emitter.baseMetres.x, emitter.baseMetres.y) + emitter.baseMetres.z } : emitter.baseMetres;
+  return [lightningFlash({ ...emitter, baseMetres, groundAt, type: emitter.flashType })];
 }

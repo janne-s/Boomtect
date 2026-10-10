@@ -3,6 +3,7 @@ import { PARAMETERS } from '../domain/scene.js';
 /** How a stored SI value is shown in the panel; stored values never change unit. */
 const DISPLAY = Object.freeze({
   energyJoulesPerMetre: { scale: 1e-3, unit: 'kJ/m' },
+  terrainExtentMetres: { scale: 1e-3, unit: 'km' },
   acousticEfficiency: { scale: 100, unit: '%' },
   channelSpeedMetresPerSecond: { scale: 1e-3, unit: 'km/s' },
   inCloudSpeedMetresPerSecond: { scale: 1e-3, unit: 'km/s' },
@@ -142,6 +143,26 @@ export function checkboxField(container, { label, value, onCommit, reliability =
   const holder = document.createElement('div');
   holder.append(input);
   append(container, labelFor(label, '', id), holder, badge(reliability));
+}
+
+/** A text row with a button beside it that acts on the text, as for a place search. */
+export function actionField(container, { label, value, action, onAction }) {
+  const id = `field-${fieldCounter += 1}`;
+  const holder = document.createElement('div');
+  holder.className = 'seed';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = id;
+  input.maxLength = 120;
+  input.value = value;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = action;
+  const run = () => { if (input.value.trim()) onAction(input.value.trim(), button); };
+  button.addEventListener('click', run);
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') run(); });
+  holder.append(input, button);
+  append(container, labelFor(label, '', id), holder, badge(null));
 }
 
 export function seedField(container, { value, onCommit, onNew }) {

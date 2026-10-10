@@ -32,6 +32,7 @@
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
+        <div class="overlay overlay-attribution" id="cube-attribution" hidden></div>
         <div class="overlay overlay-timeline" id="cube-timeline" hidden>
           <span id="cube-timeline-time"></span>
           <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
@@ -66,6 +67,10 @@
         <details class="group">
           <summary>Air and ground</summary>
           <div class="fields" id="environment-fields"></div>
+        </details>
+        <details class="group">
+          <summary>Terrain</summary>
+          <div class="fields" id="terrain-fields"></div>
         </details>
         <details class="group">
           <summary>Output</summary>

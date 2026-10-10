@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 6;
+export const SCENE_VERSION = 7;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
@@ -16,6 +16,8 @@ export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
 export const MINIMUM_CLOUD_DEPTH_METRES = 100;
+/** Largest terrain grid side, matching the capture limit in terrain.js. */
+const MAXIMUM_TERRAIN_CELLS = 600;
 
 /**
  * Every bounded number in a scene: unit, range, and reliability class of the value it controls.
@@ -30,6 +32,10 @@ export const PARAMETERS = Object.freeze({
   turbulenceScaleMetres: { minimum: .1, maximum: 10, unit: 'm', label: 'Turbulence scale', reliability: 'C' },
   lapseRateKelvinPerMetre: { minimum: -.02, maximum: .012, unit: 'K/m', label: 'Lapse rate', reliability: 'B' },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
+  latitude: { minimum: -85, maximum: 85, unit: '°', label: 'Latitude', reliability: null },
+  longitude: { minimum: -180, maximum: 180, unit: '°', label: 'Longitude', reliability: null },
+  terrainExtentMetres: { minimum: 500, maximum: 20000, unit: 'm', label: 'Area', reliability: null },
+  terrainCellMetres: { minimum: 5, maximum: 200, unit: 'm', label: 'Resolution', reliability: null },
   coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
   heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
   startSeconds: { minimum: 0, maximum: 240, unit: 's', label: 'Onset', reliability: null },
@@ -202,6 +208,7 @@ export function defaultScene(mode = 'thunder') {
       refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1
     },
     ground: { enabled: true, type: 'grass' },
+    terrain: null,
     emitters: [blast ? defaultBlast() : defaultLightning()],
     receivers: [receiver],
     render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false }
@@ -271,6 +278,39 @@ function emitter(value, index) {
   return lightning;
 }
 
+/**
+ * A captured terrain: where and how it was captured, and its heights as base64 float32 metres
+ * above sea level on a square grid, row 0 in the south. Null when the scene has no terrain.
+ */
+function terrain(value) {
+  if (value === null || value === undefined) return null;
+  check(typeof value === 'object', 'terrain must be an object or null.');
+  check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean', 'terrain.enabled and terrain.shielding must be true or false.');
+  check(typeof value.place === 'string' && value.place.length <= 120, 'terrain.place must be a short text.');
+  const grid = key => {
+    check(Number.isInteger(value[key]) && value[key] >= 2 && value[key] <= MAXIMUM_TERRAIN_CELLS, `terrain.${key} must be a whole number of cells.`);
+    return value[key];
+  };
+  const columns = grid('columns');
+  const rows = grid('rows');
+  check(Number.isInteger(value.zoom) && value.zoom >= 1 && value.zoom <= 15, 'terrain.zoom must be a tile zoom level.');
+  check(typeof value.heights === 'string' && value.heights.length === 4 * Math.ceil(columns * rows * 4 / 3), 'terrain.heights do not match the grid.');
+  check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && Math.abs(value.cellMetres * columns - value.extentMetres) < 1e-6 * value.extentMetres, 'terrain.cellMetres does not match the area.');
+  return {
+    enabled: value.enabled,
+    shielding: value.shielding,
+    place: value.place,
+    latitude: number(value.latitude, 'latitude', 'terrain.latitude'),
+    longitude: number(value.longitude, 'longitude', 'terrain.longitude'),
+    extentMetres: number(value.extentMetres, 'terrainExtentMetres', 'terrain.extentMetres'),
+    cellMetres: value.cellMetres,
+    zoom: value.zoom,
+    columns,
+    rows,
+    heights: value.heights
+  };
+}
+
 function receiver(value, index) {
   const path = `receivers[${index}]`;
   check(value && typeof value === 'object', `${path} is missing.`);
@@ -328,6 +368,7 @@ export function parseScene(value) {
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres')
     },
     ground: { enabled: ground.enabled, type: ground.type },
+    terrain: terrain(value.terrain),
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),
     render: {
