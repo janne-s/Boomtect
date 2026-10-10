@@ -51,16 +51,17 @@ Thunder and Blast are separate modes, each with its own scene.
 ## Listening
 
 - **Play** — Flashes the sources and plays what the listening microphones hear.
-- **Real delay** — On: the sound arrives as late as it would outdoors. Off: the
-  silence before the first sound is skipped, and the channel glows where the
-  sound being heard comes from.
+- **Real delay** — On: the sound arrives as late as it would outdoors, and the
+  clock in the corner counts from the flash, its bar brightening when the sound
+  arrives. Off: the silence before the first sound is skipped, and the channel
+  glows where the sound being heard comes from.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor and the walls.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
 - **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
-  its orientation and decoded for headphones.
+  its orientation and decoded for headphones; it switches Spatial on.
 - **Orientation** — Facing and elevation of a binaural microphone. On the
   sphere beside the scene, drag the handle on the horizon to face and the one
   on the scale beside it to tilt, or drag the arrowhead in the scene.
@@ -77,9 +78,9 @@ Thunder and Blast are separate modes, each with its own scene.
   grows with pressure.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
 - **Plots** — Pressure and arrival time by source height for every microphone
-  on one time axis, each in its own color and the muted ones dimmer. A
-  microphone's tab, or selecting the microphone, brings it forward and scales
-  the pressure to it.
+  on one time axis and one pressure scale, each in its own color and the muted
+  ones dimmer. A microphone's tab, or selecting the microphone, brings it
+  forward.
 
 ## Air
 

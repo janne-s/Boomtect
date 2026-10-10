@@ -483,6 +483,42 @@ input[type="range"]:hover::-moz-range-thumb {
   height: 120px;
   cursor: grab;
 }
+.overlay-timeline {
+  right: 14px;
+  bottom: 12px;
+  align-items: flex-end;
+  width: 220px;
+  max-width: 40%;
+  color: var(--ink);
+  font-size: 12px;
+}
+.overlay-timeline[hidden] {
+  display: none;
+}
+.timeline-bar {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+/* From the first arrival on, the bar is brighter: before it, the sound is still travelling. */
+.timeline-arrival {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--faint);
+}
+.timeline-progress {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--accent);
+  mix-blend-mode: screen;
+}
 .overlay-hint {
   right: 14px;
   bottom: 12px;

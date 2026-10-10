@@ -610,7 +610,12 @@ function receiverCard(container, receiver, selected) {
     textField(fields, { label: 'Name', value: receiver.name, onCommit: value => updateReceiver(receiver.id, item => { item.name = value; }) });
     selectField(fields, {
       label: 'Type', value: receiver.type, options: Object.entries(RECEIVER_TYPE_LABELS),
-      onCommit: value => commitListening(next => { next.receivers.find(item => item.id === receiver.id).type = value; })
+      onCommit: value => {
+        // A binaural microphone hears the sound field, so it turns the Ambisonic render on if it was off.
+        if (value === 'binaural' && state.scene.render.ambisonicOrder === 0) {
+          commit(next => { next.receivers.find(item => item.id === receiver.id).type = value; next.render.ambisonicOrder = 1; });
+        } else commitListening(next => { next.receivers.find(item => item.id === receiver.id).type = value; });
+      }
     });
     liveFields.receiver = {
       positionMetres: pointFields(fields, {
@@ -1021,8 +1026,25 @@ function animate() {
   const clock = player.clock();
   redrawViews();
   drawResults(clock ? clock.sceneSeconds() : null);
+  drawTimeline(clock && player.playing() ? clock.sceneSeconds() : null);
   if (player.playing()) requestAnimationFrame(animate);
-  else { animating = false; redrawViews(); drawResults(); }
+  else { animating = false; redrawViews(); drawResults(); drawTimeline(null); }
+}
+
+/**
+ * The scene clock while the sound plays: seconds since the flash, and a bar from the flash to the
+ * end of what plays, dim until the first sound arrives at the followed microphone.
+ */
+function drawTimeline(seconds) {
+  const holder = $('cube-timeline');
+  const result = state.results?.get(focusReceiver().id);
+  if (seconds === null || !result) { holder.hidden = true; return; }
+  holder.hidden = false;
+  const end = result.startSeconds + result.samples.length / result.sampleRate;
+  const share = value => `${Math.min(100, Math.max(0, value / end * 100))}%`;
+  $('cube-timeline-time').textContent = formatSeconds(Math.max(0, seconds));
+  $('cube-timeline-arrival').style.left = share(result.startSeconds);
+  $('cube-timeline-progress').style.width = share(seconds);
 }
 
 function showStopped() {

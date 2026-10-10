@@ -32,6 +32,10 @@
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
+        <div class="overlay overlay-timeline" id="cube-timeline" hidden>
+          <span id="cube-timeline-time"></span>
+          <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
+        </div>
         <div class="overlay overlay-bottom">
           <div class="cube-orientation" id="cube-orientation" hidden>
             <canvas id="cube-orientation-ball" aria-label="Orientation"></canvas>

@@ -83,8 +83,8 @@ function cachedPlot(canvas, key, drawStatic, playheadSeconds) {
 }
 
 /**
- * Min/max envelope of each microphone's pressure per pixel column, in pascals, on one time axis.
- * The scale is the solo microphone's peak, or the largest peak; louder traces are clipped.
+ * Min/max envelope of each microphone's pressure per pixel column, in pascals, on one time axis
+ * and one scale, the largest peak of them all.
  */
 export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
@@ -93,8 +93,8 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     const colors = palette();
     const window = sharedWindow(live);
     timeAxis(context, width, height, window, colors);
-    const solo = live.find(trace => trace.id === soloId);
-    const peakPa = solo ? solo.result.peakPa : Math.max(...live.map(trace => trace.result.peakPa));
+    // One scale for every microphone, so their levels compare; a solo only brings one forward.
+    const peakPa = Math.max(...live.map(trace => trace.result.peakPa));
     const middle = (TOP + height - BOTTOM) / 2;
     const half = (height - BOTTOM - TOP) / 2;
     const columns = width - LEFT - RIGHT;
