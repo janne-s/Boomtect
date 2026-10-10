@@ -8,11 +8,11 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 15;
+export const SCENE_VERSION = 16;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
@@ -89,6 +89,12 @@ export const PARAMETERS = Object.freeze({
   linearScaledDistance: { minimum: 5, maximum: 100, unit: 'm/kg^⅓', label: 'Linearization distance', reliability: 'C' },
   durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
+  roundCount: { minimum: 1, maximum: 200, unit: '', label: 'Rounds', reliability: null, integer: true },
+  salvoSize: { minimum: 1, maximum: 24, unit: '', label: 'Rounds per salvo', reliability: null, integer: true },
+  salvoSpreadSeconds: { minimum: 0, maximum: 10, unit: 's', label: 'Salvo spread', reliability: 'C' },
+  chargeSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Charge spread σ', reliability: 'C' },
+  airburstShare: { minimum: 0, maximum: 1, unit: '', label: 'Airbursts', reliability: null },
+  airburstHeightMetres: { minimum: 2, maximum: 1000, unit: 'm', label: 'Airburst height', reliability: null },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
@@ -114,6 +120,12 @@ const STORM_NUMBERS = Object.freeze([
   'energySpread', 'newTerminationProbability', ...CHANNEL_NUMBERS, ...GROUND_FLASH_NUMBERS
 ]);
 const BLAST_NUMBERS = Object.freeze(['startSeconds', 'chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram']);
+
+const BLAST_SOURCE_NUMBERS = Object.freeze(['linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram']);
+const BARRAGE_NUMBERS = Object.freeze([
+  'startSeconds', 'radiusMetres', 'durationSeconds', 'roundCount', 'salvoSize', 'salvoSpreadSeconds', 'chargeKilograms', 'chargeSpread',
+  'airburstShare', 'airburstHeightMetres', ...BLAST_SOURCE_NUMBERS
+]);
 
 export class SceneError extends Error {}
 
@@ -214,6 +226,31 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
 /** The terrain switches and echo settings a new capture starts with. */
 export const TERRAIN_DEFAULTS = Object.freeze({ enabled: true, shielding: true, echoes: true, scattering: .5, echoCellMetres: 100, echoLimit: 500 });
 
+/**
+ * An artillery barrage: 24 rounds in salvos of six over a minute, within 150 m. A 155 mm high-explosive
+ * shell carries roughly 7–11 kg of explosive (class C as a default; set the charge as its TNT equivalent).
+ */
+export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 20261012) {
+  const blast = defaultBlast();
+  return {
+    id, name, kind: 'barrage', enabled: true, seed,
+    startSeconds: 0,
+    centreMetres: { x: 0, y: 0, z: 0 },
+    radiusMetres: 150,
+    durationSeconds: 60,
+    roundCount: 24,
+    salvoSize: 6,
+    salvoSpreadSeconds: 1.5,
+    chargeKilograms: 7,
+    chargeSpread: .2,
+    airburstShare: 0,
+    airburstHeightMetres: 10,
+    explosive: 'compB',
+    secondaryShock: true,
+    ...Object.fromEntries(BLAST_SOURCE_NUMBERS.map(key => [key, blast[key]]))
+  };
+}
+
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
@@ -282,6 +319,13 @@ function emitter(value, index) {
     check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
     check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
     return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BLAST_NUMBERS, path) };
+  }
+  if (value.kind === 'barrage') {
+    check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
+    check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
+    const barrage = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BARRAGE_NUMBERS, path) };
+    check(barrage.centreMetres.z === 0, `${path}.centreMetres must lie on the ground.`);
+    return barrage;
   }
   if (value.kind === 'storm') {
     const storm = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, STORM_NUMBERS, path) };

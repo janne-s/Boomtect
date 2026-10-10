@@ -4,7 +4,7 @@ import { createRandom } from '../domain/random.js';
 import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
-import { cachedFlashes, currentSurface, useTerrain } from './geometry-cache.js';
+import { cachedFlashes, cachedRounds, currentSurface, useTerrain } from './geometry-cache.js';
 
 const MARGIN = 36;
 const HANDLE_RADIUS = 5;
@@ -123,7 +123,10 @@ function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' });
-    else if (emitter.kind === 'storm') {
+    else if (emitter.kind === 'barrage') {
+      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
+      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
+    } else if (emitter.kind === 'storm') {
       list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
       // The cloud layer's base and top, on the far side of the storm from its edge handle; they move only up and down.
@@ -200,6 +203,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     };
     for (const emitter of scene.emitters) {
       if (emitter.kind === 'blast') { include(placed(emitter.positionMetres)); continue; }
+      if (emitter.kind === 'barrage') {
+        const { x, y } = emitter.centreMetres;
+        include({ x: x - emitter.radiusMetres, y: y - emitter.radiusMetres, z: 0 });
+        include({ x: x + emitter.radiusMetres, y: y + emitter.radiusMetres, z: 0 });
+        cachedRounds(emitter).forEach(round => include(placed(round.positionMetres)));
+        continue;
+      }
       if (emitter.kind === 'storm') {
         const { x, y } = emitter.centreMetres;
         const r = emitter.radiusMetres;
@@ -717,7 +727,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return receiver ? [placed(receiver.positionMetres)] : [];
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
-    if (!emitter || emitter.kind === 'storm') return [];
+    if (!emitter || emitter.kind === 'storm' || emitter.kind === 'barrage') return [];
     return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
   }
 
@@ -1092,18 +1102,44 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   function drawBlast(context, emitter, colors, state) {
-    const centre = frame.project(placed(emitter.positionMetres));
     const stroke = state?.strokes.get(emitter.id)?.[0];
-    if (stroke) {
-      const level = Math.exp(-stroke.elapsed / FLASH_FADE_SECONDS);
-      context.fillStyle = colors.flash;
-      context.shadowColor = colors.glow;
-      context.shadowBlur = 30 * level;
-      context.globalAlpha = level;
-      context.beginPath(); context.arc(centre.x, centre.y, 4 + 12 * level, 0, 2 * Math.PI); context.fill();
-      context.shadowBlur = 0;
-      context.globalAlpha = 1;
+    if (stroke) drawBurst(context, frame.project(placed(emitter.positionMetres)), stroke, colors);
+  }
+
+  /** A barrage's reach on the ground, its rounds as small marks, and each round's flash as it lands. */
+  function drawBarrage(context, emitter, colors, selected, state) {
+    const { x, y } = emitter.centreMetres;
+    context.strokeStyle = selected ? colors.accent : colors.end;
+    context.lineWidth = selected ? 1.4 : 1.2;
+    polygon(context, Array.from({ length: DISC_POINTS }, (_, index) => {
+      const angle = 2 * Math.PI * index / DISC_POINTS;
+      const px = x + emitter.radiusMetres * Math.cos(angle);
+      const py = y + emitter.radiusMetres * Math.sin(angle);
+      return { x: px, y: py, z: ground(px, py) };
+    }));
+    context.stroke();
+    context.fillStyle = colors.end;
+    const alpha = context.globalAlpha;
+    context.globalAlpha = alpha * .5;
+    for (const round of cachedRounds(emitter)) {
+      const p = frame.project(placed(round.positionMetres));
+      context.beginPath(); context.arc(p.x, p.y, 1.5, 0, 2 * Math.PI); context.fill();
     }
+    context.globalAlpha = alpha;
+    for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
+  }
+
+  /** A burst's flash, fading after it starts; the emitter's dimming is restored after it. */
+  function drawBurst(context, centre, stroke, colors) {
+    const alpha = context.globalAlpha;
+    const level = Math.exp(-stroke.elapsed / FLASH_FADE_SECONDS);
+    context.fillStyle = colors.flash;
+    context.shadowColor = colors.glow;
+    context.shadowBlur = 30 * level;
+    context.globalAlpha = alpha * level;
+    context.beginPath(); context.arc(centre.x, centre.y, 4 + 12 * level, 0, 2 * Math.PI); context.fill();
+    context.shadowBlur = 0;
+    context.globalAlpha = alpha;
   }
 
   function drawHandle(context, handle, colors, selected, usable) {
@@ -1193,6 +1229,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.globalAlpha = emitter.enabled ? 1 : .35;
       if (emitter.kind === 'storm') drawStorm(context, emitter, colors, selected);
       if (emitter.kind === 'blast') drawBlast(context, emitter, colors, state);
+      else if (emitter.kind === 'barrage') drawBarrage(context, emitter, colors, selected, state);
       else {
         drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
         if (state?.sound && emitter.enabled) drawSoundGlow(context, emitter, colors, state.sound);
@@ -1242,7 +1279,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.font = '11px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
-      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' ? placed(emitter.centreMetres) : emitter.topMetres;
+      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || emitter.kind === 'barrage' ? placed(emitter.centreMetres) : emitter.topMetres;
       const p = frame.project(anchor);
       context.fillText(emitter.name, p.x + 9, p.y - 8);
     }

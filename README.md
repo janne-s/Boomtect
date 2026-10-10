@@ -40,9 +40,12 @@ Thunder and Blast are separate modes, each with its own scene.
   layer.
 - **Blast** — An explosion of a given charge: its shock, the secondary shock
   that follows it, and the roar of its fireball and debris.
+- **Barrage** — Rounds landing over an area in salvos, as artillery fires,
+  each a blast; some may burst in the air.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
-  charge, height, and fireball for a blast.
+  charge, height, and fireball for a blast; size, duration, rounds, rounds per
+  salvo, charge, and fireball for a barrage.
   Each sets several parameters at once.
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).
@@ -189,6 +192,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Blast aging | weak shock of a spherical wave: positive phase grows as `√(1 + σ·ln(r/r₀))`, peak falls by as much; a merged ground front ages as twice the pressure | B/C |
 | Secondary shock | delay by the explosive's detonation velocity and density (Rigby & Gitterman); a 4 % charge's shock | B |
 | Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
+| Barrage | rounds seeded over a disc, salvos spread over the duration, charges lognormal about the mean | C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |

@@ -1,3 +1,4 @@
+import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes } from '../domain/emitters.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
@@ -40,4 +41,17 @@ export function cachedFlashes(emitter) {
   for (const flash of flashes) for (const channel of flash.channels) channel.arcs = arcs(channel.points);
   cache.set(emitter.id, { key, flashes });
   return flashes;
+}
+
+const rounds = new Map();
+
+/** A barrage's rounds, cached by everything except its name and switch. */
+export function cachedRounds(emitter) {
+  const { name, enabled, ...shape } = emitter;
+  const key = JSON.stringify(shape);
+  const cached = rounds.get(emitter.id);
+  if (cached?.key === key) return cached.rounds;
+  const value = barrageRounds(emitter);
+  rounds.set(emitter.id, { key, rounds: value });
+  return value;
 }

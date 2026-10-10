@@ -151,9 +151,32 @@ const fireball = {
   show: item => `${item.fireballDecibels} dB`
 };
 
+const barrageSize = {
+  label: 'Size',
+  read: item => clamp01(logPosition(Math.max(10, item.radiusMetres), [10, 5000])),
+  write: (item, t) => { item.radiusMetres = Math.round(logValue(t, [10, 5000])); },
+  show: item => `${metres(item.radiusMetres)} radius`
+};
+
+const barrageRounds = {
+  label: 'Rounds',
+  read: item => clamp01(logPosition(item.roundCount, [1, 200])),
+  write: (item, t) => { item.roundCount = Math.max(1, Math.round(logValue(t, [1, 200]))); },
+  show: item => String(item.roundCount)
+};
+
+const barrageSalvo = {
+  label: 'Per salvo',
+  read: item => (item.salvoSize - 1) / 23,
+  write: (item, t) => { item.salvoSize = 1 + Math.round(t * 23); },
+  show: item => String(item.salvoSize),
+  steps: 23
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
   if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
+  if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];
   return [charge, blastHeight, fireball];
 }
