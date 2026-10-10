@@ -51,7 +51,13 @@ Thunder and Blast are separate modes, each with its own scene.
 
 ## Listening
 
-- **Play** — Flashes the sources and plays what the listening microphones hear.
+- **Render** and **Play** — The button renders the scene when it has changed,
+  then plays it: it flashes the sources and plays what the listening microphones
+  hear.
+- **Auto** — Renders again soon after every change. Off, changes wait for
+  Render.
+- **In progress** — Rendering and loading are listed in the corner of the
+  scene while they run.
 - **Real delay** — On: the sound arrives as late as it would outdoors, and the
   clock in the corner counts from the flash, its bar brightening when the sound
   arrives. Off: the silence before the first sound is skipped, and the channel
@@ -114,9 +120,10 @@ Thunder and Blast are separate modes, each with its own scene.
   origin and the spacing of its heights.
 - **Find** — Finds a place by name, or takes "latitude, longitude", and loads
   its terrain.
-- **Load terrain** — Fetches the elevation and saves it in the scene, so the
-  scene opens the same way later without a connection. While terrain is on, a
-  scene that grows past its edge loads a wider area around the same origin.
+- **Load terrain** — Fetches the elevation, at least as wide as the scene, and
+  saves it in the scene, so the scene opens the same way later without a
+  connection. Place names follow on their own. While terrain is on, a scene that
+  grows past its edge loads a wider area around the same origin.
 - **Terrain** — Microphones, blasts, and ground points stand on the ground;
   heights in the cloud are above the ground at the origin. The panel shows both
   heights above the ground and above sea level.

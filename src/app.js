@@ -11,7 +11,7 @@ import { applyEar } from './domain/ear.js';
 import { encodeFloat32Wav } from './domain/wav.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
-import { captureTerrain, searchPlace } from './ui/terrain-loader.js';
+import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes, currentSurface, useTerrain } from './ui/geometry-cache.js';
@@ -70,7 +70,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, names: true, clouds: true, mode: 'thunder',
+  realDelay: true, wavefront: false, contours: true, names: true, clouds: true, autoRender: true, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeView: { ...DEFAULT_CUBE_VIEW },
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -192,16 +192,43 @@ function commit(change) {
   if (state.soloId && !findItem('receiver', state.soloId)) state.soloId = null;
   invalidateResults();
   refreshPanel();
-  scheduleRender();
+  requestRender();
 }
 
 function invalidateResults() {
   player.stop();
   state.results = null;
-  $('play').disabled = true;
   $('export').disabled = true;
-  $('play').textContent = 'Play';
-  $('play').setAttribute('aria-pressed', 'false');
+  syncPlayButton();
+}
+
+/**
+ * Operations in progress, listed in the corner of the scene: rendering, terrain, place names. Each
+ * key holds one line; null removes it.
+ */
+const operations = new Map();
+
+function operation(key, text) {
+  if (text === null) operations.delete(key); else operations.set(key, text);
+  $('cube-operations').replaceChildren(...[...operations.values()].map(line => element('li', '', line)));
+  if (key === 'render') syncPlayButton();
+}
+
+/** One button for the result: Render when there is none, Rendering while it is made, then Play and Stop. */
+function syncPlayButton() {
+  const button = $('play');
+  const playing = player.playing();
+  const rendering = operations.has('render');
+  button.textContent = playing ? 'Stop' : rendering ? 'Rendering' : state.results ? 'Play' : 'Render';
+  button.disabled = !playing && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
+  button.setAttribute('aria-pressed', playing ? 'true' : 'false');
+}
+
+/** Renders after a change: soon when Auto is on, otherwise when the button is pressed. */
+function requestRender() {
+  clearTimeout(state.renderTimer);
+  if (state.preferences.autoRender) scheduleRender();
+  else syncPlayButton();
 }
 
 function scheduleRender() {
@@ -213,6 +240,7 @@ function stopWorkers() {
   state.workers.forEach(worker => worker.terminate());
   state.workers = [];
   clearInterval(state.watchdog);
+  operation('render', null);
 }
 
 /**
@@ -272,7 +300,7 @@ function startRender() {
   }
   const started = performance.now();
   state.heard = performance.now();
-  setStatus('Tracing paths…');
+  operation('render', 'Tracing paths');
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
     if (revision !== state.revision || performance.now() - state.heard < RENDER_STALL_SECONDS * 1000) return;
@@ -321,12 +349,12 @@ function renderRanges(revision, scene, arrivals, { sources, workerCount, started
   const progress = new Array(jobs.length).fill(0);
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
-  setStatus('Rendering…');
+  operation('render', 'Rendering');
   jobs.forEach((job, index) => {
     spawnWorker(revision, { type: 'render', ...job }, {
       onProgress: fraction => {
         progress[index] = fraction;
-        setStatus(`Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / jobs.length * 100)} %`);
+        operation('render', `Rendering ${Math.round(progress.reduce((a, b) => a + b, 0) / jobs.length * 100)} %`);
       },
       onResult: data => {
         parts[index] = data.segments;
@@ -364,7 +392,7 @@ function finishRender(scene, arrivals, parts, info) {
   state.envelopes = envelopes([...state.results.values()]);
   earCache.clear();
   setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
-  $('play').disabled = false;
+  operation('render', null);
   $('export').disabled = false;
   drawResults();
   drawInfo();
@@ -833,25 +861,56 @@ function scheduleTerrainCoverage() {
   terrainCoverageTimer = setTimeout(async () => {
     const { terrain } = state.scene;
     if (!terrain?.enabled || terrainCoverageRunning) return;
-    const maximum = PARAMETERS.terrainExtentMetres.maximum;
-    const needed = Math.min(maximum, Math.ceil(2 * sceneHalfExtentMetres(state.scene) / 500) * 500);
+    const needed = neededTerrainExtentMetres(state.scene);
     if (needed <= terrain.extentMetres) return;
     terrainCoverageRunning = true;
     try {
       const draft = { place: terrain.place, latitude: terrain.latitude, longitude: terrain.longitude, extentMetres: needed, cellMetres: state.preferences.terrainDraft.cellMetres };
-      const wider = await captureTerrain(draft, { onProgress: share => setStatus(`Widening the terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`), onNames: () => setStatus('Loading place names…') });
+      const wider = await captureTerrain(draft, {
+        onProgress: share => operation('terrain', `Widening terrain to ${formatMetres(needed)} · ${Math.round(share * 100)} %`)
+      });
       Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
       savePreferences();
+      // The names already found stay until those of the wider area arrive.
       commit(next => {
         const kept = next.terrain && Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, next.terrain[key]]));
-        next.terrain = { ...wider, ...kept };
+        next.terrain = { ...wider, ...kept, names: next.terrain?.names ?? [] };
       });
+      loadPlaceNames(state.scene.terrain);
     } catch (error) {
       setStatus(`The terrain could not be widened: ${error.message}`, true);
     } finally {
       terrainCoverageRunning = false;
+      operation('terrain', null);
     }
   }, TERRAIN_COVERAGE_DELAY_MILLISECONDS);
+}
+
+/**
+ * The side of terrain, in whole half kilometres up to the largest, that holds the whole scene, with a
+ * margin: channels drawn again over the terrain reach a little farther than over level ground.
+ */
+const neededTerrainExtentMetres = (scene, margin = 1) => Math.min(PARAMETERS.terrainExtentMetres.maximum, Math.ceil(2 * margin * sceneHalfExtentMetres(scene) / 500) * 500);
+const TERRAIN_LOAD_MARGIN = 1.25;
+
+/**
+ * Place names for a terrain, fetched last and on their own: the terrain and the render do not wait for
+ * them, they change nothing that is heard, so they join the scene without a new render, and names
+ * already shown stay when the service cannot be reached.
+ */
+async function loadPlaceNames(terrain) {
+  operation('names', 'Loading place names');
+  let names = null;
+  try {
+    names = await fetchPlaceNames(terrain);
+  } finally {
+    operation('names', null);
+  }
+  if (!names) { setStatus('The place names could not be loaded; the names already shown stay.', true); return; }
+  if (state.scene.terrain?.heights !== terrain.heights) return;
+  state.scene.terrain.names = names;
+  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  redrawViews();
 }
 
 /** Where and how finely terrain is captured next; editing it does not change the loaded terrain. */
@@ -861,13 +920,20 @@ function terrainPanel(container) {
   const setDraft = change => { Object.assign(draft, change); savePreferences(); };
   const load = async trigger => {
     trigger.disabled = true;
+    // At least the area the scene needs, so that the terrain is not widened again right after.
+    const extentMetres = Math.max(draft.extentMetres, neededTerrainExtentMetres(state.scene, TERRAIN_LOAD_MARGIN));
     try {
-      const terrain = await captureTerrain(draft, { onProgress: share => setStatus(`Loading terrain ${Math.round(share * 100)} %`), onNames: () => setStatus('Loading place names…') });
+      const terrain = await captureTerrain({ ...draft, extentMetres }, {
+        onProgress: share => operation('terrain', `Loading terrain ${formatMetres(extentMetres)} · ${Math.round(share * 100)} %`)
+      });
+      setDraft({ extentMetres });
       commit(next => { next.terrain = terrain; });
+      loadPlaceNames(state.scene.terrain);
     } catch (error) {
       setStatus(`The terrain could not be loaded: ${error.message}`, true);
     } finally {
       trigger.disabled = false;
+      operation('terrain', null);
     }
   };
   const mapButton = button('', () => openPlaceDialog(load), { title: 'Choose on a map' });
@@ -878,9 +944,10 @@ function terrainPanel(container) {
     label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
-      setStatus(`Finding ${text}…`);
+      operation('place', `Finding ${text}`);
       try {
         const found = await searchPlace(text);
+        operation('place', null);
         if (!found) { setStatus(`No place found for ${text}`, true); return; }
         setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
         setStatus(found.name);
@@ -889,6 +956,7 @@ function terrainPanel(container) {
         setStatus(`The place search failed: ${error.message}`, true);
       } finally {
         trigger.disabled = false;
+        operation('place', null);
       }
     }
   });
@@ -937,6 +1005,7 @@ function openPlaceDialog(load) {
 
 /** Moves the map to a place found by name; false when none is found. */
 async function showFoundPlace(text) {
+  operation('place', `Finding ${text}`);
   try {
     const found = await searchPlace(text);
     if (!found) { setStatus(`No place found for ${text}`, true); return false; }
@@ -947,6 +1016,8 @@ async function showFoundPlace(text) {
   } catch (error) {
     setStatus(`The place search failed: ${error.message}`, true);
     return false;
+  } finally {
+    operation('place', null);
   }
 }
 
@@ -1306,13 +1377,11 @@ function drawTimeline(seconds) {
 }
 
 function showStopped() {
-  $('play').textContent = 'Play';
-  $('play').setAttribute('aria-pressed', 'false');
+  syncPlayButton();
 }
 
 function showPlaying() {
-  $('play').textContent = 'Stop';
-  $('play').setAttribute('aria-pressed', 'true');
+  syncPlayButton();
   startAnimation();
 }
 
@@ -1350,6 +1419,13 @@ $('play').addEventListener('click', async () => {
   if (player.playing()) {
     player.stop();
     showStopped();
+    return;
+  }
+  if (!state.results) {
+    if (!operations.has('render')) {
+      clearTimeout(state.renderTimer);
+      startRender();
+    }
     return;
   }
   const unlocked = player.unlock(state.scene.render.sampleRate);
@@ -1396,7 +1472,7 @@ $('open-file').addEventListener('change', async () => {
     savePreferences();
     invalidateResults();
     refreshPanel();
-    scheduleRender();
+    requestRender();
     setStatus(`Opened ${file.name}`);
   } catch (error) {
     setStatus(`Could not open ${file.name}: ${error.message}`, true);
@@ -1463,9 +1539,15 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   savePreferences();
   invalidateResults();
   refreshPanel();
-  startRender();
+  if (state.preferences.autoRender) startRender();
 }));
 
+$('auto-render').checked = state.preferences.autoRender;
+$('auto-render').addEventListener('change', () => {
+  state.preferences.autoRender = $('auto-render').checked;
+  savePreferences();
+  if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender();
+});
 $('clouds').checked = state.preferences.clouds;
 $('clouds').addEventListener('change', () => { state.preferences.clouds = $('clouds').checked; savePreferences(); redrawViews(); });
 $('names').checked = state.preferences.names;
@@ -1495,4 +1577,4 @@ $('add-receiver').addEventListener('click', () => commit(scene => {
 window.addEventListener('resize', () => drawResults());
 
 refreshPanel();
-startRender();
+if (state.preferences.autoRender) startRender(); else syncPlayButton();

@@ -40,17 +40,18 @@ export async function searchPlace(text, { signal } = {}) {
 }
 
 /**
- * Named places, peaks, and lakes inside a square around a centre, from OpenStreetMap through the
- * Overpass API, in the scene frame. An empty list when the service cannot be reached.
+ * Named places, peaks, and lakes inside a captured terrain's square, from OpenStreetMap through the
+ * Overpass API, in the scene frame. Null when the service cannot be reached, so that names already
+ * shown can be kept.
  */
-async function placeNames({ latitude, longitude, extentMetres }, signal) {
+export async function fetchPlaceNames({ latitude, longitude, extentMetres }, signal) {
   const { north, east } = metresPerDegree(latitude);
   const half = extentMetres / 2;
   const box = [latitude - half / north, longitude - half / east, latitude + half / north, longitude + half / east].map(value => value.toFixed(6)).join(',');
   const query = `[out:json][timeout:25];(node["place"~"^(city|town|village|hamlet|locality)$"]["name"](${box});node["natural"="peak"]["name"](${box});way["natural"="water"]["name"](${box});relation["natural"="water"]["name"](${box}););out center ${MAXIMUM_NAMES};`;
   try {
     const response = await fetch(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: query }), signal });
-    if (!response.ok) return [];
+    if (!response.ok) return null;
     const { elements = [] } = await response.json();
     return elements.flatMap(element => {
       const tags = element.tags ?? {};
@@ -66,7 +67,7 @@ async function placeNames({ latitude, longitude, extentMetres }, signal) {
     }).filter(item => item.name).slice(0, MAXIMUM_NAMES);
   } catch (error) {
     if (signal?.aborted) throw error;
-    return [];
+    return null;
   }
 }
 
@@ -82,7 +83,7 @@ async function decodeTile(response) {
  * Fetches the Terrarium tiles around a centre and returns the captured terrain for the scene.
  * Adapted from Echotect `captureTerrain` (commit cb712ef) to a square capture around a point.
  */
-export async function captureTerrain({ latitude, longitude, extentMetres, cellMetres, place }, { signal, onProgress, onNames } = {}) {
+export async function captureTerrain({ latitude, longitude, extentMetres, cellMetres, place }, { signal, onProgress } = {}) {
   const plan = terrainPlan({ latitude, longitude, extentMetres, cellMetres });
   const { tiles, zoom } = plan;
   const entries = [];
@@ -105,12 +106,11 @@ export async function captureTerrain({ latitude, longitude, extentMetres, cellMe
     return byKey.get(`${Math.floor(x / TILE_SIZE)}/${Math.floor(y / TILE_SIZE)}`)[(y % TILE_SIZE) * TILE_SIZE + (x % TILE_SIZE)];
   };
   const values = buildHeightfield(plan, elevationAt);
-  onNames?.();
-  const names = await placeNames({ latitude, longitude, extentMetres: plan.extentMetres }, signal);
+  // Place names come later, from `fetchPlaceNames`, so that the terrain is in use without waiting for them.
   return {
     ...TERRAIN_DEFAULTS,
     place: (place ?? '').slice(0, 120),
-    names,
+    names: [],
     latitude,
     longitude,
     extentMetres: plan.extentMetres,

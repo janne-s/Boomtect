@@ -17,6 +17,7 @@
         <button type="button" role="radio" data-mode="blast" aria-checked="false">Blast</button>
       </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
+      <label class="toggle" title="Off: render when the button says Render"><input type="checkbox" id="auto-render" checked /> Auto</label>
       <label class="toggle" title="Off: skip the silence before the first sound"><input type="checkbox" id="real-delay" checked /> Real delay</label>
       <label class="toggle"><input type="checkbox" id="wavefront" /> Wavefront</label>
       <label class="toggle" id="names-toggle" hidden><input type="checkbox" id="names" /> Names</label>
@@ -41,9 +42,12 @@
             Place names and search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
           </div>
         </div>
-        <div class="overlay overlay-timeline" id="cube-timeline" hidden>
-          <span id="cube-timeline-time"></span>
-          <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
+        <div class="overlay overlay-corner">
+          <ul class="operations" id="cube-operations" aria-live="polite"></ul>
+          <div class="overlay-timeline" id="cube-timeline" hidden>
+            <span id="cube-timeline-time"></span>
+            <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
+          </div>
         </div>
         <div class="overlay overlay-bottom">
           <div class="cube-orientation" id="cube-orientation" hidden>
