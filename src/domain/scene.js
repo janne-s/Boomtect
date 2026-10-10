@@ -3,16 +3,17 @@ import {
 } from './constants.js';
 import { EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
+import { BODIES, BODY_TYPES } from './flight.js';
 import { GROUND_TYPES } from './ground.js';
 import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 16;
+export const SCENE_VERSION = 17;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
-export const MODES = Object.freeze(['thunder', 'blast']);
+export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Minimum depth of a storm's cloud layer. */
@@ -95,9 +96,17 @@ export const PARAMETERS = Object.freeze({
   chargeSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Charge spread σ', reliability: 'C' },
   airburstShare: { minimum: 0, maximum: 1, unit: '', label: 'Airbursts', reliability: null },
   airburstHeightMetres: { minimum: 2, maximum: 1000, unit: 'm', label: 'Airburst height', reliability: null },
+  headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Heading', reliability: null },
+  climbDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Climb', reliability: null },
+  mach: { minimum: .3, maximum: 30, unit: '', label: 'Mach', reliability: null },
+  accelerationMetresPerSecondSquared: { minimum: -50, maximum: 100, unit: 'm/s²', label: 'Acceleration', reliability: null },
+  turnDegreesPerSecond: { minimum: -10, maximum: 10, unit: '°/s', label: 'Turn', reliability: null },
+  flightSeconds: { minimum: 1, maximum: 600, unit: 's', label: 'Flight time', reliability: null },
+  lengthMetres: { minimum: 1, maximum: 300, unit: 'm', label: 'Length', reliability: 'B' },
+  shapeFactor: { minimum: .01, maximum: 2, unit: '', label: 'Shape factor K_S', reliability: 'B' },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
-  riseTimeSeconds: { minimum: 5e-6, maximum: 1e-3, unit: 's', label: 'Rise time', reliability: 'C' },
+  riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
   headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
@@ -126,6 +135,8 @@ const BARRAGE_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'roundCount', 'salvoSize', 'salvoSpreadSeconds', 'chargeKilograms', 'chargeSpread',
   'airburstShare', 'airburstHeightMetres', ...BLAST_SOURCE_NUMBERS
 ]);
+
+const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
 export class SceneError extends Error {}
 
@@ -251,6 +262,30 @@ export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 202610
   };
 }
 
+/**
+ * A reconnaissance aircraft at Mach 1.99 and 15 km, Carlson's first sample problem, flying east
+ * over the origin. Booms rise in a few milliseconds (class C until verified; turbulence and
+ * molecular relaxation set it).
+ */
+export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013) {
+  const body = BODIES.reconnaissance;
+  return {
+    id, name, kind: 'flight', enabled: true, seed,
+    startSeconds: 0,
+    body: 'reconnaissance',
+    startMetres: { x: -40000, y: 0, z: 15000 },
+    headingDegrees: 90,
+    climbDegrees: 0,
+    mach: 1.99,
+    accelerationMetresPerSecondSquared: 0,
+    turnDegreesPerSecond: 0,
+    durationSeconds: 120,
+    lengthMetres: body.lengthMetres,
+    shapeFactor: body.shapeFactor,
+    riseTimeSeconds: .002
+  };
+}
+
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
@@ -259,6 +294,7 @@ export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
   const receiver = defaultReceiver();
   if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
+  if (mode === 'sonic') receiver.positionMetres = { x: 0, y: 0, z: 1.7 };
   return {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
@@ -272,7 +308,7 @@ export function defaultScene(mode = 'thunder') {
     },
     ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15 },
     terrain: null,
-    emitters: [blast ? defaultBlast() : defaultLightning()],
+    emitters: [blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning()],
     receivers: [receiver],
     render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false }
   };
@@ -319,6 +355,13 @@ function emitter(value, index) {
     check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
     check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
     return { ...common, positionMetres: point(value.positionMetres, `${path}.positionMetres`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, BLAST_NUMBERS, path) };
+  }
+  if (value.kind === 'flight') {
+    check(BODY_TYPES.includes(value.body), `${path}.body is not supported.`);
+    return {
+      ...common, body: value.body, startMetres: point(value.startMetres, `${path}.startMetres`),
+      durationSeconds: number(value.durationSeconds, 'flightSeconds', `${path}.durationSeconds`), ...numbers(value, FLIGHT_NUMBERS, path)
+    };
   }
   if (value.kind === 'barrage') {
     check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);

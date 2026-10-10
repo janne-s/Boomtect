@@ -1,0 +1,125 @@
+import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { inShadow, pathProfile, rayBetween, travelSeconds } from './refraction.js';
+
+/**
+ * A body in supersonic flight and the sonic booms it leaves at a receiver.
+ *
+ * Each boom leaves the flight path where the arrival time T(t) = t + travel(x(t) → receiver) is
+ * stationary: there the ray to the receiver leaves on the Mach cone (class A, the stationary
+ * phase of the moving source; with the travel time along refracted rays, the Mach cone bends with
+ * the air). A minimum of T is a boom; where none exists the body is subsonic or the air turns the
+ * cone's rays away before the ground (Mach cutoff), which follows from the rays themselves.
+ *
+ * Its overpressure and duration follow Carlson's simplified method (NASA TP-1122, 1978, eqs. 1–2,
+ * class B; checked against its sample problems, 74 Pa and 0.17 s for problem 1):
+ *   Δp = K_p·K_R·√(p_v·p_g)·(M² − 1)^⅛·r^(−¾)·l^¾·K_S,  Δt = K_t·(3.42/a_v)·M/(M² − 1)^⅜·r^¼·l^¾·K_S,
+ * with the ray's length r in place of his effective altitude, K_p = K_t = 1 (his charts' atmospheric
+ * factors, 0.7–1.4 in his samples; class C), and the ground reflection K_R left to the ground model,
+ * so that it is counted once. Where the flight accelerates or turns, rays from neighbouring points
+ * converge: the boom grows as √(T″ of straight, steady flight / T″), up to FOCUS_LIMIT (class B for
+ * the stationary-phase law, class C for the limit, where ray theory fails at a caustic).
+ */
+
+/**
+ * Bodies from Carlson's sample problems: length l and shape factor K_S (which replaces Whitham's
+ * F-function). The rocket's boom is dominated by its exhaust plume (Apollo launch vehicle at M 4.08
+ * and 36 km; K_S = 0.68 reproduces both his 184 Pa and 3.90 s).
+ */
+export const BODIES = Object.freeze({
+  reconnaissance: Object.freeze({ label: 'Reconnaissance aircraft', lengthMetres: 32.7, shapeFactor: .087 }),
+  bomber: Object.freeze({ label: 'Medium bomber', lengthMetres: 30, shapeFactor: .088 }),
+  rocket: Object.freeze({ label: 'Launch vehicle', lengthMetres: 104.5, shapeFactor: .68 }),
+  custom: Object.freeze({ label: 'Custom', lengthMetres: null, shapeFactor: null })
+});
+export const BODY_TYPES = Object.freeze(Object.keys(BODIES));
+
+/** Time step of the flight path, seconds, and the most steps kept. */
+const STEP_SECONDS = .05;
+const MAXIMUM_STEPS = 12000;
+/** The growth of a focused boom over the steady one, at most (class C). */
+export const FOCUS_LIMIT = 5;
+/** Below this speed the body has stopped. */
+const STOPPED_METRES_PER_SECOND = 1;
+
+/** The speed of sound the body flies against: the layered air's, or the ground's in homogeneous air, as the sound travels. */
+const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
+
+/**
+ * The flight path: positions, times, and velocities every STEP_SECONDS from the onset. The speed
+ * starts at the Mach number in the air at the start height and changes at the acceleration; the
+ * heading turns at the turn rate; the path climbs at its angle. It ends at its duration or the ground.
+ */
+export function flightPath(flight, air) {
+  const steps = Math.min(MAXIMUM_STEPS, Math.max(2, Math.ceil(flight.durationSeconds / STEP_SECONDS)));
+  const step = flight.durationSeconds / steps;
+  const climb = flight.climbDegrees * Math.PI / 180;
+  const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step };
+  let { x, y, z } = flight.startMetres;
+  let speed = flight.mach * soundSpeedAt(air, z);
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index * step;
+    const heading = (flight.headingDegrees + flight.turnDegreesPerSecond * t) * Math.PI / 180;
+    const vx = speed * Math.cos(climb) * Math.sin(heading);
+    const vy = speed * Math.cos(climb) * Math.cos(heading);
+    const vz = speed * Math.sin(climb);
+    path.seconds.push(flight.startSeconds + t); path.x.push(x); path.y.push(y); path.z.push(z);
+    path.vx.push(vx); path.vy.push(vy); path.vz.push(vz); path.speed.push(speed);
+    x += vx * step; y += vy * step; z += vz * step;
+    speed += flight.accelerationMetresPerSecondSquared * step;
+    if (z < 0 || speed < STOPPED_METRES_PER_SECOND) break;
+  }
+  return path;
+}
+
+/** Carlson's bow-shock overpressure, Pa, and signature duration, s, at a distance (see the module note). */
+export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicleSoundSpeed, lengthMetres, shapeFactor, distanceMetres, pressureFactor = 1, durationFactor = 1, reflectionFactor = 1 }) {
+  const beta = mach * mach - 1;
+  return {
+    overpressurePa: pressureFactor * reflectionFactor * Math.sqrt(vehiclePressurePa * groundPressurePa) * beta ** .125 * distanceMetres ** -.75 * lengthMetres ** .75 * shapeFactor,
+    durationSeconds: durationFactor * 3.42 / vehicleSoundSpeed * mach / beta ** .375 * distanceMetres ** .25 * lengthMetres ** .75 * shapeFactor
+  };
+}
+
+/**
+ * The booms of a flight path at a receiver: where each leaves the path, when, along which ray, with
+ * its free-field overpressure and duration there and its focusing. The receiver is in the frame of
+ * the path (heights above the datum).
+ */
+export function flightBooms(path, flight, receiver, profile, air) {
+  const count = path.seconds.length;
+  if (count < 3) return [];
+  const pointAt = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
+  const arrival = new Float64Array(count);
+  for (let index = 0; index < count; index += 1) {
+    const point = pointAt(index);
+    arrival[index] = path.seconds[index] + travelSeconds(pathProfile(profile, point, receiver), point, receiver);
+  }
+  const booms = [];
+  const h = path.step;
+  for (let index = 1; index < count - 1; index += 1) {
+    if (!(arrival[index] < arrival[index - 1] && arrival[index] <= arrival[index + 1])) continue;
+    // The minimum between the samples, by a parabola through the three.
+    const curvature = (arrival[index + 1] - 2 * arrival[index] + arrival[index - 1]) / (h * h);
+    const shift = curvature > 0 ? Math.max(-.5, Math.min(.5, (arrival[index - 1] - arrival[index + 1]) / (2 * curvature * h * h))) : 0;
+    const blend = values => values[index] + (shift >= 0 ? (values[index + 1] - values[index]) * shift : (values[index] - values[index - 1]) * shift);
+    const point = { x: blend(path.x), y: blend(path.y), z: blend(path.z) };
+    const along = pathProfile(profile, point, receiver);
+    if (along.gradient < 0 && inShadow(along, point, receiver)) continue;
+    const ray = rayBetween(along, point, receiver);
+    const speed = blend(path.speed);
+    const soundSpeed = soundSpeedAt(air, point.z);
+    const mach = speed / soundSpeed;
+    if (!(mach > 1)) continue;
+    const boom = carlsonBoom({
+      mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
+      vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
+    });
+    // Steady straight flight at this Mach number and distance: T″ = v²(1 − 1/M²)/(c·r), c the ray's mean speed.
+    const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
+    const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
+    const focus = Math.min(FOCUS_LIMIT, Math.sqrt(steady / Math.max(curvature, steady / FOCUS_LIMIT ** 2)));
+    booms.push({ point, emissionSeconds: blend(path.seconds), ray, along, mach, focus, ...boom });
+  }
+  return booms;
+}

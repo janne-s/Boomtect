@@ -3,7 +3,7 @@
  * x east, y north, z up, with the ground plane at z = 0.
  */
 
-export const MODEL_VERSION = '21.0.0';
+export const MODEL_VERSION = '22.0.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 
@@ -22,5 +22,6 @@ export const STORM_SEGMENT_BUDGET = 600000;
 export const MAXIMUM_SOURCES = 1500000;
 export const MAXIMUM_EMITTERS = 8;
 export const MAXIMUM_RECEIVERS = 8;
-export const SCENE_EXTENT_METRES = 50000;
-export const MAXIMUM_HEIGHT_METRES = 20000;
+/** Flights cover tens of kilometres, and meteors come from the upper atmosphere. */
+export const SCENE_EXTENT_METRES = 150000;
+export const MAXIMUM_HEIGHT_METRES = 120000;

@@ -25,6 +25,8 @@ export function sourceTable(sources) {
     /** A secondary shock's delay factors (`explosives.js`); 0 for any other source. */
     secondaryDelaySeconds: new Float64Array(length),
     secondaryCubeRoot: new Float64Array(length),
+    /** 1 for a flight, whose booms the renderer finds per receiver. */
+    flight: new Uint8Array(length),
     durationSeconds: new Float64Array(length),
     decay: new Float64Array(length),
     spanSeconds: new Float64Array(length),
@@ -50,6 +52,7 @@ export function sourceTable(sources) {
     table.amplitudePaMetres[index] = source.amplitudePaMetres;
     table.pulse[index] = PULSE_CODES[source.pulse];
     table.noiseSeed[index] = source.noiseSeed ?? 0;
+    table.flight[index] = source.flight ? 1 : 0;
     if (source.secondaryShock) {
       table.secondaryDelaySeconds[index] = source.secondaryShock.delaySeconds;
       table.secondaryCubeRoot[index] = source.secondaryShock.cubeRootKilograms;

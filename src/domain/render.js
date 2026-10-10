@@ -7,6 +7,7 @@ import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestS
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
+import { flightBooms, flightPath } from './flight.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
@@ -140,6 +141,8 @@ export function prepareScene(scene) {
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const sources = sourceTable(emitterSources(emitter, scene.air, surface).sources);
+    // A flight's booms leave its path where each receiver's arrival is stationary; its echoes are not traced.
+    if (emitter.kind === 'flight') return { emitter, sources, cells: null, flightPath: flightPath(emitter, scene.air) };
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
@@ -223,7 +226,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
     roar: new Uint8Array(capacity),
     /** The time a scattered echo spreads over, seconds, from just before its arrival. */
-    timeSpread: new Float64Array(capacity)
+    timeSpread: new Float64Array(capacity),
+    /** Height of the point the path leaves from: its source's, or where a boom leaves its flight path. */
+    height: new Float64Array(capacity)
   };
   let room = capacity;
   const grow = () => {
@@ -255,7 +260,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.spreadMetres[index] = path.spreadMetres / impedance;
     paths.creepNepers[index] = path.creepNepers ?? 0;
     paths.creepRadius[index] = path.creepRadius ?? 0;
-    paths.seconds[index] = sources.emissionSeconds[sourceIndex] + path.seconds
+    paths.seconds[index] = (path.emissionSeconds ?? sources.emissionSeconds[sourceIndex]) + path.seconds
       + (sources.secondaryDelaySeconds[sourceIndex] > 0 ? secondaryShockDelay(sources.secondaryDelaySeconds[sourceIndex], sources.secondaryCubeRoot[sourceIndex], path.metres) : 0);
     // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
@@ -268,10 +273,16 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     paths.endSine[2 * index + 1] = path.receiverSine ?? 0;
     paths.sourceHeight[index] = path.sourceHeight ?? 0;
     paths.timeSpread[index] = path.timeSpread ?? 0;
+    const from = path.from ?? sourcePosition(sources, sourceIndex);
+    paths.height[index] = from.z;
     paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
-      : foliageMetres(path.metres, sources.z[sourceIndex] - surface.heightAt(sources.x[sourceIndex], sources.y[sourceIndex]), receiverLift, treeHeight);
+      : foliageMetres(path.metres, from.z - surface.heightAt(from.x, from.y), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
-    if (sources.relaxationRadius[sourceIndex] > 0) {
+    if (path.durationSeconds !== undefined) {
+      // A boom brings its own duration and pressure; the row's amplitude is 1 Pa·m.
+      paths.duration[index] = path.durationSeconds;
+      paths.amplitudeScale[index] = path.overpressurePa * path.spreadMetres;
+    } else if (sources.relaxationRadius[sourceIndex] > 0) {
       const pulse = weakShockPulse(sources.relaxationRadius[sourceIndex], sources.sourcePeriodSeconds[sourceIndex], path.metres, sources.limitRadii[sourceIndex]);
       paths.duration[index] = pulse.durationSeconds;
       paths.amplitudeScale[index] = pulse.amplitudeScale;
@@ -288,6 +299,18 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   };
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
+    if (prepared.flightPath) {
+      tick();
+      for (const boom of flightBooms(prepared.flightPath, prepared.emitter, receiverPosition, profile, scene.air)) {
+        const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
+        add(emitterIndex, 0, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
+        if (!ground) continue;
+        // Its ground reflection carries Carlson's pressure over its own length; the ground model reflects it (K_R).
+        const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
+        if (reflected) add(emitterIndex, 0, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
+      }
+      return;
+    }
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
       tick();
       const position = sourcePosition(sources, sourceIndex);
@@ -467,7 +490,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   };
   for (let index = 0; index < paths.count; index += 1) {
     const sources = pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]);
-    heights[index] = sources.z[paths.source[index]];
+    heights[index] = paths.height[index];
     // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
@@ -525,14 +548,14 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     // roar is framed as an impulse.
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
-        : sources.spanSeconds[source];
+        : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
     longestSpan = Math.max(longestSpan, span + paths.timeSpread[index]);
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
       largestRadius = Math.max(largestRadius, paths.creepRadius[index]);
     }
-    highest = Math.max(highest, sources.z[source]);
+    highest = Math.max(highest, paths.height[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
   // Soft ground lags the creeping response up to SOFT_CREEP_LAG times as much as rigid ground, which spreads it.
@@ -707,7 +730,7 @@ function shadowFromExponent(loss, lag, beta, floor) {
 function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ) {
   const channels = spectra.length;
   const metres = paths.metres[index];
-  if (plan.layered) pathAbsorption(plan.layered, sources.z[sourceIndex], receiverZ);
+  if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
   const { absorption, layered, foliage, smoothing, gridPosition, binHz, size } = plan;
   // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
   const underCanopy = foliage ? Math.min(paths.foliageMetres[index], MAXIMUM_FOLIAGE_METRES) : 0;
@@ -752,7 +775,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
       const lower = Math.min(TURBULENCE_KNOTS - 2, Math.floor(position));
       const deviate = knots[lower] + (knots[lower + 1] - knots[lower]) * (position - lower);
-      const phase = turbulent ? deviate * Math.sqrt(turbulentPhaseVariance(frequency, metres, sources.z[sourceIndex], receiverHeight, scene.air, speed)) : 0;
+      const phase = turbulent ? deviate * Math.sqrt(turbulentPhaseVariance(frequency, metres, paths.height[index], receiverHeight, scene.air, speed)) : 0;
       groundRe[point] = q[0] * Math.cos(phase) - q[1] * Math.sin(phase);
       groundIm[point] = q[0] * Math.sin(phase) + q[1] * Math.cos(phase);
     }

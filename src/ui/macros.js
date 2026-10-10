@@ -173,10 +173,60 @@ const barrageSalvo = {
   steps: 23
 };
 
+const machNumber = {
+  label: 'Mach',
+  read: item => clamp01(logPosition(item.mach, [.5, 30])),
+  write: (item, t) => { item.mach = +logValue(t, [.5, 30]).toPrecision(3); },
+  show: item => item.mach.toFixed(2)
+};
+
+const flightHeight = {
+  label: 'Height',
+  read: item => clamp01(logPosition(Math.max(100, item.startMetres.z), [100, 100000])),
+  write: (item, t) => { item.startMetres = { ...item.startMetres, z: Math.round(logValue(t, [100, 100000])) }; },
+  show: item => metres(item.startMetres.z)
+};
+
+const flightHeading = {
+  label: 'Heading',
+  read: item => item.headingDegrees / 360,
+  write: (item, t) => { item.headingDegrees = Math.round(t * 360) % 360; },
+  show: item => `${Math.round(item.headingDegrees)}°`
+};
+
+const flightClimb = {
+  label: 'Climb',
+  read: item => (item.climbDegrees + 90) / 180,
+  write: (item, t) => { item.climbDegrees = Math.round(t * 180 - 90); },
+  show: item => `${item.climbDegrees}°`
+};
+
+const flightAcceleration = {
+  label: 'Acceleration',
+  read: item => (item.accelerationMetresPerSecondSquared + 50) / 150,
+  write: (item, t) => { item.accelerationMetresPerSecondSquared = Math.round(t * 150 - 50); },
+  show: item => `${item.accelerationMetresPerSecondSquared} m/s²`
+};
+
+const flightTurn = {
+  label: 'Turn',
+  read: item => (item.turnDegreesPerSecond + 10) / 20,
+  write: (item, t) => { item.turnDegreesPerSecond = +(t * 20 - 10).toFixed(1); },
+  show: item => `${item.turnDegreesPerSecond}°/s`
+};
+
+const flightTime = {
+  label: 'Flight time',
+  read: item => clamp01(logPosition(item.durationSeconds, [1, 600])),
+  write: (item, t) => { item.durationSeconds = Math.max(1, Math.round(logValue(t, [1, 600]))); },
+  show: item => `${item.durationSeconds} s`
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
   if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
+  if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];
   return [charge, blastHeight, fireball];
 }

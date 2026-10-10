@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
@@ -17,7 +17,8 @@ import { actionField, checkboxField, numberField, pointFields, seedField, select
 import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
-import { cachedFlashes, cachedRounds, currentSurface, useTerrain } from './ui/geometry-cache.js';
+import { cachedFlashes, cachedFlightPath, cachedRounds, currentSurface, useTerrain } from './ui/geometry-cache.js';
+import { BODIES, BODY_TYPES, carlsonBoom } from './domain/flight.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
@@ -49,7 +50,7 @@ const SOURCE_COPIES_BUDGET = 1000000;
 /** A render whose workers have sent nothing for this long has failed, for example out of memory. */
 const RENDER_STALL_SECONDS = 60;
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
@@ -118,6 +119,14 @@ const views = [createCubeView($('cube'), {
   onSelect: selection => { select(selection); refreshPanel(); },
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
+    if (handle.field === 'flightHeading') {
+      item.headingDegrees = Math.round((Math.atan2(point.x - item.startMetres.x, point.y - item.startMetres.y) * 180 / Math.PI + 360) % 360);
+      invalidateResults();
+      redrawViews();
+      drawInfo();
+      panelOnNextFrame();
+      return;
+    }
     if (handle.field === 'headingDegrees') {
       orient(item.id, Math.round((Math.atan2(point.x - item.positionMetres.x, point.y - item.positionMetres.y) * 180 / Math.PI + 360) % 360), item.pitchDegrees);
       return;
@@ -562,6 +571,7 @@ function button(text, onClick, { disabled = false, title = '' } = {}) {
 /** One line describing what an emitter currently is. */
 function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${+emitter.chargeKilograms.toPrecision(3)} kg TNT at ${formatMetres(emitter.positionMetres.z)}`;
+  if (emitter.kind === 'flight') return `${BODIES[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
     return `${emitter.roundCount} rounds of ${+emitter.chargeKilograms.toPrecision(3)} kg TNT in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
@@ -674,7 +684,8 @@ function emitterCard(container, emitter, selected) {
     card.append(macros);
     const actions = element('div', 'card-actions');
     actions.append(button('Details…', () => openDetails(emitter.id)));
-    if (emitter.kind !== 'blast') {
+    // A flight has no seed to draw anew.
+    if (emitter.kind !== 'blast' && emitter.kind !== 'flight') {
       actions.append(button('New shape', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
       actions.append(button('Variant', () => addEmitter(next => {
         const source = next.emitters.find(item => item.id === emitter.id);
@@ -807,7 +818,7 @@ function detailSections(emitter) {
   const numbers = keys => container => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const placement = container => {
     textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
-    if (emitter.kind !== 'blast') seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+    if (emitter.kind !== 'blast' && emitter.kind !== 'flight') seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
     numberField(container, { key: 'startSeconds', value: emitter.startSeconds, onCommit: set('startSeconds') });
   };
   if (emitter.kind === 'lightning') {
@@ -833,6 +844,32 @@ function detailSections(emitter) {
       ...(ground ? [section('In cloud', numbers(['inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond']))] : []),
       section('Strokes', numbers(['channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds', 'strokeIntervalSpread', 'subsequentStrokeEnergyRatio',
         ...(ground ? ['newTerminationProbability'] : [])]))
+    ];
+  }
+  if (emitter.kind === 'flight') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Start', point: emitter.startMetres, onCommit: set('startMetres') });
+      }),
+      section('Flight', container => {
+        numbers(['headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond'])(container);
+        numberField(container, { key: 'flightSeconds', value: emitter.durationSeconds, onCommit: set('durationSeconds') });
+      }),
+      section('Body', container => {
+        selectField(container, {
+          label: 'Body', value: emitter.body, reliability: 'B', options: BODY_TYPES.map(type => [type, BODIES[type].label]),
+          onCommit: body => updateEmitter(emitter.id, item => {
+            item.body = body;
+            if (BODIES[body].lengthMetres) Object.assign(item, { lengthMetres: BODIES[body].lengthMetres, shapeFactor: BODIES[body].shapeFactor });
+          })
+        });
+        // Editing the length or shape makes the body custom.
+        for (const key of ['lengthMetres', 'shapeFactor']) {
+          numberField(container, { key, value: emitter[key], onCommit: value => updateEmitter(emitter.id, item => { item[key] = value; item.body = 'custom'; }) });
+        }
+        numbers(['riseTimeSeconds'])(container);
+      })
     ];
   }
   if (emitter.kind === 'barrage') {
@@ -927,6 +964,7 @@ function sceneHalfExtentMetres(scene) {
   const include = point => { reach = Math.max(reach, Math.abs(point.x), Math.abs(point.y)); };
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') include(emitter.positionMetres);
+    else if (emitter.kind === 'flight') { const path = cachedFlightPath(emitter, scene.air); path.x.forEach((x, index) => include({ x, y: path.y[index] })); }
     else if (emitter.kind === 'storm' || emitter.kind === 'barrage') { include({ x: Math.abs(emitter.centreMetres.x) + emitter.radiusMetres, y: Math.abs(emitter.centreMetres.y) + emitter.radiusMetres }); }
     else for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
   }
@@ -1258,6 +1296,7 @@ function bearing(from, to) {
 function emitterAnchor(emitter) {
   if (emitter.kind === 'blast') return emitter.positionMetres;
   if (emitter.kind === 'storm' || emitter.kind === 'barrage') return emitter.centreMetres;
+  if (emitter.kind === 'flight') return emitter.startMetres;
   return emitter.baseMetres;
 }
 
@@ -1276,7 +1315,7 @@ function drawInfo() {
     if (kind !== selected.name || !selected.enabled) selectedInfo.append(element('span', '', kind + (selected.enabled ? '' : ' · off')));
     selectedInfo.append(element('span', '', emitterSummary(selected)));
     const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
-    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || selected.kind === 'barrage' ? 'centre' : 'blast';
+    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || selected.kind === 'barrage' ? 'centre' : selected.kind === 'flight' ? 'start' : 'blast';
     selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
     if (selected.kind === 'storm') selectedInfo.append(element('span', '', `Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`));
     if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
@@ -1295,6 +1334,7 @@ function drawInfo() {
     if (!item.enabled) continue;
     if (item.kind === 'blast') measure(item.positionMetres);
     else if (item.kind === 'barrage') cachedRounds(item).forEach(round => measure(round.positionMetres));
+    else if (item.kind === 'flight') { const path = cachedFlightPath(item, scene.air); path.x.forEach((x, index) => measure({ x, y: path.y[index], z: path.z[index] })); }
     else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(measure);
   }
   if (Number.isFinite(nearest)) listenInfo.append(element('span', '', `Nearest source ${formatMetres(nearest)}`));
@@ -1395,6 +1435,7 @@ const isBlastKind = emitter => emitter.kind === 'blast' || emitter.kind === 'bar
 /** Every stroke of an emitter as its flash, scene time, and route; a blast's and a round's also where they burst. */
 function strokeTimeline(emitter) {
   if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres }];
+  if (emitter.kind === 'flight') return [];
   if (emitter.kind === 'barrage') return cachedRounds(emitter).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres }));
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
@@ -1428,10 +1469,20 @@ function animationState() {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
   const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
-  return { strokes, receivers, sound, wavefronts };
+  // Where each flight's body is at the clock.
+  const flights = new Map();
+  for (const emitter of state.scene.emitters) {
+    if (emitter.kind !== 'flight' || !emitter.enabled) continue;
+    const path = cachedFlightPath(emitter, state.scene.air);
+    const index = Math.round((now - path.seconds[0]) / path.step);
+    if (index >= 0 && index < path.seconds.length) flights.set(emitter.id, { x: path.x[index], y: path.y[index], z: path.z[index] });
+  }
+  return { strokes, receivers, sound, wavefronts, flights };
 }
 
 const wavefrontSources = new WeakMap();
+/** Points along a flight path whose fronts draw its Mach cone. */
+const FLIGHT_FRONTS = 120;
 /**
  * A wavefront is drawn as strong as its sound where it has spread to: the pressure of its flash or
  * blast after spreading as 1/r and air absorption at WAVEFRONT_FREQUENCY_HZ, fully at the top level
@@ -1446,6 +1497,11 @@ const REFERENCE_PRESSURE_PA = 20e-6;
 function wavefrontAmplitudes(emitter) {
   const air = state.scene.air;
   if (emitter.kind === 'blast') return new Map([[emitter.id, blastSources(emitter, air)[0].amplitudePaMetres]]);
+  if (emitter.kind === 'flight') {
+    // A boom's pressure 1 km away times 1 km, so that the fronts fade roughly with it.
+    const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
+    return new Map([[emitter.id, boom.overpressurePa * 1000]]);
+  }
   if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastSources(round, air)[0].amplitudePaMetres]));
   const energy = new Map();
   for (const source of emitterSources(emitter, air, currentSurface()).sources) {
@@ -1467,6 +1523,13 @@ function wavefrontCandidates(scene) {
     if (!emitter.enabled) continue;
     for (const [group, amplitude] of wavefrontAmplitudes(emitter)) amplitudes.set(group, amplitude);
     if (emitter.kind === 'blast') { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); continue; }
+    if (emitter.kind === 'flight') {
+      // Points along the path: their spheres together draw the Mach cone.
+      const path = cachedFlightPath(emitter, scene.air);
+      const every = Math.max(1, Math.ceil(path.seconds.length / FLIGHT_FRONTS));
+      for (let index = 0; index < path.seconds.length; index += every) candidates.push({ point: { x: path.x[index], y: path.y[index], z: path.z[index] }, emitted: path.seconds[index], group: emitter.id });
+      continue;
+    }
     if (emitter.kind === 'barrage') {
       cachedRounds(emitter).forEach(round => candidates.push({ point: placedPoint(round.positionMetres), emitted: round.startSeconds, group: round.id }));
       continue;
@@ -1797,6 +1860,7 @@ const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
 $('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));
 $('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudFlash(uniqueId('cloud', scene.emitters), nextName(scene, 'Cloud flash'), newSeed())));
 $('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(uniqueId('storm', scene.emitters), nextName(scene, 'Storm'), newSeed())));
+$('add-flight').addEventListener('click', () => addEmitter(scene => defaultFlight(uniqueId('flight', scene.emitters), nextName(scene, 'Flight'), newSeed())));
 $('add-barrage').addEventListener('click', () => addEmitter(scene => defaultBarrage(uniqueId('barrage', scene.emitters), nextName(scene, 'Barrage'), newSeed())));
 $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
 $('add-receiver').addEventListener('click', () => commit(scene => {

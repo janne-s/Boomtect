@@ -6,7 +6,7 @@ import { friedlanderSpanSeconds } from './pulses.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
 
-export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage']);
+export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight']);
 
 /** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
 const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
@@ -26,6 +26,17 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
  * charge, delayed per path by the explosive's fit (`explosives.js`); the roar is a seeded noise
  * burst at a level against the shock's amplitude at the same distance (`fireball.js`).
  */
+/**
+ * A flight as one row: the renderer finds its booms per receiver from its path (`flight.js`), which
+ * set where and when each leaves, its overpressure, and its duration. The row keeps the N-wave pulse.
+ */
+function flightSource(flight) {
+  return {
+    flash: 0, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
+    amplitudePaMetres: 1, pulse: 'n-wave', durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, flight: true
+  };
+}
+
 /** The Fireball level at which a blast has no roar. */
 export const FIREBALL_OFF_DECIBELS = -60;
 
@@ -73,6 +84,7 @@ export function emitterFlashes(emitter, surface = null) {
 /** Point sources of an emitter, with the flashes they came from. */
 export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
+  if (emitter.kind === 'flight') return { flashes: [], sources: [flightSource(emitter)] };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   const flashes = emitterFlashes(emitter, surface);
   return { flashes, sources: flashSources(flashes, emitter, air) };

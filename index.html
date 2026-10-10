@@ -15,6 +15,7 @@
       <div class="modes" role="radiogroup" aria-label="Mode">
         <button type="button" role="radio" data-mode="thunder" aria-checked="true">Thunder</button>
         <button type="button" role="radio" data-mode="blast" aria-checked="false">Blast</button>
+        <button type="button" role="radio" data-mode="sonic" aria-checked="false">Sonic boom</button>
       </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
       <label class="toggle" title="Off: render when the button says Render"><input type="checkbox" id="auto-render" checked /> Auto</label>
@@ -67,6 +68,7 @@
             <button type="button" id="add-storm" data-mode="thunder">+ Storm</button>
             <button type="button" id="add-blast" data-mode="blast">+ Blast</button>
             <button type="button" id="add-barrage" data-mode="blast">+ Barrage</button>
+            <button type="button" id="add-flight" data-mode="sonic">+ Flight</button>
           </div>
           <div class="list" id="emitter-list"></div>
         </section>

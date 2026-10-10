@@ -1,6 +1,6 @@
 # Boomtect: Build thunder where you want it
 
-Boomtect simulates the sound of lightning and blasts from their physics. Shape
+Boomtect simulates the sound of lightning, blasts, and sonic booms from their physics. Shape
 a flash or a whole storm in 3D above the ground, place microphones, and hear
 how distance, height, layered air, terrain, and ground shape what arrives. Listen in mono, as a
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
@@ -12,7 +12,9 @@ pressure pulse. A lightning channel is thousands of them along a branching,
 zigzagging path; a blast is one. Each pulse travels to each microphone with its
 own delay and loss, and the microphone hears their sum.
 
-Thunder and Blast are separate modes, each with its own scene.
+Thunder, Blast, and Sonic boom are separate modes, each with its own scene. A
+supersonic body's booms leave its flight path where the sound reaches a
+microphone along the Mach cone.
 
 ## Scene
 
@@ -42,10 +44,15 @@ Thunder and Blast are separate modes, each with its own scene.
   that follows it, and the roar of its fireball and debris.
 - **Barrage** — Rounds landing over an area in salvos, as artillery fires,
   each a blast; some may burst in the air.
+- **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
+  vehicle, or a body of its own length and shape. It climbs, accelerates, and
+  turns as set; its booms focus where its rays converge, and the air can turn
+  them away before the ground.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
-  salvo, charge, and fireball for a barrage.
+  salvo, charge, and fireball for a barrage; Mach, height, heading, climb,
+  acceleration, turn, and flight time for a flight.
   Each sets several parameters at once.
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).
@@ -194,6 +201,9 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Secondary shock | delay by the explosive's detonation velocity and density (Rigby & Gitterman); a 4 % charge's shock | B |
 | Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
 | Barrage | rounds seeded over a disc, salvos spread over the duration, charges lognormal about the mean | C |
+| Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
+| Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
+| Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
@@ -216,7 +226,8 @@ ridges, rounded ridges (they shield more than thin edges), terrain finer than
 the heightfield, gusts, more than six ground contacts, repeated contacts over
 sloping ground, rays bending through several layers in turn, nonlinear
 propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
-the source, a forest that covers only part of the terrain.
+the source, a forest that covers only part of the terrain, terrain echoes of
+sonic booms, booms bent back down from the upper atmosphere, engine noise.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

@@ -1,5 +1,6 @@
 import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes } from '../domain/emitters.js';
+import { flightPath } from '../domain/flight.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
 /** Flashes per terrain surface, each keyed by emitter id. */
@@ -41,6 +42,19 @@ export function cachedFlashes(emitter) {
   for (const flash of flashes) for (const channel of flash.channels) channel.arcs = arcs(channel.points);
   cache.set(emitter.id, { key, flashes });
   return flashes;
+}
+
+const paths = new Map();
+
+/** A flight's path in the given air, cached by everything except its name and switch. */
+export function cachedFlightPath(emitter, air) {
+  const { name, enabled, ...shape } = emitter;
+  const key = JSON.stringify([shape, air]);
+  const cached = paths.get(emitter.id);
+  if (cached?.key === key) return cached.path;
+  const value = flightPath(emitter, air);
+  paths.set(emitter.id, { key, path: value });
+  return value;
 }
 
 const rounds = new Map();
