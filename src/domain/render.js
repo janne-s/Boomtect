@@ -6,7 +6,7 @@ import { knifeEdge } from './diffraction.js';
 import { sourcePosition, sourceTable } from './source-table.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
-import { shieldingEdges, shiftedProfile, terrainReflection } from './terrain-propagation.js';
+import { meanPlaneFrame, shieldingEdges, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
@@ -121,10 +121,6 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     edges: new Float64Array(MAXIMUM_EDGES * capacity)
   };
   const shielding = !surface.flat && scene.terrain.shielding;
-  const groundHeight = surface.heightAt(receiverPosition.x, receiverPosition.y);
-  const local = shiftedProfile(profile, groundHeight);
-  const shift = point => (groundHeight === 0 ? point : { x: point.x, y: point.y, z: point.z - groundHeight });
-  const r = shift(receiverPosition);
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
   let index = 0;
   const add = (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
@@ -158,16 +154,19 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     const { sources } = prepared;
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
       const position = sourcePosition(sources, sourceIndex);
-      const p = shift(position);
-      if (inShadow(local, p, r)) {
-        add(emitterIndex, sourceIndex, sources, PATH_SHADOW, shadowPath(local, p, r));
-        continue;
+      // Only air whose speed falls with height casts a shadow; over terrain it is judged from the mean ground plane.
+      if (profile.gradient < 0) {
+        const frame = surface.flat ? { profile, from: position, to: receiverPosition } : meanPlaneFrame(profile, surface.heightAt, position, receiverPosition);
+        if (inShadow(frame.profile, frame.from, frame.to)) {
+          add(emitterIndex, sourceIndex, sources, PATH_SHADOW, shadowPath(frame.profile, frame.from, frame.to));
+          continue;
+        }
       }
       const edges = shielding ? shieldingEdges(profile, surface, position, receiverPosition) : [];
-      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(local, p, r), edges);
+      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(profile, position, receiverPosition), edges);
       if (!ground) continue;
       // The reflection near the receiver crosses the same ridges as the direct sound (class C).
-      const reflected = surface.flat ? reflectedRay(profile, p, r) : terrainReflection(profile, surface, position, receiverPosition);
+      const reflected = surface.flat ? reflectedRay(profile, position, receiverPosition) : terrainReflection(profile, surface, position, receiverPosition);
       if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
     }
   });

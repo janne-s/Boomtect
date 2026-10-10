@@ -1,6 +1,7 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
 import { emissionSeconds } from '../domain/lightning.js';
-import { grazingRange, soundSpeedProfile } from '../domain/refraction.js';
+import { grazingRange, inShadow, soundSpeedProfile } from '../domain/refraction.js';
+import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { cachedFlashes, currentSurface, useTerrain } from './geometry-cache.js';
 
@@ -57,6 +58,11 @@ const RIPPLE_SPACING_SHARE = .018;
 const TERRAIN_RIPPLE_SPHERES = 80;
 const TERRAIN_RIPPLE_ITERATIONS = 14;
 const BOUNDARY_EDGE_ALPHA = .7;
+/** Over terrain the boundary is found on a grid of this many cells a side, from this many source points. */
+const BOUNDARY_TERRAIN_CELLS = 48;
+const BOUNDARY_TERRAIN_SOURCES = 120;
+/** Ground samples for each mean plane the terrain boundary judges, fewer than the render uses. */
+const BOUNDARY_PLANE_SAMPLES = 8;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
 const SEAM_PIXELS = 1;
@@ -147,6 +153,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let lastBox = null;
   let terrainLayer = null;
   let rippleLayer = null;
+  let terrainBoundary = null;
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -680,6 +687,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const chosen = selection?.type === 'emitter' ? scene.emitters.filter(emitter => emitter.id === selection.id) : scene.emitters.filter(emitter => emitter.enabled);
     const points = chosen.flatMap(emitterPoints);
     if (!points.length) return;
+    if (!currentSurface().flat) {
+      drawTerrainShadowBoundary(context, colors, profile, points, receiver.positionMetres.z);
+      return;
+    }
     const stride = Math.ceil(points.length / BOUNDARY_POINTS);
     const reach = grazingRange(profile, receiver.positionMetres.z);
     const origin = frame.project({ x: 0, y: 0, z: 0 });
@@ -699,6 +710,50 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.clip(floorPath());
     unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: BOUNDARY_EDGE_ALPHA });
     context.restore();
+  }
+
+  /**
+   * The shadow boundary over terrain: the cells of a grid over the box where a microphone at the
+   * given height above the ground hears at least one source point outside the refraction shadow,
+   * judged from the mean ground plane as the render does, and outlined. The cells are kept until
+   * the sources, the air, the height, the box, or the terrain change.
+   */
+  function drawTerrainShadowBoundary(context, colors, profile, points, heightAboveGround) {
+    const { box } = frame;
+    const surface = currentSurface();
+    const middle = points[points.length >> 1];
+    const key = [points.length, points[0].x, points[0].z, middle.x, middle.y, middle.z, profile.groundSpeed, profile.gradient, heightAboveGround, box.x0, box.x1, box.y0, box.y1].join('|');
+    if (terrainBoundary?.key !== key || terrainBoundary.surface !== surface) {
+      const stride = Math.ceil(points.length / BOUNDARY_TERRAIN_SOURCES);
+      const sampled = points.filter((_, index) => index % stride === 0);
+      const lit = new Uint8Array(BOUNDARY_TERRAIN_CELLS * BOUNDARY_TERRAIN_CELLS);
+      const width = (box.x1 - box.x0) / BOUNDARY_TERRAIN_CELLS;
+      const depth = (box.y1 - box.y0) / BOUNDARY_TERRAIN_CELLS;
+      for (let row = 0; row < BOUNDARY_TERRAIN_CELLS; row += 1) {
+        for (let column = 0; column < BOUNDARY_TERRAIN_CELLS; column += 1) {
+          const x = box.x0 + (column + .5) * width;
+          const y = box.y0 + (row + .5) * depth;
+          const receiver = { x, y, z: ground(x, y) + heightAboveGround };
+          lit[row * BOUNDARY_TERRAIN_CELLS + column] = sampled.some(point => {
+            const plane = meanPlaneFrame(profile, ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
+            return !inShadow(plane.profile, plane.from, plane.to);
+          }) ? 1 : 0;
+        }
+      }
+      terrainBoundary = { key, surface, lit, width, depth };
+    }
+    const { lit, width, depth } = terrainBoundary;
+    if (lit.every(Boolean)) return;
+    const path = new Path2D();
+    for (let row = 0; row < BOUNDARY_TERRAIN_CELLS; row += 1) {
+      for (let column = 0; column < BOUNDARY_TERRAIN_CELLS; column += 1) {
+        if (!lit[row * BOUNDARY_TERRAIN_CELLS + column]) continue;
+        const x0 = box.x0 + column * width;
+        const y0 = box.y0 + row * depth;
+        addPolygon(path, [[x0, y0], [x0 + width, y0], [x0 + width, y0 + depth], [x0, y0 + depth]].map(([x, y]) => frame.project({ x, y, z: ground(x, y) })));
+      }
+    }
+    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: BOUNDARY_EDGE_ALPHA });
   }
 
   /**

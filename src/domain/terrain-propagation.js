@@ -16,6 +16,8 @@ import { rayBetween, rayHeightAt, reflectedRay, speedAt } from './refraction.js'
  */
 
 const SAMPLES_PER_CELL = 2;
+/** Ground samples along a path for its mean plane, ends included. */
+export const MEAN_PLANE_SAMPLES = 32;
 /** A plane this close to level is treated as level. */
 const LEVEL_TOLERANCE = 1e-12;
 
@@ -57,6 +59,36 @@ export function shieldingEdges(profile, surface, source, receiver) {
     endHeight: receiver.z,
     speed: profile.groundSpeed
   });
+}
+
+/**
+ * The refraction shadow of a path over terrain judged from the mean ground plane between its ends
+ * (class B/C): the least-squares line through the ground profile under the path, from which the
+ * equivalent heights of both ends are measured at right angles and kept at or above zero, as in
+ * CNOSSOS-EU (Directive (EU) 2015/996, Annex II; formula to verify against the Annex). The linear
+ * profile is taken to start at the plane's height under `b`. Returns the profile and both ends in
+ * that frame, where the ground is z = 0; on level ground it is the ground under `b` exactly.
+ */
+export function meanPlaneFrame(profile, heightAt, a, b, samples = MEAN_PLANE_SAMPLES) {
+  const horizontal = Math.hypot(b.x - a.x, b.y - a.y);
+  let sumD = 0; let sumZ = 0; let sumDD = 0; let sumDZ = 0;
+  for (let index = 0; index < samples; index += 1) {
+    const share = index / (samples - 1);
+    const d = share * horizontal;
+    const z = heightAt(a.x + (b.x - a.x) * share, a.y + (b.y - a.y) * share);
+    sumD += d; sumZ += z; sumDD += d * d; sumDZ += d * z;
+  }
+  const spread = samples * sumDD - sumD * sumD;
+  const slope = spread > 0 ? (samples * sumDZ - sumD * sumZ) / spread : 0;
+  const intercept = (sumZ - slope * sumD) / samples;
+  const base = intercept + slope * horizontal;
+  const tilt = Math.sqrt(1 + slope * slope);
+  const above = (point, d) => Math.max(0, (point.z - intercept - slope * d) / tilt);
+  return {
+    profile: shiftedProfile(profile, base),
+    from: { x: a.x, y: a.y, z: above(a, 0) },
+    to: { x: b.x, y: b.y, z: above(b, horizontal) }
+  };
 }
 
 /** The profile seen from ground at a given height: the same air, with c₀ taken at that height. */

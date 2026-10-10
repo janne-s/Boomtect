@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deygoutEdges, fresnelIntegrals, knifeEdge } from '../src/domain/diffraction.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
-import { soundSpeedProfile } from '../src/domain/refraction.js';
+import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';
 import { defaultBlast, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
 import { buildHeightfield, curvatureDropMetres, decodeHeights, encodeHeights, terrainPlan, terrainSurface } from '../src/domain/terrain.js';
-import { shieldingEdges, terrainReflection } from '../src/domain/terrain-propagation.js';
+import { meanPlaneFrame, shieldingEdges, shiftedProfile, terrainReflection } from '../src/domain/terrain-propagation.js';
 
 /** A captured terrain of `cells` × `cells` with heights from height(x, y) in metres above sea level. */
 function terrain(height, { cells = 100, extentMetres = 4000 } = {}) {
@@ -157,4 +157,34 @@ test('channels over rising terrain stay above the ground and reach it', async ()
       assert.ok(Math.abs(base.z - surface.heightAt(base.x, base.y)) < 1e-9);
     }
   }
+});
+
+test('the mean ground plane of a sloping plane measures heights at right angles to it', () => {
+  // Ground z = 0.05·x; a point 100 m above it is 100/√(1 + 0.05²) m from the plane.
+  const heightAt = x => .05 * x;
+  const profile = { groundSpeed: 340, gradient: -.004 };
+  const a = { x: -5000, y: 0, z: heightAt(-5000) + 100 };
+  const b = { x: 5000, y: 0, z: heightAt(5000) + 1.7 };
+  const frame = meanPlaneFrame(profile, heightAt, a, b);
+  const tilt = Math.hypot(1, .05);
+  assert.ok(Math.abs(frame.from.z - 100 / tilt) < 1e-9);
+  assert.ok(Math.abs(frame.to.z - 1.7 / tilt) < 1e-9);
+  assert.ok(Math.abs(frame.profile.groundSpeed - (340 - .004 * 250)) < 1e-9);
+});
+
+test('a microphone on a hilltop hears a source that its own ground alone would put in the refraction shadow', () => {
+  // A hill 300 m high and 3 km across under the microphone, on level ground.
+  const hill = (x, y) => 100 + Math.max(0, 300 * (1 - Math.hypot(x, y) / 1500));
+  const scene = defaultScene('blast');
+  scene.emitters = [{ ...defaultBlast(), positionMetres: { x: -9500, y: 0, z: 500 } }];
+  scene.receivers[0].positionMetres = { x: 0, y: 0, z: 1.7 };
+  scene.terrain = { ...terrain(hill, { cells: 200, extentMetres: 20000 }), shielding: false };
+  const parsed = parseScene(scene);
+  const paths = receiverPaths(prepareScene(parsed), parsed.receivers[0], parsed);
+  assert.equal(paths.kind[0], PATH_DIRECT);
+  // Heights from the ground under the microphone alone: 200 m and 1.7 m, which is in the shadow.
+  const profile = soundSpeedProfile(parsed.air);
+  const surface = terrainSurface(parsed.terrain);
+  const summit = surface.heightAt(0, 0);
+  assert.ok(inShadow(shiftedProfile(profile, summit), { x: -9500, y: 0, z: surface.heightAt(-9500, 0) + 500 - summit }, { x: 0, y: 0, z: 1.7 }));
 });

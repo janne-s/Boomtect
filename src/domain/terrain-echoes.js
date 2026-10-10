@@ -1,5 +1,5 @@
 import { inShadow, PATH_ECHO, PATH_SCATTER, rayBetween, rayTiming } from './refraction.js';
-import { shiftedProfile } from './terrain-propagation.js';
+import { meanPlaneFrame } from './terrain-propagation.js';
 
 /**
  * First-order echoes from terrain, after Echotect `src/terrain-space.js` at commit cb712ef: the
@@ -354,16 +354,18 @@ function onGroundPlane(field, point, normal) {
   return Math.abs(offset) < COPLANAR_METRES + COPLANAR_SPACINGS * field.echo.spacing;
 }
 
+/** Ground samples for the mean plane of an echo leg, fewer than for the direct sound (class C). */
+const LEG_PLANE_SAMPLES = 8;
+
 /**
  * One leg of an echo, timed along the refracted ray. Null when it would pass through the refraction
- * shadow, judged from the lower ground under its two ends as if the ground there were level (class C).
+ * shadow, judged from the mean ground plane under it as for the direct sound.
  */
 function echoLeg(field, a, b, trace = rayBetween) {
-  const { profile, surface } = field;
+  const { profile, echo } = field;
   if (profile.gradient < 0) {
-    const base = Math.min(surface.heightAt(a.x, a.y), surface.heightAt(b.x, b.y));
-    const shift = point => ({ x: point.x, y: point.y, z: Math.max(0, point.z - base) });
-    if (inShadow(shiftedProfile(profile, base), shift(a), shift(b))) return null;
+    const frame = meanPlaneFrame(profile, echo.heightAt, a, b, LEG_PLANE_SAMPLES);
+    if (inShadow(frame.profile, frame.from, frame.to)) return null;
   }
   return trace(profile, a, b);
 }

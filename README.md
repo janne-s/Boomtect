@@ -28,7 +28,7 @@ Thunder and Blast are separate modes, each with its own scene.
   cloud base and top up and down.
 - **Selection** — Dashed lines lead from a selected microphone, blast, or channel
   end to its shadows on the floor and walls. A click on empty space clears it.
-- **Shadow boundary** — The line on the floor beyond which refraction lifts the
+- **Shadow boundary** — The line on the ground beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 
 ## Emitters
@@ -140,7 +140,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Speed of sound | `c = sqrt(γRT)` | A |
 | Temperature profile | linear in height, fitted to `sqrt(γRT)` up to 3 km | B |
 | Travel time, rays, and spreading | circular rays in a linear `c(z)`, ray tubes; `1/R` without refraction | A |
-| Refraction shadow | grazing ray, creeping wave along the ground (Fock), floor | B/C |
+| Refraction shadow | grazing ray, creeping wave along the ground (Fock), floor; over terrain, heights above the mean ground plane between source and microphone (CNOSSOS-EU) | B/C |
 | Segment directivity | straight line element | A |
 | Lightning pulse | N-wave, period `2.81·R₀/c`, `R₀ = sqrt(E/(πp))` (Few, ReVelle) | B |
 | Weak shock | period grows as `x^¼`, extra decay `x^-¼` (ReVelle) | B |
