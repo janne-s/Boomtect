@@ -101,6 +101,10 @@ Thunder and Blast are separate modes, each with its own scene.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
 - **Humidity scale height** — How quickly the water vapour thins out with
   height, which changes how much the upper air absorbs.
+- **Tropopause** — Where the temperature stops falling; above it the air keeps
+  one temperature.
+- **Ground layer** and **Ground layer lapse** — A layer of air next to the
+  ground with its own lapse rate, such as a low inversion on a calm night.
 
 ## Terrain
 
@@ -144,7 +148,8 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Part | Model | Class |
 |---|---|---|
 | Speed of sound | `c = sqrt(γRT)` | A |
-| Temperature profile | linear in height, fitted to `sqrt(γRT)` up to 3 km | B |
+| Temperature profile | layers: a ground layer, the troposphere, constant above the tropopause (ISO 2533) | B/C |
+| Sound speed along a path | linear from the ground, matched to the layered speed's mean slowness over the path's heights | C |
 | Travel time, rays, and spreading | circular rays in a linear `c(z)`, ray tubes; `1/R` without refraction | A |
 | Wind | effective sound speed along each path, linear in height | B/C |
 | Refraction shadow | grazing ray, creeping wave along the ground (Fock), softer over porous ground at high frequencies, floor; over terrain, heights above the mean ground plane between source and microphone (CNOSSOS-EU) | B/C |
@@ -173,8 +178,8 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
 ridges, rounded ridges (they shield more than thin edges), terrain finer than
 the heightfield, gusts, more than six ground contacts, repeated contacts over
-sloping ground, temperature profiles other than linear, nonlinear propagation
-beyond the linearization radius.
+sloping ground, rays bending through several layers in turn, nonlinear
+propagation beyond the linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

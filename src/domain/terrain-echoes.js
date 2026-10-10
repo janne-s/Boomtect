@@ -1,4 +1,4 @@
-import { alongProfile, inShadow, PATH_ECHO, PATH_SCATTER, rayBetween, rayTiming } from './refraction.js';
+import { inShadow, PATH_ECHO, PATH_SCATTER, pathProfile, rayBetween, rayTiming } from './refraction.js';
 import { meanPlaneFrame } from './terrain-propagation.js';
 
 /**
@@ -363,7 +363,7 @@ const LEG_PLANE_SAMPLES = 8;
  */
 function echoLeg(field, a, b, trace = rayBetween) {
   const { echo } = field;
-  const profile = alongProfile(field.profile, b.x - a.x, b.y - a.y);
+  const profile = pathProfile(field.profile, a, b);
   if (profile.gradient < 0) {
     const frame = meanPlaneFrame(profile, echo.heightAt, a, b, LEG_PLANE_SAMPLES);
     if (inShadow(frame.profile, frame.from, frame.to)) return null;

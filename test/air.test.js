@@ -66,3 +66,16 @@ test('near the ground, layered absorption renders a blast within 0.05 dB of the 
   const ground = energy({ refraction: false });
   assert.ok(Math.abs(10 * Math.log10(layered / ground)) < .05, `${10 * Math.log10(layered / ground)} dB`);
 });
+
+test('above the tropopause the standard atmosphere keeps 216.65 K and its pressure falls exponentially', async () => {
+  const { temperatureAtHeightKelvin } = await import('../src/domain/air.js');
+  const isa = { temperatureCelsius: 15, pressureKpa: 101.325, lapseRateKelvinPerMetre: .0065, tropopauseMetres: 11000 };
+  assert.ok(Math.abs(temperatureAtHeightKelvin(isa, 12000) - 216.65) < 1e-9);
+  // ISO 2533: 22 632 Pa at 11 km and 12 045 Pa at 15 km.
+  assert.ok(Math.abs(pressureAtHeightPa(isa, 11000) / 22632 - 1) < 1e-3);
+  assert.ok(Math.abs(pressureAtHeightPa(isa, 15000) / 12045 - 1) < 1e-3);
+  // A ground layer of its own lapse rate: a 200 m inversion of 20 K/km is 4 K warmer at its top.
+  const inversion = { ...isa, groundLayerMetres: 200, groundLayerLapseKelvinPerMetre: -.02 };
+  assert.ok(Math.abs(temperatureAtHeightKelvin(inversion, 200) - 292.15) < 1e-9);
+  assert.ok(Math.abs(temperatureAtHeightKelvin(inversion, 1200) - (292.15 - 6.5)) < 1e-9);
+});

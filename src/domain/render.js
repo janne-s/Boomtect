@@ -14,7 +14,7 @@ import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import {
-  alongProfile, creepingCoefficient, inShadow, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
+  creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';
 
 /** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
@@ -111,6 +111,15 @@ export function prepareScene(scene) {
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   if (count > MAXIMUM_SOURCES) throw new RangeError(`The scene has ${count} point sources; the limit is ${MAXIMUM_SOURCES}.`);
   return prepared;
+}
+
+/**
+ * The top of the layer of air a path's profile describes (class C): the ground layer for a path that
+ * stays within it, otherwise the tropopause. A ray rising above it meets air of another gradient.
+ */
+function airCeiling(air, top) {
+  if (air.groundLayerMetres > 0 && top <= air.groundLayerMetres) return air.groundLayerMetres;
+  return air.tropopauseMetres > 0 ? air.tropopauseMetres : Infinity;
 }
 
 /**
@@ -214,7 +223,7 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
       const position = sourcePosition(sources, sourceIndex);
       // In wind, the air along this path has its own effective profile.
-      const along = alongProfile(profile, receiverPosition.x - position.x, receiverPosition.y - position.y);
+      const along = pathProfile(profile, position, receiverPosition);
       // Only air whose speed falls with height casts a shadow; over terrain it is judged from the mean ground plane.
       if (along.gradient < 0) {
         const frame = surface.flat ? { profile: along, from: position, to: receiverPosition } : meanPlaneFrame(along, surface.heightAt, position, receiverPosition);
@@ -230,9 +239,14 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
       // The reflection near the receiver crosses the same ridges as the direct sound (class C).
       const reflected = surface.flat ? reflectedRay(along, position, receiverPosition) : terrainReflection(along, surface, position, receiverPosition);
       if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
-      // Where the air bends rays back down they may touch the ground several times (class C over terrain).
+      // Where the air bends rays back down they may touch the ground several times (class C over terrain),
+      // but not those whose highest point leaves the layer the path's profile describes.
       if (along.gradient > 0) {
-        for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) add(emitterIndex, sourceIndex, sources, PATH_GROUND, ray, edges);
+        const ceiling = airCeiling(scene.air, Math.max(position.z, receiverPosition.z));
+        for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) {
+          const apex = along.groundSpeed / along.gradient * (1 / Math.sqrt(1 - ray.groundSine ** 2) - 1);
+          if (apex <= ceiling) add(emitterIndex, sourceIndex, sources, PATH_GROUND, ray, edges);
+        }
       }
     }
   });

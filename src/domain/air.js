@@ -17,26 +17,55 @@ export function airDensityKilogramsPerCubicMetre(pressurePa, temperatureCelsius)
   return pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (temperatureCelsius + KELVIN_OFFSET));
 }
 
-/** Temperature at a height for the scene's linear profile T(z) = T₀ − Γz, in kelvin. */
+/**
+ * The layers of the scene's temperature profile from the datum up, each with a constant lapse rate Γ
+ * (K/m, positive when the temperature falls with height): an optional ground layer of its own lapse
+ * rate, such as a low inversion (class C), the troposphere at the scene's lapse rate up to the
+ * tropopause, and above it air of constant temperature (ISO 2533, class B; 11 km in the standard
+ * atmosphere). An air without these fields has one layer at its lapse rate, as before.
+ */
+export function temperatureLayers(air) {
+  const ground = air.groundLayerMetres > 0 ? air.groundLayerMetres : 0;
+  const tropopause = air.tropopauseMetres > ground ? air.tropopauseMetres : Infinity;
+  const layers = [];
+  if (ground > 0) layers.push({ base: 0, top: ground, lapse: air.groundLayerLapseKelvinPerMetre });
+  layers.push({ base: ground, top: tropopause, lapse: air.lapseRateKelvinPerMetre });
+  if (Number.isFinite(tropopause)) layers.push({ base: tropopause, top: Infinity, lapse: 0 });
+  return layers;
+}
+
+/** Temperature at a height above the datum for the scene's layered profile, in kelvin. */
 export function temperatureAtHeightKelvin(air, heightMetres) {
-  return air.temperatureCelsius + KELVIN_OFFSET - air.lapseRateKelvinPerMetre * heightMetres;
+  let kelvin = air.temperatureCelsius + KELVIN_OFFSET;
+  for (const { base, top, lapse } of temperatureLayers(air)) {
+    if (heightMetres <= base) break;
+    kelvin -= lapse * (Math.min(heightMetres, top) - base);
+  }
+  return kelvin;
 }
 
 /**
- * Class A for the given profile: hydrostatic pressure of an ideal gas with T(z) = T₀ − Γz,
- * p = p₀·(T/T₀)^(g/(RΓ)), and p₀·exp(−gz/(RT₀)) without a gradient. With Γ = 6.5 K/km it is the
- * ISA troposphere (ISO 2533, class B as a model of the real atmosphere).
+ * Class A for the given profile: hydrostatic pressure of an ideal gas, layer by layer: across a layer
+ * with T = T_b − Γ(z − z_b) it falls as (T/T_b)^(g/(RΓ)), and as exp(−g·Δz/(R·T_b)) without a gradient.
+ * With Γ = 6.5 K/km and the tropopause at 11 km it is the ISA (ISO 2533, class B as a model of the
+ * real atmosphere).
  */
 export function pressureAtHeightPa(air, heightMetres) {
-  const groundPa = air.pressureKpa * 1000;
-  const groundKelvin = air.temperatureCelsius + KELVIN_OFFSET;
   const height = Math.max(0, heightMetres);
-  const lapse = air.lapseRateKelvinPerMetre;
-  if (Math.abs(lapse) * height < 1e-9 * groundKelvin) {
-    return groundPa * Math.exp(-STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED * height / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * groundKelvin));
+  let pressure = air.pressureKpa * 1000;
+  let kelvin = air.temperatureCelsius + KELVIN_OFFSET;
+  for (const { base, top, lapse } of temperatureLayers(air)) {
+    if (height <= base) break;
+    const span = Math.min(height, top) - base;
+    const next = kelvin - lapse * span;
+    if (Math.abs(lapse) * span < 1e-9 * kelvin) {
+      pressure *= Math.exp(-STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED * span / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * kelvin));
+    } else {
+      pressure *= Math.max(0, next / kelvin) ** (STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * lapse));
+    }
+    kelvin = next;
   }
-  const ratio = Math.max(0, temperatureAtHeightKelvin(air, height) / groundKelvin);
-  return groundPa * ratio ** (STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * lapse));
+  return pressure;
 }
 
 /** ISO 9613-1: saturation vapour pressure over the reference pressure, at a temperature in kelvin. */

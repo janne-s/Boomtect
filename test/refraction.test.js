@@ -332,3 +332,20 @@ test('the spreading of rays with several contacts equals the ray tube of neighbo
     assert.ok(Math.abs(ray.spreadMetres / expected - 1) < 5e-3, `${ray.bounces} contacts: ${ray.spreadMetres} vs ${expected}`);
   }
 });
+
+test('a path above the fit height takes the true time of the layered air on a straight vertical path, and lower paths keep the profile', async () => {
+  const { pathProfile } = await import('../src/domain/refraction.js');
+  const { temperatureAtHeightKelvin } = await import('../src/domain/air.js');
+  const layered = air({ tropopauseMetres: 11000 });
+  const profile = soundSpeedProfile(layered);
+  const top = { x: 0, y: 0, z: 14000 };
+  const bottom = { x: 0, y: 0, z: 0 };
+  // ∫ dz / c(z) by the trapezoid rule on 1 m steps.
+  let seconds = 0;
+  const c = z => Math.sqrt(1.4 * 287.05 * temperatureAtHeightKelvin(layered, z));
+  for (let z = 0; z < 14000; z += 1) seconds += (1 / c(z) + 1 / c(z + 1)) / 2;
+  const ray = rayBetween(pathProfile(profile, top, bottom), top, bottom);
+  assert.ok(Math.abs(ray.seconds / seconds - 1) < 1e-6, `${ray.seconds} vs ${seconds}`);
+  const low = { x: 1000, y: 0, z: 2000 };
+  assert.equal(pathProfile(profile, low, bottom), profile);
+});

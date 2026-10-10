@@ -1,4 +1,4 @@
-import { speedOfSoundMetresPerSecond, temperatureAtHeightKelvin } from './air.js';
+import { speedOfSoundMetresPerSecond, temperatureAtHeightKelvin, temperatureLayers } from './air.js';
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
 
 /**
@@ -48,18 +48,66 @@ export const PATH_SCATTER = 4;
 export function soundSpeedProfile(air) {
   const groundSpeed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   if (!air.refraction) return { groundSpeed, gradient: 0 };
-  const topSpeed = Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, PROFILE_FIT_HEIGHT_METRES));
-  const gradient = (topSpeed - groundSpeed) / PROFILE_FIT_HEIGHT_METRES;
-  if (!air.windSpeedMetresPerSecond && !air.windShearPerSecond) return { groundSpeed, gradient };
+  // Over a ground layer the profile is fitted across it; a path reaching higher is fitted to its own top (`pathProfile`).
+  const fitHeight = air.groundLayerMetres > 0 ? air.groundLayerMetres : PROFILE_FIT_HEIGHT_METRES;
+  const trueSpeed = height => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, height));
+  const gradient = (trueSpeed(fitHeight) - groundSpeed) / fitHeight;
+  // Heights where the layered profile bends, so that its slowness is integrated smoothly between them.
+  const breaks = temperatureLayers(air).map(layer => layer.top).filter(Number.isFinite);
+  const layered = { fitHeight, trueSpeed, breaks };
+  if (!air.windSpeedMetresPerSecond && !air.windShearPerSecond) return { groundSpeed, gradient, layered };
   // Wind from a compass bearing blows toward the opposite one: from the north (0°) toward −y.
   const bearing = air.windFromDegrees * Math.PI / 180;
   const toward = { x: -Math.sin(bearing), y: -Math.cos(bearing) };
   return {
     groundSpeed,
     gradient,
+    layered,
     wind: { x: toward.x * air.windSpeedMetresPerSecond, y: toward.y * air.windSpeedMetresPerSecond },
     shear: { x: toward.x * air.windShearPerSecond, y: toward.y * air.windShearPerSecond }
   };
+}
+
+/** Gauss–Legendre nodes and weights on [0, 1] for the layered slowness of a path. */
+const GAUSS_NODES = [.0198550717512319, .1016667612931866, .2372337950418355, .4082826787521751, .5917173212478249, .7627662049581645, .8983332387068134, .9801449282487681];
+const GAUSS_WEIGHTS = [.0506142681451881, .1111905172266872, .1568533229389436, .1813418916891810, .1813418916891810, .1568533229389436, .1111905172266872, .0506142681451881];
+const SLOWNESS_ITERATIONS = 30;
+
+/**
+ * The profile of the path between two points (class C): where the path reaches above the fit height
+ * of the scene's profile, the linear profile from the ground speed whose slowness, averaged over the
+ * heights the path spans, equals that of the layered c(z), so a straight path through the tropopause
+ * or a ground layer takes its true time and keeps the closed-form rays; below the fit height it is
+ * the scene's profile itself. The wind along the path is added by `alongProfile`.
+ */
+export function pathProfile(profile, a, b) {
+  const top = Math.max(a.z, b.z);
+  if (!profile.layered || !(top > profile.layered.fitHeight)) return alongProfile(profile, b.x - a.x, b.y - a.y);
+  const bottom = Math.max(0, Math.min(a.z, b.z));
+  const span = top - bottom;
+  const c0 = profile.groundSpeed;
+  // Mean slowness over [bottom, top], piece by piece between the layers' boundaries.
+  const edges = [bottom, ...profile.layered.breaks.filter(height => height > bottom && height < top), top];
+  let target = 0;
+  for (let piece = 1; piece < edges.length; piece += 1) {
+    const width = edges[piece] - edges[piece - 1];
+    for (let node = 0; node < GAUSS_NODES.length; node += 1) target += width * GAUSS_WEIGHTS[node] / profile.layered.trueSpeed(edges[piece - 1] + width * GAUSS_NODES[node]);
+  }
+  target /= span;
+  // Mean slowness of c₀ + g·z over [bottom, top]: ln(c(top)/c(bottom))/(g·span), solved for g by Newton from the secant.
+  let gradient = (profile.layered.trueSpeed(top) - c0) / top;
+  for (let iteration = 0; iteration < SLOWNESS_ITERATIONS; iteration += 1) {
+    const low = c0 + gradient * bottom;
+    const high = c0 + gradient * top;
+    const small = Math.abs(gradient) * span < 1e-9 * low;
+    const mean = small ? 1 / low - gradient * span / (2 * low * low) : Math.log(high / low) / (gradient * span);
+    const slope = small ? -span / (2 * low * low) : (top / high - bottom / low) / (gradient * span) - mean / gradient;
+    const step = (mean - target) / slope;
+    if (!Number.isFinite(step)) break;
+    gradient -= step;
+    if (Math.abs(step) < 1e-14) break;
+  }
+  return alongProfile({ ...profile, gradient }, b.x - a.x, b.y - a.y);
 }
 
 /**

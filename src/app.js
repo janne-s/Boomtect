@@ -2,7 +2,7 @@ import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/con
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
-import { alongProfile, PATH_DIRECT, PATH_SHADOW, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBlast, defaultCloudFlash, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
@@ -989,7 +989,10 @@ function refreshPanel() {
   const airField = key => numberField(environment, { key, value: scene.air[key], onCommit: value => commit(next => { next.air[key] = value; }) });
   ['temperatureCelsius', 'lapseRateKelvinPerMetre', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres'].forEach(airField);
   checkboxField(environment, { label: 'Refraction', value: scene.air.refraction, reliability: 'A', onCommit: value => commit(next => { next.air.refraction = value; }) });
-  if (scene.air.refraction) ['shadowFloorDecibels', 'windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres'].forEach(airField);
+  if (scene.air.refraction) {
+    ['shadowFloorDecibels', 'windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'tropopauseMetres', 'groundLayerMetres'].forEach(airField);
+    if (scene.air.groundLayerMetres > 0) airField('groundLayerLapseKelvinPerMetre');
+  }
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
   selectField(environment, {
@@ -1177,7 +1180,7 @@ function arrivalDelay(emitter) {
   if (emitter.kind !== 'blast' || !state.results) return 0;
   const from = emitter.positionMetres;
   const to = focusReceiver().positionMetres;
-  return travelSeconds(alongProfile(soundSpeedProfile(state.scene.air), to.x - from.x, to.y - from.y), from, to);
+  return travelSeconds(pathProfile(soundSpeedProfile(state.scene.air), from, to), from, to);
 }
 
 /** Every stroke of an emitter as its flash, scene time, and route. */

@@ -1,7 +1,7 @@
 import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../domain/random.js';
-import { alongProfile, grazingRange, inShadow, soundSpeedProfile } from '../domain/refraction.js';
+import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { cachedFlashes, currentSurface, useTerrain } from './geometry-cache.js';
@@ -712,7 +712,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     // Outward from a source, so each direction's radius uses the air along it; downwind of a strong shear none is cast.
     const directions = Array.from({ length: OUTLINE_STEPS }, (_, step) => {
       const angle = 2 * Math.PI * step / OUTLINE_STEPS;
-      return { cos: Math.cos(angle), sin: Math.sin(angle), along: alongProfile(profile, Math.cos(angle), Math.sin(angle)) };
+      return { cos: Math.cos(angle), sin: Math.sin(angle) };
     });
     const origin = frame.project({ x: 0, y: 0, z: 0 });
     const east = frame.project({ x: 1, y: 0, z: 0 });
@@ -721,7 +721,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const path = new Path2D();
     for (let index = 0; index < points.length; index += stride) {
       const point = points[index];
-      addPolygon(path, directions.map(({ cos, sin, along }) => {
+      addPolygon(path, directions.map(({ cos, sin }) => {
+        const along = pathProfile(profile, point, { x: point.x + cos, y: point.y + sin, z: height });
         const radius = Math.min(2 * SCENE_EXTENT_METRES, grazingRange(along, point.z) + grazingRange(along, height));
         return toScreen(point.x + radius * cos, point.y + radius * sin);
       }));
@@ -755,7 +756,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
           const y = box.y0 + (row + .5) * depth;
           const receiver = { x, y, z: ground(x, y) + heightAboveGround };
           lit[row * BOUNDARY_TERRAIN_CELLS + column] = sampled.some(point => {
-            const plane = meanPlaneFrame(alongProfile(profile, x - point.x, y - point.y), ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
+            const plane = meanPlaneFrame(pathProfile(profile, point, receiver), ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
             return !inShadow(plane.profile, plane.from, plane.to);
           }) ? 1 : 0;
         }

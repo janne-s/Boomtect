@@ -18,6 +18,8 @@ const DISPLAY = Object.freeze({
   lapseRateKelvinPerMetre: { scale: 1e3, unit: 'K/km' },
   windShearPerSecond: { scale: 1e3, unit: 'm/s per km' },
   humidityScaleHeightMetres: { scale: 1e-3, unit: 'km' },
+  groundLayerLapseKelvinPerMetre: { scale: 1e3, unit: 'K/km' },
+  tropopauseMetres: { scale: 1e-3, unit: 'km' },
   radiusMetres: { scale: 1e-3, unit: 'km' },
   cloudBaseMetres: { scale: 1e-3, unit: 'km' },
   cloudTopMetres: { scale: 1e-3, unit: 'km' },
