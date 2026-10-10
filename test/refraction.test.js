@@ -3,7 +3,7 @@ import test from 'node:test';
 import { prepareScene, receiverPaths } from '../src/domain/render.js';
 import { defaultScene } from '../src/domain/scene.js';
 import {
-  alongProfile, creepingCoefficient, firstArrival, grazingRange, inShadow, PATH_DIRECT, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt, travelSeconds, wavefront
+  alongProfile, creepingCoefficient, firstArrival, grazingRange, inShadow, PATH_DIRECT, PATH_SHADOW, multipleReflections, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt, travelSeconds, wavefront
 } from '../src/domain/refraction.js';
 
 const air = (overrides = {}) => ({
@@ -18,7 +18,7 @@ const inversion = soundSpeedProfile(air({ lapseRateKelvinPerMetre: -.01 }));
  * the ground, until it has covered `horizontal` metres. Returns height, time, arrival elevation, the
  * lowest height reached, and the arc length.
  */
-function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5 } = {}) {
+function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5, maximumBounces = 1 } = {}) {
   let state = [0, z0, theta0, 0];
   let s = 0;
   let lowest = z0;
@@ -37,7 +37,7 @@ function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5 } =
   while (state[0] < horizontal) {
     let h = Math.min(step, (horizontal - state[0]) / Math.max(1e-9, Math.cos(state[2])));
     let next = advance(state, h);
-    if (reflect && next[1] < 0 && bounces === 0) {
+    if (reflect && next[1] < 0 && bounces < maximumBounces) {
       // Bisect the step to the ground, then mirror the elevation.
       let low = 0;
       let high = h;
@@ -301,4 +301,34 @@ test('a wind shear stronger than the temperature lapse lifts the shadow downwind
   scene.air.windSpeedMetresPerSecond = 0;
   scene.air.windShearPerSecond = 0;
   assert.equal(kindAt(5000), PATH_SHADOW);
+});
+
+test('rays touching the ground several times in an inversion land on the receiver along numerically traced paths', () => {
+  const source = { x: 0, y: 0, z: 5 };
+  const receiver = { x: 8000, y: 0, z: 1.7 };
+  const rays = multipleReflections(inversion, source, receiver);
+  assert.ok(rays.length >= 4);
+  for (const ray of rays) {
+    const traced = shoot(inversion, source.z, elevation(ray.departure), 8000, { reflect: true, maximumBounces: 10, step: .25 });
+    assert.equal(traced.bounces, ray.bounces);
+    assert.ok(Math.abs(traced.z - receiver.z) < .05, `${ray.bounces} contacts: height ${traced.z}`);
+    assert.ok(Math.abs(traced.seconds - ray.seconds) < 2e-5, `${ray.bounces} contacts: ${traced.seconds} vs ${ray.seconds}`);
+  }
+  // None in air whose speed falls with height.
+  assert.equal(multipleReflections(isa, source, receiver).length, 0);
+});
+
+test('the spreading of rays with several contacts equals the ray tube of neighbouring rays within 0.5 %', () => {
+  const source = { x: 0, y: 0, z: 5 };
+  const zr = 1.7;
+  const horizontal = 8000;
+  for (const ray of multipleReflections(inversion, source, { x: horizontal, y: 0, z: zr })) {
+    if (ray.spreadMetres <= ray.metres * 10 ** (-1 / 2) * 1.001) continue;
+    // The same family a little nearer and farther: the ray with as many contacts leaving closest in angle.
+    const family = (a, b) => multipleReflections(inversion, a, b)
+      .filter(other => other.bounces === ray.bounces)
+      .reduce((best, other) => (Math.abs(elevation(other.departure) - elevation(ray.departure)) < Math.abs(elevation(best.departure) - elevation(ray.departure)) ? other : best));
+    const expected = tubeSpread(family, source, zr, horizontal);
+    assert.ok(Math.abs(ray.spreadMetres / expected - 1) < 5e-3, `${ray.bounces} contacts: ${ray.spreadMetres} vs ${expected}`);
+  }
 });

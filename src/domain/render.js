@@ -6,7 +6,7 @@ import { knifeEdge } from './diffraction.js';
 import { sourcePosition, sourceTable } from './source-table.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
-import { meanPlaneFrame, shieldingEdges, terrainReflection } from './terrain-propagation.js';
+import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, softExponent } from './creeping.js';
 import { GROUND_FLOW_RESISTIVITY, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
@@ -115,6 +115,8 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
   const receiverPosition = onGround(surface, receiver.positionMetres);
   const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition) : [];
   const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
+  // Arrays per path and how many entries each holds; they grow when rays with several contacts add more.
+  const widths = { direction: 3, edges: MAXIMUM_EDGES };
   const paths = {
     count: 0,
     emitter: new Uint16Array(capacity),
@@ -133,13 +135,27 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
     amplitudeScale: new Float64Array(capacity),
     direction: new Float64Array(3 * capacity),
     edgeCount: new Uint8Array(capacity),
-    edges: new Float64Array(MAXIMUM_EDGES * capacity)
+    edges: new Float64Array(MAXIMUM_EDGES * capacity),
+    /** Ground contacts of a reflected path: 1, or more where the air bends rays back down. */
+    bounces: new Uint8Array(capacity)
+  };
+  let room = capacity;
+  const grow = () => {
+    room = Math.max(16, 2 * room);
+    for (const [key, array] of Object.entries(paths)) {
+      if (!ArrayBuffer.isView(array)) continue;
+      const larger = new array.constructor(room * (widths[key] ?? 1));
+      larger.set(array);
+      paths[key] = larger;
+    }
   };
   const shielding = !surface.flat && scene.terrain.shielding;
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
   let index = 0;
   const add = (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
+    if (index >= room) grow();
     const { departure, arrival } = path;
+    paths.bounces[index] = path.bounces ?? (kind === PATH_GROUND ? 1 : 0);
     paths.edgeCount[index] = edges.length;
     edges.forEach((edge, edgeIndex) => { paths.edges[MAXIMUM_EDGES * index + edgeIndex] = edge; });
     paths.emitter[index] = emitterIndex;
@@ -187,6 +203,10 @@ export function receiverPaths(preparedEmitters, receiver, scene) {
       // The reflection near the receiver crosses the same ridges as the direct sound (class C).
       const reflected = surface.flat ? reflectedRay(along, position, receiverPosition) : terrainReflection(along, surface, position, receiverPosition);
       if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
+      // Where the air bends rays back down they may touch the ground several times (class C over terrain).
+      if (along.gradient > 0) {
+        for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) add(emitterIndex, sourceIndex, sources, PATH_GROUND, ray, edges);
+      }
     }
   });
   for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, preparedEmitters[emitterIndex].cells, kind, path);
@@ -539,9 +559,11 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
       const frequency = plan.groundFrequencies[point];
       // A specular echo reflects like the ground; a scattered one keeps the reflected share of its energy.
-      const q = !ground ? [1, 0]
+      let q = !ground ? [1, 0]
         : kind === PATH_SCATTER ? [planeReflectionMagnitude(frequency, scene.ground.type, paths.cosIncidence[index]), 0]
           : sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed);
+      // Every contact of a ray that touches the ground several times reflects it at the same angle (class C).
+      for (let bounce = 1, single = q; bounce < paths.bounces[index]; bounce += 1) q = [q[0] * single[0] - q[1] * single[1], q[0] * single[1] + q[1] * single[0]];
       const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
       const lower = Math.min(TURBULENCE_KNOTS - 2, Math.floor(position));
       const deviate = knots[lower] + (knots[lower + 1] - knots[lower]) * (position - lower);

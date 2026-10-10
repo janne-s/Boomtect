@@ -205,8 +205,10 @@ test('an inversion brings a ground reflection to a distant microphone that refra
   const inverted = scene({ emitter: smallBlast(source), receivers, ground, refraction: true });
   inverted.air.lapseRateKelvinPerMetre = -.01;
   const paths = render(inverted).arrivals;
-  assert.equal(paths.count, 2);
-  assert.deepEqual([...paths.kinds], [0, 1]);
+  // The direct ray first, then the reflection and the rays the inversion bends back to touch the ground again.
+  assert.ok(paths.count > 2);
+  assert.equal(paths.kinds[0], 0);
+  assert.ok([...paths.kinds].slice(1).every(kind => kind === 1));
   assert.ok(render(inverted).samples.every(Number.isFinite));
 });
 

@@ -301,6 +301,103 @@ export function reflectedRay(profile, source, receiver) {
   };
 }
 
+/** Most ground contacts of a ray in air whose speed grows with height (class C: more lose too much to the ground to matter). */
+export const MAXIMUM_BOUNCES = 6;
+/** Scan of the grazing angle for rays with several contacts, refined by bisection. */
+const BOUNCE_SCAN_STEPS = 48;
+const BOUNCE_BISECTIONS = 50;
+
+/**
+ * Rays that touch the ground 2…MAXIMUM_BOUNCES times between a source and a receiver above level
+ * ground, where the speed grows with height and bends rays back down (class A on the profile). Every
+ * contact is at the same grazing angle ψ, and between two contacts the ray is a circular hop of
+ * 2·(c₀/g)·tan ψ. Each end's leg may reach its height rising or, past its highest point, falling, so
+ * every pair of the two is searched: the angles where the legs and hops add up to the horizontal
+ * distance are bracketed on a scan of ψ and refined by bisection. Spreading follows the ray tube as
+ * for one contact, with ∂(hop)/∂ξ = −2/(g·sin ψ·ξ²). Returns the rays, each with its `bounces`.
+ */
+export function multipleReflections(profile, source, receiver, maximumBounces = MAXIMUM_BOUNCES) {
+  const g = profile.gradient;
+  if (!(g > 0) || flat(profile) || maximumBounces < 2) return [];
+  const dx = receiver.x - source.x;
+  const dy = receiver.y - source.y;
+  const horizontal = Math.hypot(dx, dy);
+  const zs = source.z;
+  const zr = receiver.z;
+  if (!(horizontal > 0) || zs < 0 || zr < 0) return [];
+  const c0 = profile.groundSpeed;
+  const ratio = speedAt(profile, Math.max(zs, zr)) / c0;
+  const lowest = Math.atan(Math.sqrt(Math.max(0, (ratio - 1) * (ratio + 1))));
+  const hop = psi => 2 * c0 / g * Math.tan(psi);
+  const unitX = dx / horizontal;
+  const unitY = dy / horizontal;
+  const rays = [];
+  for (let bounces = 2; bounces <= maximumBounces; bounces += 1) {
+    if ((bounces - 1) * hop(lowest) > horizontal) break;
+    for (const turnedSource of [false, true]) {
+      for (const turnedReceiver of [false, true]) {
+        const total = psi => {
+          const sinPsi = Math.sin(psi);
+          const cosPsi = Math.cos(psi);
+          const first = leg(profile, sinPsi, cosPsi, zs, turnedSource);
+          const second = leg(profile, sinPsi, cosPsi, zr, turnedReceiver);
+          if (!first || !second) return null;
+          return { first, second, sinPsi, cosPsi, metres: first.metres + second.metres + (bounces - 1) * hop(psi) - horizontal };
+        };
+        let previousPsi = null;
+        let previous = null;
+        for (let step = 0; step <= BOUNCE_SCAN_STEPS; step += 1) {
+          const psi = lowest + (HALF_PI - lowest) * (step / BOUNCE_SCAN_STEPS) ** 2 * (1 - 1e-9);
+          const value = total(psi);
+          if (value && previous && Number.isFinite(value.metres) && Number.isFinite(previous.metres) && (value.metres > 0) !== (previous.metres > 0)) {
+            let low = previousPsi;
+            let high = psi;
+            for (let iteration = 0; iteration < BOUNCE_BISECTIONS; iteration += 1) {
+              const middle = (low + high) / 2;
+              const at = total(middle);
+              if (!at || !Number.isFinite(at.metres)) break;
+              if ((at.metres > 0) === (previous.metres > 0)) low = middle; else high = middle;
+            }
+            const root = total((low + high) / 2);
+            if (root) rays.push(bounceRay(profile, source, receiver, root, bounces, horizontal, unitX, unitY, hop));
+          }
+          previousPsi = psi;
+          previous = value;
+        }
+      }
+    }
+  }
+  return rays.filter(Boolean);
+}
+
+function bounceRay(profile, source, receiver, { first, second, sinPsi, cosPsi }, bounces, horizontal, unitX, unitY, hop) {
+  const c0 = profile.groundSpeed;
+  const g = profile.gradient;
+  const length = hop(Math.asin(sinPsi));
+  const at = metres => ({ x: source.x + unitX * metres, y: source.y + unitY * metres, z: 0 });
+  const firstContact = at(first.metres);
+  const lastContact = at(horizontal - second.metres);
+  const down = rayBetween(profile, source, firstContact);
+  const hopRay = rayBetween(profile, { x: 0, y: 0, z: 0 }, { x: length, y: 0, z: 0 });
+  const up = rayBetween(profile, lastContact, receiver);
+  const xi = cosPsi / c0;
+  const derivative = Math.abs(first.derivative + second.derivative - (bounces - 1) * 2 / (g * sinPsi * xi * xi));
+  const cs = speedAt(profile, source.z);
+  const area = horizontal * derivative * first.sine * second.sine / (xi * cs * cs);
+  const metres = down.metres + (bounces - 1) * hopRay.metres + up.metres;
+  if (!(Number.isFinite(area) && area > 0)) return null;
+  return {
+    seconds: down.seconds + (bounces - 1) * hopRay.seconds + up.seconds,
+    metres,
+    spreadMetres: Math.max(Math.sqrt(area), metres * 10 ** (-CAUSTIC_LIMIT_DB / 20)),
+    departure: down.departure,
+    arrival: up.arrival,
+    groundSine: sinPsi,
+    groundPoint: firstContact,
+    bounces
+  };
+}
+
 /** The reflected ray in homogeneous air: the straight path from the image source below the ground. */
 function imageRay(profile, source, receiver) {
   const dx = receiver.x - source.x;

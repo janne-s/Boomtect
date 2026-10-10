@@ -158,6 +158,7 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 | Blast | Friedlander pulse, Kinney & Graham overpressure | B |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
+| Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
 | Terrain echoes, scattered | Lambert's law per patch of ground | B |
@@ -169,9 +170,9 @@ echo field, export a mono WAV and load it in Echotect as the source sound.
 
 Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
 ridges, rounded ridges (they shield more than thin edges), terrain finer than
-the heightfield, gusts, more than one ground reflection in an inversion or
-downwind, temperature profiles other than linear, nonlinear propagation beyond
-the linearization radius.
+the heightfield, gusts, more than six ground contacts, repeated contacts over
+sloping ground, temperature profiles other than linear, nonlinear propagation
+beyond the linearization radius.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

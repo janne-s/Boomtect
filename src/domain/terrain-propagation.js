@@ -1,5 +1,5 @@
 import { deygoutEdges } from './diffraction.js';
-import { rayBetween, rayHeightAt, reflectedRay, speedAt } from './refraction.js';
+import { multipleReflections, rayBetween, rayHeightAt, reflectedRay, speedAt } from './refraction.js';
 
 /**
  * Sound paths over a terrain surface, in the scene frame with heights above the datum.
@@ -93,6 +93,20 @@ export function meanPlaneFrame(profile, heightAt, a, b, samples = MEAN_PLANE_SAM
 
 /** The profile seen from ground at a given height: the same air, with c₀ taken at that height. */
 export const shiftedProfile = (profile, heightMetres) => (heightMetres === 0 ? profile : { groundSpeed: speedAt(profile, heightMetres), gradient: profile.gradient });
+
+/**
+ * Rays with several ground contacts, over level ground: the plane z = 0 without terrain, or the
+ * tangent plane under the receiver where it is level, as if it extended level. None over sloping
+ * ground (class C).
+ */
+export function terrainMultipleReflections(profile, surface, source, receiver) {
+  if (surface.flat) return multipleReflections(profile, source, receiver);
+  const height = surface.heightAt(receiver.x, receiver.y);
+  if (1 - surface.normalAt(receiver.x, receiver.y).z >= LEVEL_TOLERANCE) return [];
+  const shift = point => ({ x: point.x, y: point.y, z: point.z - height });
+  return multipleReflections(shiftedProfile(profile, height), shift(source), shift(receiver))
+    .map(ray => ({ ...ray, groundPoint: { ...ray.groundPoint, z: height } }));
+}
 
 /** The ground-reflected path from the tangent plane under the receiver, or null. */
 export function terrainReflection(profile, surface, source, receiver) {
