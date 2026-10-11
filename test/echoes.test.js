@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
-import { defaultBlast, defaultScene, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
+import { defaultBlast, defaultFlight, defaultScene, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
 import { CELL_SECONDS, clearBetween, echoField, echoPaths, echoSurface, SCATTER_BIN_SECONDS, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
@@ -265,4 +265,34 @@ test('scattered echoes spread over their patches rather than arriving as clicks'
   }
   // Measured: 35 with point copies, 1.7 spread; Gaussian noise gives 3.
   assert.ok(largest < 8, `${largest}`);
+});
+
+test('a boom over hills echoes from them, after it and from where it left the flight path', () => {
+  const hills = (x, y) => 150 + 250 * Math.exp(-((x - 1200) ** 2 + y ** 2) / 5e5);
+  const scene = defaultScene('sonic');
+  scene.emitters = [{ ...defaultFlight(), startMetres: { x: -20000, y: 0, z: 3000 }, mach: 1.5, durationSeconds: 40 }];
+  scene.receivers[0].positionMetres = { x: 300, y: 0, z: 1.7 };
+  scene.terrain = terrain(hills, { scattering: .5, echoLimit: 100 });
+  const parsed = parseScene(scene);
+  const paths = receiverPaths(prepareScene(parsed), parsed.receivers[0], parsed);
+  let direct = Infinity;
+  const echoes = [];
+  for (let index = 0; index < paths.count; index += 1) {
+    if (paths.kind[index] === PATH_ECHO || paths.kind[index] === PATH_SCATTER) echoes.push(paths.seconds[index]);
+    else direct = Math.min(direct, paths.seconds[index]);
+  }
+  assert.ok(echoes.length > 10, `${echoes.length} echoes`);
+  assert.ok(echoes.every(seconds => seconds > direct));
+  const loud = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  const still = { ...parsed, terrain: { ...parsed.terrain, echoes: false } };
+  const quiet = renderReceiver(prepareScene(still), still.receivers[0], still);
+  assert.ok(loud.samples.every(Number.isFinite));
+  // After the boom has passed, what remains is its echoes.
+  const tail = result => {
+    const from = Math.round((direct + .4 - result.startSeconds) * result.sampleRate);
+    let sum = 0;
+    for (let index = Math.max(0, from); index < result.samples.length; index += 1) sum += result.samples[index] ** 2;
+    return sum;
+  };
+  assert.ok(tail(loud) > 100 * tail(quiet) + 1e-12, `${tail(loud)} vs ${tail(quiet)}`);
 });

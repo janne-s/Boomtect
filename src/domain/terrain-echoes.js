@@ -64,7 +64,7 @@ export function sourceCells(sources, cellMetres) {
     if (place === undefined) { place = placeMembers.length; placeIndex.set(where, place); placeMembers.push([]); }
     placeMembers[place].push(source);
     // A blast's shock, secondary shock, and roar keep cells of their own: they differ in pulse and delay.
-    const key = `${where},${Math.floor(sources.emissionSeconds[source] / CELL_SECONDS)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0}`;
+    const key = `${where},${Math.floor(sources.emissionSeconds[source] / CELL_SECONDS)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.flight[source]}`;
     let cell = index.get(key);
     if (cell === undefined) { cell = members.length; index.set(key, cell); members.push([]); placeOf.push(place); }
     members[cell].push(source);
@@ -101,7 +101,9 @@ export function sourceCells(sources, cellMetres) {
     linearRadiusMetres: new Float64Array(length),
     relaxationRadius: new Float64Array(length),
     sourcePeriodSeconds: new Float64Array(length),
-    limitRadii: new Float64Array(length)
+    limitRadii: new Float64Array(length),
+    /** 1 for a boom, whose echoes carry its turbulent front. */
+    flight: new Uint8Array(length)
   };
   const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
   members.forEach((list, cell) => {
@@ -114,7 +116,7 @@ export function sourceCells(sources, cellMetres) {
       table[key][cell] = sum;
     }
     table.amplitudePaMetres[cell] = Math.sqrt(energy);
-    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot']) table[key][cell] = sources[key][list[0]];
+    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'flight']) table[key][cell] = sources[key][list[0]];
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);

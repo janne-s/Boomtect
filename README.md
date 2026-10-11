@@ -220,8 +220,10 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Barrage | rounds seeded over a disc, salvos spread over the duration, charges lognormal about the mean | C |
 | Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
 | Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
+| Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
+| Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
-| Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed; the boom's echoes are not traced | B/C |
+| Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed | B/C |
 | Meteor breakup | breakups where ρv² reaches the strength and each next at twice the last, a burst at the end of the trail, each a share of the kinetic energy | B/C |
 | Blast high in the air | Sachs scaling of the ground blast to the pressure and sound speed there; positive phase at most 2 s | B/C |
 | Shower | trails parallel from one radiant, seeded over a disc and a time span | C |

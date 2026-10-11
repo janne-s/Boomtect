@@ -61,7 +61,7 @@ test('the rendered N-wave carries Carlson’s overpressure and duration in free 
   const scene = defaultScene('sonic');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
   scene.ground = { ...scene.ground, enabled: false };
-  scene.emitters = [{ ...level(), riseTimeSeconds: 1e-4 }];
+  scene.emitters = [{ ...level(), riseTimeSeconds: 1e-3 }];
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   const flight = parsed.emitters[0];
@@ -110,4 +110,23 @@ test('the Mach cone drawn at the clock opens at asin(1/M) behind the body, and a
   }
   assert.equal(machCone(flightPath(level({ mach: .8 }), stillAir), 60, profile), null);
   assert.equal(machCone(path, -1, profile), null);
+});
+
+test('turbulence spikes a boom’s front, seeded, while its N-wave keeps its area', () => {
+  const render = turbulenceStrength => {
+    const scene = defaultScene('sonic');
+    scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength };
+    scene.ground = { ...scene.ground, enabled: false };
+    scene.emitters = [level()];
+    const parsed = parseScene(scene);
+    return renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  };
+  const calm = render(0);
+  const rough = render(1e-6);
+  assert.deepEqual(rough.samples, render(1e-6).samples);
+  const area = samples => samples.reduce((sum, value) => sum + Math.max(0, value), 0);
+  assert.ok(Math.abs(area(rough.samples) / area(calm.samples) - 1) < .05);
+  // Its front is no longer one clean step: the peak moves and the first milliseconds differ.
+  const peak = samples => samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0);
+  assert.ok(Math.abs(peak(rough.samples) / peak(calm.samples) - 1) > .03, `${peak(rough.samples)} vs ${peak(calm.samples)}`);
 });

@@ -94,6 +94,23 @@ const END_IMAGE_SECONDS = .02;
  * energy at every frequency on average (class C; a point copy sounds as a click).
  */
 const SCATTER_ARRIVALS = 12;
+/**
+ * A boom crosses the turbulent air near the ground, which bends its front into spikes and rounds
+ * (peaked and rounded booms). Its front is rendered as the direct front plus a scattered part of
+ * TURBULENT_ARRIVALS seeded sub-arrivals of zero sum, delayed exponentially by the rise time on
+ * average, so the N-wave keeps its shape and area while its front gains spikes (class C). The
+ * scattered part's RMS against the front is TURBULENT_FRONT_SHARE at the default turbulence and
+ * grows with the square root of its strength (class C, not fitted: it adds the spikes and 1–3 dB
+ * at 250–1000 Hz). The 1–4 kHz band follows from each part's rise (TURBULENT_RISE_RATIO): 18 dB
+ * under 80–250 Hz, against 14–27 dB in recorded booms (Doc/reference/audio/sonic1–3).
+ */
+const TURBULENT_ARRIVALS = 24;
+const TURBULENT_FRONT_SHARE = .5;
+const REFERENCE_TURBULENCE = 1e-6;
+/** Each part of a turbulent front rises in the rise time divided by this, about a steady shock's rise at tens of pascals (class C). */
+const TURBULENT_RISE_RATIO = 10;
+/** The latest sub-arrival, in rise times. */
+const TURBULENT_LONGEST_RISES = 8;
 /** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
 const TURBULENCE_KNOTS = 9;
 const SMALL_ARGUMENT = 1e-4;
@@ -127,7 +144,8 @@ const isEcho = kind => kind === PATH_ECHO || kind === PATH_SCATTER;
 const frameGroup = (paths, index) => FRAME_GROUPS * paths.emitter[index]
   + (paths.roar[index] ? ROAR_GROUP + paths.roar[index] - 1 : isEcho(paths.kind[index]) ? 2 : paths.creepNepers[index] > 0 ? 1 : 0);
 /** The point sources a path starts from: the emitter's sources, or its cells for an echo. */
-const pathSources = (prepared, kind) => (isEcho(kind) ? prepared.cells : prepared.sources);
+/** The table a path's source row is in: its emitter's echo cells at this receiver for an echo, otherwise its sources. */
+const pathSources = (preparedEmitters, paths, index) => (isEcho(paths.kind[index]) ? paths.cells[paths.emitter[index]] : preparedEmitters[paths.emitter[index]].sources);
 
 /** Whether a scene traces terrain echoes. */
 export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.terrain.echoes);
@@ -143,15 +161,14 @@ export function prepareScene(scene) {
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const rows = emitterSources(emitter, scene.air, surface).sources;
     const sources = sourceTable(rows);
-    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary; the booms' echoes are not traced.
+    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
+    // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
-      return { emitter, sources, cells: null, flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air), booms: flightBooms })) };
+      return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air), booms: flightBooms })) };
     }
-    // A meteor's breakups and burst are blasts, whose echoes are traced from a table of their own.
     if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
       const flights = showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms }));
-      const bursts = sourceTable(rows.slice(flights.length));
-      return { emitter, sources, cells: echoes && bursts.length ? sourceCells(bursts, scene.terrain.echoCellMetres) : null, flights };
+      return { emitter, sources, cells: null, echoRows: rows.slice(flights.length), flights };
     }
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
@@ -193,7 +210,7 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
  */
 export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
   // Progress over the echo places and then the sources, reported about every percent.
-  const units = preparedEmitters.reduce((sum, item) => sum + item.sources.length + (item.cells ? item.cells.places.length : 0), 0);
+  const units = preparedEmitters.reduce((sum, item) => sum + item.sources.length + (item.cells ? item.cells.places.length : 0) + (item.flights ? item.flights.length : 0), 0);
   const every = Math.max(1, Math.floor(units / 100));
   let done = 0;
   const tick = onProgress ? () => { done += 1; if (done % every === 0) onProgress(done / units); } : () => {};
@@ -201,7 +218,18 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   const ground = scene.ground.enabled;
   const surface = terrainSurface(scene.terrain);
   const receiverPosition = onGround(surface, receiver.positionMetres);
-  const echoes = preparedEmitters.some(item => item.cells) ? terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) : [];
+  // Each body's booms at this receiver; over terrain each also echoes, as a point source where it leaves
+  // the path whose pressure at the receiver's distance is the boom's (class C: the cone's front taken as
+  // a sphere from there, which holds near the receiver).
+  const booms = preparedEmitters.map(prepared => prepared.flights?.map(({ flight, path, booms: find }) => find(path, flight, receiverPosition, profile, scene.air)) ?? null);
+  const traceEchoes = echoesActive(scene) && !surface.flat;
+  const cells = preparedEmitters.map((prepared, emitterIndex) => {
+    if (!prepared.flights) return prepared.cells;
+    if (!traceEchoes) return null;
+    const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.map(boom => boomEchoRow(boom, member)))];
+    return rows.length ? sourceCells(sourceTable(rows), scene.terrain.echoCellMetres) : null;
+  });
+  const echoes = cells.some(Boolean) ? terrainEchoes(cells, scene, surface, profile, receiverPosition, tick) : [];
   const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
   // Arrays per path and how many entries each holds; they grow when rays with several contacts add more.
   const widths = { direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 };
@@ -310,9 +338,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
     if (prepared.flights) {
-      prepared.flights.forEach(({ flight, path, booms }, sourceIndex) => {
+      prepared.flights.forEach((_, sourceIndex) => {
         tick();
-        for (const boom of booms(path, flight, receiverPosition, profile, scene.air)) {
+        for (const boom of booms[emitterIndex][sourceIndex]) {
           const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
           add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
           if (!ground) continue;
@@ -353,8 +381,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
       }
     }
   });
-  for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, preparedEmitters[emitterIndex].cells, kind, path);
+  for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, cells[emitterIndex], kind, path);
   paths.count = index;
+  paths.cells = cells;
   return paths;
 }
 
@@ -375,17 +404,26 @@ export function blastStretch(sources, index, metres, shockImpedance, heightMetre
   return Math.sqrt(1 + sigma * Math.log(Math.min(metres, oldAge) / r0));
 }
 
+/** A boom as the source row of its echoes: an N-wave from where it leaves the path, at its pressure along its ray. */
+function boomEchoRow(boom, member) {
+  return {
+    flash: member, positionMetres: boom.point, direction: null, elementMetres: 0, emissionSeconds: boom.emissionSeconds,
+    amplitudePaMetres: boom.overpressurePa * boom.focus * boom.ray.metres, pulse: 'n-wave',
+    durationSeconds: boom.durationSeconds, decay: 0, spanSeconds: boom.durationSeconds, linearRadiusMetres: 0, flight: true
+  };
+}
+
 /**
  * The terrain echoes of every emitter's cells at a receiver: traced once per place, specular ones
  * kept per cell, and scattered ones merged across cells (`mergeScattered`).
  */
-function terrainEchoes(preparedEmitters, scene, surface, profile, receiverPosition, tick) {
+function terrainEchoes(emitterCells, scene, surface, profile, receiverPosition, tick) {
   const field = echoField(surface, profile, receiverPosition, {
     scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit, shadowFloor: 10 ** (-scene.air.shadowFloorDecibels / 20)
   });
   const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
   const list = [];
-  preparedEmitters.forEach(({ cells }, emitterIndex) => {
+  emitterCells.forEach((cells, emitterIndex) => {
     if (!cells) return;
     const { places } = cells;
     const cellsOf = Array.from({ length: places.length }, () => []);
@@ -500,7 +538,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
     return transitions.get(key);
   };
   for (let index = 0; index < paths.count; index += 1) {
-    const sources = pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]);
+    const sources = pathSources(preparedEmitters, paths, index);
     heights[index] = paths.height[index];
     // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
@@ -548,19 +586,20 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   let largestCreep = 0;
   let smallestRadius = Infinity;
   let largestRadius = 0;
-  for (const table of [prepared.sources, prepared.cells].filter(Boolean)) {
+  for (const table of [prepared.sources, paths.cells[Math.floor(group / FRAME_GROUPS)]].filter(Boolean)) {
     for (let index = 0; index < table.length; index += 1) longestElement = Math.max(longestElement, table.elementMetres[index]);
   }
   for (let index = 0; index < paths.count; index += 1) {
     if (frameGroup(paths, index) !== group) continue;
-    const sources = pathSources(prepared, paths.kind[index]);
+    const sources = isEcho(paths.kind[index]) ? paths.cells[paths.emitter[index]] : prepared.sources;
     const source = paths.source[index];
     // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase; the
     // roar is framed as an impulse.
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
-    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index]);
+    // A boom's turbulent front reaches TURBULENT_LONGEST_RISES rise times past it.
+    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + (sources.flight[source] ? TURBULENT_LONGEST_RISES * prepared.emitter.riseTimeSeconds : 0));
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
@@ -584,7 +623,8 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   for (let bin = 0; bin < bins; bin += 1) {
     const frequency = bin * sampleRate / size;
     absorption[bin] = scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(frequency, scene.air) : 0;
-    smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds);
+    // A boom's rise comes mostly from its turbulent front (`turbulentFront`); each part of it rises in a tenth.
+    smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds / (prepared.flights ? TURBULENT_RISE_RATIO : 1));
     if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
@@ -598,7 +638,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
     if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
-  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size };
+  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds };
 }
 
 /**
@@ -794,6 +834,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz) : null;
+  // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
+  const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, TURBULENT_FRONT_SHARE * Math.sqrt(scene.air.turbulenceStrength / REFERENCE_TURBULENCE), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
   const phaseStepIm = Math.sin(phaseStep);
@@ -884,11 +926,12 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       im = re * cIm + im * cRe;
       re = nextRe;
     }
-    if (spreadArrivals) {
-      const { gain: subGain, re: subRe, im: subIm, stepRe, stepIm } = spreadArrivals;
-      let sumRe = 0;
+    for (const subArrivals of [spreadArrivals, turbulence]) {
+      if (!subArrivals) continue;
+      const { gain: subGain, re: subRe, im: subIm, stepRe, stepIm, direct } = subArrivals;
+      let sumRe = direct;
       let sumIm = 0;
-      for (let k = 0; k < SCATTER_ARRIVALS; k += 1) {
+      for (let k = 0; k < subGain.length; k += 1) {
         sumRe += subGain[k] * subRe[k];
         sumIm += subGain[k] * subIm[k];
         const nextRe = subRe[k] * stepRe[k] - subIm[k] * stepIm[k];
@@ -956,7 +999,29 @@ function scatterArrivals(spread, seed, binHz) {
     stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
     re[k] = stepRe[k]; im[k] = stepIm[k];
   }
-  return { gain, re, im, stepRe, stepIm };
+  return { gain, re, im, stepRe, stepIm, direct: 0 };
+}
+
+/**
+ * A boom's turbulent front (see TURBULENT_ARRIVALS): the direct front and seeded sub-arrivals of
+ * zero sum whose energy is `share`² of the front's, delayed exponentially with mean `riseSeconds`, as rotations from bin 1.
+ */
+function turbulentFront(riseSeconds, share, seed, binHz) {
+  const random = createRandom((seed ^ 0x5bd1e995) >>> 0);
+  const gain = Float64Array.from({ length: TURBULENT_ARRIVALS }, () => normalDeviate(random));
+  const mean = gain.reduce((sum, value) => sum + value, 0) / TURBULENT_ARRIVALS;
+  const spread = Math.sqrt(gain.reduce((sum, value) => sum + (value - mean) ** 2, 0) / TURBULENT_ARRIVALS) || 1;
+  const re = new Float64Array(TURBULENT_ARRIVALS);
+  const im = new Float64Array(TURBULENT_ARRIVALS);
+  const stepRe = new Float64Array(TURBULENT_ARRIVALS);
+  const stepIm = new Float64Array(TURBULENT_ARRIVALS);
+  for (let k = 0; k < TURBULENT_ARRIVALS; k += 1) {
+    gain[k] = (gain[k] - mean) / spread * share / Math.sqrt(TURBULENT_ARRIVALS);
+    const step = -2 * Math.PI * binHz * Math.min(TURBULENT_LONGEST_RISES, -Math.log(1 - random())) * riseSeconds;
+    stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
+    re[k] = stepRe[k]; im[k] = stepIm[k];
+  }
+  return { gain, re, im, stepRe, stepIm, direct: 1 };
 }
 
 /**
@@ -1028,7 +1093,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     frameOf[index] = frame;
     first = Math.min(first, frame * plan.hop);
     last = Math.max(last, frame * plan.hop + plan.size);
-    if (paths.metres[index] < pathSources(preparedEmitters[paths.emitter[index]], paths.kind[index]).linearRadiusMetres[paths.source[index]]) nonlinearPaths += 1;
+    if (paths.metres[index] < pathSources(preparedEmitters, paths, index).linearRadiusMetres[paths.source[index]]) nonlinearPaths += 1;
   }
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
@@ -1063,7 +1128,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
-      const sources = pathSources(preparedEmitters[emitterIndex], paths.kind[index]);
+      const sources = pathSources(preparedEmitters, paths, index);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ);
