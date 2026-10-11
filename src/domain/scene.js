@@ -7,7 +7,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 21;
+export const SCENE_VERSION = 22;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -381,7 +381,7 @@ export function defaultScene(mode = 'thunder') {
     terrain: null,
     emitters: [blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning()],
     receivers: [receiver],
-    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false }
+    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true }
   };
 }
 
@@ -563,7 +563,7 @@ export function parseScene(value) {
   const render = value.render ?? {};
   check(render.sampleRate === SAMPLE_RATE_HZ, `render.sampleRate must be ${SAMPLE_RATE_HZ}.`);
   check(LEVEL_MODES.includes(render.levelMode), 'render.levelMode is not supported.');
-  check(typeof render.earReflex === 'boolean' && typeof render.earLoudness === 'boolean', 'render.earReflex and render.earLoudness must be true or false.');
+  check(typeof render.earReflex === 'boolean' && typeof render.earLoudness === 'boolean' && typeof render.earCapOnsets === 'boolean', 'render.earReflex, render.earLoudness, and render.earCapOnsets must be true or false.');
   const scene = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
@@ -591,7 +591,8 @@ export function parseScene(value) {
       fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa'),
       ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder'),
       earReflex: render.earReflex,
-      earLoudness: render.earLoudness
+      earLoudness: render.earLoudness,
+      earCapOnsets: render.earCapOnsets
     }
   };
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));

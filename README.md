@@ -133,11 +133,15 @@ microphone along the Mach cone.
   the sound continues.
 - **Loudness** — Compresses level differences the way perceived loudness
   grows with pressure (Stevens' power law, the same at every frequency).
+- **Cap onsets** — Keeps Loudness from making a sharp onset after quiet, such
+  as a boom's front, louder than it was: the level it follows lags the onset,
+  so the quiet's boost would carry into it. On at first.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
   A fixed scale keeps sounds as loud as each other as they are outdoors. A
   boom or a near blast reaches 100–1 000 Pa (134–154 dB), far beyond what
   speakers or headphones play; Ear reflex and Loudness give some of what the
-  ear does with it.
+  ear does with it. The warning gives how far what plays goes above full
+  scale; 20 dB and more may break up the playback, not only clip it.
 - **Plots** — Pressure, and arrival time by source height (Thunder) or by the
   direction the sound comes from (Blast), for every microphone on one time axis
   and one pressure scale, each in its own color and the muted ones dimmer. A microphone's tab, or selecting the microphone, brings it

@@ -424,7 +424,14 @@ export const EAR = Object.freeze({
   loudnessMeanSquareSeconds: .025,
   loudnessLevelSeconds: .05,
   loudnessFloorDb: -60,
-  loudnessMaximumBoostDb: 40
+  loudnessMaximumBoostDb: 40,
+  /**
+   * With its onsets capped, Loudness raises no sample above the loudest before it: the level it
+   * follows lags a sharp onset after quiet (a boom's front) by tens of milliseconds, so the quiet's
+   * boost of up to 20 dB went on into the onset. The capped gain changes by at most this many
+   * decibels per second either way, so the cap does not click (class C).
+   */
+  onsetCapSlewDbPerSecond: 2000
 });
 
 export const RENDER = Object.freeze({
@@ -456,6 +463,12 @@ export const RENDER = Object.freeze({
   scheduleLeadSeconds: .08,
   /** Playback fades in when it starts and out when it stops over this time, so a cut into a sound does not click. */
   fadeSeconds: .05,
+  /**
+   * At a fixed full scale, a peak this far above it is flagged as likely to break up playback rather
+   * than only clip: samples many times full scale reach the output device, whose limiting or coding
+   * can drop or distort the sound until it falls (seen with Loudness on a boom).
+   */
+  breakUpDecibels: 20,
   /** Without the real delay, the first sound starts this long after playback begins. */
   shortenedLeadSeconds: .5,
   /** Below this share of the peak a sample is silence, so playback without the real delay skips it. */

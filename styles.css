@@ -541,6 +541,9 @@ button.macro-value:hover {
 .overlay .warning {
   color: var(--accent);
 }
+.overlay .warning.severe {
+  font-weight: 600;
+}
 .overlay strong {
   color: var(--ink);
   font-weight: 600;

@@ -18,7 +18,8 @@ import { EAR } from './constants.js';
  * ear's temporal integration of loudness, of the order of 100 ms (class B, Zwicker & Fastl,
  * Psychoacoustics; class C for the two stages): a mean square over 25 ms, smoothed in decibels over
  * 50 ms, so a sharp onset passes before it is turned down and a quiet tail is raised as soon after
- * a loud sound however much quieter it is. The values are in EAR (`constants.js`).
+ * a loud sound however much quieter it is. With `capOnsets` no sample comes out louder than the loudest
+ * going in (`capGains`). The values are in EAR (`constants.js`).
  */
 
 const toDb = value => 20 * Math.log10(Math.max(value, 1e-30));
@@ -82,10 +83,28 @@ function frameGains(decibels, window, length) {
 }
 
 /**
+ * Lowers gains so that no sample of `pressure` rises above its loudest one: each gain at most the
+ * ratio that brings its sample to that peak, then limited to EAR.onsetCapSlewDbPerSecond of change
+ * forward and backward, which can only lower it further.
+ */
+function capGains(gains, pressure, sampleRate) {
+  let loudest = 0;
+  for (const value of pressure) loudest = Math.max(loudest, Math.abs(value));
+  if (!(loudest > 0)) return;
+  for (let index = 0; index < gains.length; index += 1) {
+    const magnitude = Math.abs(pressure[index]);
+    if (magnitude * gains[index] > loudest) gains[index] = loudest / magnitude;
+  }
+  const step = fromDb(EAR.onsetCapSlewDbPerSecond / sampleRate);
+  for (let index = 1; index < gains.length; index += 1) gains[index] = Math.min(gains[index], gains[index - 1] * step);
+  for (let index = gains.length - 2; index >= 0; index -= 1) gains[index] = Math.min(gains[index], gains[index + 1] * step);
+}
+
+/**
  * Applies the listener model to one listener's channels, driven by channel 0 (the pressure). The
  * same time-varying processing goes to every channel, so an ambisonic field keeps its directions.
  */
-export function applyEar(channels, sampleRate, { reflex = true, loudness = true } = {}) {
+export function applyEar(channels, sampleRate, { reflex = true, loudness = true, capOnsets = true } = {}) {
   let output = channels.map(channel => Float32Array.from(channel));
   const length = output[0].length;
   if (reflex) {
@@ -144,6 +163,7 @@ export function applyEar(channels, sampleRate, { reflex = true, loudness = true 
         peak = Math.max(peak, decibels);
       }
       const gains = Float64Array.from(level, value => fromDb(Math.min(EAR.loudnessMaximumBoostDb, (EAR.loudnessExponent - 1) * (value - peak))));
+      if (capOnsets) capGains(gains, output[0], sampleRate);
       output = output.map(channel => channel.map((value, index) => value * gains[index]));
     }
   }

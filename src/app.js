@@ -66,6 +66,8 @@ const state = {
   scene: restoredScene(preferences.mode),
   selection: null,
   results: null,
+  /** The peak of what played last, after the ear model (`playedPeakPa`). */
+  playedPeak: null,
   /** Where paused or scrubbed playback stands: scene seconds and the lead-in it skips, or null. */
   pause: null,
   envelopes: new Map(),
@@ -597,16 +599,16 @@ let earPending = 0;
  * parts on their way waits for them.
  */
 async function earApplied(composition) {
-  const { earReflex: reflex, earLoudness: loudness } = state.scene.render;
+  const { earReflex: reflex, earLoudness: loudness, earCapOnsets: capOnsets } = state.scene.render;
   if (!composition || (!reflex && !loudness)) return composition;
   const results = state.results;
-  const key = part => `${part.receiverId}:${reflex}:${loudness}:${composition.startSeconds}:${composition.length}`;
+  const key = part => `${part.receiverId}:${reflex}:${loudness}:${capOnsets}:${composition.startSeconds}:${composition.length}`;
   const parts = [...composition.heads.map(head => ({ part: head, channels: head.channels })), ...composition.omnis.map(omni => ({ part: omni, channels: [omni.channel] }))];
   const missing = parts.filter(({ part }) => earCache.get(key(part))?.results !== results);
   if (missing.length) {
     earPending += 1;
     operation('ear', 'Ear model');
-    const batch = earOnWorker(missing.map(({ channels }) => channels), composition.sampleRate, { reflex, loudness });
+    const batch = earOnWorker(missing.map(({ channels }) => channels), composition.sampleRate, { reflex, loudness, capOnsets });
     batch.finally(() => {
       earPending -= 1;
       if (!earPending) operation('ear', null);
@@ -627,7 +629,27 @@ async function earApplied(composition) {
   for (const channel of [...heads.map(head => head.channels[0]), ...omnis.map(omni => omni.channel)]) {
     for (const value of channel) peakPa = Math.max(peakPa, Math.abs(value));
   }
+  // The info's level warning follows what plays.
+  const playedKey = `${reflex}:${loudness}:${capOnsets}|${[...heads, ...omnis].map(part => part.receiverId).join(',')}`;
+  if (results === state.results && (state.playedPeak?.results !== results || state.playedPeak.key !== playedKey || state.playedPeak.peakPa !== peakPa)) {
+    state.playedPeak = { results, key: playedKey, peakPa };
+    drawInfo();
+  }
   return { ...composition, heads, omnis, peakPa };
+}
+
+/**
+ * The peak pressure of what plays, Pa: the listening microphones' after the ear model once it has
+ * run for this render and setting, and before it until then.
+ */
+function playedPeakPa() {
+  const { heads, omnis } = listeningKind(state.scene.receivers, state.scene.render.ambisonicOrder);
+  const ids = [...heads, ...omnis].map(receiver => receiver.id);
+  const raw = Math.max(0, ...ids.map(id => state.results?.get(id)?.peakPa ?? 0));
+  const { earReflex, earLoudness, earCapOnsets } = state.scene.render;
+  if (!earReflex && !earLoudness) return raw;
+  const key = `${earReflex}:${earLoudness}:${earCapOnsets}|${ids.join(',')}`;
+  return state.playedPeak?.results === state.results && state.playedPeak.key === key ? state.playedPeak.peakPa : raw;
 }
 
 /** Starts the ear model for the current listening, if it is on, so that Play need not wait for it. */
@@ -1441,6 +1463,7 @@ function rebuildPanel() {
   }
   checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
   checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
+  if (scene.render.earLoudness) checkboxField(output, { label: 'Cap onsets', value: scene.render.earCapOnsets, reliability: 'C', onCommit: value => commitListening(next => { next.render.earCapOnsets = value; }) });
   selectField(output, {
     label: 'Spatial', value: String(scene.render.ambisonicOrder),
     options: [['0', 'Off'], ['1', '1st order'], ['2', '2nd order'], ['3', '3rd order']],
@@ -1540,7 +1563,11 @@ function drawInfo() {
     const share = shadowed / sources * 100;
     if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${share < 1 ? '<1' : Math.round(share)} % of sources in the refraction shadow`));
     if (result.nonlinearPaths) listenInfo.append(element('span', 'warning', `${result.nonlinearPaths} paths start in the nonlinear zone`));
-    if (scene.render.levelMode === 'fixed' && result.peakPa > scene.render.fullScalePa) listenInfo.append(element('span', 'warning', 'Peak above full scale: clips'));
+    const over = 20 * Math.log10(playedPeakPa() / scene.render.fullScalePa);
+    if (scene.render.levelMode === 'fixed' && over > 0) {
+      const severe = over >= RENDER.breakUpDecibels;
+      listenInfo.append(element('span', severe ? 'warning severe' : 'warning', `Peak ${Math.max(1, Math.round(over))} dB above full scale: ${severe ? 'playback may break up' : 'clips'}`));
+    }
   }
   if (scene.emitters.filter(item => item.enabled).length > 1) listenInfo.append(element('span', 'warning', 'Several emitters sound together'));
 }

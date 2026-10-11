@@ -90,3 +90,23 @@ test('loudness compression adds no harmonics of a loud bass', () => {
   };
   for (const frequency of [80, 120, 160, 200]) assert.ok(20 * Math.log10(level(frequency) / level(40)) < -65, `${frequency} Hz`);
 });
+
+test('with its onsets capped, Loudness raises no sample above the loudest going in, and still raises the quiet', () => {
+  const sampleRate = 48000;
+  // A quiet hiss for a second, then a 50 Pa N-wave of 100 ms, then the hiss again.
+  const signal = Float32Array.from({ length: 3 * sampleRate }, (_, index) => {
+    const t = index / sampleRate - 1;
+    const hiss = .01 * Math.sin(index * 1.7) * Math.sin(index * .013);
+    return hiss + (t >= 0 && t < .1 ? 50 * (1 - 2 * t / .1) : 0);
+  });
+  const peak = channel => channel.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+  const rms = (channel, from, to) => Math.sqrt(channel.slice(from, to).reduce((sum, value) => sum + value * value, 0) / (to - from));
+  const [free] = applyEar([signal], sampleRate, { reflex: false, loudness: true, capOnsets: false });
+  const [capped] = applyEar([signal], sampleRate, { reflex: false, loudness: true });
+  assert.ok(peak(free) > 1.5 * peak(signal), `${peak(free)}`);
+  assert.ok(peak(capped) <= peak(signal) * (1 + 1e-6), `${peak(capped)}`);
+  // The hiss before the onset is raised as without the cap, away from it.
+  const quiet = [Math.round(.2 * sampleRate), Math.round(.6 * sampleRate)];
+  assert.ok(rms(capped, ...quiet) > 10 * rms(signal, ...quiet));
+  assert.ok(Math.abs(rms(capped, ...quiet) / rms(free, ...quiet) - 1) < 1e-6);
+});
