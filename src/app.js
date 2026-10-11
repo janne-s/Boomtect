@@ -17,6 +17,7 @@ import { actionField, checkboxField, numberField, pointFields, seedField, select
 import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
+import { createMapLayer } from './ui/map-layer.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODIES, BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
@@ -74,7 +75,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, names: true, clouds: true, autoRender: true, mode: 'thunder',
+  realDelay: true, wavefront: false, contours: true, names: true, map: false, clouds: true, autoRender: true, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -115,6 +116,9 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
   onCommit: () => storeScene()
 });
 
+/** The topographic map on the floor, requested only once it is switched on. */
+const mapLayer = createMapLayer(() => redrawViews());
+
 const views = [createCubeView($('cube'), {
   // Each mode keeps its own view: a blast's box is far smaller than a storm's.
   onView: next => { state.preferences.cubeViews = { ...state.preferences.cubeViews, [state.scene.mode]: next }; savePreferences(); },
@@ -142,14 +146,18 @@ const views = [createCubeView($('cube'), {
     } else if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else {
-      panelOnNextFrame.skip = true;
       item[handle.field] = storedPoint(handle, item, point);
-      liveFields[handle.type]?.[handle.field]?.set(item[handle.field]);
+      // A receiver's fields follow directly; the panel of any other item is rebuilt once a frame.
+      const live = liveFields[handle.type]?.[handle.field];
+      if (live) {
+        panelOnNextFrame.skip = true;
+        live.set(item[handle.field]);
+      }
     }
     invalidateResults();
     redrawViews();
     drawInfo();
-    // The storm's sliders follow its handles, once a frame.
+    // The panel follows the handles, once a frame.
     if (!panelOnNextFrame.skip) panelOnNextFrame();
     panelOnNextFrame.skip = false;
   },
@@ -157,6 +165,7 @@ const views = [createCubeView($('cube'), {
   focus: () => focusReceiver(),
   contours: () => state.preferences.contours,
   names: () => state.preferences.names,
+  map: () => (state.preferences.map && state.scene.terrain?.enabled ? mapLayer.tiles(state.scene.terrain) : null),
   clouds: () => state.preferences.clouds
 })];
 
@@ -1267,6 +1276,7 @@ function rebuildPanel() {
   terrainPanel(terrainFields);
   $('cube-attribution').hidden = !scene.terrain;
   $('names-toggle').hidden = !scene.terrain;
+  $('map-toggle').hidden = !scene.terrain;
   $('clouds-toggle').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
 
   const output = $('output-fields');
@@ -1955,6 +1965,8 @@ $('names').addEventListener('change', () => {
   if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
   redrawViews();
 });
+$('map').checked = state.preferences.map;
+$('map').addEventListener('change', () => { state.preferences.map = $('map').checked; savePreferences(); redrawViews(); });
 $('attribution-button').addEventListener('click', () => {
   const open = $('attribution-text').hidden;
   $('attribution-text').hidden = !open;

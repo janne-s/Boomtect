@@ -54,6 +54,33 @@ function tileRange(bounds, zoom) {
   return { west, east, north, south, count: (east - west + 1) * (south - north + 1) };
 }
 
+/** Zoom limits and request budget of the map tiles laid on the floor (OpenTopoMap serves up to zoom 17). */
+const MAP_MAXIMUM_ZOOM = 17;
+const MAP_PIXELS_ACROSS = 2048;
+
+/** Latitude of a tile row's edge at a zoom, the inverse of `tileY`. */
+const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zoom))) * 180 / Math.PI;
+
+/**
+ * The map tiles covering a terrain square, each with its north-west, north-east, and south-west
+ * corners in the scene frame (x east, y north, metres from the centre). The zoom is the finest at
+ * which about MAP_PIXELS_ACROSS pixels span the square, within MAXIMUM_TILE_REQUESTS tiles.
+ */
+export function mapTiles({ latitude, longitude, extentMetres }) {
+  const { north, east } = metresPerDegree(latitude);
+  const half = extentMetres / 2;
+  const bounds = { west: longitude - half / east, east: longitude + half / east, south: latitude - half / north, north: latitude + half / north };
+  let zoom = MAP_MAXIMUM_ZOOM;
+  while (zoom > MINIMUM_TILE_ZOOM && (tilePixelMetres(latitude, zoom) < extentMetres / MAP_PIXELS_ACROSS || tileRange(bounds, zoom).count > MAXIMUM_TILE_REQUESTS)) zoom -= 1;
+  const range = tileRange(bounds, zoom);
+  const local = (x, y) => ({ x: ((x / 2 ** zoom) * 360 - 180 - longitude) * east, y: (tileLatitude(y, zoom) - latitude) * north });
+  const tiles = [];
+  for (let y = range.north; y <= range.south; y += 1) {
+    for (let x = range.west; x <= range.east; x += 1) tiles.push({ x, y, zoom, northWest: local(x, y), northEast: local(x + 1, y), southWest: local(x, y + 1) });
+  }
+  return { zoom, tiles };
+}
+
 /**
  * The tiles and grid for a square capture of `extentMetres` around a centre. The tiles are the
  * coarsest whose pixels are no larger than the cell, within MAXIMUM_TILE_REQUESTS; the cell grows

@@ -24,7 +24,11 @@ const DISC_POINTS = 64;
 export const FLASH_TRAVERSE_SECONDS = .12;
 const FLASH_FADE_SECONDS = .2;
 
-export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panX: 0, panY: 0 });
+/**
+ * The view of the box: its turn, its zoom over the fit, and its pan in units of the box's half-extent
+ * on screen, so that the view keeps its place on the box when the box grows or shrinks.
+ */
+export const DEFAULT_CUBE_VIEW = Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panU: 0, panV: 0 });
 const MICROPHONE_RADIUS = 5.5;
 const ARROWHEAD_PIXELS = 8;
 /** Length of a receiver's facing arrow, as a share of the box. */
@@ -34,6 +38,8 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
+/** The map on the floor is drawn this opaque, so the box's lines stay visible through it. */
+const MAP_ALPHA = .9;
 /** A Mach cone's lines: every this many of a ring's points leads to the next ring; pieces per line kept above the ground. */
 const CONE_LINE_EVERY = 4;
 const CONE_PIECES = 12;
@@ -189,7 +195,7 @@ function frontArc(step, elapsed, routeLength) {
  * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
  * point by the pointer's displacement in that plane, so grabbing never makes it jump.
  */
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false, map = () => null }) {
   let scene = null;
   let selection = null;
   let view = { ...DEFAULT_CUBE_VIEW };
@@ -291,16 +297,19 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       extentY = Math.max(extentY, Math.abs(p.y));
     }
     const scale = zoom * Math.min((width / 2 - MARGIN) / extentX, (height / 2 - MARGIN) / extentY);
+    const unit = Math.max(extentX, extentY);
+    const panX = view.panU * unit;
+    const panY = view.panV * unit;
     const project = point => {
       const p = raw(point);
-      return { x: width / 2 + (p.x + view.panX) * scale, y: height / 2 - (p.y + view.panY) * scale, depth: p.depth };
+      return { x: width / 2 + (p.x + panX) * scale, y: height / 2 - (p.y + panY) * scale, depth: p.depth };
     };
     const farX = sinYaw > 0 ? box.x1 : box.x0;
     const farY = cosYaw > 0 ? box.y1 : box.y0;
     // World directions of the screen's right and up, for outlines of spheres.
     const right = { x: cosYaw, y: -sinYaw, z: 0 };
     const up = { x: sinPitch * sinYaw, y: sinPitch * cosYaw, z: cosPitch };
-    return { box, scale, project, farX, farY, width, height, right, up };
+    return { box, scale, unit, project, farX, farY, width, height, right, up };
   }
 
   /** The planes a point can be dragged in: its own height, the floor, and the two far walls. */
@@ -623,7 +632,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { box, farX, farY } = frame;
     const ratio = window.devicePixelRatio || 1;
     const striped = contours();
-    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground, colors.panel].join('|');
+    const key = [view.yaw, view.pitch, view.zoom, view.panU, view.panV, canvas.width, canvas.height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, surface.datumMetres, surface.values.length, striped, colors.ground, colors.panel].join('|');
     if (terrainLayer?.key === key && terrainLayer.surface === surface) return terrainLayer;
     // Back, front, and the fog mask: white with the opacity the ground keeps through the fog.
     const layers = (terrainLayer?.layers ?? [document.createElement('canvas'), document.createElement('canvas'), document.createElement('canvas')]).map(layer => {
@@ -708,6 +717,31 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
+  /**
+   * Map tiles flat on the floor, within it: each tile's square is laid by the affine map of its
+   * corners, which the box's parallel projection keeps exact.
+   */
+  function drawMap(context, tiles) {
+    const { box } = frame;
+    const z = box.z0;
+    context.save();
+    polygon(context, [{ x: box.x0, y: box.y0, z }, { x: box.x1, y: box.y0, z }, { x: box.x1, y: box.y1, z }, { x: box.x0, y: box.y1, z }]);
+    context.clip();
+    context.globalAlpha *= MAP_ALPHA;
+    for (const { image, northWest, northEast, southWest } of tiles) {
+      const origin = frame.project({ ...northWest, z });
+      const across = frame.project({ ...northEast, z });
+      const down = frame.project({ ...southWest, z });
+      const size = image.naturalWidth || 256;
+      context.save();
+      context.transform((across.x - origin.x) / size, (across.y - origin.y) / size, (down.x - origin.x) / size, (down.y - origin.y) / size, origin.x, origin.y);
+      // Half a pixel over each edge, so that neighbouring tiles leave no seam.
+      context.drawImage(image, -.5, -.5, size + 1, size + 1);
+      context.restore();
+    }
+    context.restore();
+  }
+
   /** Place names on the terrain, most important first, each skipped where it would overlap another. */
   function drawNames(context, colors) {
     const list = scene.terrain?.enabled ? scene.terrain.names : [];
@@ -718,7 +752,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const sorted = [...list].sort((a, b) => LABEL_PRIORITY[a.kind] - LABEL_PRIORITY[b.kind]);
     for (const item of sorted) {
       if (placed.length >= MAXIMUM_LABELS) break;
-      const p = frame.project({ x: item.x, y: item.y, z: ground(item.x, item.y) });
+      const p = frame.project({ x: item.x, y: item.y, z: map() ? frame.box.z0 : ground(item.x, item.y) });
       const text = item.kind === 'peak' && item.elevationMetres !== null ? `${item.name} ${Math.round(item.elevationMetres)} m` : item.name;
       const width = context.measureText(text).width;
       const box = { x0: p.x - 3, x1: p.x + 7 + width, y0: p.y - 7, y1: p.y + 7 };
@@ -1019,7 +1053,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * layer kept until the view, the size, or the storm changes.
    */
   function drawCloud(context, emitter, colors) {
-    const key = [view.yaw, view.pitch, view.zoom, view.panX, view.panY, canvas.width, canvas.height, emitter.seed, emitter.centreMetres.x, emitter.centreMetres.y, emitter.radiusMetres, emitter.cloudBaseMetres, emitter.cloudTopMetres, colors['storm-base'], colors['storm-top'], frame.box.x0, frame.box.x1, frame.box.z1].join('|');
+    const key = [view.yaw, view.pitch, view.zoom, view.panU, view.panV, canvas.width, canvas.height, emitter.seed, emitter.centreMetres.x, emitter.centreMetres.y, emitter.radiusMetres, emitter.cloudBaseMetres, emitter.cloudTopMetres, colors['storm-base'], colors['storm-top'], frame.box.x0, frame.box.x1, frame.box.z1].join('|');
     let layer = cloudLayers.get(emitter.id);
     if (layer?.key !== key) {
       const canvasLayer = layer?.canvas ?? document.createElement('canvas');
@@ -1314,9 +1348,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const state = animation?.() ?? null;
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
-    drawTerrain(context, colors, true);
+    // The map lies flat on the floor in place of the terrain's relief.
+    const mapTiles = currentSurface().flat ? null : map();
+    if (!mapTiles) drawTerrain(context, colors, true);
     drawBox(context, colors);
-    drawTerrain(context, colors, false);
+    if (mapTiles) drawMap(context, mapTiles); else drawTerrain(context, colors, false);
     drawBoxLabels(context, colors);
     drawNames(context, colors);
     drawShadowBoundary(context, colors);
@@ -1432,14 +1468,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const zoom = Math.min(high, Math.max(low, view.zoom * factor));
     const before = frame.scale;
     const after = before * zoom / view.zoom;
-    const u = (x - frame.width / 2) / before - view.panX;
-    const v = (frame.height / 2 - y) / before - view.panY;
-    changeView({ ...view, zoom, panX: (x - frame.width / 2) / after - u, panY: (frame.height / 2 - y) / after - v });
+    const u = (x - frame.width / 2) / before - view.panU * frame.unit;
+    const v = (frame.height / 2 - y) / before - view.panV * frame.unit;
+    changeView({ ...view, zoom, panU: ((x - frame.width / 2) / after - u) / frame.unit, panV: ((frame.height / 2 - y) / after - v) / frame.unit });
   }
 
   function panBy(dx, dy) {
     if (!frame) return;
-    changeView({ ...view, panX: view.panX + dx / frame.scale, panY: view.panY - dy / frame.scale });
+    changeView({ ...view, panU: view.panU + dx / frame.scale / frame.unit, panV: view.panV - dy / frame.scale / frame.unit });
   }
 
   const touches = new Map();
@@ -1573,7 +1609,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (!drag) frame = null;
       draw();
     },
-    setView(next) { changeView({ ...DEFAULT_CUBE_VIEW, ...next }); },
+    setView(next) {
+      const { yaw, pitch, zoom, panU, panV } = { ...DEFAULT_CUBE_VIEW, ...next };
+      changeView({ yaw, pitch, zoom, panU, panV });
+    },
     getView: () => view,
     draw,
     setAnimation(source) { animation = source; },
