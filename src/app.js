@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { arrivalTable, assemblePaths, combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
+import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -300,7 +300,7 @@ function stopWorkers() {
  * Starts a worker for the current revision. `onResult` gets its result message; errors, stalls, and
  * a newer revision end the whole render.
  */
-function spawnWorker(revision, message, { onProgress, onResult }) {
+function spawnWorker(revision, message, { onProgress, onResult }, transfer = []) {
   const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
   state.workers.push(worker);
   worker.addEventListener('message', ({ data }) => {
@@ -321,7 +321,7 @@ function spawnWorker(revision, message, { onProgress, onResult }) {
     stopWorkers();
     setStatus(event.message || 'The renderer failed to start.', true);
   });
-  worker.postMessage({ revision, ...message });
+  worker.postMessage({ revision, ...message }, transfer);
 }
 
 /**
@@ -330,8 +330,9 @@ function spawnWorker(revision, message, { onProgress, onResult }) {
  * together here into its paths and arrival table. Then each receiver's arrivals are split into
  * equal time ranges, with workers shared out by the number of paths; each worker receives its
  * receiver's traced paths rather than tracing them again. With more receivers than workers, each
- * worker traces and renders whole receivers. The segments are summed in range order. Every worker
- * gets the scene as it was when the render started.
+ * worker traces and renders whole receivers. The segments are summed in range order, and the
+ * diffuse tails are added once to the sum: their responses are made meanwhile, one worker per
+ * receiver. Every worker gets the scene as it was when the render started.
  */
 function startRender() {
   state.revision += 1;
@@ -360,6 +361,15 @@ function startRender() {
   const started = performance.now();
   state.heard = performance.now();
   operation('render', 'Tracing paths', { share: 0 });
+  // Each receiver's channels are shared out over as many workers as there are for it.
+  const channels = (scene.render.ambisonicOrder + 1) ** 2;
+  const shares = Math.max(1, Math.min(channels, Math.floor(workerCount / scene.receivers.length)));
+  const responses = hasTails(scene)
+    ? Promise.all(scene.receivers.map((_, index) => Promise.all(Array.from({ length: shares }, (_, share) => new Promise(resolve => {
+      const range = [Math.floor(share * channels / shares), Math.floor((share + 1) * channels / shares)];
+      spawnWorker(revision, { type: 'responses', scene, receivers: [index], channels: range }, { onResult: data => resolve(data.responses[0]) });
+    }))).then(joinResponses)))
+    : Promise.resolve(scene.receivers.map(() => null));
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
     if (revision !== state.revision || performance.now() - state.heard < RENDER.stallSeconds * 1000) return;
@@ -398,7 +408,7 @@ function startRender() {
           drawResults();
           return;
         }
-        renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started });
+        renderRanges(revision, scene, arrivals, tracedPaths, responses, { sources, workerCount, started });
       }
     });
   }
@@ -424,9 +434,8 @@ function renderJobs(scene, arrivals, workerCount) {
   });
 }
 
-function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started }) {
-  state.workers = [];
-  const jobs = renderJobs(scene, arrivals, workerCount);
+function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
+  const jobs = renderJobs(scene, arrivals, info.workerCount);
   const progress = new Array(jobs.length).fill(0);
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
@@ -440,20 +449,59 @@ function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerC
       onResult: data => {
         parts[index] = data.segments;
         remaining -= 1;
-        if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
+        if (remaining === 0) responses.then(list => { if (revision === state.revision) addRenderTails(revision, scene, arrivals, parts, list, info); });
       }
     });
   });
 }
 
-function finishRender(scene, arrivals, parts, info) {
+const receiverSegments = (parts, receiver) => parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);
+
+/**
+ * Sums each receiver's segments and adds its diffuse tails. Its pressure is cut into stretches,
+ * shared out over the workers by length; the tails of each come back and are added to the sum.
+ */
+function addRenderTails(revision, scene, arrivals, parts, responses, info) {
+  let sums;
+  try {
+    sums = scene.receivers.map((receiver, index) => sumSegments(receiverSegments(parts, receiver), scene.render.sampleRate, tailSamples(responses[index])));
+  } catch (error) {
+    stopWorkers();
+    setStatus(error.message, true);
+    drawResults();
+    return;
+  }
+  const lengths = sums.map((sum, index) => (responses[index] ? sum.channels[0].length - tailSamples(responses[index]) : 0));
+  const total = lengths.reduce((a, b) => a + b, 0);
+  const jobs = lengths.flatMap((length, index) => (length > 0
+    ? tailStretches(length, Math.max(1, Math.round(info.workerCount * length / total)), tailSamples(responses[index])).map(([from, to]) => ({ index, from, to }))
+    : []));
+  const finish = () => finishRender(scene, arrivals, sums, parts, { sources: info.sources, workers: info.workerCount, milliseconds: performance.now() - info.started });
+  if (!jobs.length) { finish(); return; }
+  let remaining = jobs.length;
+  operation('render', 'Adding tails', { share: 0 });
+  // Every stretch is cut from the sum before any tail is added to it.
+  jobs.forEach(({ index, from, to }) => {
+    const pressure = sums[index].channels[0].slice(from, to);
+    spawnWorker(revision, { type: 'tails', pressure, responses: responses[index], channels: sums[index].channels.length }, {
+      onResult: data => {
+        addTails(sums[index], from, data.tails);
+        remaining -= 1;
+        operation('render', 'Adding tails', { share: 1 - remaining / jobs.length });
+        if (remaining === 0) finish();
+      }
+    }, [pressure.buffer]);
+  });
+}
+
+function finishRender(scene, arrivals, sums, parts, info) {
   state.workers = [];
   clearInterval(state.watchdog);
   const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
     state.results = new Map(scene.receivers.map((receiver, receiverIndex) => {
-      const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);
-      const combined = combineSegments(segments, scene.render.sampleRate);
+      const segments = receiverSegments(parts, receiver);
+      const combined = finishSum(sums[receiverIndex], scene.render.sampleRate);
       return [receiver.id, {
         receiverId: receiver.id,
         sampleRate: scene.render.sampleRate,

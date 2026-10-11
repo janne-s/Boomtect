@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
 import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
 import { foliageExponent, foliageMetres, forestResponses } from '../src/domain/forest.js';
-import { combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
+import { combineWithTails, joinResponses, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange, tailResponses } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
 
@@ -96,7 +96,7 @@ test('in a forest nothing arrives before the blast, and its tail follows it', ()
   assert.ok(energy(result.samples, result.startSeconds, arrival + .3, arrival + 1.5) > 1e3 * energy(open.samples, open.startSeconds, arrival + .3, arrival + 1.5));
 });
 
-test('rendered in two ranges, a forest scene sums to the whole render', () => {
+test('rendered in two ranges with the tails added to their sum in stretches, a forest scene matches the whole render', () => {
   const scene = forestBlast({ distance: 400 });
   // Two blasts so that each range holds one.
   const second = { ...scene.emitters[0], id: 'blast-2', positionMetres: { x: -300, y: 200, z: 1 }, startSeconds: .5 };
@@ -106,10 +106,23 @@ test('rendered in two ranges, a forest scene sums to the whole render', () => {
   const whole = renderReceiver(prepared, receiver, value);
   const boundaries = partitionSeconds(prepared, value, 2);
   const parts = [0, 1].map(part => renderReceiverRange(prepared, receiver, value, { fromSeconds: boundaries[part], toSeconds: boundaries[part + 1] }));
-  const combined = combineSegments(parts, SAMPLE_RATE);
+  const combined = combineWithTails(parts, receiver, value, 3);
   assert.equal(combined.startSeconds, whole.startSeconds);
+  assert.equal(combined.channels[0].length, whole.samples.length);
   const peak = whole.peakPa;
   let error = 0;
-  whole.samples.forEach((value, index) => { error = Math.max(error, Math.abs(value - (combined.channels[0][index] ?? 0))); });
+  whole.channels.forEach((channel, number) => channel.forEach((value, index) => { error = Math.max(error, Math.abs(value - combined.channels[number][index])); }));
+  // Float32 rounding of the samples.
   assert.ok(error / peak < 1e-6, `${error / peak}`);
+});
+
+test('tail responses made in shares of channels are those made at once', () => {
+  const scene = forestBlast({ distance: 400 });
+  const value = parseScene({ ...scene, ground: { ...scene.ground, surroundings: true }, render: { ...scene.render, ambisonicOrder: 2 } });
+  const receiver = value.receivers[0];
+  const whole = tailResponses(receiver, value);
+  const shares = joinResponses([[0, 2], [2, 7], [7, 9]].map(channels => tailResponses(receiver, value, channels)));
+  assert.equal(shares.forest.length, 9);
+  assert.equal(shares.surroundings.length, 9);
+  assert.deepEqual(shares, whole);
 });

@@ -133,6 +133,29 @@ test('convolution of a long signal in blocks, three signals sharing transforms, 
   });
 });
 
+test('the surroundings hear the forest tail, and stretches of the pressure sum to the tails of the whole', async () => {
+  const { diffuseTails } = await import('../src/domain/forest.js');
+  const pressure = Float64Array.from({ length: 700 }, (_, index) => (index < 650 ? Math.sin(index * .3) * Math.exp(-index / 300) : 0));
+  const kernels = (length, scale) => [0, 1, 2].map(channel => Float64Array.from({ length }, (_, index) => Math.exp(-index / (scale + channel)) * Math.cos(index * .7)));
+  const responses = { forest: kernels(30, 5), surroundings: kernels(90, 20) };
+  const whole = diffuseTails(pressure, responses, 3);
+  assert.equal(whole[0].length, 700 + 30 + 90);
+  const excitation = new Float64Array(whole[0].length);
+  excitation.set(pressure);
+  const forestPressure = directConvolution(pressure, responses.forest[0], excitation.length);
+  for (let index = 0; index < excitation.length; index += 1) excitation[index] += forestPressure[index];
+  whole.forEach((tail, channel) => {
+    const forest = directConvolution(pressure, responses.forest[channel], tail.length);
+    const surroundings = directConvolution(excitation, responses.surroundings[channel], tail.length);
+    for (let index = 0; index < tail.length; index += 1) assert.ok(Math.abs(tail[index] - forest[index] - surroundings[index]) < 1e-9, `${channel}:${index}`);
+  });
+  const sum = whole.map(tail => new Float64Array(tail.length));
+  for (const [from, to] of [[0, 123], [123, 400], [400, 700]]) {
+    diffuseTails(pressure.subarray(from, to), responses, 3).forEach((tail, channel) => tail.forEach((value, index) => { sum[channel][from + index] += value; }));
+  }
+  sum.forEach((tail, channel) => tail.forEach((value, index) => assert.ok(Math.abs(value - whole[channel][index]) < 1e-12, `${channel}:${index}`)));
+});
+
 test('a diffuse tail adds the omnidirectional pressure convolved with each channel own response, in blocks', async () => {
   const { addForestTail } = await import('../src/domain/forest.js');
   const outputs = [0, 1, 2].map(channel => Float64Array.from({ length: 900 }, (_, index) => (index < 600 ? Math.sin(index * (.4 + .1 * channel)) : 0)));

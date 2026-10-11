@@ -50,27 +50,28 @@ export function forestSeed(id) {
  * channel is its own seeded Gaussian noise, split into octave bands by raised-cosine crossovers in
  * log frequency, each band decaying with its time and scaled so that its energy is its share of a
  * unit impulse's energy in that band. The tail is diffuse: a channel of order n carries 1/(2n + 1)
- * of the omnidirectional energy (SN3D). Deterministic from the seed.
+ * of the omnidirectional energy (SN3D). Deterministic from the seed. Each channel is made on its own,
+ * so `[first, last)` makes a share of them.
  */
-export function forestResponses(seed, channels, sampleRate) {
-  return cachedResponses(FOREST, seed, channels, sampleRate);
+export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
+  return cachedResponses(FOREST, seed, sampleRate, first, last);
 }
 
 /** The surroundings' tail at a receiver (see SURROUNDINGS), per channel, from its own seed. */
-export function surroundingsResponses(seed, channels, sampleRate) {
-  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, channels, sampleRate);
+export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
+  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last);
 }
 
 // A thread renders several ranges of one receiver in turn; they share the last responses made.
 const lastResponses = new Map();
 
-function cachedResponses(profile, seed, channels, sampleRate) {
-  const key = `${seed}:${channels}:${sampleRate}`;
-  if (lastResponses.get(profile)?.key !== key) lastResponses.set(profile, { key, responses: makeResponses(profile, seed, channels, sampleRate) });
+function cachedResponses(profile, seed, sampleRate, first, last) {
+  const key = `${seed}:${first}:${last}:${sampleRate}`;
+  if (lastResponses.get(profile)?.key !== key) lastResponses.set(profile, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
   return lastResponses.get(profile).responses;
 }
 
-function makeResponses(profile, seed, channels, sampleRate) {
+function makeResponses(profile, seed, sampleRate, first, last) {
   const length = Math.ceil(70 / 60 * Math.max(...profile.seconds) * sampleRate);
   const size = nextPowerOfTwo(length);
   const binHz = sampleRate / size;
@@ -86,7 +87,8 @@ function makeResponses(profile, seed, channels, sampleRate) {
     weights[lower][bin] = Math.cos(Math.PI / 2 * mix);
     weights[lower + 1][bin] = Math.sin(Math.PI / 2 * mix);
   }
-  return Array.from({ length: channels }, (_, channel) => {
+  return Array.from({ length: last - first }, (_, share) => {
+    const channel = first + share;
     const random = createRandom((seed + Math.imul(channel + 1, 0x9e3779b9)) >>> 0);
     const noiseRe = new Float64Array(size);
     const noiseIm = new Float64Array(size);
@@ -141,20 +143,20 @@ function makeResponses(profile, seed, channels, sampleRate) {
 
 /**
  * Adds a diffuse tail (the forest's or the surroundings') to rendered channels in place: every channel gains the omnidirectional
- * pressure convolved with its own response. The channels must already hold room for the tail.
+ * pressure convolved with its own response. The pressure is channel 0 as it was, unless `source` gives it.
+ * The channels must already hold room for the tail.
  *
  * The convolution is overlap-add in blocks a few responses long, rather than one transform of the
  * whole render, which for minutes of sound took seconds and hundreds of megabytes. Two channels share
  * each inverse transform: their responses enter as the real and imaginary parts of one signal, so the
  * product's real and imaginary parts are the two real convolutions.
  */
-export function addForestTail(outputs, responses) {
+export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   const length = outputs[0].length;
   const kernelLength = responses[0].length;
   if (!length || !kernelLength) return;
   const size = overlapSize(length, kernelLength);
   const block = size - kernelLength + 1;
-  const source = outputs[0].slice();
   const pairs = [];
   for (let channel = 0; channel < outputs.length; channel += 2) {
     const re = new Float64Array(size);
@@ -188,4 +190,23 @@ export function addForestTail(outputs, responses) {
       if (second) for (let index = 0; index < reach; index += 1) second[start + index] += im[index];
     }
   }
+}
+
+/**
+ * The diffuse tails that a stretch of omnidirectional pressure leaves in every channel, from the
+ * stretch's first sample to the end of its tails: the forest's tail of the pressure, then the
+ * surroundings' tail of the pressure with the forest's tail, as the sound reaches them in turn.
+ * Linear in the pressure, so the tails of consecutive stretches sum to the tails of the whole.
+ */
+export function diffuseTails(pressure, { forest = null, surroundings = null }, channels) {
+  const length = pressure.length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
+  const tails = Array.from({ length: channels }, () => new Float64Array(length));
+  const source = new Float64Array(length);
+  source.set(pressure);
+  if (forest) addForestTail(tails, forest, source);
+  if (surroundings) {
+    if (forest) for (let index = 0; index < length; index += 1) source[index] += tails[0][index];
+    addForestTail(tails, surroundings, source);
+  }
+  return tails;
 }

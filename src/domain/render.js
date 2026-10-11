@@ -3,7 +3,7 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
-import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
+import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
@@ -1216,9 +1216,6 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   if ((last - first) / sampleRate > RENDER.maximumSeconds) {
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
   }
-  const forest = scene.ground.forest ? forestResponses(forestSeed(receiver.id), channels, sampleRate) : null;
-  // Over loaded terrain its echoes are the surroundings; over level ground a diffuse tail stands for them.
-  const surroundings = scene.ground.surroundings && !(echoesActive(scene) && !terrainSurface(scene.terrain).flat) ? surroundingsResponses(forestSeed(receiver.id), channels, sampleRate) : null;
   // Each emitter's roar, which its impulses are convolved with; its ground reflection has a roar of its
   // own seed, because the roar comes from the whole moving fireball and debris cloud rather than a
   // point, and so does not interfere with its reflection (class C).
@@ -1230,7 +1227,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     return [0, 1].map(part => ({ samples: fireballSamples((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate), impulses: null }));
   });
   const roarLength = Math.max(0, ...roars.map(roar => (roar ? roar[0].samples.length : 0)));
-  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + roarLength + (forest ? forest[0].length : 0) + (surroundings ? surroundings[0].length : 0)));
+  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + roarLength));
   const gains = new Float64Array(channels);
   selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
@@ -1269,46 +1266,125 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     }
     onProgress?.(traceShare + (1 - traceShare) * cursor / selected.length);
   }
-  // The roar and the forest's tail are linear in what arrives, so each range adds its own and their sum is exact.
+  // The roar is linear in what arrives, so each range adds its own and their sum is exact. The
+  // diffuse tails are added once to the sum of the ranges (combineWithTails).
   for (const roar of roars) {
     for (const { samples, impulses } of roar ?? []) {
       if (impulses) convolveAdd(outputs, impulses, samples);
     }
   }
-  if (forest) addForestTail(outputs, forest);
-  if (surroundings) addForestTail(outputs, surroundings);
   return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }
 
+/** Whether the scene's receivers hear diffuse tails: the forest's, or the surroundings' over level ground. */
+export function hasTails(scene) {
+  return scene.ground.forest || surroundingsTail(scene);
+}
+
+// Over loaded terrain its echoes are the surroundings; over level ground a diffuse tail stands for them.
+const surroundingsTail = scene => scene.ground.surroundings && !(echoesActive(scene) && !terrainSurface(scene.terrain).flat);
+
 /**
- * Sums rendered segments in the given order into Float32 channels, checking every sample. Channel 0
- * is the omnidirectional pressure W. Returns the channels, their start time, and the peak of W in
- * pascals.
+ * The responses of the diffuse tails at a receiver, per channel, or of its channels [first, last);
+ * null without tails.
  */
-export function combineSegments(segments, sampleRate) {
+export function tailResponses(receiver, scene, channels = [0, channelCount(scene.render.ambisonicOrder)]) {
+  if (!hasTails(scene)) return null;
+  const count = channelCount(scene.render.ambisonicOrder);
+  const { sampleRate } = scene.render;
+  return {
+    forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels) : null,
+    surroundings: surroundingsTail(scene) ? surroundingsResponses(forestSeed(receiver.id), count, sampleRate, channels) : null
+  };
+}
+
+/** Responses made in shares of channels, in channel order, put together. */
+export function joinResponses(shares) {
+  const join = kind => (shares[0][kind] ? shares.flatMap(share => share[kind]) : null);
+  return { forest: join('forest'), surroundings: join('surroundings') };
+}
+
+/** Samples the tails reach beyond the sound that excites them. */
+export const tailSamples = responses => (responses?.forest?.[0].length ?? 0) + (responses?.surroundings?.[0].length ?? 0);
+
+/**
+ * Sums rendered segments in the given order into Float64 channels from the earliest segment's
+ * start, followed by `room` silent samples for the tails. Empty when no segment holds a sample.
+ */
+export function sumSegments(segments, sampleRate, room = 0) {
   const present = segments.filter(segment => segment.channels[0].length);
   const count = segments[0]?.channels.length ?? 1;
-  if (!present.length) return { startSeconds: 0, channels: Array.from({ length: count }, () => new Float32Array(0)), peakPa: 0 };
+  if (!present.length) return { startSample: 0, channels: Array.from({ length: count }, () => new Float64Array(0)) };
   const start = Math.min(...present.map(segment => segment.startSample));
   const end = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length));
   if ((end - start) / sampleRate > RENDER.maximumSeconds) throw new RangeError(`The arrivals span ${((end - start) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
-  let peakPa = 0;
   const channels = Array.from({ length: count }, (_, channel) => {
-    const sum = new Float64Array(end - start);
+    const sum = new Float64Array(end - start + room);
     for (const segment of present) {
       const offset = segment.startSample - start;
       const samples = segment.channels[channel];
       for (let index = 0; index < samples.length; index += 1) sum[offset + index] += samples[index];
     }
-    const result = new Float32Array(sum.length);
-    for (let index = 0; index < sum.length; index += 1) {
-      if (!Number.isFinite(sum[index])) throw new RangeError('The render produced a non-finite sample.');
-      result[index] = sum[index];
-      if (channel === 0) peakPa = Math.max(peakPa, Math.abs(sum[index]));
+    return sum;
+  });
+  return { startSample: start, channels };
+}
+
+/**
+ * Stretches [from, to) of `length` samples, `count` of about equal length or fewer, whose tails are
+ * computed apart and added up (`diffuseTails` is linear). Each stretch transforms the whole responses
+ * however short it is, so none is made shorter than `shortest` samples, the tails' length.
+ */
+export function tailStretches(length, count, shortest = 1) {
+  const parts = Math.max(1, Math.min(count, Math.floor(length / Math.max(1, shortest))));
+  return Array.from({ length: parts }, (_, part) => [Math.floor(part * length / parts), Math.floor((part + 1) * length / parts)]);
+}
+
+/** Adds a stretch's tails, which begin at its first sample `from`, to summed channels. */
+export function addTails(sum, from, tails) {
+  tails.forEach((tail, channel) => {
+    const target = sum.channels[channel];
+    for (let index = 0; index < tail.length; index += 1) target[from + index] += tail[index];
+  });
+}
+
+/**
+ * Float32 channels from summed ones, checking every sample. Channel 0 is the omnidirectional
+ * pressure W. Returns the channels, their start time, and the peak of W in pascals.
+ */
+export function finishSum(sum, sampleRate) {
+  let peakPa = 0;
+  const channels = sum.channels.map((samples, channel) => {
+    const result = new Float32Array(samples.length);
+    for (let index = 0; index < samples.length; index += 1) {
+      if (!Number.isFinite(samples[index])) throw new RangeError('The render produced a non-finite sample.');
+      result[index] = samples[index];
+      if (channel === 0) peakPa = Math.max(peakPa, Math.abs(samples[index]));
     }
     return result;
   });
-  return { startSeconds: start / sampleRate, channels, peakPa };
+  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa };
+}
+
+/** Sums rendered segments in the given order into checked Float32 channels, without tails. */
+export function combineSegments(segments, sampleRate) {
+  return finishSum(sumSegments(segments, sampleRate), sampleRate);
+}
+
+/**
+ * Sums rendered segments and adds the receiver's diffuse tails to the sum, computed over `stretches`
+ * stretches of its pressure in turn, as the page does on several workers.
+ */
+export function combineWithTails(segments, receiver, scene, stretches = 1) {
+  const { sampleRate } = scene.render;
+  const responses = tailResponses(receiver, scene);
+  const sum = sumSegments(segments, sampleRate, tailSamples(responses));
+  const length = sum.channels[0].length - tailSamples(responses);
+  if (responses && length > 0) {
+    const pressure = sum.channels[0].slice(0, length);
+    for (const [from, to] of tailStretches(length, stretches)) addTails(sum, from, diffuseTails(pressure.subarray(from, to), responses, sum.channels.length));
+  }
+  return finishSum(sum, sampleRate);
 }
 
 /**
@@ -1329,7 +1405,7 @@ export function partitionSeconds(preparedEmitters, scene, count, tables = scene.
 /** The complete render at one receiver, in one thread. */
 export function renderReceiver(preparedEmitters, receiver, scene) {
   const segment = renderReceiverRange(preparedEmitters, receiver, scene);
-  const combined = combineSegments([segment], scene.render.sampleRate);
+  const combined = combineWithTails([segment], receiver, scene);
   return {
     receiverId: receiver.id,
     sampleRate: scene.render.sampleRate,
