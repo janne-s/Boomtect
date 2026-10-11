@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
@@ -1540,13 +1540,6 @@ function bearing(from, to) {
   return { metres: Math.hypot(dx, dy), direction: COMPASS[Math.round(angle / 45) % 8] };
 }
 
-function emitterAnchor(emitter) {
-  if (emitter.kind === 'blast') return emitter.positionMetres;
-  if (emitter.kind === 'storm' || emitter.kind === 'barrage') return emitter.centreMetres;
-  if (isTrackKind(emitter)) return emitter.startMetres;
-  return emitter.baseMetres;
-}
-
 /** Short facts around the scene box: the selection, the listening position, and warnings. */
 function drawInfo() {
   useTerrain(state.scene.terrain);
@@ -2295,6 +2288,9 @@ $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(
 $('add-receiver').addEventListener('click', () => commit(scene => {
   const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`);
   receiver.positionMetres = { ...receiver.positionMetres, x: receiver.positionMetres.x + 1000 * scene.receivers.length };
+  // It faces the first emitter that sounds.
+  const source = scene.emitters.find(emitter => emitter.enabled) ?? scene.emitters[0];
+  if (source) receiver.headingDegrees = headingToward(receiver.positionMetres, emitterAnchor(source));
   scene.receivers.push(receiver);
   select({ type: 'receiver', id: receiver.id });
 }));

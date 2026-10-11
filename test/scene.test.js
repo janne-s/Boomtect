@@ -90,3 +90,17 @@ test('a stereo WAV keeps the plain IEEE float format', () => {
   assert.equal(view.getUint16(20, true), 3);
   assert.equal(view.byteLength, wavByteLength(2, 2));
 });
+
+test('a new scene listens binaurally facing its emitter, and microphones added later are omni', async () => {
+  const { defaultReceiver, emitterAnchor, headingToward, MODES } = await import('../src/domain/scene.js');
+  for (const mode of MODES) {
+    const scene = defaultScene(mode);
+    const [receiver] = scene.receivers;
+    assert.equal(receiver.type, 'binaural');
+    assert.equal(receiver.headingDegrees, headingToward(receiver.positionMetres, emitterAnchor(scene.emitters[0])));
+  }
+  assert.equal(defaultReceiver('receiver-2', 'Mic 2').type, 'omni');
+  assert.equal(headingToward({ x: 0, y: 0 }, { x: 0, y: 10 }), 0);
+  assert.equal(headingToward({ x: 0, y: 0 }, { x: 10, y: 0 }), 90);
+  assert.equal(headingToward({ x: 5, y: 5 }, { x: 0, y: 5 }), 270);
+});

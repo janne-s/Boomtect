@@ -355,17 +355,32 @@ export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 
   return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
 }
 
+/** A microphone listening at head height, facing west: an omni one unless asked otherwise. */
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
 
+/** Where an emitter stands on the plan: a blast's point, a storm's or barrage's centre, a body's start, a flash's ground end. */
+export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.startMetres ?? emitter.baseMetres;
+
+/** The heading, whole degrees clockwise from north, from one point of the plan toward another (north when they coincide). */
+export function headingToward(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return dx === 0 && dy === 0 ? 0 : Math.round((Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360) % 360;
+}
+
 export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
-  const receiver = defaultReceiver();
+  // A scene starts with a binaural microphone; microphones added later are omni.
+  const receiver = defaultReceiver('receiver-1', 'Mic 1', { type: 'binaural' });
   // The default flash's thunder first arrives three seconds after it (3.0 s; its channel leans toward the microphone).
   if (mode === 'thunder') receiver.positionMetres = { x: 1400, y: 0, z: 1.7 };
   if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
   if (mode === 'sonic') receiver.positionMetres = { x: 0, y: 0, z: 1.7 };
+  const emitter = blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning();
+  // The microphone faces where the sound comes from.
+  receiver.headingDegrees = headingToward(receiver.positionMetres, emitterAnchor(emitter));
   return {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
@@ -379,7 +394,7 @@ export function defaultScene(mode = 'thunder') {
     },
     ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, surroundings: true },
     terrain: null,
-    emitters: [blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning()],
+    emitters: [emitter],
     receivers: [receiver],
     render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true }
   };

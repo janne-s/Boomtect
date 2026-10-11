@@ -119,7 +119,9 @@ microphone along the Mach cone.
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
 - **Type** — Omni hears the pressure. Binaural hears the sound field, turned to
-  its orientation and decoded for headphones; it switches Spatial on.
+  its orientation and decoded for headphones; it switches Spatial on. A new
+  scene starts with a binaural microphone facing its emitter; microphones
+  added later are omni, facing the first emitter that sounds.
 - **Orientation** — Facing and elevation of a binaural microphone. On the
   sphere beside the scene, drag the handle on the horizon to face and the one
   on the scale beside it to tilt, or drag the arrowhead in the scene.
