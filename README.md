@@ -100,7 +100,8 @@ microphone along the Mach cone.
   it through the fronts it has left, within the box and above the ground.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
   terrain without names, it asks for them again.
-- **Map** — A topographic map flat on the floor in place of the terrain's relief.
+- **Map** — A topographic map flat on the floor in place of the terrain's relief,
+  in the scene's colours.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
 - **i** — The sources of the terrain and map data.
 - **Listen** — The checkbox on a microphone adds it to what plays. During

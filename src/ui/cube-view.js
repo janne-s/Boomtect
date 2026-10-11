@@ -38,8 +38,8 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
-/** The map on the floor is drawn this opaque, so the box's lines stay visible through it. */
-const MAP_ALPHA = .9;
+/** The map on the floor is drawn opaque: its tiles are already in the box's palette. */
+const MAP_ALPHA = 1;
 /** A Mach cone's lines: every this many of a ring's points leads to the next ring; pieces per line kept above the ground. */
 const CONE_LINE_EVERY = 4;
 const CONE_PIECES = 12;
@@ -732,7 +732,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const origin = frame.project({ ...northWest, z });
       const across = frame.project({ ...northEast, z });
       const down = frame.project({ ...southWest, z });
-      const size = image.naturalWidth || 256;
+      const size = image.naturalWidth || image.width || 256;
       context.save();
       context.transform((across.x - origin.x) / size, (across.y - origin.y) / size, (down.x - origin.x) / size, (down.y - origin.y) / size, origin.x, origin.y);
       // Half a pixel over each edge, so that neighbouring tiles leave no seam.
