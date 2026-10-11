@@ -10,7 +10,6 @@ import { arrivalTable, assemblePaths, combineSegments, partitionSeconds, prepare
 import {
   defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
-import { applyEar } from './domain/ear.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
@@ -478,6 +477,7 @@ function finishRender(scene, arrivals, parts, info) {
   $('export').disabled = false;
   drawResults();
   drawInfo();
+  prepareEar();
 }
 
 /**
@@ -521,25 +521,58 @@ function outputGainForPeak(peakPa) {
 
 const earCache = new Map();
 
+/** The ear model on a worker: each part's channels (transferred) processed with one setting. */
+function earOnWorker(parts, sampleRate, setting) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./ear-worker.js', import.meta.url), { type: 'module' });
+    worker.addEventListener('message', ({ data }) => {
+      worker.terminate();
+      if (data.type === 'error') reject(new Error(data.message));
+      else resolve(data.results);
+    });
+    worker.addEventListener('error', event => {
+      worker.terminate();
+      reject(new Error(event.message || 'The ear model failed to start.'));
+    });
+    worker.postMessage({ sampleRate, ...setting, parts }, parts.flat().map(channel => channel.buffer));
+  });
+}
+
+let earPending = 0;
+
 /**
  * The composition as the optional ear model hears it: each listener's channels processed by the
- * reflex and loudness model, driven by its own pressure. Cached per render and setting.
+ * reflex and loudness model, driven by its own pressure. It runs on a worker, started after each
+ * render and listening change, so Play finds it ready. Cached per render and setting; a request for
+ * parts on their way waits for them.
  */
-function earApplied(composition) {
+async function earApplied(composition) {
   const { earReflex: reflex, earLoudness: loudness } = state.scene.render;
   if (!composition || (!reflex && !loudness)) return composition;
+  const results = state.results;
   const key = part => `${part.receiverId}:${reflex}:${loudness}:${composition.startSeconds}:${composition.length}`;
-  const processed = (part, channels) => {
-    const cached = earCache.get(key(part));
-    if (cached?.results === state.results) return cached.channels;
-    const result = applyEar(channels, composition.sampleRate, { reflex, loudness });
-    // Only the latest setting is kept per receiver: a long render's channels are large.
-    for (const stored of earCache.keys()) if (stored.startsWith(`${part.receiverId}:`)) earCache.delete(stored);
-    earCache.set(key(part), { results: state.results, channels: result });
-    return result;
-  };
-  const heads = composition.heads.map(head => ({ ...head, channels: processed(head, head.channels) }));
-  const omnis = composition.omnis.map(omni => ({ ...omni, channel: processed(omni, [omni.channel])[0] }));
+  const parts = [...composition.heads.map(head => ({ part: head, channels: head.channels })), ...composition.omnis.map(omni => ({ part: omni, channels: [omni.channel] }))];
+  const missing = parts.filter(({ part }) => earCache.get(key(part))?.results !== results);
+  if (missing.length) {
+    earPending += 1;
+    operation('ear', 'Ear model');
+    const batch = earOnWorker(missing.map(({ channels }) => channels), composition.sampleRate, { reflex, loudness });
+    batch.finally(() => {
+      earPending -= 1;
+      if (!earPending) operation('ear', null);
+    }).catch(() => {});
+    missing.forEach(({ part }, index) => {
+      // Only the latest setting is kept per receiver: a long render's channels are large.
+      for (const stored of earCache.keys()) if (stored.startsWith(`${part.receiverId}:`)) earCache.delete(stored);
+      const entry = { results, channels: batch.then(all => all[index]) };
+      earCache.set(key(part), entry);
+      // A failed run is not kept, so the next request tries again.
+      entry.channels.catch(() => { if (earCache.get(key(part)) === entry) earCache.delete(key(part)); });
+    });
+  }
+  const processed = await Promise.all(parts.map(({ part }) => earCache.get(key(part)).channels));
+  const heads = composition.heads.map((head, index) => ({ ...head, channels: processed[index] }));
+  const omnis = composition.omnis.map((omni, index) => ({ ...omni, channel: processed[heads.length + index][0] }));
   let peakPa = 0;
   for (const channel of [...heads.map(head => head.channels[0]), ...omnis.map(omni => omni.channel)]) {
     for (const value of channel) peakPa = Math.max(peakPa, Math.abs(value));
@@ -547,12 +580,19 @@ function earApplied(composition) {
   return { ...composition, heads, omnis, peakPa };
 }
 
+/** Starts the ear model for the current listening, if it is on, so that Play need not wait for it. */
+function prepareEar() {
+  const { earReflex, earLoudness } = state.scene.render;
+  if (!state.results || (!earReflex && !earLoudness)) return;
+  listening().catch(error => setStatus(`Ear model failed: ${error.message}`, true));
+}
+
 /**
  * What Play and Export use: the composition of the listening microphones and its gain. Binaural
  * decoding gets 3 dB more room; a mix of several parts is scaled by 1/sqrt of their number.
  */
-function listening() {
-  const composition = earApplied(composeListening(state.scene, state.results));
+async function listening() {
+  const composition = await earApplied(composeListening(state.scene, state.results));
   if (!composition) return null;
   let gain = outputGainForPeak(composition.peakPa);
   if (composition.heads.length) gain *= RENDER.binauralHeadroom;
@@ -743,7 +783,8 @@ function commitListening(change) {
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
   refreshPanel();
   drawInfo();
-  resumePlayback();
+  if (player.playing()) resumePlayback();
+  else prepareEar();
 }
 
 /** Live orientation while a control moves; stored when it ends. */
@@ -1691,13 +1732,15 @@ let resuming = null;
  */
 async function resumePlayback() {
   if (resuming) { resuming.again = true; return; }
-  const clock = player.clock();
-  if (!player.playing() || !clock) return;
-  const current = listening();
-  if (!current) { player.stop(); showStopped(); return; }
+  if (!player.playing() || !player.clock()) return;
   resuming = { again: false };
   let started = false;
   try {
+    const current = await listening();
+    // Playback may have stopped while the ear model ran.
+    const clock = player.clock();
+    if (!player.playing() || !clock) return;
+    if (!current) { player.stop(); showStopped(); return; }
     started = await player.play(current.composition, current.gain, {
       realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds
     });
@@ -1719,8 +1762,17 @@ async function resumePlayback() {
  */
 async function startPlayback() {
   const unlocked = player.unlock(state.scene.render.sampleRate);
+  const { results } = state;
   try {
-    const current = listening();
+    // A listening change made while the ear model ran asks for the composition again.
+    let current;
+    let scene;
+    do {
+      scene = state.scene;
+      current = await listening();
+      // The render may have been replaced meanwhile.
+      if (results !== state.results) return;
+    } while (scene !== state.scene);
     if (!current) { setStatus('No sound reaches the listening microphones'); return; }
     await unlocked;
     const from = state.pause;
@@ -1853,8 +1905,14 @@ function updateExportSummary() {
   $('export-submit').disabled = selected.size === 0;
 }
 
-$('export').addEventListener('click', () => {
-  const current = listening();
+$('export').addEventListener('click', async () => {
+  let current;
+  try {
+    current = await listening();
+  } catch (error) {
+    setStatus(`Ear model failed: ${error.message}`, true);
+    return;
+  }
   if (!current) return;
   const plan = exportPlan(state.scene, state.results, current.gain);
   if (!plan) return;
