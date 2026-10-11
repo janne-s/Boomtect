@@ -7,6 +7,7 @@ import { defaultBlast, defaultFlight, parseScene, TERRAIN_DEFAULTS } from '../sr
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
 import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+import { createRandom } from '../src/domain/random.js';
 import { plainScene } from './plain-scene.js';
 
 function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
@@ -297,4 +298,20 @@ test('a boom over hills echoes from them, after it and from where it left the fl
     return sum;
   };
   assert.ok(tail(loud) > 100 * tail(quiet) + 1e-12, `${tail(loud)} vs ${tail(quiet)}`);
+});
+
+test('echo candidates come strongest at the receiver first, ties by kind and then in their own order', async () => {
+  const { strongestFirst } = await import('../src/domain/terrain-echoes.js');
+  const random = createRandom(7);
+  const candidates = Array.from({ length: 500 }, (_, index) => ({
+    index,
+    kind: random() < .5 ? 3 : 4,
+    // Few distinct values, so that many tie.
+    energy: Math.ceil(random() * 6) / 1000,
+    r1: Math.ceil(random() * 3) * 500,
+    r2: Math.ceil(random() * 3) * 500
+  }));
+  const strength = candidate => candidate.energy / (candidate.r1 + candidate.r2) ** 2;
+  const expected = [...candidates].sort((a, b) => strength(b) - strength(a) || a.kind - b.kind || a.index - b.index);
+  assert.deepEqual([...strongestFirst(candidates)].map(candidate => candidate.index), expected.map(candidate => candidate.index));
 });

@@ -465,9 +465,8 @@ export function echoPaths(field, S) {
     }
   }
 
-  candidates.sort((a, b) => b.energy / (a.r1 + a.r2) ** 2 - a.energy / (b.r1 + b.r2) ** 2 || a.kind - b.kind);
   const paths = [];
-  for (const candidate of candidates) {
+  for (const candidate of strongestFirst(candidates)) {
     if (paths.length >= limit) break;
     const { r1, r2, point } = candidate;
     if (candidate.kind === PATH_SCATTER) {
@@ -506,6 +505,34 @@ export function echoPaths(field, S) {
     });
   }
   return paths;
+}
+
+/**
+ * Candidates from the strongest at the receiver, energy / (r₁ + r₂)², then by kind, then in their
+ * own order: the order a stable sort gives, taken from a heap, since only the first few are used.
+ */
+export function* strongestFirst(candidates) {
+  const heap = candidates.map((candidate, order) => ({ candidate, order, strength: candidate.energy / (candidate.r1 + candidate.r2) ** 2 }));
+  const before = (a, b) => (a.strength !== b.strength ? a.strength > b.strength : a.candidate.kind !== b.candidate.kind ? a.candidate.kind < b.candidate.kind : a.order < b.order);
+  const sink = (start, size) => {
+    for (let at = start; ;) {
+      const left = 2 * at + 1;
+      const right = left + 1;
+      let first = at;
+      if (left < size && before(heap[left], heap[first])) first = left;
+      if (right < size && before(heap[right], heap[first])) first = right;
+      if (first === at) return;
+      [heap[at], heap[first]] = [heap[first], heap[at]];
+      at = first;
+    }
+  };
+  for (let at = (heap.length >> 1) - 1; at >= 0; at -= 1) sink(at, heap.length);
+  for (let size = heap.length; size > 0; size -= 1) {
+    const top = heap[0];
+    heap[0] = heap[size - 1];
+    sink(0, size - 1);
+    yield top.candidate;
+  }
 }
 
 /** The direction sector of a propagation direction arriving at a receiver, as the clusters use. */
