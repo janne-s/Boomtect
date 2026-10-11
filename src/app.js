@@ -7,7 +7,6 @@ import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { arrivalTable, assemblePaths, combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
-import { peakFronts } from './domain/peak-fronts.js';
 import {
   defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -400,7 +399,7 @@ function startRender() {
           drawResults();
           return;
         }
-        renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started, prepared });
+        renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started });
       }
     });
   }
@@ -426,7 +425,7 @@ function renderJobs(scene, arrivals, workerCount) {
   });
 }
 
-function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started, prepared }) {
+function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started }) {
   state.workers = [];
   const jobs = renderJobs(scene, arrivals, workerCount);
   const progress = new Array(jobs.length).fill(0);
@@ -442,7 +441,7 @@ function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerC
       onResult: data => {
         parts[index] = data.segments;
         remaining -= 1;
-        if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started, prepared, tracedPaths });
+        if (remaining === 0) finishRender(scene, arrivals, parts, { sources, workers: workerCount, milliseconds: performance.now() - started });
       }
     });
   });
@@ -456,7 +455,7 @@ function finishRender(scene, arrivals, parts, info) {
     state.results = new Map(scene.receivers.map((receiver, receiverIndex) => {
       const segments = parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);
       const combined = combineSegments(segments, scene.render.sampleRate);
-      const result = {
+      return [receiver.id, {
         receiverId: receiver.id,
         sampleRate: scene.render.sampleRate,
         ...combined,
@@ -465,10 +464,7 @@ function finishRender(scene, arrivals, parts, info) {
         arrivals: arrivals[receiverIndex],
         nonlinearPaths: segments.reduce((sum, segment) => sum + segment.nonlinearPaths, 0),
         modelVersion: MODEL_VERSION
-      };
-      // Where the swells of its thunder came from, for the view's wavefronts.
-      result.peakFronts = peakFronts(info.prepared, info.tracedPaths[receiverIndex], result, receiver, scene);
-      return [receiver.id, result];
+      }];
     }));
   } catch (error) {
     setStatus(error.message, true);
@@ -1616,23 +1612,11 @@ function wavefrontSpheres(now, profile) {
     const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_SOUND_PRESSURE_PA) - absorption * radius;
     return Math.min(1, Math.max(0, (level - VIEW.wavefront.floorDb) / (VIEW.wavefront.topDb - VIEW.wavefront.floorDb)));
   };
-  const candidates = wavefrontCandidates(state.scene);
-  // Each swell of the followed microphone's thunder sends a front of its own, at its level under the
-  // loudest and as bright as its flash's fronts there; the flash's other fronts then dim.
-  const peaks = state.results?.get(focusReceiver().id)?.peakFronts ?? [];
-  const swelling = new Set(peaks.map(peak => peak.emitterId));
-  const emitterOf = group => String(group).split(':')[0];
-  const loudest = new Map();
-  for (const { group, amplitude } of candidates) loudest.set(emitterOf(group), Math.max(loudest.get(emitterOf(group)) ?? 0, amplitude));
-  const fronts = [
-    ...candidates.map(candidate => ({ ...candidate, share: swelling.has(emitterOf(candidate.group)) ? VIEW.wavefront.baseShare : 1 })),
-    ...peaks.map((peak, index) => ({ point: peak.point, emitted: peak.emittedSeconds, group: `peak:${index}`, order: 0, amplitude: loudest.get(peak.emitterId) ?? 0, share: 10 ** (peak.decibels / 20) }))
-  ];
-  return fronts
+  return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted, group, order, amplitude, share }) => {
+    .map(({ point, emitted, group, order, amplitude }) => {
       const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
-      front.strength = share * strengthAt(amplitude, front.radiusMetres);
+      front.strength = strengthAt(amplitude, front.radiusMetres);
       if (!profile.wind) return { source: point, group, order, ...front };
       // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
       const seconds = now - emitted;

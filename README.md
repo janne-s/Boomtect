@@ -99,9 +99,7 @@ microphone along the Mach cone.
   those that apply.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls, fading as their sound
-  spreads out and the air absorbs it. Each swell of a flash's thunder at the
-  followed microphone sends a front of its own from where it came, at its level;
-  the flash's other fronts dim. On in every mode at first.
+  spreads out and the air absorbs it. On in every mode at first.
 - **Cone** — While the sound plays, each supersonic body's Mach cone trails behind
   it through the fronts it has left, within the box and above the ground.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
