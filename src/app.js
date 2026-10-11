@@ -1790,7 +1790,7 @@ async function resumePlayback() {
     if (!player.playing() || !clock) return;
     if (!current) { player.stop(); showStopped(); return; }
     started = await player.play(current.composition, current.gain, {
-      realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds
+      realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
     });
   } catch (error) {
     player.stop();
