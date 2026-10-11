@@ -96,7 +96,7 @@ microphone along the Mach cone.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls, fading as their sound
   spreads out and the air absorbs it.
-- **Mach cone** — While the sound plays, a supersonic body's cone trails behind
+- **Cone** — While the sound plays, each supersonic body's Mach cone trails behind
   it through the fronts it has left, within the box and above the ground.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
   terrain without names, it asks for them again.

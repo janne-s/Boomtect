@@ -20,7 +20,7 @@ const FINE_TORTUOSITY = Object.freeze([4, 28]);
 
 const percent = t => `${Math.round(t * 100)} %`;
 const kilo = (value, unit) => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} k${unit}` : `${+value.toPrecision(3)} ${unit}`);
-const metres = value => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} km` : `${Math.round(value)} m`);
+const metres = value => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} km` : value >= 10 ? `${Math.round(value)} m` : `${+value.toPrecision(2)} m`);
 
 const energy = {
   label: 'Energy',

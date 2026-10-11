@@ -75,7 +75,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, names: true, map: false, clouds: true, autoRender: true, mode: 'thunder',
+  realDelay: true, wavefront: false, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -354,6 +354,8 @@ function startRender() {
   state.revision += 1;
   const revision = state.revision;
   stopWorkers();
+  // A message about an earlier render no longer applies.
+  setStatus('');
   const scene = state.scene;
   if (!scene.emitters.some(emitter => emitter.enabled)) {
     setStatus('No emitter is enabled.');
@@ -528,6 +530,8 @@ function earApplied(composition) {
     const cached = earCache.get(key(part));
     if (cached?.results === state.results) return cached.channels;
     const result = applyEar(channels, composition.sampleRate, { reflex, loudness });
+    // Only the latest setting is kept per receiver: a long render's channels are large.
+    for (const stored of earCache.keys()) if (stored.startsWith(`${part.receiverId}:`)) earCache.delete(stored);
     earCache.set(key(part), { results: state.results, channels: result });
     return result;
   };
@@ -1281,6 +1285,7 @@ function rebuildPanel() {
   $('cube-attribution').hidden = !scene.terrain;
   $('names-toggle').hidden = !scene.terrain;
   $('map-toggle').hidden = !scene.terrain;
+  $('cone-toggle').hidden = scene.mode !== 'sonic';
   $('clouds-toggle').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
 
   const output = $('output-fields');
@@ -1521,7 +1526,7 @@ function animationState() {
       const index = Math.round((now - path.seconds[0]) / path.step);
       return index >= 0 && index < path.seconds.length ? [{ x: path.x[index], y: path.y[index], z: path.z[index] }] : [];
     }));
-    cones.set(emitter.id, paths.map(path => machCone(path, now, profile)).filter(Boolean));
+    if (state.preferences.cone) cones.set(emitter.id, paths.map(path => machCone(path, now, profile)).filter(Boolean));
   }
   return { strokes, receivers, sound, wavefronts, flights, cones };
 }
@@ -1969,6 +1974,8 @@ $('names').addEventListener('change', () => {
   if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
   redrawViews();
 });
+$('cone').checked = state.preferences.cone;
+$('cone').addEventListener('change', () => { state.preferences.cone = $('cone').checked; savePreferences(); redrawViews(); });
 $('map').checked = state.preferences.map;
 $('map').addEventListener('change', () => { state.preferences.map = $('map').checked; savePreferences(); redrawViews(); });
 $('attribution-button').addEventListener('click', () => {
