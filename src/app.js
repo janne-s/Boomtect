@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
@@ -31,7 +31,7 @@ const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
@@ -690,6 +690,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
+  if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
@@ -839,8 +840,8 @@ function emitterCard(container, emitter, selected) {
     card.append(macros);
     const actions = element('div', 'card-actions');
     actions.append(button('Details…', () => openDetails(emitter.id)));
-    // A flight has no seed to draw anew.
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && !isFlightKind(emitter)) {
+    // A flight or a whip has no seed to draw anew.
+    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && !isFlightKind(emitter)) {
       actions.append(button('New shape', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
       actions.append(button('Variant', () => addEmitter(next => {
         const source = next.emitters.find(item => item.id === emitter.id);
@@ -973,7 +974,7 @@ function detailSections(emitter) {
   const numbers = keys => container => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const placement = container => {
     textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && !isFlightKind(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && !isFlightKind(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
     numberField(container, { key: 'startSeconds', value: emitter.startSeconds, onCommit: set('startSeconds') });
   };
   if (emitter.kind === 'lightning') {
@@ -1011,6 +1012,19 @@ function detailSections(emitter) {
       }),
       section('Meteoroid', numbers(['speedKilometresPerSecond', 'diameterMetres', 'densityKilogramsPerCubicMetre', 'dragCoefficient', 'riseTimeSeconds'])),
       section('Breakup', numbers(['strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']))
+    ];
+  }
+  if (emitter.kind === 'whip') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Start', point: emitter.startMetres, onCommit: set('startMetres') });
+        numbers(['headingDegrees', 'climbDegrees'])(container);
+      }),
+      section('Tip', container => {
+        numberField(container, { key: 'whipMach', value: emitter.mach, onCommit: set('mach') });
+        numbers(['crackerLengthMetres', 'crackerShapeFactor', 'riseTimeSeconds'])(container);
+      })
     ];
   }
   if (isFlightKind(emitter)) {
@@ -1675,6 +1689,11 @@ function wavefrontAmplitudes(emitter) {
     const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom.overpressurePa * 1000]));
   }
+  if (emitter.kind === 'whip') {
+    // The crack's pressure 1 m away times 1 m, without the turn's spreading.
+    const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.crackerLengthMetres, shapeFactor: emitter.crackerShapeFactor, distanceMetres: 1 });
+    return new Map([[`${emitter.id}:0`, boom.overpressurePa]]);
+  }
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
     // Each meteor's boom straight below the end of its trail times that distance.
     return new Map(showerMembers(emitter).map((meteor, index) => {
@@ -2151,6 +2170,7 @@ $('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(
 $('add-meteor').addEventListener('click', () => addEmitter(scene => defaultMeteor(uniqueId('meteor', scene.emitters), nextName(scene, 'Meteor'), newSeed())));
 $('add-shower').addEventListener('click', () => addEmitter(scene => defaultShower(uniqueId('shower', scene.emitters), nextName(scene, 'Shower'), newSeed())));
 $('add-formation').addEventListener('click', () => addEmitter(scene => defaultFormation(uniqueId('formation', scene.emitters), nextName(scene, 'Formation'), newSeed())));
+$('add-whip').addEventListener('click', () => addEmitter(scene => defaultWhip(uniqueId('whip', scene.emitters), nextName(scene, 'Whip'), newSeed())));
 $('add-flight').addEventListener('click', () => addEmitter(scene => defaultFlight(uniqueId('flight', scene.emitters), nextName(scene, 'Flight'), newSeed())));
 $('add-barrage').addEventListener('click', () => addEmitter(scene => defaultBarrage(uniqueId('barrage', scene.emitters), nextName(scene, 'Barrage'), newSeed())));
 $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));

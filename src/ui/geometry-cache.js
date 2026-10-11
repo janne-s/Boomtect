@@ -1,6 +1,6 @@
 import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes } from '../domain/emitters.js';
-import { flightMembers, flightPath } from '../domain/flight.js';
+import { flightMembers, flightPath, whipPath } from '../domain/flight.js';
 import { meteorTrack, showerMembers } from '../domain/meteor.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
@@ -48,21 +48,23 @@ export function cachedFlashes(emitter) {
 const paths = new Map();
 
 /**
- * The tracks of a flight's, formation's, meteor's, or shower's bodies in the given air: times and
- * positions every `step` seconds, cached by everything except the name and switch.
+ * The tracks of a flight's, formation's, whip's, meteor's, or shower's bodies in the given air: times
+ * and positions every `step` seconds, cached by everything except the name and switch. A whip's
+ * stands on the current terrain.
  */
 export function cachedTracks(emitter, air) {
   const { name, enabled, ...shape } = emitter;
   const key = JSON.stringify([shape, air]);
   const cached = paths.get(emitter.id);
-  if (cached?.key === key) return cached.paths;
-  const value = isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack);
-  paths.set(emitter.id, { key, paths: value });
+  if (cached?.key === key && cached.surface === surface) return cached.paths;
+  const value = emitter.kind === 'whip' ? [whipPath(emitter, air, surface)]
+    : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack);
+  paths.set(emitter.id, { key, surface, paths: value });
   return value;
 }
 
 export const isFlightKind = emitter => emitter.kind === 'flight' || emitter.kind === 'formation';
-export const isTrackKind = emitter => isFlightKind(emitter) || emitter.kind === 'meteor' || emitter.kind === 'shower';
+export const isTrackKind = emitter => isFlightKind(emitter) || emitter.kind === 'whip' || emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 const rounds = new Map();
 

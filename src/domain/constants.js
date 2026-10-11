@@ -355,6 +355,27 @@ export const FLIGHT = Object.freeze({
   })
 });
 
+/**
+ * A whip's crack is the boom of its tip, the cracker, flying faster than sound for about a
+ * millisecond. Its motion after Krehl & Engemann (1998, "The puzzle of whip cracking", Shock Waves 8,
+ * high-speed shadowgraphs of a bullwhip; class B): the tip goes from Mach 1 to its top speed (Mach
+ * 2.19 measured) within accelerationMetres, the crack leaves as the lash turns it around, and it falls
+ * below Mach 1 again within decelerationMetres. The turn is a half circle of turnRadiusMetres (class
+ * C), and the path is sampled every stepSeconds. Before and after, the tip moves subsonicMetres at
+ * an even rate between subsonicMach and Mach 1 (class C), so that the booms that leave as it
+ * reaches and leaves the speed of sound are found. The boom follows Carlson's formula with the cracker's
+ * length and shape factor (class C: a frayed cracker is not a body of revolution; Whitham's projectile
+ * formula gives K_S = 2^¼·γ·d/l for a slender body of diameter d).
+ */
+export const WHIP = Object.freeze({
+  accelerationMetres: .45,
+  decelerationMetres: .2,
+  turnRadiusMetres: .05,
+  subsonicMetres: .3,
+  subsonicMach: .5,
+  stepSeconds: 2e-6
+});
+
 export const METEOR = Object.freeze({
   /** ReVelle's period coefficient k in τ₀ = k·R₀/c (class B). */
   periodCoefficient: 2.81,
@@ -454,6 +475,8 @@ export const VIEW = Object.freeze({
   box: Object.freeze({
     marginPixels: 36,
     minimumSpanMetres: 100,
+    /** The smallest box around whips alone, which crack within a metre. */
+    closeSpanMetres: 4,
     padding: .08,
     rotateRadiansPerPixel: .008,
     pitchRange: Object.freeze([.12, 1.45]),

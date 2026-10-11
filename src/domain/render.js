@@ -7,7 +7,7 @@ import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSe
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
-import { flightBooms, flightMembers, flightPath, withApproach } from './flight.js';
+import { flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
@@ -93,6 +93,7 @@ export function prepareScene(scene) {
     const sources = sourceTable(rows);
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
+    if (emitter.kind === 'whip') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: whipBody(emitter), path: whipPath(emitter, scene.air, surface), booms: flightBooms }] };
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
       return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: withApproach(flightPath(flight, scene.air), scene.air), booms: flightBooms })) };
     }

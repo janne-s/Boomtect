@@ -343,6 +343,30 @@ const showerSize = {
   entry: { units: 'metres', get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
 };
 
+const whipMach = {
+  label: 'Tip speed',
+  read: item => clamp01((item.mach - range('whipMach')[0]) / (range('whipMach')[1] - range('whipMach')[0])),
+  write: (item, t) => { const [low, high] = range('whipMach'); item.mach = +(low + t * (high - low)).toFixed(2); },
+  show: item => `Mach ${item.mach.toFixed(2)}`,
+  entry: { get: item => item.mach, set: (item, value) => { item.mach = value; } }
+};
+
+const whipHeight = {
+  label: 'Height',
+  read: item => clamp01(logPosition(Math.max(.1, item.startMetres.z), [.1, 10])),
+  write: (item, t) => { item.startMetres = { ...item.startMetres, z: +logValue(t, [.1, 10]).toPrecision(2) }; },
+  show: item => metres(item.startMetres.z),
+  entry: { units: 'metres', get: item => item.startMetres.z, set: (item, value) => { item.startMetres = { ...item.startMetres, z: value }; } }
+};
+
+const whipCracker = {
+  label: 'Cracker',
+  read: item => clamp01(logPosition(item.crackerLengthMetres, range('crackerLengthMetres'))),
+  write: (item, t) => { item.crackerLengthMetres = +logValue(t, range('crackerLengthMetres')).toPrecision(2); },
+  show: item => metres(item.crackerLengthMetres),
+  entry: { units: 'metres', get: item => item.crackerLengthMetres, set: (item, value) => { item.crackerLengthMetres = value; } }
+};
+
 /** Macro sliders for an emitter, in display order. */
 export function macrosFor(emitter) {
   if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
@@ -350,6 +374,7 @@ export function macrosFor(emitter) {
   if (emitter.kind === 'meteor') return [meteorSpeed, meteorDiameter, meteorEntry, flightHeight, flightHeading, meteorEnd];
   if (emitter.kind === 'shower') return [showerCount, showerSize, stormDuration, meteorSpeed, meteorDiameter, meteorEntry];
   if (emitter.kind === 'formation') return [formationCount, machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
+  if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];
   return [charge, blastHeight, fireball];

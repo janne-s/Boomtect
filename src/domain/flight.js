@@ -1,6 +1,7 @@
-import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, VIEW } from './constants.js';
+import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, VIEW, WHIP } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
+import { onGround } from './terrain.js';
 
 /**
  * A body in supersonic flight and the sonic booms it leaves at a receiver.
@@ -85,6 +86,79 @@ export function flightPath(flight, air) {
   }
   return path;
 }
+
+/**
+ * A whip's tip (WHIP): it speeds up along its heading and climb, reaching the speed of sound at its
+ * start and its top Mach number after, turns around over the top on a half circle, and slows down
+ * going back, at even rates along each straight part. A whip whose top speed is not supersonic
+ * turns at that speed and does not crack. Its start is above the ground of `surface`.
+ * Positions, times, and velocities every WHIP.stepSeconds, as `flightPath`.
+ */
+export function whipPath(whip, air, surface = null) {
+  const climb = whip.climbDegrees * Math.PI / 180;
+  const heading = whip.headingDegrees * Math.PI / 180;
+  const along = { x: Math.cos(climb) * Math.sin(heading), y: Math.cos(climb) * Math.cos(heading), z: Math.sin(climb) };
+  // The turn's other axis: up, square to the heading (or the heading's horizontal for a vertical throw).
+  const upright = Math.abs(along.z) < .999 ? { x: -along.z * along.x, y: -along.z * along.y, z: 1 - along.z * along.z } : { x: Math.sin(heading), y: Math.cos(heading), z: 0 };
+  const norm = Math.hypot(upright.x, upright.y, upright.z);
+  const over = { x: upright.x / norm, y: upright.y / norm, z: upright.z / norm };
+  const sound = soundSpeedAt(air, whip.startMetres.z);
+  const start = surface ? onGround(surface, whip.startMetres) : whip.startMetres;
+  const radius = WHIP.turnRadiusMetres;
+  const slow = WHIP.subsonicMach * sound;
+  // Up to its top speed the tip only speeds up: from the subsonic lead to sound, then on to the top.
+  const top = Math.max(whip.mach * sound, slow * 1.001);
+  const knee = Math.min(sound, top);
+  // Straight parts at an even rate from one speed to another over a distance, as [seconds, rate].
+  const even = (from, to, metres) => [2 * metres / (from + to), (to * to - from * from) / (2 * metres)];
+  const parts = [];
+  const straight = (from, to, metres, sign) => { const [seconds, rate] = even(from, to, metres); parts.push({ kind: 'line', seconds, from, rate, metres, sign }); };
+  straight(slow, knee, WHIP.subsonicMetres, 1);
+  if (top > sound) straight(sound, top, WHIP.accelerationMetres, 1);
+  parts.push({ kind: 'turn', seconds: Math.PI * radius / top, speed: top });
+  if (top > sound) straight(top, sound, WHIP.decelerationMetres, -1);
+  straight(Math.min(top, sound), slow, WHIP.subsonicMetres, -1);
+  // Each part starts where the last ended, in the plane of the heading and the turn's axis (a, b).
+  let position = { a: -WHIP.subsonicMetres, b: 0 };
+  let time = 0;
+  for (const part of parts) {
+    part.start = time;
+    part.origin = position;
+    if (part.kind === 'line') position = { a: position.a + part.sign * part.metres, b: position.b };
+    else position = { a: position.a, b: position.b + 2 * radius };
+    time += part.seconds;
+  }
+  const at = t => {
+    const part = parts.find(item => t <= item.start + item.seconds) ?? parts.at(-1);
+    const u = Math.min(t - part.start, part.seconds);
+    if (part.kind === 'turn') {
+      const angle = u * part.speed / radius;
+      return { a: part.origin.a + radius * Math.sin(angle), b: part.origin.b + radius * (1 - Math.cos(angle)), va: part.speed * Math.cos(angle), vb: part.speed * Math.sin(angle), speed: part.speed };
+    }
+    const speed = part.from + part.rate * u;
+    return { a: part.origin.a + part.sign * (part.from * u + part.rate * u * u / 2), b: part.origin.b, va: part.sign * speed, vb: 0, speed };
+  };
+  const steps = Math.max(2, Math.ceil(time / WHIP.stepSeconds));
+  const step = time / steps;
+  // Its start time is when the tip reaches the speed of sound, or would.
+  const sonic = parts[0].seconds;
+  const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step };
+  for (let index = 0; index <= steps; index += 1) {
+    const { a, b, va, vb, speed } = at(index * step);
+    path.seconds.push(whip.startSeconds + index * step - sonic);
+    path.x.push(start.x + a * along.x + b * over.x);
+    path.y.push(start.y + a * along.y + b * over.y);
+    path.z.push(start.z + a * along.z + b * over.z);
+    path.vx.push(va * along.x + vb * over.x);
+    path.vy.push(va * along.y + vb * over.y);
+    path.vz.push(va * along.z + vb * over.z);
+    path.speed.push(speed);
+  }
+  return path;
+}
+
+/** A whip's cracker as the body whose boom `flightBooms` finds. */
+export const whipBody = whip => ({ lengthMetres: whip.crackerLengthMetres, shapeFactor: whip.crackerShapeFactor });
 
 /**
  * The flight path with its approach before the start: a body supersonic at its start has been flying

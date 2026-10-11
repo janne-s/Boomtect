@@ -57,6 +57,10 @@ microphone along the Mach cone.
   them exceeds their strength, and it bursts where the trail ends, each a blast
   high in the air.
 - **Shower** — Meteoroids from one radiant over an area and a time span.
+- **Whip** — A bullwhip's crack: the boom of its tip, which passes the speed of
+  sound, speeds up, turns over as the lash rolls out, and slows down again,
+  all within about a millisecond and a metre. The crack is loudest ahead of
+  and above the turn and weak behind it.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
@@ -64,7 +68,7 @@ microphone along the Mach cone.
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
   for a meteor; meteors, size, duration, speed, diameter, and entry angle for a
-  shower.
+  shower; tip speed, height, heading, climb, and cracker length for a whip.
   Each sets several parameters at once. A macro that sets one parameter takes a
   typed value when its value is pressed, beyond the slider's span within the
   parameter's range; metres and charges take their units (m, km; g, kg, t, kt).
@@ -252,6 +256,8 @@ B/C marks a part that combines the two.
 | Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
+| Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
+| Whip crack | Carlson's boom of the cracker, whose `K_S = 2^¼·γ·d/l` gives Whitham's projectile overpressure; a frayed cracker's size and shape | C |
 | Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed | B/C |
 | Meteor breakup | fragments break in generations, each splitting in two: generation k where ρv² reaches the strength times 2^k, spread lognormally per fragment and seeded; a burst at the end of the trail; each generation and the burst a share of the kinetic energy | B/C |
 | Blast high in the air | Sachs scaling of the ground blast to the pressure and sound speed there; positive phase at most 2 s | B/C |

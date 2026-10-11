@@ -240,9 +240,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       include({ x: -surface.halfExtentMetres, y: -surface.halfExtentMetres, z: 0 });
       include({ x: surface.halfExtentMetres, y: surface.halfExtentMetres, z: 0 });
     }
-    const pad = Math.max(VIEW.box.minimumSpanMetres, maxX - minX, maxY - minY, maxZ) * VIEW.box.padding;
+    const enabled = scene.emitters.filter(emitter => emitter.enabled);
+    const span = enabled.length && enabled.every(emitter => emitter.kind === 'whip') ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
+    const pad = Math.max(span, maxX - minX, maxY - minY, maxZ) * VIEW.box.padding;
     const grow = (low, high) => {
-      const half = Math.max(high - low, VIEW.box.minimumSpanMetres) / 2 + pad;
+      const half = Math.max(high - low, span) / 2 + pad;
       return [(low + high) / 2 - half, (low + high) / 2 + half];
     };
     const [x0, x1] = grow(minX, maxX);
@@ -253,7 +255,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       minZ = Math.min(minZ, relief.low);
       maxZ = Math.max(maxZ, relief.high);
     }
-    return { x0, x1, y0, y1, z0: minZ, z1: Math.max(minZ + VIEW.box.minimumSpanMetres, maxZ) + pad };
+    return { x0, x1, y0, y1, z0: minZ, z1: Math.max(minZ + span, maxZ) + pad };
   }
 
   /** The lowest and highest ground within a horizontal area, kept for the last area and terrain asked. */

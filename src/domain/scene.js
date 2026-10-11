@@ -11,7 +11,7 @@ export const SCENE_VERSION = 21;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Kinds of the place names kept with a terrain, from OpenStreetMap, in drawing priority. */
@@ -97,6 +97,9 @@ export const PARAMETERS = Object.freeze({
   flightSeconds: { minimum: 1, maximum: 600, unit: 's', label: 'Flight time', reliability: null },
   lengthMetres: { minimum: 1, maximum: 300, unit: 'm', label: 'Length', reliability: 'B' },
   shapeFactor: { minimum: .01, maximum: 2, unit: '', label: 'Shape factor K_S', reliability: 'B' },
+  whipMach: { minimum: .5, maximum: 3, unit: '', label: 'Top Mach', reliability: 'B' },
+  crackerLengthMetres: { minimum: .01, maximum: .5, unit: 'm', label: 'Cracker length', reliability: 'C' },
+  crackerShapeFactor: { minimum: .01, maximum: 1, unit: '', label: 'Cracker shape factor K_S', reliability: 'C' },
   entryDegrees: { minimum: 5, maximum: 90, unit: '°', label: 'Entry angle', reliability: null },
   speedKilometresPerSecond: { minimum: 11, maximum: 72, unit: 'km/s', label: 'Speed', reliability: 'B' },
   diameterMetres: { minimum: .001, maximum: 50, unit: 'm', label: 'Diameter', reliability: null },
@@ -145,6 +148,8 @@ const BARRAGE_NUMBERS = Object.freeze([
 ]);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
+
+const WHIP_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'crackerLengthMetres', 'crackerShapeFactor', 'riseTimeSeconds']);
 
 const METEOR_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'entryDegrees', 'speedKilometresPerSecond', 'diameterMetres', 'endHeightMetres', 'dragCoefficient', 'riseTimeSeconds',
   'densityKilogramsPerCubicMetre', 'strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']);
@@ -326,6 +331,25 @@ export function defaultShower(id = 'shower-1', name = 'Shower', seed = 20261016)
   return { ...defaultMeteor(id, name, seed), kind: 'shower', diameterMetres: .2, meteorCount: 30, radiusMetres: 30000, durationSeconds: 60, diameterSpread: .8 };
 }
 
+/**
+ * A bullwhip cracked 1.5 m above the ground, 3 m west of the origin, toward the east: its tip at
+ * Krehl and Engemann's Mach 2.19, an 8 cm cracker of K_S 0.08 (class C, d/l about 1/20), and a
+ * shock that rises in 10 µs.
+ */
+export function defaultWhip(id = 'whip-1', name = 'Whip', seed = 20261017) {
+  return {
+    id, name, kind: 'whip', enabled: true, seed,
+    startSeconds: 0,
+    startMetres: { x: -3, y: 0, z: 1.5 },
+    headingDegrees: 90,
+    climbDegrees: 0,
+    mach: 2.19,
+    crackerLengthMetres: .08,
+    crackerShapeFactor: .08,
+    riseTimeSeconds: 1e-5
+  };
+}
+
 /** Four reconnaissance aircraft in a vee, 1 km apart sideways and 1.5 km back per rank. */
 export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 20261014) {
   return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
@@ -410,6 +434,9 @@ function emitter(value, index) {
     };
     check(meteor.endHeightMetres < meteor.startMetres.z, `${path} must end below its start.`);
     return meteor;
+  }
+  if (value.kind === 'whip') {
+    return { ...common, startMetres: point(value.startMetres, `${path}.startMetres`), mach: number(value.mach, 'whipMach', `${path}.mach`), ...numbers(value, WHIP_NUMBERS, path) };
   }
   if (value.kind === 'flight' || value.kind === 'formation') {
     check(BODY_TYPES.includes(value.body), `${path}.body is not supported.`);
