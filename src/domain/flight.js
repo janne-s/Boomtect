@@ -1,6 +1,6 @@
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { inShadow, pathProfile, rayBetween, travelSeconds } from './refraction.js';
+import { inShadow, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
 
 /**
  * A body in supersonic flight and the sonic booms it leaves at a receiver.
@@ -161,4 +161,51 @@ export function flightBooms(path, flight, receiver, profile, air) {
     booms.push({ point, emissionSeconds, ray, along, mach, focus, ...boom });
   }
   return booms;
+}
+
+/** Fronts of a body's past that its Mach cone is drawn through, and points around each. */
+const CONE_RINGS = 16;
+const CONE_RING_POINTS = 32;
+
+/**
+ * A body's Mach cone at the clock, as the envelope of the fronts it has left (for views): on the
+ * front from each of CONE_RINGS past points of its path, the circle that the rays leaving at
+ * cos α = c/v to its flight reach, with the fronts' refraction. Where it flew no faster than sound
+ * it leaves no ring. The apex is the body while it flies.
+ */
+export function machCone(path, now, profile) {
+  const count = path.seconds.length;
+  const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
+  if (last < 1) return null;
+  const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
+  const rings = [];
+  for (let ring = 1; ring <= CONE_RINGS; ring += 1) {
+    const index = Math.round(last * (1 - ring / CONE_RINGS));
+    const before = at(Math.max(0, index - 1));
+    const after = at(Math.min(count - 1, index + 1));
+    const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
+    const d = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
+    const length = Math.hypot(d.x, d.y, d.z);
+    const point = at(index);
+    const cosine = speedAt(profile, point.z) / (length / span);
+    if (!(length > 0 && cosine < 1)) continue;
+    const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
+    // Two directions across the flight.
+    const across = Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
+    const norm = Math.hypot(across.x, across.y, across.z);
+    const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };
+    const second = { x: unit.y * first.z - unit.z * first.y, y: unit.z * first.x - unit.x * first.z, z: unit.x * first.y - unit.y * first.x };
+    const { centre, radiusMetres } = wavefront(profile, point, now - path.seconds[index]);
+    const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
+    const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
+    rings.push(Array.from({ length: CONE_RING_POINTS }, (_, step) => {
+      const angle = 2 * Math.PI * step / CONE_RING_POINTS;
+      const a = radius * Math.cos(angle);
+      const b = radius * Math.sin(angle);
+      return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };
+    }));
+  }
+  if (!rings.length) return null;
+  const flying = (now - path.seconds[0]) / path.step <= count - 1;
+  return { apex: flying ? at(last) : null, rings };
 }

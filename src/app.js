@@ -18,13 +18,13 @@ import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loade
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
-import { BODIES, BODY_TYPES, carlsonBoom } from './domain/flight.js';
+import { BODIES, BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
 import { createPlayer } from './ui/player.js';
-import { drawArrivals, drawWaveform } from './ui/plots.js';
+import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
@@ -85,6 +85,8 @@ const state = {
   scene: restoredScene(preferences.mode),
   selection: null,
   results: null,
+  /** Where paused or scrubbed playback stands: scene seconds and the lead-in it skips, or null. */
+  pause: null,
   envelopes: new Map(),
   revision: 0,
   workers: [],
@@ -221,6 +223,7 @@ function commit(change) {
 
 function invalidateResults() {
   player.stop();
+  state.pause = null;
   state.results = null;
   $('export').disabled = true;
   syncPlayButton();
@@ -273,6 +276,11 @@ function syncPlayButton() {
   button.textContent = playing ? 'Stop' : rendering ? 'Rendering' : state.results ? 'Play' : 'Render';
   button.disabled = !playing && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
   button.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  const pause = $('plot-play');
+  pause.disabled = !state.results;
+  pause.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  pause.classList.toggle('playing', playing);
+  $('results').classList.toggle('playable', Boolean(state.results));
 }
 
 /** Renders after a change: soon when Auto is on, otherwise when the button is pressed. */
@@ -1402,7 +1410,7 @@ function addEmitter(create) {
  * Both plots show every microphone on one time axis: the listening ones in ink and the others
  * muted, or one soloed microphone over the dimmed rest.
  */
-function drawResults(playheadSeconds = null) {
+function drawResults(playheadSeconds = state.pause?.seconds ?? null, { frame = false } = {}) {
   const { receivers } = state.scene;
   const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
   const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
@@ -1411,7 +1419,7 @@ function drawResults(playheadSeconds = null) {
   // A blast is one point, so its arrivals are shown by the direction they come from rather than by height.
   const byDirection = state.scene.mode === 'blast';
   drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
-  if (playheadSeconds === null) {
+  if (!frame) {
     drawPlotTabs(soloId);
     $('arrivals-caption').textContent = byDirection ? 'Arrival · direction' : 'Arrival · height';
     $('arrivals').setAttribute('aria-label', byDirection ? 'Arrival time by direction' : 'Arrival time by source height');
@@ -1466,7 +1474,7 @@ function strokeTimeline(emitter) {
  * figuratively in FLASH_TRAVERSE_SECONDS; physically a return stroke takes microseconds.
  */
 function animationState() {
-  const clock = player.clock();
+  const clock = playbackClock();
   if (!clock) return null;
   const now = clock.sceneSeconds();
   const strokes = new Map();
@@ -1489,16 +1497,19 @@ function animationState() {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
   const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
-  // Where each flight's body is at the clock.
+  // Where each flight's body is at the clock, and its Mach cone.
   const flights = new Map();
+  const cones = new Map();
   for (const emitter of state.scene.emitters) {
     if (!isTrackKind(emitter) || !emitter.enabled) continue;
-    flights.set(emitter.id, cachedTracks(emitter, state.scene.air).flatMap(path => {
+    const paths = cachedTracks(emitter, state.scene.air);
+    flights.set(emitter.id, paths.flatMap(path => {
       const index = Math.round((now - path.seconds[0]) / path.step);
       return index >= 0 && index < path.seconds.length ? [{ x: path.x[index], y: path.y[index], z: path.z[index] }] : [];
     }));
+    cones.set(emitter.id, paths.map(path => machCone(path, now, profile)).filter(Boolean));
   }
-  return { strokes, receivers, sound, wavefronts, flights };
+  return { strokes, receivers, sound, wavefronts, flights, cones };
 }
 
 const wavefrontSources = new WeakMap();
@@ -1615,10 +1626,23 @@ function startAnimation() {
 function animate() {
   const clock = player.clock();
   redrawViews();
-  drawResults(clock ? clock.sceneSeconds() : null);
+  drawResults(clock ? clock.sceneSeconds() : null, { frame: true });
   drawTimeline(clock && player.playing() ? clock.sceneSeconds() : null);
   if (player.playing()) requestAnimationFrame(animate);
-  else { animating = false; redrawViews(); drawResults(); drawTimeline(null); }
+  else { animating = false; drawStill(); }
+}
+
+/** The scene, the plots, and the clock at rest: stopped, or held where playback paused. */
+function drawStill() {
+  redrawViews();
+  drawResults();
+  drawTimeline(state.pause?.seconds ?? null);
+}
+
+/** The playback clock, or while paused one held where it paused. */
+function playbackClock() {
+  const pause = state.pause;
+  return player.clock() ?? (pause ? { skippedSeconds: pause.skippedSeconds ?? 0, sceneSeconds: () => pause.seconds } : null);
 }
 
 /**
@@ -1677,8 +1701,40 @@ async function resumePlayback() {
   }
 }
 
-$('play').addEventListener('click', async () => {
+/**
+ * Plays from where playback paused or was scrubbed to, or from the start. Call it first thing in a
+ * user gesture, which the audio context needs to start.
+ */
+async function startPlayback() {
+  const unlocked = player.unlock(state.scene.render.sampleRate);
+  try {
+    const current = listening();
+    if (!current) return;
+    await unlocked;
+    const from = state.pause;
+    state.pause = null;
+    const options = { realDelay: state.preferences.realDelay, onEnded: showStopped };
+    if (from) Object.assign(options, { atSceneSeconds: from.seconds, skippedSeconds: from.skippedSeconds });
+    if (await player.play(current.composition, current.gain, options)) showPlaying();
+  } catch (error) {
+    player.stop();
+    showStopped();
+    setStatus(`Playback failed: ${error.message}`, true);
+  }
+}
+
+/** Holds playback where it is; Play goes on from there. */
+function pausePlayback() {
+  const clock = player.clock();
+  if (!clock || !player.playing()) return;
+  state.pause = { seconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds };
+  player.stop();
+  showStopped();
+}
+
+$('play').addEventListener('click', () => {
   if (player.playing()) {
+    state.pause = null;
     player.stop();
     showStopped();
     return;
@@ -1690,18 +1746,41 @@ $('play').addEventListener('click', async () => {
     }
     return;
   }
-  const unlocked = player.unlock(state.scene.render.sampleRate);
-  try {
-    const current = listening();
-    if (!current) return;
-    await unlocked;
-    if (await player.play(current.composition, current.gain, { realDelay: state.preferences.realDelay, onEnded: showStopped })) showPlaying();
-  } catch (error) {
-    player.stop();
-    showStopped();
-    setStatus(`Playback failed: ${error.message}`, true);
-  }
+  startPlayback();
 });
+
+$('plot-play').addEventListener('click', () => {
+  if (player.playing()) pausePlayback();
+  else if (state.results) startPlayback();
+});
+
+/** Pressing a plot holds playback at that moment, dragging moves it, and letting go plays on from there. */
+for (const canvas of [$('waveform'), $('arrivals')]) {
+  canvas.addEventListener('pointerdown', event => {
+    if (!state.results || event.button !== 0) return;
+    const seconds = plotSeconds(canvas, event.clientX);
+    if (seconds === null) return;
+    const clock = player.clock();
+    const skippedSeconds = clock ? clock.skippedSeconds : state.pause?.skippedSeconds ?? null;
+    if (player.playing()) { player.stop(); syncPlayButton(); }
+    state.pause = { seconds, skippedSeconds };
+    drawStill();
+    canvas.setPointerCapture(event.pointerId);
+    const move = moveEvent => {
+      state.pause = { seconds: plotSeconds(canvas, moveEvent.clientX, true), skippedSeconds };
+      drawStill();
+    };
+    const release = () => {
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', release);
+      canvas.removeEventListener('pointercancel', release);
+      if (state.pause && state.results) startPlayback();
+    };
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+  });
+}
 
 /* Files */
 

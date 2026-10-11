@@ -15,7 +15,7 @@
       <div class="modes" role="radiogroup" aria-label="Mode">
         <button type="button" role="radio" data-mode="thunder" aria-checked="true">Thunder</button>
         <button type="button" role="radio" data-mode="blast" aria-checked="false">Blast</button>
-        <button type="button" role="radio" data-mode="sonic" aria-checked="false">Sonic boom</button>
+        <button type="button" role="radio" data-mode="sonic" aria-checked="false">Sonic</button>
       </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
       <label class="toggle" title="Off: render when the button says Render"><input type="checkbox" id="auto-render" checked /> Auto</label>
@@ -97,10 +97,10 @@
       </aside>
 
       <div class="splitter splitter-row" id="split-row" role="separator" aria-orientation="horizontal" aria-label="Resize results" tabindex="0"></div>
-      <section class="results" aria-label="Result">
+      <section class="results" id="results" aria-label="Result">
         <figure class="plot plot-wave">
           <canvas id="waveform" aria-label="Pressure waveform"></canvas>
-          <figcaption>Pressure <span class="plot-tabs" id="plot-tabs" role="group" aria-label="Solo microphone"></span></figcaption>
+          <figcaption><button type="button" class="plot-play" id="plot-play" aria-label="Play" disabled><svg viewBox="0 0 10 10" aria-hidden="true"><path class="icon-play" d="M2 1 9 5 2 9Z"/><path class="icon-pause" d="M2 1h2v8H2zM6 1h2v8H6z"/></svg></button>Pressure <span class="plot-tabs" id="plot-tabs" role="group" aria-label="Solo microphone"></span></figcaption>
         </figure>
         <figure class="plot plot-arrivals">
           <canvas id="arrivals" aria-label="Arrival time by source height"></canvas>

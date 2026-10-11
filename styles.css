@@ -169,6 +169,31 @@ figcaption {
 .plot-tabs button {
   color: var(--mic);
 }
+.plot-play {
+  margin-right: 6px;
+  padding: 0 4px;
+  background: none;
+  color: var(--ink);
+  line-height: 16px;
+  vertical-align: top;
+  pointer-events: auto;
+}
+.plot-play svg {
+  display: block;
+  width: 10px;
+  height: 16px;
+  fill: currentColor;
+}
+.plot-play .icon-pause,
+.plot-play.playing .icon-play {
+  display: none;
+}
+.plot-play.playing .icon-pause {
+  display: inline;
+}
+.results.playable canvas {
+  cursor: ew-resize;
+}
 .plot-tabs button.muted {
   opacity: .55;
 }

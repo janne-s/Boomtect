@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { carlsonBoom, flightBooms, flightPath } from '../src/domain/flight.js';
+import { carlsonBoom, flightBooms, flightPath, machCone } from '../src/domain/flight.js';
 import { soundSpeedProfile } from '../src/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultFlight, defaultScene, parseScene } from '../src/domain/scene.js';
@@ -91,4 +91,23 @@ test('a formation flies in a vee behind its leader, and each of its aircraft lea
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   assert.equal([...result.arrivals.kinds].filter(kind => kind === 0).length, 3);
   assert.ok(result.samples.every(Number.isFinite));
+});
+
+test('the Mach cone drawn at the clock opens at asin(1/M) behind the body, and a subsonic flight has none', () => {
+  const flight = level();
+  const path = flightPath(flight, stillAir);
+  const profile = soundSpeedProfile(stillAir);
+  const cone = machCone(path, 60, profile);
+  assert.ok(cone.apex && cone.rings.length > 10);
+  const halfAngle = Math.asin(1 / flight.mach);
+  for (const ring of cone.rings) {
+    for (const point of ring) {
+      // Flying east: the cone's axis points back west from the body.
+      const back = { x: cone.apex.x - point.x, y: point.y - cone.apex.y, z: point.z - cone.apex.z };
+      const angle = Math.atan2(Math.hypot(back.y, back.z), back.x);
+      assert.ok(Math.abs(angle - halfAngle) < 1e-3, `${angle} vs ${halfAngle}`);
+    }
+  }
+  assert.equal(machCone(flightPath(level({ mach: .8 }), stillAir), 60, profile), null);
+  assert.equal(machCone(path, -1, profile), null);
 });

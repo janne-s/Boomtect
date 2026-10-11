@@ -34,6 +34,10 @@ const SOUND_GLOW_SECONDS = .25;
 /** Source points sampled for the shadow boundary on the floor. */
 const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
+/** A Mach cone's lines: every this many of a ring's points leads to the next ring; pieces per line kept above the ground. */
+const CONE_LINE_EVERY = 4;
+const CONE_PIECES = 12;
+const CONE_ALPHA = .45;
 /** A press that moves less than this is a click rather than a turn of the view. */
 const CLICK_PIXELS = 4;
 /** The terrain is drawn on a grid of at most this many cells a side, separate from its heightfield. */
@@ -1168,7 +1172,58 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.beginPath(); context.arc(p.x, p.y, 5, 0, 2 * Math.PI); context.fill();
       context.shadowBlur = 0;
     }
+    for (const cone of state?.cones?.get(emitter.id) ?? []) drawCone(context, cone, colors);
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
+  }
+
+  /** A body's Mach cone: its rings and lines from the body through them, within the box and above the ground. */
+  function drawCone(context, { apex, rings }, colors) {
+    const { box } = frame;
+    const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
+    const low = { x: Math.min(box.x0, -half), y: Math.min(box.y0, -half), z: box.z0 };
+    const high = { x: Math.max(box.x1, half), y: Math.max(box.y1, half), z: box.z1 };
+    const path = new Path2D();
+    const line = (a, b) => {
+      // The part of the line within the box (Liang–Barsky), in pieces whose middle is above the ground.
+      let from = 0;
+      let to = 1;
+      for (const axis of ['x', 'y', 'z']) {
+        const delta = b[axis] - a[axis];
+        for (const [edge, sign] of [[low[axis], -1], [high[axis], 1]]) {
+          const room = sign * (edge - a[axis]);
+          const step = sign * delta;
+          if (step === 0) { if (room < 0) return; continue; }
+          const t = room / step;
+          if (step > 0) to = Math.min(to, t); else from = Math.max(from, t);
+        }
+      }
+      if (!(to > from)) return;
+      const point = t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+      for (let piece = 0; piece < CONE_PIECES; piece += 1) {
+        const start = from + (to - from) * piece / CONE_PIECES;
+        const end = from + (to - from) * (piece + 1) / CONE_PIECES;
+        const middle = point((start + end) / 2);
+        if (middle.z < ground(middle.x, middle.y)) continue;
+        const p = frame.project(point(start));
+        const q = frame.project(point(end));
+        path.moveTo(p.x, p.y);
+        path.lineTo(q.x, q.y);
+      }
+    };
+    rings.forEach((ring, index) => {
+      ring.forEach((point, step) => {
+        line(point, ring[(step + 1) % ring.length]);
+        if (step % CONE_LINE_EVERY) return;
+        const previous = index ? rings[index - 1][step] : apex;
+        if (previous) line(previous, point);
+      });
+    });
+    const alpha = context.globalAlpha;
+    context.globalAlpha = alpha * CONE_ALPHA;
+    context.strokeStyle = colors.glow;
+    context.lineWidth = 1;
+    context.stroke(path);
+    context.globalAlpha = alpha;
   }
 
   /** A burst's flash, fading after it starts; the emitter's dimming is restored after it. */

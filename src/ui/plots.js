@@ -83,6 +83,17 @@ function cachedPlot(canvas, key, drawStatic, playheadSeconds) {
   if (entry.window) playhead(context, width, height, entry.window, playheadSeconds, palette());
 }
 
+/** The scene time under a horizontal position on a drawn plot, or null outside its window unless clamped to it. */
+export function plotSeconds(canvas, clientX, clamp = false) {
+  const entry = cache.get(canvas);
+  if (!entry?.window) return null;
+  const box = canvas.getBoundingClientRect();
+  const share = (clientX - box.left - LEFT) / (box.width - LEFT - RIGHT);
+  if (!clamp && (share < 0 || share > 1)) return null;
+  const { start, end } = entry.window;
+  return start + Math.min(1, Math.max(0, share)) * (end - start);
+}
+
 /**
  * Min/max envelope of each microphone's pressure per pixel column, in pascals, on one time axis
  * and one scale, the largest peak of them all.

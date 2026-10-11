@@ -5,6 +5,8 @@ import { channelCount, orientationRotation, rotationTerms } from '../domain/ambi
 const SCHEDULE_LEAD_SECONDS = .08;
 /** Without the real delay, the first sound starts this long after playback begins. */
 const SHORTENED_LEAD_SECONDS = .5;
+/** Playback fades in when it starts and out when it stops over this time, so a cut into a sound does not click. */
+const FADE_SECONDS = .05;
 
 /**
  * Omnitone's higher-order decoder mirrors left and right relative to AmbiX: measured with a source
@@ -75,7 +77,7 @@ function bufferSource(context, channels, gain, sampleRate) {
  * the output has enough channels, and otherwise as a stereo preview panned by each microphone's
  * bearing from their centre. Returns the sources and the orientation controls per head.
  */
-async function connectComposition(context, composition, gain, destination, { live }) {
+async function connectComposition(context, composition, gain, destination, { live, input = destination }) {
   const { kind, sampleRate, order } = composition;
   const sources = [];
   const rotations = new Map();
@@ -92,11 +94,11 @@ async function connectComposition(context, composition, gain, destination, { liv
       sources.push(source);
       nodes.push(rotation.output);
     }
-    renderer.output.connect(destination);
+    renderer.output.connect(input);
     nodes.push(renderer.output);
     for (const omni of composition.omnis) {
       const source = bufferSource(context, [omni.channel], gain, sampleRate);
-      source.connect(destination);
+      source.connect(input);
       sources.push(source);
     }
     return { sources, rotations, nodes };
@@ -111,7 +113,7 @@ async function connectComposition(context, composition, gain, destination, { liv
       const panner = context.createStereoPanner();
       panner.pan.value = Math.sin(omni.bearing);
       splitter.connect(panner, index);
-      panner.connect(destination);
+      panner.connect(input);
       nodes.push(panner);
     });
     return { sources, rotations, nodes };
@@ -120,7 +122,7 @@ async function connectComposition(context, composition, gain, destination, { liv
     destination.channelCount = Math.min(destination.maxChannelCount, Math.max(2, channels.length));
     destination.channelInterpretation = kind === 'surround' ? 'discrete' : 'speakers';
   }
-  source.connect(destination);
+  source.connect(input);
   return { sources, rotations, nodes };
 }
 
@@ -146,14 +148,23 @@ export function createPlayer() {
   /** Counts play requests, so an older one still connecting does not start after a newer one. */
   let request = 0;
 
+  /** Fades the current playback out and releases its nodes once it is silent. */
   function release() {
     if (current) {
-      for (const source of current.sources) {
+      const { sources, nodes, fader } = current;
+      const at = context.currentTime;
+      fader.gain.cancelScheduledValues(at);
+      fader.gain.setValueAtTime(fader.gain.value, at);
+      fader.gain.linearRampToValueAtTime(0, at + FADE_SECONDS);
+      for (const source of sources) {
         source.onended = null;
-        try { source.stop(); } catch { /* Already stopped. */ }
-        source.disconnect();
+        try { source.stop(at + FADE_SECONDS); } catch { /* Not started. */ }
       }
-      current.nodes.forEach(node => node.disconnect());
+      setTimeout(() => {
+        sources.forEach(source => source.disconnect());
+        nodes.forEach(node => node.disconnect());
+        fader.disconnect();
+      }, (FADE_SECONDS * 2) * 1000);
     }
     current = null;
     clock = null;
@@ -183,10 +194,13 @@ export function createPlayer() {
     const ticket = request += 1;
     await unlock(composition.sampleRate);
     release();
-    const connected = await connectComposition(context, composition, gain, context.destination, { live: true });
+    const fader = context.createGain();
+    fader.connect(context.destination);
+    const connected = { ...await connectComposition(context, composition, gain, context.destination, { live: true, input: fader }), fader };
     if (ticket !== request) {
       connected.sources.forEach(source => source.disconnect());
       connected.nodes.forEach(node => node.disconnect());
+      fader.disconnect();
       return false;
     }
     current = connected;
@@ -194,6 +208,8 @@ export function createPlayer() {
     const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - (atSceneSeconds ?? skipped);
     const when = origin + composition.startSeconds;
     const now = context.currentTime;
+    fader.gain.setValueAtTime(0, now);
+    fader.gain.linearRampToValueAtTime(1, now + FADE_SECONDS);
     for (const source of connected.sources) {
       if (when >= now) source.start(when); else source.start(now, now - when);
     }

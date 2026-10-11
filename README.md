@@ -12,7 +12,7 @@ pressure pulse. A lightning channel is thousands of them along a branching,
 zigzagging path; a blast is one. Each pulse travels to each microphone with its
 own delay and loss, and the microphone hears their sum.
 
-Thunder, Blast, and Sonic boom are separate modes, each with its own scene. A
+Thunder, Blast, and Sonic are separate modes, each with its own scene. A
 supersonic body's booms leave its flight path where the sound reaches a
 microphone along the Mach cone.
 
@@ -78,6 +78,11 @@ microphone along the Mach cone.
 - **Render** and **Play** — The button renders the scene when it has changed,
   then plays it: it flashes the sources and plays what the listening microphones
   hear.
+- **Pause** — The button on the pressure plot holds playback where it is; Play
+  goes on from there, Stop starts over.
+- **Scrubbing** — Press either plot to move playback to that moment, and drag to
+  move it further; on release it plays on from there. Sound fades in and out
+  as it starts and stops.
 - **Auto** — Renders again soon after every change. Off, changes wait for
   Render.
 - **In progress** — Rendering and loading are listed in the corner of the
@@ -90,6 +95,8 @@ microphone along the Mach cone.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls, fading as their sound
   spreads out and the air absorbs it.
+- **Mach cone** — While the sound plays, a supersonic body's cone trails behind
+  it through the fronts it has left, within the box and above the ground.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
   terrain without names, it asks for them again.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
