@@ -338,6 +338,8 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omn
 export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
   const receiver = defaultReceiver();
+  // The default flash's thunder first arrives three seconds after it (3.0 s; its channel leans toward the microphone).
+  if (mode === 'thunder') receiver.positionMetres = { x: 1400, y: 0, z: 1.7 };
   if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
   if (mode === 'sonic') receiver.positionMetres = { x: 0, y: 0, z: 1.7 };
   return {

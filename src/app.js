@@ -55,7 +55,8 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefront: false, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, mode: 'thunder',
+  // Wavefronts per mode: a flash's fronts show its thunder taking shape; a blast's and a boom's are optional.
+  realDelay: true, wavefronts: { thunder: true, blast: false, sonic: false }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -1274,6 +1275,7 @@ function rebuildPanel() {
   $('names-toggle').hidden = !scene.terrain;
   $('map-toggle').hidden = !scene.terrain;
   $('cone-toggle').hidden = scene.mode !== 'sonic';
+  $('wavefront').checked = wavefrontsShown();
   $('clouds-toggle').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
 
   const output = $('output-fields');
@@ -1507,7 +1509,7 @@ function animationState() {
   for (const [id, envelopeData] of state.envelopes) {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
-  const wavefronts = state.preferences.wavefront ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
+  const wavefronts = wavefrontsShown() ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
   // Where each flight's body is at the clock, and its Mach cone.
   const flights = new Map();
   const cones = new Map();
@@ -1521,6 +1523,11 @@ function animationState() {
     if (state.preferences.cone) cones.set(emitter.id, paths.map(path => machCone(path, now, profile)).filter(Boolean));
   }
   return { strokes, receivers, sound, wavefronts, flights, cones };
+}
+
+/** Whether the scene's mode shows wavefronts. */
+function wavefrontsShown() {
+  return Boolean(state.preferences.wavefronts?.[state.scene.mode]);
 }
 
 const wavefrontSources = new WeakMap();
@@ -1963,8 +1970,11 @@ $('attribution-button').addEventListener('click', () => {
   $('attribution-text').hidden = !open;
   $('attribution-button').setAttribute('aria-expanded', String(open));
 });
-$('wavefront').checked = state.preferences.wavefront;
-$('wavefront').addEventListener('change', () => { state.preferences.wavefront = $('wavefront').checked; savePreferences(); redrawViews(); });
+$('wavefront').addEventListener('change', () => {
+  state.preferences.wavefronts = { ...state.preferences.wavefronts, [state.scene.mode]: $('wavefront').checked };
+  savePreferences();
+  redrawViews();
+});
 $('real-delay').checked = state.preferences.realDelay;
 $('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
 const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
