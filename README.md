@@ -176,7 +176,8 @@ microphone along the Mach cone.
   grows past its edge loads a wider area around the same origin.
 - **Terrain** — Microphones, blasts, and ground points stand on the ground;
   heights in the cloud are above the ground at the origin. The panel shows both
-  heights above the ground and above sea level.
+  heights above the ground and above sea level, and the box's height lines are
+  above sea level.
 - **Shielding** — Hills between a source and a microphone block the direct and
   the reflected sound, and sound bends over their crests, more at low
   frequencies.

@@ -368,10 +368,19 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
 
-  /** The first height line above the floor, skipping the floor itself. */
-  function firstLevel(bounds, spacing) {
-    const first = Math.ceil(bounds.z0 / spacing) * spacing;
-    return first === bounds.z0 ? first + spacing : first;
+  /**
+   * The height lines above the floor, skipping the floor itself: at round heights above sea level
+   * over loaded terrain, whose datum (z = 0, the ground at the origin) lies `datumMetres` above it,
+   * and above the ground otherwise. Each gives its height in the scene frame and its label in metres.
+   */
+  function heightLevels(bounds, spacing) {
+    const surface = currentSurface();
+    const datum = surface.flat ? 0 : surface.datumMetres;
+    const levels = [];
+    let metres = Math.ceil((bounds.z0 + datum) / spacing) * spacing;
+    if (metres - datum <= bounds.z0) metres += spacing;
+    for (; metres - datum <= bounds.z1; metres += spacing) levels.push({ z: metres - datum, metres });
+    return levels;
   }
 
   function drawBox(context, colors) {
@@ -399,7 +408,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (currentSurface().flat) line({ x: box.x0, y, z: box.z0 }, { x: box.x1, y, z: box.z0 });
       line({ x: farX, y, z: box.z0 }, { x: farX, y, z: box.z1 });
     }
-    for (let z = firstLevel(box, step); z <= box.z1; z += step) {
+    for (const { z } of heightLevels(box, step)) {
       line({ x: farX, y: box.y0, z }, { x: farX, y: box.y1, z });
       line({ x: box.x0, y: farY, z }, { x: box.x1, y: farY, z });
     }
@@ -421,7 +430,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.textAlign = 'right';
     for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: box.z0 }, -6, 12);
     context.textAlign = 'left';
-    for (let z = firstLevel(box, step); z <= box.z1; z += step) label(formatMetres(z), { x: farX, y: farY, z }, 4, -2);
+    for (const { z, metres } of heightLevels(box, step)) label(formatMetres(metres), { x: farX, y: farY, z }, 4, -2);
     const origin = frame.project({ x: 0, y: 0, z: ground(0, 0) });
     context.strokeStyle = colors.muted;
     context.beginPath();
