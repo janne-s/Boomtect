@@ -1477,7 +1477,7 @@ function animationState() {
     }
   }
   const receiver = focusReceiver().positionMetres;
-  const sound = !realDelay && result ? { seconds: now, travelSeconds: point => travelSeconds(profile, point, receiver) } : null;
+  const sound = !realDelay && result ? { seconds: now, key: `${receiver.x},${receiver.y},${receiver.z}|${JSON.stringify(state.scene.air)}`, travelSeconds: point => travelSeconds(profile, point, receiver) } : null;
   const receivers = new Map();
   for (const [id, envelopeData] of state.envelopes) {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
