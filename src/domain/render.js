@@ -317,6 +317,19 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   return paths;
 }
 
+/**
+ * Traced paths cut to their count, for sending to another thread, with the buffers that can be
+ * transferred rather than copied.
+ */
+export function compactPaths(paths) {
+  const widths = { direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 };
+  const compact = { count: paths.count, cells: paths.cells };
+  for (const [key, array] of Object.entries(paths)) {
+    if (ArrayBuffer.isView(array)) compact[key] = array.slice(0, paths.count * (widths[key] ?? 1));
+  }
+  return { paths: compact, buffers: Object.values(compact).filter(ArrayBuffer.isView).map(array => array.buffer) };
+}
+
 /** ρc³ of the ground-level air, which sets how fast a shock ages. */
 export function airShockImpedance(air) {
   const density = air.pressureKpa * 1000 / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (air.temperatureCelsius + KELVIN_OFFSET));
@@ -464,7 +477,7 @@ function edgeDecibels(paths, index, frequencyHz) {
  * shadow path's level includes its creeping loss at VIEW.arrivalDiagramHz.
  */
 export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
-  const paths = receiverPaths(preparedEmitters, receiver, scene, options);
+  const paths = options.paths ?? receiverPaths(preparedEmitters, receiver, scene, options);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
   const bearings = new Float32Array(paths.count);
@@ -807,6 +820,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let pulseCos = pulseStepRe;
   let pulseSin = pulseStepIm;
   const friedlanderRe = sources.decay[sourceIndex] / duration;
+  const subArrivalSets = [spreadArrivals, turbulence].filter(Boolean);
+  const reals = spectra.map(spectrum => spectrum.real);
+  const imaginaries = spectra.map(spectrum => spectrum.imaginary);
 
   for (let bin = 1; bin < limit; bin += 1) {
     const omega = omegaStep * bin;
@@ -872,8 +888,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       im = re * cIm + im * cRe;
       re = nextRe;
     }
-    for (const subArrivals of [spreadArrivals, turbulence]) {
-      if (!subArrivals) continue;
+    for (const subArrivals of subArrivalSets) {
       const { gain: subGain, re: subRe, im: subIm, stepRe, stepIm, direct } = subArrivals;
       let sumRe = direct;
       let sumIm = 0;
@@ -929,8 +944,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     const outRe = re * phaseRe - im * phaseIm;
     const outIm = re * phaseIm + im * phaseRe;
     for (let channel = 0; channel < channels; channel += 1) {
-      spectra[channel].real[bin] += gains[channel] * outRe;
-      spectra[channel].imaginary[bin] += gains[channel] * outIm;
+      reals[channel][bin] += gains[channel] * outRe;
+      imaginaries[channel][bin] += gains[channel] * outIm;
     }
     const nextPhaseRe = phaseRe * phaseStepRe - phaseIm * phaseStepIm;
     phaseIm = phaseRe * phaseStepIm + phaseIm * phaseStepRe;
@@ -1029,6 +1044,30 @@ function echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres,
 }
 
 /** Inverse transform of a continuous-time spectrum sampled at bins: x[n] = fs · IDFT(X). */
+/**
+ * Two channels' frames from their half spectra in one inverse transform: both are real, so the
+ * first enters as the signal's real part and the second as its imaginary part. Returns the first
+ * frame in `first.real` and the second in `first.imaginary`; `second` is left as it was.
+ */
+function synthesizeFramePair(first, second, size, sampleRate) {
+  const { real, imaginary } = first;
+  for (let bin = 1; bin < size / 2; bin += 1) {
+    const aRe = real[bin]; const aIm = imaginary[bin];
+    const bRe = second.real[bin]; const bIm = second.imaginary[bin];
+    // A + iB at bin, and conj(A) + i·conj(B) at its mirror.
+    real[bin] = aRe - bIm;
+    imaginary[bin] = aIm + bRe;
+    real[size - bin] = aRe + bIm;
+    imaginary[size - bin] = bRe - aIm;
+  }
+  real[0] = 0;
+  imaginary[0] = 0;
+  imaginary[size / 2] = second.real[size / 2];
+  fft(real, imaginary, true);
+  for (let index = 0; index < size; index += 1) { real[index] *= sampleRate; imaginary[index] *= sampleRate; }
+  return [real, imaginary];
+}
+
 function synthesizeFrame(real, imaginary, size, sampleRate) {
   for (let bin = 1; bin < size / 2; bin += 1) {
     real[size - bin] = real[bin];
@@ -1048,12 +1087,14 @@ function synthesizeFrame(real, imaginary, size, sampleRate) {
  * samples at hop H; each frame is one inverse FFT, overlap-added in Float64. Time zero is the
  * scene's emission origin. Returns the segment's first sample index and its samples.
  */
-export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null } = {}) {
+export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
   // Progress as a share: tracing the paths, then rendering them.
-  const paths = receiverPaths(preparedEmitters, receiver, scene, { onProgress: onProgress && (share => onProgress(TRACE_SHARE * share)) });
+  // Paths already traced for this receiver, as by the arrival table, are not traced again.
+  const traceShare = traced ? 0 : TRACE_SHARE;
+  const paths = traced ?? receiverPaths(preparedEmitters, receiver, scene, { onProgress: onProgress && (share => onProgress(TRACE_SHARE * share)) });
   const receiverZ = onGround(terrainSurface(scene.terrain), receiver.positionMetres).z;
   const plans = preparedEmitters.flatMap((prepared, emitterIndex) => Array.from({ length: FRAME_GROUPS }, (_, part) => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
   const selected = [];
@@ -1121,17 +1162,20 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       roar.impulses ??= Array.from({ length: channels }, () => new Float64Array(last - first));
       target = roar.impulses;
     }
-    spectra.forEach(({ real, imaginary }, channel) => {
-      const block = synthesizeFrame(real, imaginary, plan.size, sampleRate);
-      const output = target[channel];
-      for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
-    });
-    onProgress?.(TRACE_SHARE + (1 - TRACE_SHARE) * cursor / selected.length);
+    for (let channel = 0; channel < channels; channel += 2) {
+      const blocks = channel + 1 < channels ? synthesizeFramePair(spectra[channel], spectra[channel + 1], plan.size, sampleRate)
+        : [synthesizeFrame(spectra[channel].real, spectra[channel].imaginary, plan.size, sampleRate)];
+      blocks.forEach((block, part) => {
+        const output = target[channel + part];
+        for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
+      });
+    }
+    onProgress?.(traceShare + (1 - traceShare) * cursor / selected.length);
   }
   // The roar and the forest's tail are linear in what arrives, so each range adds its own and their sum is exact.
   for (const roar of roars) {
     for (const { samples, impulses } of roar ?? []) {
-      if (impulses) impulses.forEach((impulse, channel) => convolveAdd(outputs[channel], impulse, samples));
+      if (impulses) convolveAdd(outputs, impulses, samples);
     }
   }
   if (forest) addForestTail(outputs, forest);

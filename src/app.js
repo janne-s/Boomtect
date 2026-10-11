@@ -316,15 +316,16 @@ function spawnWorker(revision, message, { onProgress, onResult }) {
     stopWorkers();
     setStatus(event.message || 'The renderer failed to start.', true);
   });
-  worker.postMessage({ revision, scene: state.scene, ...message });
+  worker.postMessage({ revision, ...message });
 }
 
 /**
- * Renders on a pool of workers in two steps. First every receiver's arrival table is traced in a
- * worker of its own, which keeps the page responsive while terrain echoes are traced. Then each
- * receiver's arrivals are split into equal time ranges, with workers shared out by the number of
- * paths, so that a worker traces only its receiver's paths; with more receivers than workers, each
- * worker renders whole receivers. The segments are summed in range order.
+ * Renders on a pool of workers in two steps. First every receiver's paths and arrival table are
+ * traced in a worker of its own, which keeps the page responsive while terrain echoes are traced.
+ * Then each receiver's arrivals are split into equal time ranges, with workers shared out by the
+ * number of paths; each worker receives its receiver's traced paths rather than tracing them again.
+ * With more receivers than workers, each worker renders whole receivers. The segments are summed in
+ * range order. Every worker gets the scene as it was when the render started.
  */
 function startRender() {
   state.revision += 1;
@@ -360,19 +361,22 @@ function startRender() {
   }, 5000);
   const tracers = Math.min(workerCount, scene.receivers.length);
   const arrivals = new Array(scene.receivers.length);
+  // Each receiver's traced paths go on to the workers that render it, so none traces them again.
+  const tracedPaths = new Array(scene.receivers.length);
   let tracing = tracers;
   const traced = new Array(tracers).fill(0);
   for (let index = 0; index < tracers; index += 1) {
     const receivers = scene.receivers.map((_, receiverIndex) => receiverIndex).filter(receiverIndex => receiverIndex % tracers === index);
-    spawnWorker(revision, { type: 'arrivals', receivers }, {
+    spawnWorker(revision, { type: 'arrivals', scene, receivers }, {
       onProgress: fraction => {
         traced[index] = fraction;
         operation('render', 'Tracing paths', { share: traced.reduce((a, b) => a + b, 0) / tracers });
       },
       onResult: data => {
         data.tables.forEach((table, position) => { arrivals[receivers[position]] = table; });
+        data.paths.forEach((paths, position) => { tracedPaths[receivers[position]] = paths; });
         tracing -= 1;
-        if (tracing === 0) renderRanges(revision, scene, arrivals, { sources, workerCount, started });
+        if (tracing === 0) renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started });
       }
     });
   }
@@ -398,7 +402,7 @@ function renderJobs(scene, arrivals, workerCount) {
   });
 }
 
-function renderRanges(revision, scene, arrivals, { sources, workerCount, started }) {
+function renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started }) {
   state.workers = [];
   const jobs = renderJobs(scene, arrivals, workerCount);
   const progress = new Array(jobs.length).fill(0);
@@ -406,7 +410,7 @@ function renderRanges(revision, scene, arrivals, { sources, workerCount, started
   let remaining = jobs.length;
   operation('render', 'Rendering', { share: 0 });
   jobs.forEach((job, index) => {
-    spawnWorker(revision, { type: 'render', ...job }, {
+    spawnWorker(revision, { type: 'render', scene, ...job, paths: job.receivers.map(index => tracedPaths[index]) }, {
       onProgress: fraction => {
         progress[index] = fraction;
         operation('render', 'Rendering', { share: progress.reduce((a, b) => a + b, 0) / jobs.length });

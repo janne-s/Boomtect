@@ -1,6 +1,6 @@
 import { GROUND } from './constants.js';
 import { cubeRootExponent } from './creeping.js';
-import { fft, nextPowerOfTwo } from './fft.js';
+import { fft, nextPowerOfTwo, overlapSize, silent } from './fft.js';
 import { createRandom, normalDeviate } from './random.js';
 
 /**
@@ -94,30 +94,46 @@ function makeResponses(profile, seed, channels, sampleRate) {
     fft(noiseRe, noiseIm);
     const order = Math.floor(Math.sqrt(channel));
     const response = new Float64Array(length);
-    for (let band = 0; band < bands; band += 1) {
+    // Two bands share each inverse transform: one as the real part of the signal, the other as the imaginary.
+    for (let band = 0; band < bands; band += 2) {
       const re = new Float64Array(size);
       const im = new Float64Array(size);
-      let bandEnergy = 0;
-      for (let bin = 1; bin <= size / 2; bin += 1) {
-        const weight = weights[band][bin];
-        if (!weight) continue;
-        re[bin] = noiseRe[bin] * weight; im[bin] = noiseIm[bin] * weight;
-        if (bin < size / 2) { re[size - bin] = re[bin]; im[size - bin] = -im[bin]; }
-        bandEnergy += weight * weight;
+      const energies = [0, 0];
+      for (let part = 0; part < 2 && band + part < bands; part += 1) {
+        const weightsOf = weights[band + part];
+        // The band's Hermitian spectrum enters times 1 or times i.
+        for (let bin = 1; bin <= size / 2; bin += 1) {
+          const weight = weightsOf[bin];
+          if (!weight) continue;
+          const bandRe = noiseRe[bin] * weight;
+          const bandIm = noiseIm[bin] * weight;
+          if (part === 0) {
+            re[bin] += bandRe; im[bin] += bandIm;
+            if (bin < size / 2) { re[size - bin] += bandRe; im[size - bin] -= bandIm; }
+          } else {
+            re[bin] -= bandIm; im[bin] += bandRe;
+            if (bin < size / 2) { re[size - bin] += bandIm; im[size - bin] += bandRe; }
+          }
+          energies[part] += weight * weight;
+        }
       }
-      if (!bandEnergy) continue;
+      if (!energies[0] && !energies[1]) continue;
       fft(re, im, true);
-      const decay = 3 * Math.LN10 / profile.seconds[band];
-      let energy = 0;
-      for (let index = 0; index < length; index += 1) {
-        const t = index / sampleRate;
-        re[index] *= (1 - Math.exp(-t / profile.buildSeconds)) * Math.exp(-decay * t);
-        energy += re[index] * re[index];
-      }
-      // A unit impulse carries bandEnergy / (size / 2) of its energy in this band.
-      const target = profile.energyShare * profile.seconds[band] / profile.seconds[5] * bandEnergy / (size / 2) / (2 * order + 1);
-      const scale = energy > 0 ? Math.sqrt(target / energy) : 0;
-      for (let index = 0; index < length; index += 1) response[index] += re[index] * scale;
+      [re, im].forEach((signal, part) => {
+        const bandEnergy = energies[part];
+        if (!bandEnergy) return;
+        const decay = 3 * Math.LN10 / profile.seconds[band + part];
+        let energy = 0;
+        for (let index = 0; index < length; index += 1) {
+          const t = index / sampleRate;
+          signal[index] *= (1 - Math.exp(-t / profile.buildSeconds)) * Math.exp(-decay * t);
+          energy += signal[index] * signal[index];
+        }
+        // A unit impulse carries bandEnergy / (size / 2) of its energy in this band.
+        const target = profile.energyShare * profile.seconds[band + part] / profile.seconds[5] * bandEnergy / (size / 2) / (2 * order + 1);
+        const scale = energy > 0 ? Math.sqrt(target / energy) : 0;
+        for (let index = 0; index < length; index += 1) response[index] += signal[index] * scale;
+      });
     }
     return response;
   });
@@ -126,25 +142,50 @@ function makeResponses(profile, seed, channels, sampleRate) {
 /**
  * Adds a diffuse tail (the forest's or the surroundings') to rendered channels in place: every channel gains the omnidirectional
  * pressure convolved with its own response. The channels must already hold room for the tail.
+ *
+ * The convolution is overlap-add in blocks a few responses long, rather than one transform of the
+ * whole render, which for minutes of sound took seconds and hundreds of megabytes. Two channels share
+ * each inverse transform: their responses enter as the real and imaginary parts of one signal, so the
+ * product's real and imaginary parts are the two real convolutions.
  */
 export function addForestTail(outputs, responses) {
   const length = outputs[0].length;
-  const size = nextPowerOfTwo(length + responses[0].length);
-  const sourceRe = new Float64Array(size);
-  const sourceIm = new Float64Array(size);
-  sourceRe.set(outputs[0]);
-  fft(sourceRe, sourceIm);
-  outputs.forEach((output, channel) => {
+  const kernelLength = responses[0].length;
+  if (!length || !kernelLength) return;
+  const size = overlapSize(length, kernelLength);
+  const block = size - kernelLength + 1;
+  const source = outputs[0].slice();
+  const pairs = [];
+  for (let channel = 0; channel < outputs.length; channel += 2) {
     const re = new Float64Array(size);
     const im = new Float64Array(size);
     re.set(responses[channel]);
+    if (channel + 1 < outputs.length) im.set(responses[channel + 1]);
     fft(re, im);
-    for (let bin = 0; bin < size; bin += 1) {
-      const productRe = re[bin] * sourceRe[bin] - im[bin] * sourceIm[bin];
-      im[bin] = re[bin] * sourceIm[bin] + im[bin] * sourceRe[bin];
-      re[bin] = productRe;
+    pairs.push({ channel, re, im });
+  }
+  const sourceRe = new Float64Array(size);
+  const sourceIm = new Float64Array(size);
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  for (let start = 0; start < length; start += block) {
+    // A render range's room for its tails is silent until the tails are added.
+    if (silent(source, start, start + block)) continue;
+    sourceRe.fill(0);
+    sourceIm.fill(0);
+    sourceRe.set(source.subarray(start, Math.min(length, start + block)));
+    fft(sourceRe, sourceIm);
+    const reach = Math.min(size, length - start);
+    for (const pair of pairs) {
+      for (let bin = 0; bin < size; bin += 1) {
+        re[bin] = pair.re[bin] * sourceRe[bin] - pair.im[bin] * sourceIm[bin];
+        im[bin] = pair.re[bin] * sourceIm[bin] + pair.im[bin] * sourceRe[bin];
+      }
+      fft(re, im, true);
+      const first = outputs[pair.channel];
+      const second = outputs[pair.channel + 1];
+      for (let index = 0; index < reach; index += 1) first[start + index] += re[index];
+      if (second) for (let index = 0; index < reach; index += 1) second[start + index] += im[index];
     }
-    fft(re, im, true);
-    for (let index = 0; index < length; index += 1) output[index] += re[index];
-  });
+  }
 }

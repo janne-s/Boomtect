@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
 import { sphericalReflectionCoefficient } from '../src/domain/ground.js';
-import { airShockImpedance, blastStretch, combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
+import { airShockImpedance, arrivalTable, blastStretch, combineSegments, compactPaths, partitionSeconds, prepareScene, receiverPaths, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
 import { defaultBlast, defaultLightning, defaultReceiver, parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
 
@@ -151,6 +151,24 @@ test('a render split by arrival time sums to the single-thread render', () => {
   let largest = 0;
   split.samples.forEach((sample, index) => { largest = Math.max(largest, Math.abs(sample - whole.samples[index])); });
   assert.ok(largest < whole.peakPa * 1e-6, `difference ${largest}`);
+});
+
+test('paths traced once and sent to other threads render and tabulate as paths traced there', () => {
+  const lightning = { ...defaultLightning(), topMetres: { x: 200, y: 0, z: 1200 }, branchDepth: 1, strokeCount: 2 };
+  const value = scene({ emitter: lightning, receivers: [receiverAt('mic', { x: 700, y: 100, z: 2 })], ground: { enabled: true, type: 'grass' }, absorption: true });
+  const prepared = prepareScene(value);
+  const receiver = value.receivers[0];
+  // As a worker sends them: cut to their count and copied by structured cloning.
+  const traced = structuredClone(compactPaths(receiverPaths(prepared, receiver, value)).paths);
+  assert.deepEqual(arrivalTable(prepared, receiver, value, { paths: traced }), arrivalTable(prepared, receiver, value));
+  const boundaries = partitionSeconds(prepared, value, 3);
+  for (let part = 0; part < 3; part += 1) {
+    const range = { fromSeconds: boundaries[part], toSeconds: boundaries[part + 1] };
+    const own = renderReceiverRange(prepared, receiver, value, range);
+    const sent = renderReceiverRange(prepared, receiver, value, { ...range, paths: structuredClone(traced) });
+    assert.equal(sent.startSample, own.startSample);
+    assert.deepEqual(sent.channels, own.channels);
+  }
 });
 
 test('turbulence leaves low frequencies coherent and decorrelates high ones', async () => {

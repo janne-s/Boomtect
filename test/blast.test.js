@@ -103,10 +103,45 @@ test('convolution adds the linear convolution of two signals, as a direct sum do
   const signal = Float64Array.from({ length: 37 }, (_, index) => Math.sin(index * .7) + (index % 5));
   const kernel = Float64Array.from({ length: 23 }, (_, index) => Math.cos(index * 1.3) / (index + 1));
   const target = new Float64Array(70).fill(1);
-  convolveAdd(target, signal, kernel);
+  convolveAdd([target], [signal], kernel);
   for (let index = 0; index < target.length; index += 1) {
     let sum = 1;
     for (let k = 0; k < kernel.length; k += 1) if (index - k >= 0 && index - k < signal.length) sum += signal[index - k] * kernel[k];
     assert.ok(Math.abs(target[index] - sum) < 1e-9, `${index}`);
   }
+});
+
+/** The direct linear convolution of a signal with a kernel, `length` samples long. */
+function directConvolution(signal, kernel, length) {
+  return Float64Array.from({ length }, (_, index) => {
+    let sum = 0;
+    for (let k = 0; k < kernel.length; k += 1) if (index - k >= 0 && index - k < signal.length) sum += signal[index - k] * kernel[k];
+    return sum;
+  });
+}
+
+test('convolution of a long signal in blocks, three signals sharing transforms, matches direct sums', async () => {
+  const { convolveAdd } = await import('../src/domain/fft.js');
+  // Far longer than four kernels, so that it runs in several overlapping blocks, and an odd count so one signal goes alone.
+  const signals = [0, 1, 2].map(channel => Float64Array.from({ length: 1000 + 37 * channel }, (_, index) => Math.sin(index * (.3 + .2 * channel)) * Math.exp(-index / 600)));
+  const kernel = Float64Array.from({ length: 29 }, (_, index) => Math.cos(index * .9) / (index + 1));
+  const targets = signals.map(() => new Float64Array(1100).fill(.5));
+  convolveAdd(targets, signals, kernel);
+  targets.forEach((target, channel) => {
+    const expected = directConvolution(signals[channel], kernel, target.length);
+    for (let index = 0; index < target.length; index += 1) assert.ok(Math.abs(target[index] - .5 - expected[index]) < 1e-9, `${channel}:${index}`);
+  });
+});
+
+test('a diffuse tail adds the omnidirectional pressure convolved with each channel own response, in blocks', async () => {
+  const { addForestTail } = await import('../src/domain/forest.js');
+  const outputs = [0, 1, 2].map(channel => Float64Array.from({ length: 900 }, (_, index) => (index < 600 ? Math.sin(index * (.4 + .1 * channel)) : 0)));
+  const pressure = outputs[0].slice();
+  const responses = [0, 1, 2].map(channel => Float64Array.from({ length: 40 }, (_, index) => Math.exp(-index / (8 + channel)) * Math.cos(index * .5)));
+  const before = outputs.map(output => output.slice());
+  addForestTail(outputs, responses);
+  outputs.forEach((output, channel) => {
+    const expected = directConvolution(pressure, responses[channel], output.length);
+    for (let index = 0; index < output.length; index += 1) assert.ok(Math.abs(output[index] - before[channel][index] - expected[index]) < 1e-9, `${channel}:${index}`);
+  });
 });
