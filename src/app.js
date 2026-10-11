@@ -20,7 +20,7 @@ import { createMapLayer } from './ui/map-layer.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
-import { formatCharge, macrosFor } from './ui/macros.js';
+import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
 import { createPlayer } from './ui/player.js';
@@ -720,12 +720,51 @@ function holdViews(on) {
   views.forEach(view => view.hold(on));
 }
 
+/**
+ * Turns a macro's value into a text field for a typed value: Enter or leaving the field applies it
+ * through the scene's validation, Escape keeps the value as it was.
+ */
+function typeEntry(value, emitter, macro) {
+  const field = element('input', 'macro-entry');
+  field.type = 'text';
+  field.value = entryText(macro.entry, emitter);
+  field.setAttribute('aria-label', macro.label);
+  let done = false;
+  const finish = apply => {
+    if (done) return;
+    done = true;
+    if (!apply) { field.replaceWith(value); value.focus(); return; }
+    let number;
+    try {
+      number = parseEntry(macro.entry, field.value, emitter);
+    } catch (error) {
+      setStatus(`${macro.label}: ${error.message}`, true);
+      field.replaceWith(value);
+      return;
+    }
+    commit(scene => macro.entry.set(scene.emitters.find(item => item.id === emitter.id), number));
+  };
+  field.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+    if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+  });
+  field.addEventListener('blur', () => finish(true));
+  value.replaceWith(field);
+  field.focus();
+  field.select();
+}
+
 function macroRow(container, emitter, macro) {
   const id = `macro-${emitter.id}-${macro.label}`;
   const label = element('label', '', macro.label);
   label.htmlFor = id;
   const steps = macro.steps ?? VIEW.panels.macroSteps;
-  const value = element('span', 'macro-value', macro.show(emitter));
+  const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter));
+  if (macro.entry) {
+    value.type = 'button';
+    value.setAttribute('aria-label', `${macro.label} ${macro.show(emitter)}`);
+    value.addEventListener('click', () => typeEntry(value, emitter, macro));
+  }
   const slider = position => {
     const input = element('input');
     input.type = 'range';
@@ -739,6 +778,7 @@ function macroRow(container, emitter, macro) {
     const item = scene.emitters.find(candidate => candidate.id === emitter.id);
     macro.write(item, ...read());
     value.textContent = macro.show(item);
+    if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
   });
   if (macro.dual) {
     const [low, high] = macro.read(emitter);

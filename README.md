@@ -65,7 +65,9 @@ microphone along the Mach cone.
   for a formation; speed, diameter, entry angle, height, heading, and end height
   for a meteor; meteors, size, duration, speed, diameter, and entry angle for a
   shower.
-  Each sets several parameters at once.
+  Each sets several parameters at once. A macro that sets one parameter takes a
+  typed value when its value is pressed, beyond the slider's span within the
+  parameter's range; metres and charges take their units (m, km; g, kg, t, kt).
 - **Details** — Every parameter, marked A (first principles), B (literature),
   or C (heuristic or synthetic).
 - **Explosive** — A blast's explosive, which times its secondary shock. The
