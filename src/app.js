@@ -1719,7 +1719,7 @@ async function startPlayback() {
   const unlocked = player.unlock(state.scene.render.sampleRate);
   try {
     const current = listening();
-    if (!current) return;
+    if (!current) { setStatus('No sound reaches the listening microphones'); return; }
     await unlocked;
     const from = state.pause;
     state.pause = null;

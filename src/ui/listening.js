@@ -28,15 +28,16 @@ function firstSoundSeconds(results, peakPa) {
   }));
 }
 
-/** Places every listening receiver's channels on one shared timeline. */
+/** Places every listening receiver's channels on one shared timeline; a receiver that hears nothing is silent on it. */
 function aligned(results, channelCount) {
-  const startSeconds = Math.min(...results.map(result => result.startSeconds));
-  const sampleRate = results[0].sampleRate;
-  const end = Math.max(...results.map(result => result.startSeconds + result.samples.length / sampleRate));
+  const heard = results.filter(result => result.samples.length);
+  const startSeconds = Math.min(...heard.map(result => result.startSeconds));
+  const sampleRate = heard[0].sampleRate;
+  const end = Math.max(...heard.map(result => result.startSeconds + result.samples.length / sampleRate));
   const length = Math.max(1, Math.ceil((end - startSeconds) * sampleRate));
   const place = (result, channel) => {
     const target = new Float32Array(length);
-    target.set(result.channels[channel], Math.round((result.startSeconds - startSeconds) * sampleRate));
+    if (result.samples.length) target.set(result.channels[channel], Math.round((result.startSeconds - startSeconds) * sampleRate));
     return target;
   };
   return { startSeconds, sampleRate, length, place, channelCount };
@@ -52,13 +53,15 @@ export function listeningKind(receivers, ambisonicOrder) {
 
 /**
  * The listening composition from rendered results: aligned head fields and omni channels, the
- * peak pressure they reach, and the label shown beside Play. Returns null when nothing listens or
- * a listening receiver has no result.
+ * peak pressure they reach, and the label shown beside Play. A listening receiver that hears nothing
+ * plays silence. Returns null when nothing listens, a listening receiver has no result yet, or none
+ * of them hears anything.
  */
 export function composeListening(scene, results) {
   const { kind, heads, omnis } = listeningKind(scene.receivers, scene.render.ambisonicOrder);
   const listening = [...heads, ...omnis];
-  if (kind === 'none' || listening.some(receiver => !results?.get(receiver.id)?.samples.length)) return null;
+  const rendered = listening.map(receiver => results?.get(receiver.id));
+  if (kind === 'none' || rendered.some(result => !result) || rendered.every(result => !result.samples.length)) return null;
   const order = scene.render.ambisonicOrder;
   const fieldChannels = (order + 1) ** 2;
   const timeline = aligned(listening.map(receiver => results.get(receiver.id)), fieldChannels);
