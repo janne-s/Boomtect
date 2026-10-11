@@ -1,6 +1,6 @@
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { inShadow, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
+import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
 
 /**
  * A body in supersonic flight and the sonic booms it leaves at a receiver.
@@ -214,7 +214,8 @@ export function machCone(path, now, profile) {
     const d = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
     const length = Math.hypot(d.x, d.y, d.z);
     const point = at(index);
-    const cosine = speedAt(profile, point.z) / (length / span);
+    const local = localProfile(profile, point.z);
+    const cosine = speedAt(local, point.z) / (length / span);
     if (!(length > 0 && cosine < 1)) continue;
     const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
     // Two directions across the flight.
@@ -222,7 +223,7 @@ export function machCone(path, now, profile) {
     const norm = Math.hypot(across.x, across.y, across.z);
     const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };
     const second = { x: unit.y * first.z - unit.z * first.y, y: unit.z * first.x - unit.x * first.z, z: unit.x * first.y - unit.y * first.x };
-    const { centre, radiusMetres } = wavefront(profile, point, now - path.seconds[index]);
+    const { centre, radiusMetres } = wavefront(local, point, now - path.seconds[index]);
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
     rings.push(Array.from({ length: CONE_RING_POINTS }, (_, step) => {

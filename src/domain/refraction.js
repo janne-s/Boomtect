@@ -534,6 +534,20 @@ export function creepingCoefficient(profile) {
 }
 
 /**
+ * The profile to draw a front from a source with: the linear profile while it holds at the source's
+ * height, and otherwise homogeneous air at the layered air's speed there. The linear fit extended
+ * far above the troposphere would give a meteor's fronts a speed near zero, or below it, at 100 km.
+ */
+export function localProfile(profile, heightMetres) {
+  const trueSpeed = profile.layered?.trueSpeed;
+  if (!trueSpeed) return profile;
+  const speed = trueSpeed(heightMetres);
+  return Math.abs(speedAt(profile, heightMetres) - speed) <= LOCAL_PROFILE_TOLERANCE * speed ? profile : { groundSpeed: speed, gradient: 0 };
+}
+/** How far the linear profile may stray from the layered air before a front is drawn in homogeneous air. */
+const LOCAL_PROFILE_TOLERANCE = .05;
+
+/**
  * The wavefront of a point source after `seconds`: a sphere whose centre moves away from the
  * height where c would vanish, at a·cosh σ, with radius a·sinh σ, σ = |g|·t, a = c(zs)/|g|.
  */

@@ -159,3 +159,21 @@ test('a shower’s meteors come from one radiant, seeded, at their count and ove
     assert.ok(meteor.startSeconds >= shower.startSeconds && meteor.startSeconds <= shower.startSeconds + shower.durationSeconds);
   }
 });
+
+test('a meteor’s cone is drawn with the speed of sound at its height, not the linear fit extended far above it', async () => {
+  const { machCone } = await import('../src/domain/flight.js');
+  const { meteorTrack } = await import('../src/domain/meteor.js');
+  const { soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const parsed = parseScene(plainScene('sonic'));
+  const meteor = { ...defaultMeteor(), endHeightMetres: 60000 };
+  const track = meteorTrack(meteor);
+  const now = track.seconds.at(-1) + 30;
+  const cone = machCone(track, now, soundSpeedProfile(parsed.air));
+  assert.ok(cone && cone.rings.length > 5);
+  // The oldest ring: from the start of the trail, 30 s and more ago; its radius is about c(z)·t.
+  const ring = cone.rings.at(-1);
+  const centre = ring.reduce((sum, point) => ({ x: sum.x + point.x / ring.length, y: sum.y + point.y / ring.length, z: sum.z + point.z / ring.length }), { x: 0, y: 0, z: 0 });
+  const radius = Math.hypot(ring[0].x - centre.x, ring[0].y - centre.y, ring[0].z - centre.z);
+  const c = Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(parsed.air, track.z[0]));
+  assert.ok(Math.abs(radius / (c * (now - track.seconds[0])) - 1) < .1, `${radius} vs ${c * (now - track.seconds[0])}`);
+});

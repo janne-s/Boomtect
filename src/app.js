@@ -5,7 +5,7 @@ import { EXPLOSIVE_TYPES, EXPLOSIVES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
-import { PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
@@ -1623,7 +1623,7 @@ function wavefrontSpheres(now, profile) {
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
     .map(({ point, emitted, group, order, amplitude }) => {
-      const front = { ...wavefront(profile, point, now - emitted) };
+      const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
       front.strength = strengthAt(amplitude, front.radiusMetres);
       if (!profile.wind) return { source: point, group, order, ...front };
       // The wind carries the front with it, at its speed at the source's height (drawn only, class C).

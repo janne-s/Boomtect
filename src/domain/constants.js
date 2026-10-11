@@ -15,7 +15,7 @@ export const KELVIN_OFFSET = 273.15;
 export const ISA_LAPSE_RATE_KELVIN_PER_METRE = .0065;
 export const STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED = 9.80665;
 
-export const MAXIMUM_RENDER_SECONDS = 300;
+export const MAXIMUM_RENDER_SECONDS = 400;
 /** Segments of one flash's main channel and branches; a storm shares STORM_SEGMENT_BUDGET among its branches. */
 export const MAXIMUM_SEGMENTS_PER_EMITTER = 100000;
 export const STORM_SEGMENT_BUDGET = 600000;
