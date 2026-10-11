@@ -5,9 +5,10 @@ import { BODY_TYPES } from './flight.js';
 import { GROUND_TYPES } from './ground.js';
 import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
+import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 22;
+export const SCENE_VERSION = 23;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -40,7 +41,6 @@ export const PARAMETERS = Object.freeze({
   windShearPerSecond: { minimum: -.02, maximum: .02, unit: '1/s', label: 'Wind shear', reliability: 'C' },
   latitude: { minimum: -85, maximum: 85, unit: '°', label: 'Latitude', reliability: null },
   longitude: { minimum: -180, maximum: 180, unit: '°', label: 'Longitude', reliability: null },
-  terrainExtentMetres: { minimum: 500, maximum: 20000, unit: 'm', label: 'Area', reliability: null },
   terrainCellMetres: { minimum: 5, maximum: 200, unit: 'm', label: 'Resolution', reliability: null },
   scattering: { minimum: 0, maximum: 1, unit: '', label: 'Scattering', reliability: 'C' },
   echoCellMetres: { minimum: 25, maximum: 500, unit: 'm', label: 'Echo cells', reliability: 'C' },
@@ -477,30 +477,35 @@ function emitter(value, index) {
 }
 
 /**
- * A captured terrain: where and how it was captured, and its heights as base64 float32 metres
- * above sea level on a square grid, row 0 in the south. Null when the scene has no terrain.
+ * Loaded terrain: the place and the geographic point at the scene origin, the cell, the datum (sea
+ * level height of z = 0), and a rectangle of whole patches whose heights are base64 16-bit steps
+ * above each patch's base (`terrain.js`). Null when the scene has no terrain.
  */
 function terrain(value) {
   if (value === null || value === undefined) return null;
   check(typeof value === 'object', 'terrain must be an object or null.');
   check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean' && typeof value.echoes === 'boolean', 'terrain.enabled, terrain.shielding, and terrain.echoes must be true or false.');
   check(typeof value.place === 'string' && value.place.length <= 120, 'terrain.place must be a short text.');
-  const grid = key => {
-    check(Number.isInteger(value[key]) && value[key] >= 2 && value[key] <= GROUND.terrain.maximumGridCells, `terrain.${key} must be a whole number of cells.`);
-    return value[key];
-  };
-  const columns = grid('columns');
-  const rows = grid('rows');
-  check(Number.isInteger(value.zoom) && value.zoom >= 1 && value.zoom <= 15, 'terrain.zoom must be a tile zoom level.');
-  check(typeof value.heights === 'string' && value.heights.length === 4 * Math.ceil(columns * rows * 4 / 3), 'terrain.heights do not match the grid.');
-  check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && Math.abs(value.cellMetres * columns - value.extentMetres) < 1e-6 * value.extentMetres, 'terrain.cellMetres does not match the area.');
+  check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && value.cellMetres <= GROUND.terrain.maximumCellMetres, 'terrain.cellMetres must be a positive number of metres.');
+  check(Number.isFinite(value.datumMetres), 'terrain.datumMetres must be a number.');
+  const cells = GROUND.terrain.patchCells;
+  check(Array.isArray(value.patches) && value.patches.length >= 1 && value.patches.length <= GROUND.terrain.maximumPatches, `terrain.patches must hold 1–${GROUND.terrain.maximumPatches} patches.`);
+  const patches = value.patches.map((patch, index) => {
+    const path = `terrain.patches[${index}]`;
+    check(patch && Number.isInteger(patch.column) && Number.isInteger(patch.row), `${path} needs a whole column and row.`);
+    check(Number.isFinite(patch.baseMetres) && Number.isFinite(patch.stepMetres) && patch.stepMetres > 0, `${path}.baseMetres and stepMetres must be numbers.`);
+    check(typeof patch.heights === 'string' && patch.heights.length === 4 * Math.ceil(cells * cells * 2 / 3), `${path}.heights do not match its grid.`);
+    return { column: patch.column, row: patch.row, baseMetres: patch.baseMetres, stepMetres: patch.stepMetres, heights: patch.heights };
+  });
+  const range = terrainRange({ patches });
+  check(new Set(patches.map(patch => `${patch.column},${patch.row}`)).size === patches.length && patches.length === patchCount(range), 'terrain.patches must fill a rectangle once each.');
+  const bounds = rangeBounds(range, value.cellMetres);
   check(Array.isArray(value.names) && value.names.length <= GROUND.terrain.maximumPlaceNames, 'terrain.names must be a list of place names.');
-  const half = value.extentMetres / 2;
   const names = value.names.map((item, index) => {
     const path = `terrain.names[${index}]`;
     check(item && typeof item.name === 'string' && item.name.length > 0 && item.name.length <= 80, `${path}.name must be a short text.`);
     check(PLACE_NAME_KINDS.includes(item.kind), `${path}.kind is not supported.`);
-    check([item.x, item.y].every(Number.isFinite) && Math.abs(item.x) <= half && Math.abs(item.y) <= half, `${path} must lie within the terrain.`);
+    check([item.x, item.y].every(Number.isFinite) && item.x >= bounds.west && item.x <= bounds.east && item.y >= bounds.south && item.y <= bounds.north, `${path} must lie within the terrain.`);
     check(item.elevationMetres === null || Number.isFinite(item.elevationMetres), `${path}.elevationMetres must be a number or null.`);
     return { name: item.name, kind: item.kind, x: item.x, y: item.y, elevationMetres: item.elevationMetres };
   });
@@ -513,12 +518,9 @@ function terrain(value) {
     names,
     latitude: number(value.latitude, 'latitude', 'terrain.latitude'),
     longitude: number(value.longitude, 'longitude', 'terrain.longitude'),
-    extentMetres: number(value.extentMetres, 'terrainExtentMetres', 'terrain.extentMetres'),
     cellMetres: value.cellMetres,
-    zoom: value.zoom,
-    columns,
-    rows,
-    heights: value.heights
+    datumMetres: value.datumMetres,
+    patches
   };
 }
 

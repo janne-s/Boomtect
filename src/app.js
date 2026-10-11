@@ -13,7 +13,8 @@ import {
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
-import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
+import { capturePatches, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
+import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from './domain/terrain.js';
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
@@ -56,7 +57,7 @@ function restoredScene(mode) {
 const preferences = {
   // Wavefronts per mode, all shown at first.
   realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, mode: 'thunder',
-  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, extentMetres: 5000, cellMetres: 30 }, cubeViews: {},
+  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -1161,59 +1162,91 @@ function rebuildDetails() {
 let terrainCoverageTimer = null;
 let terrainCoverageRunning = false;
 
-/** Half the side of the square around the origin that holds every emitter and microphone. */
-function sceneHalfExtentMetres(scene) {
-  let reach = 0;
-  const include = point => { reach = Math.max(reach, Math.abs(point.x), Math.abs(point.y)); };
+/** The rectangle of the scene frame that holds every emitter and microphone. */
+function sceneBounds(scene) {
+  const bounds = { west: Infinity, east: -Infinity, south: Infinity, north: -Infinity };
+  const include = point => {
+    bounds.west = Math.min(bounds.west, point.x); bounds.east = Math.max(bounds.east, point.x);
+    bounds.south = Math.min(bounds.south, point.y); bounds.north = Math.max(bounds.north, point.y);
+  };
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') include(emitter.positionMetres);
     else if (isTrackKind(emitter)) { for (const path of cachedTracks(emitter, scene.air)) path.x.forEach((x, index) => include({ x, y: path.y[index] })); }
-    else if (emitter.kind === 'storm' || emitter.kind === 'barrage') { include({ x: Math.abs(emitter.centreMetres.x) + emitter.radiusMetres, y: Math.abs(emitter.centreMetres.y) + emitter.radiusMetres }); }
-    else for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
+    else if (emitter.kind === 'storm' || emitter.kind === 'barrage') {
+      const { x, y } = emitter.centreMetres;
+      include({ x: x - emitter.radiusMetres, y: y - emitter.radiusMetres });
+      include({ x: x + emitter.radiusMetres, y: y + emitter.radiusMetres });
+    } else for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
   }
   scene.receivers.forEach(receiver => include(receiver.positionMetres));
-  return reach * GROUND.terrain.edgeMargin + GROUND.terrain.marginMetres;
+  return bounds;
 }
 
 /**
- * Once terrain is in use, a scene that grows past its edge gets a wider capture around the same
- * origin, at the same resolution and up to the largest area. Nothing is fetched without terrain.
+ * The patches of terrain a scene needs: those under its emitters and microphones and, around them,
+ * the margin whose slopes can echo (GROUND.terrain), at the chosen resolution or a cell as many
+ * times twice as coarse as keeps them within GROUND.terrain.maximumPatches.
+ */
+function neededPatches(scene, resolutionMetres) {
+  const bounds = sceneBounds(scene);
+  const size = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
+  const margin = Math.max(GROUND.terrain.echoMarginMetres, GROUND.terrain.echoMarginShare * size);
+  const area = { west: bounds.west - margin, east: bounds.east + margin, south: bounds.south - margin, north: bounds.north + margin };
+  let cellMetres = resolutionMetres;
+  while (patchCount(patchRange(area, cellMetres)) > GROUND.terrain.maximumPatches && cellMetres < GROUND.terrain.maximumCellMetres) cellMetres *= 2;
+  return { cellMetres, range: patchRange(area, cellMetres) };
+}
+
+const sameRange = (a, b) => a && b && a.column0 === b.column0 && a.column1 === b.column1 && a.row0 === b.row0 && a.row1 === b.row1;
+/** What a terrain covers, for telling whether its place names still belong to it. */
+const terrainCoverageKey = terrain => (terrain ? `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${Object.values(terrainRange(terrain)).join(',')}` : '');
+
+/**
+ * Terrain with the patches `needed` at a place: those of `terrain` it can keep, the rest fetched;
+ * patches beyond the need are dropped, and names outside the new area with them.
+ */
+async function coveredTerrain(terrain, anchor, needed, label) {
+  const { cellMetres, range } = needed;
+  const keep = terrain && terrain.cellMetres === cellMetres && terrain.latitude === anchor.latitude && terrain.longitude === anchor.longitude
+    ? terrain.patches.filter(patch => patch.column >= range.column0 && patch.column <= range.column1 && patch.row >= range.row0 && patch.row <= range.row1) : [];
+  const have = new Set(keep.map(patch => `${patch.column},${patch.row}`));
+  const missing = rangePatches(range).filter(({ column, row }) => !have.has(`${column},${row}`));
+  const fetched = missing.length ? await capturePatches(anchor, cellMetres, missing, { onProgress: share => operation('terrain', label, { share }) }) : [];
+  const bounds = rangeBounds(range, cellMetres);
+  const names = (terrain?.names ?? []).filter(item => item.x >= bounds.west && item.x <= bounds.east && item.y >= bounds.south && item.y <= bounds.north);
+  return { latitude: anchor.latitude, longitude: anchor.longitude, cellMetres, patches: [...keep, ...fetched], names };
+}
+
+let terrainCoverageAgain = false;
+
+/**
+ * Once terrain is in use, its patches follow the scene a moment after each change: the ground a
+ * moved emitter or microphone now needs is fetched, and the ground no longer needed is dropped, so
+ * the terrain holds what the sound can meet and the stored scene stays small. The datum stays.
  */
 function scheduleTerrainCoverage() {
   clearTimeout(terrainCoverageTimer);
   terrainCoverageTimer = setTimeout(async () => {
     const { terrain } = state.scene;
-    if (!terrain?.enabled || terrainCoverageRunning) return;
-    const needed = neededTerrainExtentMetres(state.scene);
-    if (needed <= terrain.extentMetres) return;
+    if (!terrain?.enabled) return;
+    if (terrainCoverageRunning) { terrainCoverageAgain = true; return; }
+    const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
+    if (needed.cellMetres === terrain.cellMetres && sameRange(needed.range, terrainRange(terrain))) return;
     terrainCoverageRunning = true;
     try {
-      const draft = { place: terrain.place, latitude: terrain.latitude, longitude: terrain.longitude, extentMetres: needed, cellMetres: state.preferences.terrainDraft.cellMetres };
-      const wider = await captureTerrain(draft, {
-        onProgress: share => operation('terrain', `Widening terrain to ${formatMetres(needed)}`, { share })
-      });
-      Object.assign(state.preferences.terrainDraft, { extentMetres: needed });
-      savePreferences();
-      // The names already found stay until those of the wider area arrive.
-      commit(next => {
-        const kept = next.terrain && Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, next.terrain[key]]));
-        next.terrain = { ...wider, ...kept, names: next.terrain?.names ?? [] };
-      });
-      loadPlaceNames(state.scene.terrain);
+      const next = await coveredTerrain(terrain, terrain, needed, 'Loading terrain');
+      const covered = terrainCoverageKey(next) !== terrainCoverageKey(state.scene.terrain);
+      commit(scene => { if (scene.terrain) Object.assign(scene.terrain, next); });
+      if (covered) loadPlaceNames(state.scene.terrain);
     } catch (error) {
-      setStatus(`The terrain could not be widened: ${error.message}`, true);
+      setStatus(`The terrain could not be loaded: ${error.message}`, true);
     } finally {
       terrainCoverageRunning = false;
       operation('terrain', null);
+      if (terrainCoverageAgain) { terrainCoverageAgain = false; scheduleTerrainCoverage(); }
     }
   }, GROUND.terrain.coverageDelayMilliseconds);
 }
-
-/**
- * The side of terrain, in whole half kilometres up to the largest, that holds the whole scene, with a
- * margin: channels drawn again over the terrain reach a little farther than over level ground.
- */
-const neededTerrainExtentMetres = (scene, margin = 1) => Math.min(PARAMETERS.terrainExtentMetres.maximum, Math.ceil(2 * margin * sceneHalfExtentMetres(scene) / 500) * 500);
 
 let placeNamesLoading = false;
 
@@ -1237,7 +1270,7 @@ async function loadPlaceNames(terrain) {
     placeNamesLoading = false;
     $('names').disabled = false;
   }
-  if (!names || state.scene.terrain?.heights !== terrain.heights) return;
+  if (!names || terrainCoverageKey(state.scene.terrain) !== terrainCoverageKey(terrain)) return;
   state.scene.terrain.names = names;
   storage.write(sceneStorageKey(state.scene.mode), state.scene);
   redrawViews();
@@ -1250,14 +1283,14 @@ function terrainPanel(container) {
   const setDraft = change => { Object.assign(draft, change); savePreferences(); };
   const load = async trigger => {
     trigger.disabled = true;
-    // At least the area the scene needs, so that the terrain is not widened again right after.
-    const extentMetres = Math.max(draft.extentMetres, neededTerrainExtentMetres(state.scene, GROUND.terrain.loadMargin));
+    // The place is the scene's origin; the patches are those the scene needs around its emitters and microphones.
     try {
-      const terrain = await captureTerrain({ ...draft, extentMetres }, {
-        onProgress: share => operation('terrain', `Loading terrain ${formatMetres(extentMetres)}`, { share })
-      });
-      setDraft({ extentMetres });
-      commit(next => { next.terrain = terrain; });
+      const anchor = { latitude: draft.latitude, longitude: draft.longitude };
+      const covered = await coveredTerrain(null, anchor, neededPatches(state.scene, draft.cellMetres), 'Loading terrain');
+      // The datum is the ground under the origin, or at the nearest edge of the patches.
+      const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
+      const settings = state.scene.terrain ? Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, state.scene.terrain[key]])) : TERRAIN_DEFAULTS;
+      commit(next => { next.terrain = { ...settings, place: (draft.place ?? '').slice(0, 120), ...covered, datumMetres }; });
       loadPlaceNames(state.scene.terrain);
     } catch (error) {
       setStatus(`The terrain could not be loaded: ${error.message}`, true);
@@ -1290,7 +1323,7 @@ function terrainPanel(container) {
       }
     }
   });
-  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainExtentMetres', 'extentMetres'], ['terrainCellMetres', 'cellMetres']]) {
+  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainCellMetres', 'cellMetres']]) {
     numberField(container, { key, value: draft[field], onCommit: value => setDraft({ [field]: value }) });
   }
   const actions = element('div', 'field-actions');
@@ -1300,7 +1333,8 @@ function terrainPanel(container) {
   if (!scene.terrain) return;
   const { terrain } = scene;
   const surface = currentSurface();
-  container.append(element('p', 'field-note', `${terrain.place || `${terrain.latitude}, ${terrain.longitude}`} · ${formatMetres(terrain.extentMetres)} at ${formatMetres(terrain.cellMetres)}`
+  const area = rangeBounds(terrainRange(terrain), terrain.cellMetres);
+  container.append(element('p', 'field-note', `${terrain.place || `${terrain.latitude}, ${terrain.longitude}`} · ${formatMetres(area.east - area.west)} × ${formatMetres(area.north - area.south)} at ${formatMetres(terrain.cellMetres)}`
     + (terrain.enabled ? ` · origin ${Math.round(surface.datumMetres)} m above sea level` : '')));
   checkboxField(container, { label: 'Terrain', value: terrain.enabled, reliability: 'B', onCommit: value => commit(next => { next.terrain.enabled = value; }) });
   checkboxField(container, { label: 'Shielding', value: terrain.shielding, reliability: 'B', onCommit: value => commit(next => { next.terrain.shielding = value; }) });
@@ -1320,6 +1354,12 @@ function showPlaceCoordinates({ latitude, longitude }) {
   $('place-coordinates').textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 }
 
+/** The side of the square the place map frames: the area the scene's terrain would cover. */
+function placeExtentMetres() {
+  const bounds = rangeBounds(neededPatches(state.scene, state.preferences.terrainDraft.cellMetres).range, state.preferences.terrainDraft.cellMetres);
+  return Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
+}
+
 /** Opens the map at the draft place; Load takes the map's centre as the origin and loads its terrain. */
 function openPlaceDialog(load) {
   const draft = state.preferences.terrainDraft;
@@ -1329,7 +1369,7 @@ function openPlaceDialog(load) {
   $('place-dialog').showModal();
   // The dialog itself takes focus, so its first control is not ringed when it opens.
   $('place-dialog').focus();
-  placeMap.show(draft, draft.extentMetres);
+  placeMap.show(draft, placeExtentMetres());
   showPlaceCoordinates(draft);
 }
 
@@ -1339,7 +1379,7 @@ async function showFoundPlace(text) {
   try {
     const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
     if (!found) { setStatus(`No place found for ${text}`, true); return false; }
-    placeMap.show(found, state.preferences.terrainDraft.extentMetres);
+    placeMap.show(found, placeExtentMetres());
     showPlaceCoordinates(found);
     placeShown = text;
     return true;

@@ -109,23 +109,25 @@ export const GROUND = Object.freeze({
     energyShare: .04,
     buildSeconds: .15
   }),
-  /**
-   * Terrain captures: the heightfield's longest side, so that a capture stays light to store and
-   * trace; the elevation tiles fetched at most; and the place names kept with a terrain.
-   */
+  /** Terrain: the elevation tiles fetched at most at once, and the place names kept with a terrain. */
   terrain: Object.freeze({
-    maximumGridCells: 600,
     maximumTileRequests: 36,
     maximumPlaceNames: 400,
     /**
-     * Loaded terrain is widened when the scene reaches within edgeMargin times its reach plus
-     * marginMetres of its edge, coverageDelayMilliseconds after the last change; a new capture spans
-     * loadMargin times what the scene needs.
+     * Terrain is held in square patches of patchCells cells, heights in 16-bit steps above each
+     * patch's lowest cell, a step its range over 65 535 and at least minimumHeightStepMetres. A scene holds the patches that cover what
+     * its sound can meet: every emitter and microphone, and around them echoMarginShare of the
+     * scene's size but at least echoMarginMetres, for the slopes behind them that echo. At most
+     * maximumPatches: a larger area takes a cell twice as coarse, as often as needed. The patches
+     * follow coverageDelayMilliseconds after the last change.
      */
-    edgeMargin: 1.1,
-    marginMetres: 300,
+    patchCells: 128,
+    minimumHeightStepMetres: .001,
+    echoMarginShare: .25,
+    echoMarginMetres: 1000,
+    maximumPatches: 64,
+    maximumCellMetres: 2000,
     coverageDelayMilliseconds: 800,
-    loadMargin: 1.25,
     /** Seconds a network request for place names or a place search may take before it is given up. */
     placeNamesLimitSeconds: 30,
     placeSearchLimitSeconds: 15,
@@ -637,7 +639,7 @@ export const VIEW = Object.freeze({
   terrain: Object.freeze({
     drawCells: 110,
     light: Object.freeze({ x: -1, y: 1, z: 1.6 }),
-    fogShare: .3,
+    fogShare: .6,
     edgeShare: .05,
     contourBands: 12,
     maximumLabels: 60

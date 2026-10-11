@@ -5,20 +5,11 @@ import { deygoutEdges, fresnelIntegrals, knifeEdge } from '../src/domain/diffrac
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';
 import { defaultBlast, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
-import { buildHeightfield, curvatureDropMetres, decodeHeights, encodeHeights, mapTiles, terrainPlan, terrainSurface } from '../src/domain/terrain.js';
+import { buildPatch, decodePatch, encodePatch, mapTiles, patchMetres, patchRange, rangeBounds, terrainSurface, tilePlan } from '../src/domain/terrain.js';
+import { syntheticTerrain } from './terrain-fixture.js';
 import { meanPlaneFrame, shieldingEdges, shiftedProfile, terrainReflection } from '../src/domain/terrain-propagation.js';
 
-/** A captured terrain of `cells` × `cells` with heights from height(x, y) in metres above sea level. */
-function terrain(height, { cells = 100, extentMetres = 4000 } = {}) {
-  const cellMetres = extentMetres / cells;
-  const values = new Float32Array(cells * cells);
-  for (let row = 0; row < cells; row += 1) {
-    for (let column = 0; column < cells; column += 1) {
-      values[row * cells + column] = height((column + .5 - cells / 2) * cellMetres, (row + .5 - cells / 2) * cellMetres);
-    }
-  }
-  return { enabled: true, shielding: true, echoes: false, scattering: .5, echoCellMetres: 100, echoLimit: 200, place: '', names: [], latitude: 61.5, longitude: 23.8, extentMetres, cellMetres, zoom: 13, columns: cells, rows: cells, heights: encodeHeights(values) };
-}
+const terrain = (height, options = {}) => syntheticTerrain(height, { echoes: false, echoLimit: 200, ...options });
 
 test('Fresnel integrals match tabulated values to 1e-6', () => {
   const table = [[.5, .4923442258, .0647324328], [1, .7798934004, .4382591474], [1.5, .4452611760, .6975049600], [2, .4882534061, .3434156784], [3, .6057207893, .4963129990], [-1, -.7798934004, -.4382591474]];
@@ -59,19 +50,40 @@ test('Deygout finds the main ridge and one beside it, and nothing on a clear pat
 test('the surface reproduces a plane and its normal, relative to the ground at the origin', () => {
   const surface = terrainSurface(terrain((x, y) => 120 + .05 * x - .02 * y));
   assert.ok(Math.abs(surface.datumMetres - 120) < 1e-3);
-  for (const [x, y] of [[0, 0], [700, -300], [-1500, 1200]]) assert.ok(Math.abs(surface.heightAt(x, y) - (.05 * x - .02 * y)) < 1e-3);
+  // Heights are stored in 16-bit steps of each patch's range.
+  for (const [x, y] of [[0, 0], [700, -300], [-1500, 1200]]) assert.ok(Math.abs(surface.heightAt(x, y) - (.05 * x - .02 * y)) < 5e-3);
   const normal = surface.normalAt(300, 300);
   const length = Math.hypot(-.05, .02, 1);
-  assert.ok(Math.abs(normal.x + .05 / length) < 1e-6 && Math.abs(normal.y - .02 / length) < 1e-6 && Math.abs(normal.z - 1 / length) < 1e-6);
-  assert.deepEqual([...decodeHeights(encodeHeights([1.5, -2, 3e3]), 3)], [1.5, -2, 3000]);
+  assert.ok(Math.abs(normal.x + .05 / length) < 1e-4 && Math.abs(normal.y - .02 / length) < 1e-4 && Math.abs(normal.z - 1 / length) < 1e-6);
 });
 
-test('a capture plan stays within its tile budget and the heightfield follows the Earth’s curvature', () => {
-  const plan = terrainPlan({ latitude: 61.5, longitude: 23.8, extentMetres: 5000, cellMetres: 25 });
-  assert.ok(plan.tiles.count <= 36);
-  assert.equal(plan.columns, 200);
-  const values = buildHeightfield({ ...plan, columns: 4, rows: 4, cellMetres: 1250 }, () => 50);
-  assert.ok(Math.abs(values[0] - (50 - curvatureDropMetres(Math.hypot(1875, 1875)))) < 1e-3);
+test('a patch keeps its heights to half a step of its range in 16 bits, from millimetres to decimetres', () => {
+  const cells = GROUND.terrain.patchCells;
+  for (const range of [3, 8800]) {
+    const values = Float32Array.from({ length: cells * cells }, (_, index) => -50 + index * range / (cells * cells) + .001 * Math.sin(index));
+    const decoded = decodePatch(encodePatch(2, -1, values));
+    let error = 0;
+    values.forEach((value, index) => { error = Math.max(error, Math.abs(decoded[index] - value)); });
+    assert.ok(error <= Math.max(range / 0xffff, GROUND.terrain.minimumHeightStepMetres) / 2 + 1e-4, `${range}: ${error}`);
+  }
+});
+
+test('patches tile the scene frame from the origin, and a range covers the rectangle asked', () => {
+  const side = patchMetres(30);
+  assert.equal(side, 30 * GROUND.terrain.patchCells);
+  const range = patchRange({ west: -100, east: side, south: 10, north: 2.5 * side }, 30);
+  assert.deepEqual(range, { column0: -1, column1: 0, row0: 0, row1: 2 });
+  assert.deepEqual(rangeBounds(range, 30), { west: -side, east: side, south: 0, north: 3 * side });
+  // A patch's cells are centred half a cell in from its corner.
+  const patch = buildPatch(1, -1, 30, (x, y) => x + 1000 * y);
+  const decoded = decodePatch(patch);
+  assert.ok(Math.abs(decoded[0] - (side + 15 + 1000 * (-side + 15))) < .2);
+});
+
+test('a patch is fetched within the tile budget at a zoom whose pixels are no larger than its cell', () => {
+  const plan = tilePlan({ latitude: 61.5, longitude: 23.8 }, rangeBounds({ column0: 3, column1: 3, row0: -2, row1: -2 }, 25), 25);
+  assert.ok(plan.tiles.count <= GROUND.terrain.maximumTileRequests);
+  assert.ok(plan.zoom >= 1 && plan.zoom <= 15);
 });
 
 test('a sloping ground reflects as from a mirror image across its plane', () => {
@@ -190,9 +202,10 @@ test('a microphone on a hilltop hears a source that its own ground alone would p
   assert.ok(inShadow(shiftedProfile(profile, summit), { x: -9500, y: 0, z: surface.heightAt(-9500, 0) + 500 - summit }, { x: 0, y: 0, z: 1.7 }));
 });
 
-test('the map tiles cover the terrain square, laid in the scene frame, within the request budget', () => {
+test('the map tiles cover the terrain rectangle, laid in the scene frame, within the request budget', () => {
   for (const extentMetres of [5000, 20000, 50000]) {
-    const { tiles } = mapTiles({ latitude: 63.0964, longitude: 29.8061, extentMetres });
+    const bounds = { west: -extentMetres / 2, east: extentMetres / 2, south: -extentMetres / 2, north: extentMetres / 2 };
+    const { tiles } = mapTiles({ latitude: 63.0964, longitude: 29.8061, bounds });
     assert.ok(tiles.length <= GROUND.terrain.maximumTileRequests);
     const west = Math.min(...tiles.map(tile => tile.northWest.x));
     const east = Math.max(...tiles.map(tile => tile.northEast.x));

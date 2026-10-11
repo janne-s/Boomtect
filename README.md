@@ -19,8 +19,8 @@ microphone along the Mach cone.
 ## Scene
 
 - **Box** — The floor is the ground and the two far walls show the scene from
-  the side. The cross on the floor is the origin. The box holds the scene and
-  all of the loaded terrain.
+  the side. The cross on the floor is the origin. The box measures the scene;
+  loaded terrain goes on beyond it and fades toward its own edge.
 - **Points and shadows** — Drag a point to move it horizontally, or its shadow
   on the floor or a wall to move it in that plane.
 - **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
@@ -176,15 +176,18 @@ microphone along the Mach cone.
 ## Terrain
 
 - **Place** — Where the scene's origin lies. The map button opens a map to
-  move under the centre mark, with the area to be loaded around it.
-- **Area** and **Resolution** — The size of the square of terrain around the
-  origin and the spacing of its heights.
+  move under the centre mark, with the area the scene needs around it.
+- **Resolution** — The spacing of the heights. A scene too large for the
+  terrain's budget takes a spacing two or more times as coarse.
 - **Find** — Finds a place by name, or takes "latitude, longitude", and loads
   its terrain.
-- **Load terrain** — Fetches the elevation, at least as wide as the scene, and
-  saves it in the scene, so the scene opens the same way later without a
-  connection. Place names follow on their own. While terrain is on, a scene that
-  grows past its edge loads a wider area around the same origin.
+- **Load terrain** — Fetches the elevation the scene needs and saves it in the
+  scene, so the scene opens the same way later without a connection. Place
+  names follow on their own. The terrain is held in square patches: those under
+  the emitters and microphones and, around them, a quarter of the scene's size
+  (at least 1 km) for the slopes that echo. Move or add something past the
+  edge and the patches it now needs load a moment later; those no longer needed
+  are dropped.
 - **Terrain** — Microphones, blasts, and ground points stand on the ground;
   heights in the cloud are above the ground at the origin. The panel shows both
   heights above the ground and above sea level, and the box's height lines are

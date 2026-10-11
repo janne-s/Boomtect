@@ -5,21 +5,13 @@ import { assemblePaths, prepareScene, receiverPaths, renderReceiver, tracePart }
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
 import { defaultBlast, defaultFlight, defaultLightning, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
-import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
+import { terrainSurface } from '../src/domain/terrain.js';
+import { syntheticTerrain } from './terrain-fixture.js';
 import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
 import { createRandom } from '../src/domain/random.js';
 import { plainScene } from './plain-scene.js';
 
-function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
-  const cellMetres = extentMetres / cells;
-  const values = new Float32Array(cells * cells);
-  for (let row = 0; row < cells; row += 1) {
-    for (let column = 0; column < cells; column += 1) {
-      values[row * cells + column] = height((column + .5 - cells / 2) * cellMetres, (row + .5 - cells / 2) * cellMetres);
-    }
-  }
-  return { ...TERRAIN_DEFAULTS, ...settings, place: '', names: [], latitude: 61.5, longitude: 23.8, extentMetres, cellMetres, zoom: 13, columns: cells, rows: cells, heights: encodeHeights(values) };
-}
+const terrain = syntheticTerrain;
 
 const pointSource = (position, { amplitude = 1, emission = 0 } = {}) => ({
   positionMetres: position, direction: null, elementMetres: 0, emissionSeconds: emission, amplitudePaMetres: amplitude,
@@ -32,7 +24,7 @@ const mirror = (point, normal, offset) => {
   return { x: point.x - 2 * above * normal.x, y: point.y - 2 * above * normal.y, z: point.z - 2 * above * normal.z };
 };
 
-test('the specular point on a sloping plane gives its image path to 1e-6 m, with no focusing', () => {
+test('the specular point on a sloping plane gives its image path to its stored heights, with no focusing', () => {
   // Ground z = 0.2·x + 0.05·y + 300 m.
   const surface = terrainSurface(terrain((x, y) => .2 * x + .05 * y + 300));
   const echo = echoSurface(surface);
@@ -45,8 +37,9 @@ test('the specular point on a sloping plane gives its image path to 1e-6 m, with
   assert.equal(points.length, 1);
   const [{ point, focusing }] = points;
   const path = Math.hypot(S.x - point.x, S.y - point.y, S.z - point.z) + Math.hypot(R.x - point.x, R.y - point.y, R.z - point.z);
-  assert.ok(Math.abs(path - Math.hypot(R.x - image.x, R.y - image.y, R.z - image.z)) < 1e-6, `${path}`);
-  assert.ok(Math.abs(focusing - 1) < 1e-6, `${focusing}`);
+  // Heights are stored in 16-bit steps of each patch's range, here about 10 mm.
+  assert.ok(Math.abs(path - Math.hypot(R.x - image.x, R.y - image.y, R.z - image.z)) < 5e-3, `${path}`);
+  assert.ok(Math.abs(focusing - 1) < .02, `${focusing}`);
 });
 
 test('an echo from a slope beyond level ground arrives along its image path, 2 000 m', () => {
@@ -62,9 +55,11 @@ test('an echo from a slope beyond level ground arrives along its image path, 2 0
   // The strongest echo; the rounded foot of the slope adds a weaker one, convex and so spread out.
   assert.ok(paths.every(path => path.kind === PATH_ECHO));
   assert.ok(paths.slice(1).every(path => path.spreadMetres > 3 * 2000));
-  assert.ok(Math.abs(paths[0].seconds - 2000 / 340) < 1e-9, `${paths[0].seconds * 340}`);
-  assert.ok(Math.abs(paths[0].spreadMetres - 2000) < 1e-6);
-  assert.ok(Math.abs(paths[0].groundSine - Math.cos(Math.PI / 6)) < 1e-9);
+  // To the slope's stored heights, steps of about 70 mm over its range of 4.8 km.
+  assert.ok(Math.abs(paths[0].seconds - 2000 / 340) < .03 / 340, `${paths[0].seconds * 340}`);
+  // Its spreading follows the stored surface's curvature, which the steps roughen: 0.1 % here.
+  assert.ok(Math.abs(paths[0].spreadMetres / 2000 - 1) < 5e-3, `${paths[0].spreadMetres}`);
+  assert.ok(Math.abs(paths[0].groundSine - Math.cos(Math.PI / 6)) < 1e-4, `${paths[0].groundSine}`);
 });
 
 test('on level terrain the only specular point is the ground reflection, which is left to the ground', () => {
@@ -201,7 +196,8 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
   const ridge = x => Math.max(0, .4 * (x - 1500));
   const echoEnergy = groundEnabled => {
     const scene = plainScene('blast');
-    scene.terrain = terrain(ridge, { cells: 120, extentMetres: 6000, scattering: 1 });
+    // 50 m cells, in one patch a side around the origin.
+    scene.terrain = terrain(ridge, { cells: 256, extentMetres: 12800, scattering: 1 });
     scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
     scene.ground = { ...scene.ground, enabled: groundEnabled, type: 'rigid' };
     scene.emitters[0] = { ...scene.emitters[0], secondaryShock: false, fireballDecibels: -60 };

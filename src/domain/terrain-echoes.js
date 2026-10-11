@@ -124,38 +124,42 @@ const surfaces = new WeakMap();
 export function echoSurface(surface) {
   const cached = surfaces.get(surface);
   if (cached) return cached;
-  const half = surface.halfExtentMetres;
-  const side = Math.max(2, Math.min(PROPAGATION.echoGridSide, Math.round(2 * half / surface.cellMetres)));
-  const spacing = 2 * half / side;
-  const count = side * side;
-  const centre = index => -half + (index + .5) * spacing;
+  // Square facets over the loaded rectangle, at most PROPAGATION.echoGridSide along its longer side.
+  const bounds = surface.bounds;
+  const longer = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
+  const spacing = longer / Math.max(2, Math.min(PROPAGATION.echoGridSide, Math.round(longer / surface.cellMetres)));
+  const columns = Math.max(2, Math.round((bounds.east - bounds.west) / spacing));
+  const rows = Math.max(2, Math.round((bounds.north - bounds.south) / spacing));
+  const count = columns * rows;
+  const centreX = column => bounds.west + (column + .5) * spacing;
+  const centreY = row => bounds.south + (row + .5) * spacing;
   const heights = new Float64Array(count);
-  for (let row = 0; row < side; row += 1) for (let column = 0; column < side; column += 1) heights[row * side + column] = surface.heightAt(centre(column), centre(row));
+  for (let row = 0; row < rows; row += 1) for (let column = 0; column < columns; column += 1) heights[row * columns + column] = surface.heightAt(centreX(column), centreY(row));
   const gradientX = new Float64Array(count);
   const gradientY = new Float64Array(count);
-  for (let row = 0; row < side; row += 1) {
-    for (let column = 0; column < side; column += 1) {
-      const west = Math.max(0, column - 1); const east = Math.min(side - 1, column + 1);
-      const south = Math.max(0, row - 1); const north = Math.min(side - 1, row + 1);
-      gradientX[row * side + column] = (heights[row * side + east] - heights[row * side + west]) / ((east - west) * spacing);
-      gradientY[row * side + column] = (heights[north * side + column] - heights[south * side + column]) / ((north - south) * spacing);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const west = Math.max(0, column - 1); const east = Math.min(columns - 1, column + 1);
+      const south = Math.max(0, row - 1); const north = Math.min(rows - 1, row + 1);
+      gradientX[row * columns + column] = (heights[row * columns + east] - heights[row * columns + west]) / ((east - west) * spacing);
+      gradientY[row * columns + column] = (heights[north * columns + column] - heights[south * columns + column]) / ((north - south) * spacing);
     }
   }
   const bilinear = (values, x, y) => {
-    const gridX = clamp((x + half) / spacing - .5, 0, side - 1);
-    const gridY = clamp((y + half) / spacing - .5, 0, side - 1);
-    const x0 = Math.min(side - 2, Math.floor(gridX));
-    const y0 = Math.min(side - 2, Math.floor(gridY));
+    const gridX = clamp((x - bounds.west) / spacing - .5, 0, columns - 1);
+    const gridY = clamp((y - bounds.south) / spacing - .5, 0, rows - 1);
+    const x0 = Math.min(columns - 2, Math.floor(gridX));
+    const y0 = Math.min(rows - 2, Math.floor(gridY));
     const fx = gridX - x0;
     const fy = gridY - y0;
-    const at = y0 * side + x0;
-    return (values[at] * (1 - fx) + values[at + 1] * fx) * (1 - fy) + (values[at + side] * (1 - fx) + values[at + side + 1] * fx) * fy;
+    const at = y0 * columns + x0;
+    return (values[at] * (1 - fx) + values[at + 1] * fx) * (1 - fy) + (values[at + columns] * (1 - fx) + values[at + columns + 1] * fx) * fy;
   };
   const heightAt = (x, y) => bilinear(heights, x, y);
   const horizon = new Float32Array(count * HORIZON_AZIMUTHS);
   for (let facet = 0; facet < count; facet += 1) {
-    const x = centre(facet % side);
-    const y = centre(Math.floor(facet / side));
+    const x = centreX(facet % columns);
+    const y = centreY(Math.floor(facet / columns));
     for (let azimuth = 0; azimuth < HORIZON_AZIMUTHS; azimuth += 1) {
       const angle = 2 * Math.PI * azimuth / HORIZON_AZIMUTHS;
       const ux = Math.cos(angle);
@@ -164,7 +168,7 @@ export function echoSurface(surface) {
       for (let along = spacing; ; along += Math.max(spacing, along * HORIZON_STEP_GROWTH)) {
         const px = x + ux * along;
         const py = y + uy * along;
-        if (Math.abs(px) > half || Math.abs(py) > half) break;
+        if (px < bounds.west || px > bounds.east || py < bounds.south || py > bounds.north) break;
         steepest = Math.max(steepest, (heightAt(px, py) - heights[facet]) / along);
       }
       horizon[facet * HORIZON_AZIMUTHS + azimuth] = steepest;
@@ -174,9 +178,9 @@ export function echoSurface(surface) {
   let highest = -Infinity;
   for (const height of heights) { lowest = Math.min(lowest, height); highest = Math.max(highest, height); }
   const echo = {
-    side, spacing, half, count, heights, lowest, highest, gradientX, gradientY, horizon, heightAt,
-    centreX: facet => centre(facet % side),
-    centreY: facet => centre(Math.floor(facet / side)),
+    columns, rows, spacing, bounds, count, heights, lowest, highest, gradientX, gradientY, horizon, heightAt,
+    centreX: facet => centreX(facet % columns),
+    centreY: facet => centreY(Math.floor(facet / columns)),
     slopeAt: (x, y) => ({ x: bilinear(gradientX, x, y), y: bilinear(gradientY, x, y) })
   };
   surfaces.set(surface, echo);
@@ -281,7 +285,7 @@ const determinant = matrix => matrix[0][0] * matrix[1][1] - matrix[0][1] * matri
  * focuses it, up to PROPAGATION.maximumFocusing.
  */
 export function specularPoints(echo, S, R, field = null) {
-  const { side, spacing } = echo;
+  const { columns, rows, spacing, bounds } = echo;
   const step = spacing * NEWTON_STEP_SPACINGS;
   const surfaceGradient = (x, y) => pathGradient(S, R, x, y, echo.heightAt(x, y), echo.slopeAt(x, y));
   // With a receiver's field, only the ground it sees can echo, so only that ground is searched.
@@ -300,9 +304,9 @@ export function specularPoints(echo, S, R, field = null) {
   }
   const found = new Map();
   for (const first of facets) {
-    if (first % side === side - 1 || first >= side * (side - 1)) continue;
+    if (first % columns === columns - 1 || first >= columns * (rows - 1)) continue;
     {
-      const corners = [first, first + 1, first + side, first + side + 1];
+      const corners = [first, first + 1, first + columns, first + columns + 1];
       // A specular point the receiver cannot see does not echo; neither does one beside such ground.
       if (seen && !(seen[corners[1]] && seen[corners[2]] && seen[corners[3]])) continue;
       let xNegative = false; let xPositive = false; let yNegative = false; let yPositive = false;
@@ -326,7 +330,7 @@ export function specularPoints(echo, S, R, field = null) {
         x -= dx; y -= dy;
         if (Math.hypot(dx, dy) < spacing * NEWTON_TOLERANCE_SPACINGS) { converged = true; break; }
       }
-      if (!converged || Math.abs(x) > echo.half || Math.abs(y) > echo.half) continue;
+      if (!converged || x < bounds.west || x > bounds.east || y < bounds.south || y > bounds.north) continue;
       const key = `${Math.round(x / spacing * 100)},${Math.round(y / spacing * 100)}`;
       if (found.has(key)) continue;
       const z = echo.heightAt(x, y);
@@ -375,12 +379,12 @@ function echoLeg(field, a, b, trace = rayBetween) {
 
 /**
  * An upper bound on the path from S over any facet to R, which bounds the clusters' arrival bins:
- * the sum of horizontal distances is largest at a corner of the square, and the vertical legs at
+ * the sum of horizontal distances is largest at a corner of the terrain, and the vertical legs at
  * the lowest or highest ground.
  */
 function maximumPathMetres(echo, S, R) {
   let horizontal = 0;
-  for (const x of [-echo.half, echo.half]) for (const y of [-echo.half, echo.half]) horizontal = Math.max(horizontal, Math.hypot(S.x - x, S.y - y) + Math.hypot(R.x - x, R.y - y));
+  for (const x of [echo.bounds.west, echo.bounds.east]) for (const y of [echo.bounds.south, echo.bounds.north]) horizontal = Math.max(horizontal, Math.hypot(S.x - x, S.y - y) + Math.hypot(R.x - x, R.y - y));
   const vertical = point => Math.max(Math.abs(point.z - echo.lowest), Math.abs(point.z - echo.highest));
   return horizontal + vertical(S) + vertical(R);
 }

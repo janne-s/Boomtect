@@ -234,14 +234,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       includeExtent(flashes, () => flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
     }
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
-    include({ x: 0, y: 0, z: 0 });
+    // The box measures the scene, not the terrain: the loaded terrain goes on beyond it and fades
+    // toward its own edge (drawTerrain), and a point dragged out there gets a box around it again.
     const surface = currentSurface();
-    // The box holds the scene and the loaded terrain, so that points can be dragged anywhere on it;
-    // terrain beyond the box fades out (drawTerrain), so only the ground inside sets its depth.
-    if (!surface.flat) {
-      include({ x: -surface.halfExtentMetres, y: -surface.halfExtentMetres, z: 0 });
-      include({ x: surface.halfExtentMetres, y: surface.halfExtentMetres, z: 0 });
-    }
     const enabled = scene.emitters.filter(emitter => emitter.enabled);
     const span = enabled.length && enabled.every(emitter => emitter.kind === 'whip') ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
     const pad = Math.max(span, maxX - minX, maxY - minY, maxZ) * VIEW.box.padding;
@@ -264,14 +259,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   function groundRange(surface, x0, x1, y0, y1) {
     const key = [x0, x1, y0, y1].join('|');
     if (relief?.surface === surface && relief.key === key) return relief;
-    const { columns, rows, cellMetres } = surface;
+    const { columns, rows, cellMetres, bounds } = surface;
     let low = Infinity;
     let high = -Infinity;
     for (let row = 0; row < rows; row += 1) {
-      const y = (row + .5 - rows / 2) * cellMetres;
+      const y = bounds.south + (row + .5) * cellMetres;
       if (y < y0 || y > y1) continue;
       for (let column = 0; column < columns; column += 1) {
-        const x = (column + .5 - columns / 2) * cellMetres;
+        const x = bounds.west + (column + .5) * cellMetres;
         if (x < x0 || x > x1) continue;
         const z = surface.values[row * columns + column] - surface.datumMetres;
         low = Math.min(low, z);
@@ -684,9 +679,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { box } = frame;
     const smooth = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
     const outside = Math.hypot(Math.max(0, box.x0 - x, x - box.x1), Math.max(0, box.y0 - y, y - box.y1));
-    const half = surface.halfExtentMetres;
-    const inside = half - Math.max(Math.abs(x), Math.abs(y));
-    return Math.max(smooth(outside / (VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (VIEW.terrain.edgeShare * 2 * half)));
+    const { west, east, south, north } = surface.bounds;
+    const inside = Math.min(x - west, east - x, y - south, north - y);
+    return Math.max(smooth(outside / (VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (VIEW.terrain.edgeShare * Math.max(east - west, north - south))));
   }
 
   /**
@@ -704,18 +699,20 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const key = [box.x0, box.x1, box.y0, box.y1, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
     if (terrainMeshCache?.key === key && terrainMeshCache.surface === surface) return terrainMeshCache;
     // The grid covers what can be seen: the box and its fog, within the captured terrain.
-    const half = surface.halfExtentMetres;
+    const { bounds } = surface;
     const fogMetres = VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0);
-    const west = Math.max(-half, box.x0 - fogMetres);
-    const south = Math.max(-half, box.y0 - fogMetres);
-    const side = Math.max(Math.min(half, box.x1 + fogMetres) - west, Math.min(half, box.y1 + fogMetres) - south);
+    const west = Math.max(bounds.west, box.x0 - fogMetres);
+    const south = Math.max(bounds.south, box.y0 - fogMetres);
+    const east = Math.min(bounds.east, box.x1 + fogMetres);
+    const north = Math.min(bounds.north, box.y1 + fogMetres);
+    const side = Math.max(east - west, north - south);
     const cells = Math.max(2, Math.min(VIEW.terrain.drawCells, Math.ceil(side / surface.cellMetres)));
     const spacing = side / cells;
     const vertices = [];
     for (let row = 0; row <= cells; row += 1) {
       for (let column = 0; column <= cells; column += 1) {
-        const x = Math.min(half, west + column * spacing);
-        const y = Math.min(half, south + row * spacing);
+        const x = Math.min(east, west + column * spacing);
+        const y = Math.min(north, south + row * spacing);
         vertices.push({ x, y, z: ground(x, y) });
       }
     }
@@ -984,8 +981,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
     // one inside it; fronts that have left the box and the terrain around it are dropped.
     const { box } = frame;
-    const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
-    const bounds = { x0: Math.min(box.x0, -half), x1: Math.max(box.x1, half), y0: Math.min(box.y0, -half), y1: Math.max(box.y1, half) };
+    const terrain = currentSurface().bounds;
+    const bounds = terrain ? { x0: Math.min(box.x0, terrain.west), x1: Math.max(box.x1, terrain.east), y0: Math.min(box.y0, terrain.south), y1: Math.max(box.y1, terrain.north) } : box;
     // Fronts over terrain are thinned by their fixed order, so the same ones are drawn in every frame.
     const terrainStride = Math.max(1, Math.ceil(total / VIEW.wavefront.terrainSpheres));
     const groups = new Map();
@@ -1333,9 +1330,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    */
   function drawCone(context, { apex, rings, strengths }, colors) {
     const { box } = frame;
-    const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
-    const low = { x: Math.min(box.x0, -half), y: Math.min(box.y0, -half), z: box.z0 };
-    const high = { x: Math.max(box.x1, half), y: Math.max(box.y1, half), z: box.z1 };
+    const terrain = currentSurface().bounds;
+    const low = { x: Math.min(box.x0, terrain?.west ?? box.x0), y: Math.min(box.y0, terrain?.south ?? box.y0), z: box.z0 };
+    const high = { x: Math.max(box.x1, terrain?.east ?? box.x1), y: Math.max(box.y1, terrain?.north ?? box.y1), z: box.z1 };
     let path = new Path2D();
     const line = (a, b) => {
       // The part of the line within the box (Liang–Barsky), in pieces whose middle is above the ground.

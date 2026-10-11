@@ -1,5 +1,5 @@
 import { VIEW } from '../domain/constants.js';
-import { mapTiles } from '../domain/terrain.js';
+import { mapTiles, rangeBounds, terrainRange } from '../domain/terrain.js';
 import { palette } from './canvas.js';
 
 /** OpenTopoMap: topographic tiles over OpenStreetMap data, as Echotect and GeoFlute use. */
@@ -40,16 +40,22 @@ function styledTile(image) {
 }
 
 /**
- * The map laid on the floor of a terrain: its tiles, loaded on first use and kept per terrain.
+ * The map laid on the floor of a terrain: its tiles, loaded on first use and again when its patches change.
  * `onLoad` runs as each tile arrives, so the view can draw it. A tile that fails stays empty.
  */
 export function createMapLayer(onLoad) {
   let key = null;
   let tiles = [];
 
+  const terrainKey = terrain => {
+    const range = terrainRange(terrain);
+    return `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${range.column0},${range.column1},${range.row0},${range.row1}`;
+  };
+
   function load(terrain) {
-    key = `${terrain.latitude},${terrain.longitude},${terrain.extentMetres}`;
-    tiles = mapTiles(terrain).tiles.map(tile => {
+    key = terrainKey(terrain);
+    const bounds = rangeBounds(terrainRange(terrain), terrain.cellMetres);
+    tiles = mapTiles({ latitude: terrain.latitude, longitude: terrain.longitude, bounds }).tiles.map(tile => {
       const image = new Image();
       image.crossOrigin = 'anonymous';
       const entry = { ...tile, image, ready: false };
@@ -69,8 +75,8 @@ export function createMapLayer(onLoad) {
   return {
     /** The loaded tiles of a terrain, starting their requests when the terrain is new. */
     tiles(terrain) {
-      if (!terrain?.latitude) return [];
-      if (key !== `${terrain.latitude},${terrain.longitude},${terrain.extentMetres}`) load(terrain);
+      if (!terrain?.patches?.length) return [];
+      if (key !== terrainKey(terrain)) load(terrain);
       return tiles.filter(tile => tile.ready);
     }
   };
