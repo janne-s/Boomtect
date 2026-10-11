@@ -4,6 +4,8 @@
   --panel: #19212a;
   --panel-dim: #141a21;
   --raised: #222c37;
+  --section: #1d2630;
+  --section-shade: rgba(0, 0, 0, .35);
   --line: #2e3a46;
   --ink: #e3e9ef;
   --muted: #8b99a8;
@@ -456,6 +458,11 @@ input[type="range"]:hover::-moz-range-thumb {
 }
 .group summary {
   margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: var(--section);
+  /* A faint line along the top, with a soft shade under it, as if cast by the part above. */
+  box-shadow: inset 0 1px 0 var(--line), inset 0 5px 6px -5px var(--section-shade);
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
