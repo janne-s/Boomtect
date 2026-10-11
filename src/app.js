@@ -116,6 +116,10 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
   onCommit: () => storeScene()
 });
 
+// Focus is drawn plainly while moving by keyboard, and quietly after a pointer (styles.css).
+document.addEventListener('keydown', event => { if (event.key === 'Tab') document.documentElement.dataset.keyboard = ''; }, true);
+document.addEventListener('pointerdown', () => { delete document.documentElement.dataset.keyboard; }, true);
+
 /** The topographic map on the floor, requested only once it is switched on. */
 const mapLayer = createMapLayer(() => redrawViews());
 
