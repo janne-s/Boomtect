@@ -10,8 +10,13 @@
  * few seconds of sustained sound.
  *
  * Loudness (class B for the exponent, Stevens' power law: loudness ∝ intensity^0.3, that is
- * pressure^0.6; class C as a playback mapping): the level envelope is compressed so that level
- * differences shrink to 0.6 of their size in decibels.
+ * pressure^0.6, the sone scale of ISO 532 above about 40 phon; class C as a playback mapping): the
+ * level is compressed so that level differences shrink to 0.6 of their size in decibels, the same at
+ * every frequency (the equal-loudness contours of ISO 226 are not applied). The level follows the
+ * ear's temporal integration of loudness, of the order of 100 ms (class B, Zwicker & Fastl,
+ * Psychoacoustics; class C for the two stages): a mean square over 25 ms, smoothed in decibels over
+ * 50 ms, so a sharp onset passes before it is turned down and a quiet tail is raised as soon after
+ * a loud sound however much quieter it is.
  */
 export const EAR = Object.freeze({
   referencePressurePa: 20e-6,
@@ -27,6 +32,8 @@ export const EAR = Object.freeze({
   adaptationHalfLifeSeconds: 3,
   shelfHz: 1000,
   loudnessExponent: .6,
+  loudnessMeanSquareSeconds: .025,
+  loudnessLevelSeconds: .05,
   loudnessFloorDb: -60,
   loudnessMaximumBoostDb: 40
 });
@@ -130,12 +137,30 @@ export function applyEar(channels, sampleRate, { reflex = true, loudness = true 
     });
   }
   if (loudness) {
-    const { window, values } = envelope(output[0], sampleRate);
-    const peak = Math.max(...values);
-    if (peak > 0) {
-      const floor = peak * fromDb(EAR.loudnessFloorDb);
-      const decibels = Array.from(values, value => Math.min(EAR.loudnessMaximumBoostDb, (EAR.loudnessExponent - 1) * toDb(Math.max(value, floor) / peak)));
-      const gains = frameGains(decibels, window, length);
+    // The level as above. Taken over 10 ms windows instead it swung with each cycle of a bass and
+    // modulated it, adding its harmonics in the upper bass (measured: 80–160 Hz at 58–66 dB under a
+    // 40 Hz tone, which small speakers do not play while they play these).
+    const square = 1 - Math.exp(-1 / (EAR.loudnessMeanSquareSeconds * sampleRate));
+    const smooth = 1 - Math.exp(-1 / (EAR.loudnessLevelSeconds * sampleRate));
+    const level = new Float64Array(length);
+    let meanSquare = 0;
+    let loudest = -Infinity;
+    for (let index = 0; index < length; index += 1) {
+      meanSquare += square * (output[0][index] * output[0][index] - meanSquare);
+      level[index] = 10 * Math.log10(Math.max(meanSquare, 1e-30));
+      loudest = Math.max(loudest, level[index]);
+    }
+    if (loudest > -300) {
+      // Silence counts from the floor, so the smoothing does not climb from far below it.
+      const floor = loudest + EAR.loudnessFloorDb;
+      let decibels = Math.max(level[0], floor);
+      let peak = -Infinity;
+      for (let index = 0; index < length; index += 1) {
+        decibels += smooth * (Math.max(level[index], floor) - decibels);
+        level[index] = decibels;
+        peak = Math.max(peak, decibels);
+      }
+      const gains = Float64Array.from(level, value => fromDb(Math.min(EAR.loudnessMaximumBoostDb, (EAR.loudnessExponent - 1) * (value - peak))));
       output = output.map(channel => channel.map((value, index) => value * gains[index]));
     }
   }

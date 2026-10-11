@@ -43,8 +43,9 @@ test('the reflex fades while the sound is sustained', () => {
 test('loudness compression shrinks level differences to the exponent', () => {
   const signal = Float32Array.from({ length: SAMPLE_RATE }, (_, index) => (index < SAMPLE_RATE / 2 ? 1 : .01) * Math.sin(index * .3));
   const [heard] = applyEar([signal], SAMPLE_RATE, { reflex: false, loudness: true });
-  const before = 20 * Math.log10(rms(signal, .1, .4) / rms(signal, .6, .9));
-  const after = 20 * Math.log10(rms(heard, .1, .4) / rms(heard, .6, .9));
+  // Once the level has settled after the drop, a third of a second on.
+  const before = 20 * Math.log10(rms(signal, .2, .45) / rms(signal, .85, .98));
+  const after = 20 * Math.log10(rms(heard, .2, .45) / rms(heard, .85, .98));
   assert.ok(Math.abs(after - EAR.loudnessExponent * before) < .5, `${before} → ${after}`);
 });
 
@@ -69,4 +70,22 @@ test('the reflex moving under a loud bass adds no buzz at the frame rate', () =>
   }
   const decibels = 20 * Math.log10(Math.hypot(re, im) / length * 2 / 200);
   assert.ok(decibels < -100, `${decibels} dB`);
+});
+
+test('loudness compression adds no harmonics of a loud bass', () => {
+  const x = Float32Array.from({ length: 3 * SAMPLE_RATE }, (_, index) => 100 * Math.exp(-index / SAMPLE_RATE) * Math.sin(2 * Math.PI * 40 * index / SAMPLE_RATE));
+  const [y] = applyEar([x], SAMPLE_RATE, { reflex: false, loudness: true });
+  const from = SAMPLE_RATE;
+  const n = SAMPLE_RATE / 2;
+  const level = frequency => {
+    let re = 0;
+    let im = 0;
+    for (let index = from; index < from + n; index += 1) {
+      const weight = .5 - .5 * Math.cos(2 * Math.PI * (index - from) / n);
+      re += weight * y[index] * Math.cos(2 * Math.PI * frequency * index / SAMPLE_RATE);
+      im += weight * y[index] * Math.sin(2 * Math.PI * frequency * index / SAMPLE_RATE);
+    }
+    return Math.hypot(re, im);
+  };
+  for (const frequency of [80, 120, 160, 200]) assert.ok(20 * Math.log10(level(frequency) / level(40)) < -65, `${frequency} Hz`);
 });

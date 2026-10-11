@@ -123,8 +123,12 @@ microphone along the Mach cone.
   frequencies are turned down with a short delay, and the effect fades while
   the sound continues.
 - **Loudness** — Compresses level differences the way perceived loudness
-  grows with pressure.
+  grows with pressure (Stevens' power law, the same at every frequency).
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
+  A fixed scale keeps sounds as loud as each other as they are outdoors. A
+  boom or a near blast reaches 100–1 000 Pa (134–154 dB), far beyond what
+  speakers or headphones play; Ear reflex and Loudness give some of what the
+  ear does with it.
 - **Plots** — Pressure, and arrival time by source height (Thunder) or by the
   direction the sound comes from (Blast), for every microphone on one time axis
   and one pressure scale, each in its own color and the muted ones dimmer. A microphone's tab, or selecting the microphone, brings it
