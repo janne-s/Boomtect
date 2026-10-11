@@ -250,7 +250,8 @@ export function flightBooms(path, flight, receiver, profile, air) {
  * A body's Mach cone at the clock, as the envelope of the fronts it has left (for views): on the
  * front from each of VIEW.cone.rings past points of its path, the circle that the rays leaving at
  * cos α = c/v to its flight reach, with the fronts' refraction. Where it flew no faster than sound
- * it leaves no ring. The apex is the body while it flies.
+ * it leaves no ring. The apex is the body while it flies. `radii` gives how far each ring's front
+ * has spread from where it left.
  */
 export function machCone(path, now, profile) {
   const count = path.seconds.length;
@@ -258,6 +259,7 @@ export function machCone(path, now, profile) {
   if (last < 1) return null;
   const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
   const rings = [];
+  const radii = [];
   for (let ring = 1; ring <= VIEW.cone.rings; ring += 1) {
     const index = Math.round(last * (1 - ring / VIEW.cone.rings));
     const before = at(Math.max(0, index - 1));
@@ -278,6 +280,7 @@ export function machCone(path, now, profile) {
     const { centre, radiusMetres } = wavefront(local, point, now - path.seconds[index]);
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
+    radii.push(radiusMetres);
     rings.push(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
       const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
       const a = radius * Math.cos(angle);
@@ -287,5 +290,5 @@ export function machCone(path, now, profile) {
   }
   if (!rings.length) return null;
   const flying = (now - path.seconds[0]) / path.step <= count - 1;
-  return { apex: flying ? at(last) : null, rings };
+  return { apex: flying ? at(last) : null, rings, radii };
 }

@@ -1325,13 +1325,16 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
   }
 
-  /** A body's Mach cone: its rings and lines from the body through them, within the box and above the ground. */
-  function drawCone(context, { apex, rings }, colors) {
+  /**
+   * A body's Mach cone: its rings and lines from the body through them, within the box and above the
+   * ground, each ring as strong as its boom where it has spread to (`strengths`).
+   */
+  function drawCone(context, { apex, rings, strengths }, colors) {
     const { box } = frame;
     const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
     const low = { x: Math.min(box.x0, -half), y: Math.min(box.y0, -half), z: box.z0 };
     const high = { x: Math.max(box.x1, half), y: Math.max(box.y1, half), z: box.z1 };
-    const path = new Path2D();
+    let path = new Path2D();
     const line = (a, b) => {
       // The part of the line within the box (Liang–Barsky), in pieces whose middle is above the ground.
       let from = 0;
@@ -1359,19 +1362,23 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         path.lineTo(q.x, q.y);
       }
     };
+    // Each ring, with the lines that reach it from the newer one, as strong as its front.
+    const alpha = context.globalAlpha;
+    context.strokeStyle = colors.glow;
+    context.lineWidth = 1;
     rings.forEach((ring, index) => {
+      const strength = strengths?.[index] ?? 1;
+      if (!(strength > 0)) return;
+      path = new Path2D();
       ring.forEach((point, step) => {
         line(point, ring[(step + 1) % ring.length]);
         if (step % VIEW.cone.lineEvery) return;
         const previous = index ? rings[index - 1][step] : apex;
         if (previous) line(previous, point);
       });
+      context.globalAlpha = alpha * VIEW.cone.alpha * strength;
+      context.stroke(path);
     });
-    const alpha = context.globalAlpha;
-    context.globalAlpha = alpha * VIEW.cone.alpha;
-    context.strokeStyle = colors.glow;
-    context.lineWidth = 1;
-    context.stroke(path);
     context.globalAlpha = alpha;
   }
 

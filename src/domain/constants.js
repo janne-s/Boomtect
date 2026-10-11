@@ -579,8 +579,9 @@ export const VIEW = Object.freeze({
   /**
    * Wavefronts: source points drawn at most, and points along a flight path. A front is drawn as
    * strong as its sound where it has spread to: the pressure after spreading as 1/r and air
-   * absorption at frequencyHz, fully at topDb and gone at floorDb (display only; model pascals, not
-   * calibrated). Up high in layered air a front is drawn in homogeneous air at the speed there once
+   * absorption at the frequency that carries most of its sound (the inverse of its pulse's
+   * duration), fully at topDb and gone at floorDb (display only; model pascals, not calibrated). A
+   * Mach cone's rings fade the same way. Up high in layered air a front is drawn in homogeneous air at the speed there once
    * the linear profile strays more than localProfileTolerance from it. A front crossing a face is a
    * ripple: the front and fading rings behind it, spaced by a share of the box. Over terrain, where a
    * front meets the ground is solved per direction, so fewer fronts are drawn. Each flash, blast, or
@@ -593,7 +594,6 @@ export const VIEW = Object.freeze({
     groups: 24,
     shadowShare: .35,
     flightFronts: 120,
-    frequencyHz: 1000,
     topDb: 140,
     floorDb: 60,
     localProfileTolerance: .05,

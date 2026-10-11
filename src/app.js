@@ -1668,9 +1668,29 @@ function animationState() {
       const index = Math.round((now - path.seconds[0]) / path.step);
       return index >= 0 && index < path.seconds.length ? [{ x: path.x[index], y: path.y[index], z: path.z[index] }] : [];
     }));
-    if (state.preferences.cone) cones.set(emitter.id, paths.map(path => machCone(path, now, profile)).filter(Boolean));
+    if (!state.preferences.cone) continue;
+    // Each ring fades as the boom does with the distance it has spread, as the fronts do.
+    const amplitudes = coneAmplitudes(emitter);
+    cones.set(emitter.id, paths.flatMap((path, member) => {
+      const cone = machCone(path, now, profile);
+      if (!cone) return [];
+      const { amplitude, frequencyHz } = amplitudes.get(`${emitter.id}:${member}`) ?? { amplitude: 0, frequencyHz: 1000 };
+      return [{ ...cone, strengths: cone.radii.map(radius => frontStrength(amplitude, radius, frequencyHz)) }];
+    }));
   }
   return { strokes, receivers, sound, wavefronts, flights, cones };
+}
+
+const coneCache = new WeakMap();
+
+/** The bodies' amplitudes for their cones, cached per emitter as it stands (a change replaces it). */
+function coneAmplitudes(emitter) {
+  const key = JSON.stringify([emitter, state.scene.air]);
+  const cached = coneCache.get(emitter);
+  if (cached?.key === key) return cached.amplitudes;
+  const amplitudes = wavefrontAmplitudes(emitter);
+  coneCache.set(emitter, { key, amplitudes });
+  return amplitudes;
 }
 
 /** Whether the scene's mode shows wavefronts. */
@@ -1680,34 +1700,44 @@ function wavefrontsShown() {
 
 const wavefrontSources = new WeakMap();
 
-/** Each flash's and blast's amplitude at 1 m, Pa·m: a flash's from the energy of all its sources. */
+/**
+ * Each flash's, blast's, and body's amplitude at 1 m, Pa·m, and the frequency that carries most of
+ * its sound, the inverse of its pulse's duration, at which the air absorbs its fronts: a flash's
+ * from the energy of all its sources.
+ */
 function wavefrontAmplitudes(emitter) {
   const air = state.scene.air;
-  if (emitter.kind === 'blast') return new Map([[emitter.id, blastSources(emitter, air)[0].amplitudePaMetres]]);
+  const front = (amplitude, durationSeconds) => ({ amplitude, frequencyHz: 1 / Math.max(durationSeconds, 1e-6) });
+  const blastFront = blast => { const [shock] = blastSources(blast, air); return front(shock.amplitudePaMetres, shock.durationSeconds); };
+  if (emitter.kind === 'blast') return new Map([[emitter.id, blastFront(emitter)]]);
   if (isFlightKind(emitter)) {
     // A boom's pressure 1 km away times 1 km, so that the fronts fade roughly with it.
     const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
-    return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom.overpressurePa * 1000]));
+    return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, front(boom.overpressurePa * 1000, boom.durationSeconds)]));
   }
   if (emitter.kind === 'whip') {
     // The crack's pressure 1 m away times 1 m, without the turn's spreading.
     const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.crackerLengthMetres, shapeFactor: emitter.crackerShapeFactor, distanceMetres: 1 });
-    return new Map([[`${emitter.id}:0`, boom.overpressurePa]]);
+    return new Map([[`${emitter.id}:0`, front(boom.overpressurePa, boom.durationSeconds)]]);
   }
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
     // Each meteor's boom straight below the end of its trail times that distance.
     return new Map(showerMembers(emitter).map((meteor, index) => {
       const height = meteor.endHeightMetres;
-      return [`${emitter.id}:${index}`, meteorBoom(meteor, air, height, height, air.pressureKpa * 1000).overpressurePa * height];
+      const boom = meteorBoom(meteor, air, height, height, air.pressureKpa * 1000);
+      return [`${emitter.id}:${index}`, front(boom.overpressurePa * height, boom.durationSeconds)];
     }));
   }
-  if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastSources(round, air)[0].amplitudePaMetres]));
+  if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastFront(round)]));
+  // A flash's sources: their energy, and their frequencies weighted by it.
   const energy = new Map();
   for (const source of emitterSources(emitter, air, currentSurface()).sources) {
     const group = `${emitter.id}:${source.flash}`;
-    energy.set(group, (energy.get(group) ?? 0) + source.amplitudePaMetres ** 2);
+    const sum = energy.get(group) ?? { energy: 0, frequency: 0 };
+    const share = source.amplitudePaMetres ** 2;
+    energy.set(group, { energy: sum.energy + share, frequency: sum.frequency + share / Math.max(source.durationSeconds, 1e-6) });
   }
-  return new Map([...energy].map(([group, value]) => [group, Math.sqrt(value)]));
+  return new Map([...energy].map(([group, { energy: total, frequency }]) => [group, { amplitude: Math.sqrt(total), frequencyHz: total > 0 ? frequency / total : 1000 }]));
 }
 
 /**
@@ -1747,24 +1777,42 @@ function wavefrontCandidates(scene) {
   }
   const stride = Math.max(1, Math.ceil(candidates.length / VIEW.wavefront.spheres));
   // Each keeps its place in the list, so that views can thin the fronts the same way in every frame.
-  const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, amplitude: amplitudes.get(candidate.group) ?? 0 }));
+  const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, ...(amplitudes.get(candidate.group) ?? { amplitude: 0, frequencyHz: 1000 }) }));
   wavefrontSources.set(scene, sampled);
   return sampled;
 }
 
 const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, point.y) + point.z });
 
+const absorptionCache = { air: null, decibels: new Map() };
+
+/** Air absorption in dB/m at a frequency, rounded to a twelfth of an octave and cached per air. */
+function absorptionDecibels(frequencyHz) {
+  if (!state.scene.air.absorption) return 0;
+  if (absorptionCache.air !== state.scene.air) Object.assign(absorptionCache, { air: state.scene.air, decibels: new Map() });
+  const step = Math.round(12 * Math.log2(frequencyHz));
+  if (!absorptionCache.decibels.has(step)) absorptionCache.decibels.set(step, atmosphericAbsorptionNepersPerMetre(2 ** (step / 12), state.scene.air) * 20 / Math.LN10);
+  return absorptionCache.decibels.get(step);
+}
+
+/**
+ * How strongly a front or a Mach cone's ring is drawn once it has spread `radius` metres from a
+ * source of `amplitude` Pa·m: its level after 1/r and the air's absorption at the frequency that
+ * carries most of its sound, on the scale from floorDb (gone) to topDb (full).
+ */
+function frontStrength(amplitude, radius, frequencyHz) {
+  const absorption = absorptionDecibels(frequencyHz);
+  const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_SOUND_PRESSURE_PA) - absorption * radius;
+  return Math.min(1, Math.max(0, (level - VIEW.wavefront.floorDb) / (VIEW.wavefront.topDb - VIEW.wavefront.floorDb)));
+}
+
 function wavefrontSpheres(now, profile) {
-  const absorption = state.scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(VIEW.wavefront.frequencyHz, state.scene.air) * 20 / Math.LN10 : 0;
-  const strengthAt = (amplitude, radius) => {
-    const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_SOUND_PRESSURE_PA) - absorption * radius;
-    return Math.min(1, Math.max(0, (level - VIEW.wavefront.floorDb) / (VIEW.wavefront.topDb - VIEW.wavefront.floorDb)));
-  };
+  const strengthAt = frontStrength;
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
-    .map(({ point, emitted, group, order, amplitude }) => {
+    .map(({ point, emitted, group, order, amplitude, frequencyHz }) => {
       const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
-      front.strength = strengthAt(amplitude, front.radiusMetres);
+      front.strength = strengthAt(amplitude, front.radiusMetres, frequencyHz);
       if (!profile.wind) return { source: point, group, order, ...front };
       // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
       const seconds = now - emitted;
