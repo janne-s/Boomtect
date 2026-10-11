@@ -964,7 +964,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * The wavefronts where they cross the floor and the two far walls, as ripples: each sampled
    * source's sphere meets a plane in a circle, and the outline of their union is drawn with fading
    * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
-   * floor the circle stops at the shadow boundary.
+   * floor the circle stops at the shadow boundary. At most VIEW.wavefront.groups of the strongest
+   * groups are drawn.
    */
   function drawWavefronts(context, colors, { profile, spheres, total }) {
     // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
@@ -982,7 +983,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (!groups.has(sphere.group)) groups.set(sphere.group, []);
       groups.get(sphere.group).push(sphere);
     }
-    for (const group of groups.values()) drawFronts(context, colors, profile, group, terrainStride);
+    // Only the strongest groups, so the drawing costs the same however many fronts are under way.
+    const strength = group => Math.max(0, ...group.map(sphere => sphere.strength ?? 1));
+    const drawn = [...groups.values()].sort((a, b) => strength(b) - strength(a)).slice(0, VIEW.wavefront.groups);
+    for (const group of drawn) drawFronts(context, colors, profile, group, terrainStride);
   }
 
   /** One flash's or blast's fronts, as strong as their sound where they have spread to (`strength`). */

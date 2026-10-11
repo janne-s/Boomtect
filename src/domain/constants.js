@@ -560,10 +560,13 @@ export const VIEW = Object.freeze({
    * calibrated). Up high in layered air a front is drawn in homogeneous air at the speed there once
    * the linear profile strays more than localProfileTolerance from it. A front crossing a face is a
    * ripple: the front and fading rings behind it, spaced by a share of the box. Over terrain, where a
-   * front meets the ground is solved per direction, so fewer fronts are drawn.
+   * front meets the ground is solved per direction, so fewer fronts are drawn. Each flash, blast, or
+   * round is drawn as one group, and at most `groups` of the strongest at once: every group costs
+   * its own composited outlines, and a barrage of hundreds of rounds froze the view.
    */
   wavefront: Object.freeze({
     spheres: 360,
+    groups: 24,
     flightFronts: 120,
     frequencyHz: 1000,
     topDb: 140,
