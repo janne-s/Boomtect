@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
+import { arrivalTable, assemblePaths, combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -320,12 +320,13 @@ function spawnWorker(revision, message, { onProgress, onResult }) {
 }
 
 /**
- * Renders on a pool of workers in two steps. First every receiver's paths and arrival table are
- * traced in a worker of its own, which keeps the page responsive while terrain echoes are traced.
- * Then each receiver's arrivals are split into equal time ranges, with workers shared out by the
- * number of paths; each worker receives its receiver's traced paths rather than tracing them again.
- * With more receivers than workers, each worker renders whole receivers. The segments are summed in
- * range order. Every worker gets the scene as it was when the render started.
+ * Renders on a pool of workers in two steps. First the paths are traced: each receiver's sources
+ * and echo places are split into contiguous parts across the workers, and the parts are put
+ * together here into its paths and arrival table. Then each receiver's arrivals are split into
+ * equal time ranges, with workers shared out by the number of paths; each worker receives its
+ * receiver's traced paths rather than tracing them again. With more receivers than workers, each
+ * worker traces and renders whole receivers. The segments are summed in range order. Every worker
+ * gets the scene as it was when the render started.
  */
 function startRender() {
   state.revision += 1;
@@ -340,9 +341,11 @@ function startRender() {
     return;
   }
   let sources;
+  let prepared;
   let workerCount = WORKER_COUNT;
   try {
-    sources = prepareScene(scene).reduce((sum, item) => sum + item.sources.length, 0);
+    prepared = prepareScene(scene);
+    sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
     workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
   } catch (error) {
     setStatus(error.message, true);
@@ -359,24 +362,38 @@ function startRender() {
     setStatus(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`, true);
     drawResults();
   }, 5000);
-  const tracers = Math.min(workerCount, scene.receivers.length);
-  const arrivals = new Array(scene.receivers.length);
-  // Each receiver's traced paths go on to the workers that render it, so none traces them again.
-  const tracedPaths = new Array(scene.receivers.length);
+  // Each receiver's tracing is split into parts, so that its paths are traced on every worker; with
+  // more receivers than workers each is traced whole. The parts come together here, in their order.
+  const parts = Math.max(1, Math.floor(workerCount / scene.receivers.length));
+  const jobs = scene.receivers.flatMap((_, receiver) => Array.from({ length: parts }, (_, part) => ({ receiver, part, parts })));
+  const tracers = Math.min(workerCount, jobs.length);
+  const traced = scene.receivers.map(() => new Array(parts));
+  const progress = new Array(tracers).fill(0);
   let tracing = tracers;
-  const traced = new Array(tracers).fill(0);
   for (let index = 0; index < tracers; index += 1) {
-    const receivers = scene.receivers.map((_, receiverIndex) => receiverIndex).filter(receiverIndex => receiverIndex % tracers === index);
-    spawnWorker(revision, { type: 'arrivals', scene, receivers }, {
+    const own = jobs.filter((_, job) => job % tracers === index);
+    spawnWorker(revision, { type: 'trace', scene, jobs: own }, {
       onProgress: fraction => {
-        traced[index] = fraction;
-        operation('render', 'Tracing paths', { share: traced.reduce((a, b) => a + b, 0) / tracers });
+        progress[index] = fraction;
+        operation('render', 'Tracing paths', { share: progress.reduce((a, b) => a + b, 0) / tracers });
       },
       onResult: data => {
-        data.tables.forEach((table, position) => { arrivals[receivers[position]] = table; });
-        data.paths.forEach((paths, position) => { tracedPaths[receivers[position]] = paths; });
+        data.parts.forEach((result, position) => { traced[own[position].receiver][own[position].part] = result; });
         tracing -= 1;
-        if (tracing === 0) renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started });
+        if (tracing > 0) return;
+        let arrivals;
+        let tracedPaths;
+        try {
+          // Each receiver's paths go on to the workers that render it, so none traces them again.
+          tracedPaths = scene.receivers.map((receiver, receiverIndex) => assemblePaths(prepared, receiver, scene, traced[receiverIndex]));
+          arrivals = scene.receivers.map((receiver, receiverIndex) => arrivalTable(prepared, receiver, scene, { paths: tracedPaths[receiverIndex] }));
+        } catch (error) {
+          stopWorkers();
+          setStatus(error.message, true);
+          drawResults();
+          return;
+        }
+        renderRanges(revision, scene, arrivals, tracedPaths, { sources, workerCount, started });
       }
     });
   }

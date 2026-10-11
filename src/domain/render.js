@@ -127,30 +127,62 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
   return Math.sqrt(density * speedAt(profile, heightMetres) / profile.groundSpeed);
 }
 
+/** Entries per path of the arrays wider than one. */
+const PATH_WIDTHS = Object.freeze({ direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 });
+
+/** The arrays of a path table, by name, with their element types. */
+const PATH_ARRAYS = Object.freeze({
+  emitter: Uint16Array,
+  source: Uint32Array,
+  kind: Uint8Array,
+  seconds: Float64Array,
+  metres: Float64Array,
+  spreadMetres: Float64Array,
+  /** Creeping loss of a shadow path at 1 Hz, αL in nepers, which grows as f^(1/3). */
+  creepNepers: Float64Array,
+  /** Radius c₀/|g| of the air along a shadow path, which scales its ground's creeping mode. */
+  creepRadius: Float64Array,
+  directivityCos: Float64Array,
+  cosIncidence: Float64Array,
+  duration: Float64Array,
+  amplitudeScale: Float64Array,
+  direction: Float64Array,
+  edgeCount: Uint8Array,
+  edges: Float64Array,
+  /** Ground contacts of a reflected path: 1, or more where the air bends rays back down. */
+  bounces: Uint8Array,
+  /** An echo's image path differences at its source and receiver ends, metres, and the sines of its legs there. */
+  endLift: Float64Array,
+  endSine: Float64Array,
+  /** The echo's source height above its ground, which reflects as rigid ground within the source's linearization radius. */
+  sourceHeight: Float64Array,
+  /** Length of the path under a forest's canopy, metres. */
+  foliageMetres: Float64Array,
+  /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
+  roar: Uint8Array,
+  /** The time a scattered echo spreads over, seconds, from just before its arrival. */
+  timeSpread: Float64Array,
+  /** Height of the point the path leaves from: its source's, or where a boom leaves its flight path. */
+  height: Float64Array
+});
+
+/** An empty path table with room for `capacity` paths. */
+function pathTable(capacity) {
+  const paths = { count: 0 };
+  for (const [key, Type] of Object.entries(PATH_ARRAYS)) paths[key] = new Type(Math.max(1, capacity) * (PATH_WIDTHS[key] ?? 1));
+  return paths;
+}
+
 /**
- * Every path from the prepared sources to one receiver, as parallel typed arrays: the direct ray,
- * or in the refraction shadow the creeping path, and the ground-reflected ray where one exists.
- * Order is emitter, source, then direct before ground, so it is deterministic. `metres` is the
- * length along the path, which absorption and the weak shock use; `spreadMetres` the distance
- * whose inverse is the geometric amplitude; `edges` the geometric factors of the terrain edges
- * that shield a direct path (see `diffraction.js`).
- *
- * Over terrain, the refraction shadow and the ground reflection are found from the ground under the
- * receiver, as if the ground there extended level; the shielding checks the actual terrain.
+ * What tracing at a receiver needs, the same in every part of it: the air, the ground, each body's
+ * booms there, and each emitter's echo cells. Over terrain each boom also echoes, as a point source
+ * where it leaves the path whose pressure at the receiver's distance is the boom's (class C: the
+ * cone's front taken as a sphere from there, which holds near the receiver).
  */
-export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
-  // Progress over the echo places and then the sources, reported about every percent.
-  const units = preparedEmitters.reduce((sum, item) => sum + item.sources.length + (item.cells ? item.cells.places.length : 0) + (item.flights ? item.flights.length : 0), 0);
-  const every = Math.max(1, Math.floor(units / 100));
-  let done = 0;
-  const tick = onProgress ? () => { done += 1; if (done % every === 0) onProgress(done / units); } : () => {};
+function tracingFrame(preparedEmitters, receiver, scene) {
   const profile = soundSpeedProfile(scene.air);
-  const ground = scene.ground.enabled;
   const surface = terrainSurface(scene.terrain);
   const receiverPosition = onGround(surface, receiver.positionMetres);
-  // Each body's booms at this receiver; over terrain each also echoes, as a point source where it leaves
-  // the path whose pressure at the receiver's distance is the boom's (class C: the cone's front taken as
-  // a sphere from there, which holds near the receiver).
   const booms = preparedEmitters.map(prepared => prepared.flights?.map(({ flight, path, booms: find }) => find(path, flight, receiverPosition, profile, scene.air)) ?? null);
   const traceEchoes = echoesActive(scene) && !surface.flat;
   const cells = preparedEmitters.map((prepared, emitterIndex) => {
@@ -159,62 +191,28 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
     const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.map(boom => boomEchoRow(boom, member)))];
     return rows.length ? sourceCells(sourceTable(rows), scene.terrain.echoCellMetres) : null;
   });
-  const echoes = cells.some(Boolean) ? terrainEchoes(cells, scene, surface, profile, receiverPosition, tick) : [];
-  const capacity = preparedEmitters.reduce((sum, item) => sum + item.sources.length * (ground ? 2 : 1), 0) + echoes.length;
-  // Arrays per path and how many entries each holds; they grow when rays with several contacts add more.
-  const widths = { direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 };
-  const paths = {
-    count: 0,
-    emitter: new Uint16Array(capacity),
-    source: new Uint32Array(capacity),
-    kind: new Uint8Array(capacity),
-    seconds: new Float64Array(capacity),
-    metres: new Float64Array(capacity),
-    spreadMetres: new Float64Array(capacity),
-    /** Creeping loss of a shadow path at 1 Hz, αL in nepers, which grows as f^(1/3). */
-    creepNepers: new Float64Array(capacity),
-    /** Radius c₀/|g| of the air along a shadow path, which scales its ground's creeping mode. */
-    creepRadius: new Float64Array(capacity),
-    directivityCos: new Float64Array(capacity),
-    cosIncidence: new Float64Array(capacity),
-    duration: new Float64Array(capacity),
-    amplitudeScale: new Float64Array(capacity),
-    direction: new Float64Array(3 * capacity),
-    edgeCount: new Uint8Array(capacity),
-    edges: new Float64Array(MAXIMUM_EDGES * capacity),
-    /** Ground contacts of a reflected path: 1, or more where the air bends rays back down. */
-    bounces: new Uint8Array(capacity),
-    /** An echo's image path differences at its source and receiver ends, metres, and the sines of its legs there. */
-    endLift: new Float64Array(2 * capacity),
-    endSine: new Float64Array(2 * capacity),
-    /** The echo's source height above its ground, which reflects as rigid ground within the source's linearization radius. */
-    sourceHeight: new Float64Array(capacity),
-    /** Length of the path under a forest's canopy, metres. */
-    foliageMetres: new Float64Array(capacity),
-    /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
-    roar: new Uint8Array(capacity),
-    /** The time a scattered echo spreads over, seconds, from just before its arrival. */
-    timeSpread: new Float64Array(capacity),
-    /** Height of the point the path leaves from: its source's, or where a boom leaves its flight path. */
-    height: new Float64Array(capacity)
-  };
-  let room = capacity;
-  const grow = () => {
-    room = Math.max(16, 2 * room);
-    for (const [key, array] of Object.entries(paths)) {
-      if (!ArrayBuffer.isView(array)) continue;
-      const larger = new array.constructor(room * (widths[key] ?? 1));
-      larger.set(array);
-      paths[key] = larger;
-    }
-  };
-  const shielding = !surface.flat && scene.terrain.shielding;
+  return { profile, surface, receiverPosition, booms, cells, ground: scene.ground.enabled };
+}
+
+/** Writes paths into a table, growing it as needed: `add(emitterIndex, sourceIndex, sources, kind, path, edges)`. */
+function pathWriter(frame, scene, paths) {
+  const { profile, surface, receiverPosition } = frame;
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
   const shockImpedance = airShockImpedance(scene.air);
   const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
   const receiverLift = receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y);
-  let index = 0;
-  const add = (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
+  let room = paths.seconds.length;
+  const grow = () => {
+    room = Math.max(16, 2 * room);
+    for (const [key, array] of Object.entries(paths)) {
+      if (!ArrayBuffer.isView(array)) continue;
+      const larger = new array.constructor(room * (PATH_WIDTHS[key] ?? 1));
+      larger.set(array);
+      paths[key] = larger;
+    }
+  };
+  return (emitterIndex, sourceIndex, sources, kind, path, edges = []) => {
+    const index = paths.count;
     if (index >= room) grow();
     const { departure, arrival } = path;
     paths.bounces[index] = path.bounces ?? (kind === PATH_GROUND ? 1 : 0);
@@ -263,13 +261,86 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
       paths.duration[index] = sources.durationSeconds[sourceIndex];
       paths.amplitudeScale[index] = 1;
     }
-    index += 1;
+    paths.count += 1;
   };
+}
+
+/** The `part`-th of `parts` contiguous ranges of `count` items: [start, end). */
+const partRange = (count, part, parts) => [Math.floor(count * part / parts), Math.floor(count * (part + 1) / parts)];
+
+/**
+ * One part of the tracing at a receiver, for one of several threads: the sources and the echo
+ * places in its contiguous share of each. Returns its direct, shadow, and ground paths in one
+ * table; each emitter's specular echoes in a table of their own; and each emitter's scattered
+ * echoes as sums by arrival bin and direction (`mergeScattered`), in the order their bins first
+ * occurred, which `assemblePaths` adds across parts. The tables are cut to their count.
+ */
+export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts = 1, onProgress = null } = {}) {
+  const frame = tracingFrame(preparedEmitters, receiver, scene);
+  const { profile, surface, receiverPosition, booms, cells, ground } = frame;
+  const sourceCount = preparedEmitters.reduce((sum, item) => sum + item.sources.length, 0);
+  const placeCount = cells.reduce((sum, table) => sum + (table ? table.places.length : 0), 0);
+  const [sourceStart, sourceEnd] = partRange(sourceCount, part, parts);
+  const [placeStart, placeEnd] = partRange(placeCount, part, parts);
+  // Progress over this part's echo places and then its sources, reported about every percent.
+  const units = sourceEnd - sourceStart + placeEnd - placeStart;
+  const every = Math.max(1, Math.floor(units / 100));
+  let done = 0;
+  const tick = onProgress ? () => { done += 1; if (done % every === 0) onProgress(done / units); } : () => {};
+
+  // Echoes first, as the progress counts them.
+  const specular = cells.map(() => null);
+  const scattered = cells.map(() => null);
+  if (placeEnd > placeStart) {
+    const field = echoField(surface, profile, receiverPosition, {
+      scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit, shadowFloor: 10 ** (-scene.air.shadowFloorDecibels / 20)
+    });
+    const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
+    const receiverHeight = Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y));
+    let offset = 0;
+    cells.forEach((table, emitterIndex) => {
+      if (!table) return;
+      const { places } = table;
+      const from = Math.max(0, placeStart - offset);
+      const to = Math.min(places.length, placeEnd - offset);
+      offset += places.length;
+      if (to <= from) return;
+      const cellsOf = Array.from({ length: places.length }, () => []);
+      for (let cell = 0; cell < table.length; cell += 1) cellsOf[table.place[cell]].push(cell);
+      const paths = pathTable(16);
+      const add = pathWriter(frame, scene, paths);
+      const merged = new Map();
+      // Place by place, so that only one place's traced paths are held at a time.
+      for (let place = from; place < to; place += 1) {
+        tick();
+        const point = { x: places.x[place], y: places.y[place], z: places.z[place] };
+        const traced = echoPaths(field, point);
+        const sourceHeight = Math.max(0, point.z - surface.heightAt(point.x, point.y));
+        for (const path of traced) Object.assign(path, endImages(path, sourceHeight, receiverHeight, treeHeight));
+        for (const cell of cellsOf[place]) {
+          for (const path of traced) {
+            if (path.kind === PATH_SCATTER) mergeScattered(merged, table, cell, path);
+            else add(emitterIndex, cell, table, path.kind, path);
+          }
+        }
+      }
+      specular[emitterIndex] = compactPaths(paths).paths;
+      scattered[emitterIndex] = [...merged];
+    });
+  }
+
+  const direct = pathTable((sourceEnd - sourceStart) * (ground ? 2 : 1));
+  const add = pathWriter(frame, scene, direct);
+  let offset = 0;
   preparedEmitters.forEach((prepared, emitterIndex) => {
     const { sources } = prepared;
-    if (prepared.flights) {
-      prepared.flights.forEach((_, sourceIndex) => {
-        tick();
+    const from = Math.max(0, sourceStart - offset);
+    const to = Math.min(sources.length, sourceEnd - offset);
+    offset += sources.length;
+    const flightCount = prepared.flights?.length ?? 0;
+    for (let sourceIndex = from; sourceIndex < to; sourceIndex += 1) {
+      tick();
+      if (sourceIndex < flightCount) {
         for (const boom of booms[emitterIndex][sourceIndex]) {
           const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
           add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
@@ -278,43 +349,104 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
           const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
           if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
         }
-      });
-    }
-    for (let sourceIndex = prepared.flights?.length ?? 0; sourceIndex < sources.length; sourceIndex += 1) {
-      tick();
-      const position = sourcePosition(sources, sourceIndex);
-      // In wind, the air along this path has its own effective profile.
-      const along = pathProfile(profile, position, receiverPosition);
-      // Only air whose speed falls with height casts a shadow; over terrain it is judged from the mean ground plane.
-      if (along.gradient < 0) {
-        const frame = surface.flat ? { profile: along, from: position, to: receiverPosition } : meanPlaneFrame(along, surface.heightAt, position, receiverPosition);
-        if (inShadow(frame.profile, frame.from, frame.to)) {
-          const shadow = shadowPath(frame.profile, frame.from, frame.to);
-          add(emitterIndex, sourceIndex, sources, PATH_SHADOW, { ...shadow, creepNepers: creepingCoefficient(along) * shadow.creepMetres, creepRadius: along.groundSpeed / -along.gradient });
-          continue;
-        }
+        continue;
       }
-      const edges = shielding ? shieldingEdges(along, surface, position, receiverPosition) : [];
-      add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(along, position, receiverPosition), edges);
-      if (!ground) continue;
-      // The reflection near the receiver crosses the same ridges as the direct sound (class C).
-      const reflected = surface.flat ? reflectedRay(along, position, receiverPosition) : terrainReflection(along, surface, position, receiverPosition);
-      if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
-      // Where the air bends rays back down they may touch the ground several times (class C over terrain),
-      // but not those whose highest point leaves the layer the path's profile describes.
-      if (along.gradient > 0) {
-        const ceiling = airCeiling(scene.air, Math.max(position.z, receiverPosition.z));
-        for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) {
-          const apex = along.groundSpeed / along.gradient * (1 / Math.sqrt(1 - ray.groundSine ** 2) - 1);
-          if (apex <= ceiling) add(emitterIndex, sourceIndex, sources, PATH_GROUND, ray, edges);
-        }
-      }
+      tracePoint(frame, scene, add, emitterIndex, sourceIndex, sources);
     }
   });
-  for (const { emitterIndex, cell, kind, path } of echoes) add(emitterIndex, cell, cells[emitterIndex], kind, path);
-  paths.count = index;
-  paths.cells = cells;
+  return { direct: compactPaths(direct).paths, specular, scattered };
+}
+
+/** The direct or shadow path from one point source and its ground reflections. */
+function tracePoint(frame, scene, add, emitterIndex, sourceIndex, sources) {
+  const { profile, surface, receiverPosition, ground } = frame;
+  const position = sourcePosition(sources, sourceIndex);
+  // In wind, the air along this path has its own effective profile.
+  const along = pathProfile(profile, position, receiverPosition);
+  // Only air whose speed falls with height casts a shadow; over terrain it is judged from the mean ground plane.
+  if (along.gradient < 0) {
+    const plane = surface.flat ? { profile: along, from: position, to: receiverPosition } : meanPlaneFrame(along, surface.heightAt, position, receiverPosition);
+    if (inShadow(plane.profile, plane.from, plane.to)) {
+      const shadow = shadowPath(plane.profile, plane.from, plane.to);
+      add(emitterIndex, sourceIndex, sources, PATH_SHADOW, { ...shadow, creepNepers: creepingCoefficient(along) * shadow.creepMetres, creepRadius: along.groundSpeed / -along.gradient });
+      return;
+    }
+  }
+  const shielding = !surface.flat && scene.terrain.shielding;
+  const edges = shielding ? shieldingEdges(along, surface, position, receiverPosition) : [];
+  add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(along, position, receiverPosition), edges);
+  if (!ground) return;
+  // The reflection near the receiver crosses the same ridges as the direct sound (class C).
+  const reflected = surface.flat ? reflectedRay(along, position, receiverPosition) : terrainReflection(along, surface, position, receiverPosition);
+  if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
+  // Where the air bends rays back down they may touch the ground several times (class C over terrain),
+  // but not those whose highest point leaves the layer the path's profile describes.
+  if (along.gradient > 0) {
+    const ceiling = airCeiling(scene.air, Math.max(position.z, receiverPosition.z));
+    for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) {
+      const apex = along.groundSpeed / along.gradient * (1 / Math.sqrt(1 - ray.groundSine ** 2) - 1);
+      if (apex <= ceiling) add(emitterIndex, sourceIndex, sources, PATH_GROUND, ray, edges);
+    }
+  }
+}
+
+/** Appends a table's paths to another with room for them. */
+function appendPaths(target, source) {
+  if (!source?.count) return;
+  for (const key of Object.keys(PATH_ARRAYS)) {
+    const width = PATH_WIDTHS[key] ?? 1;
+    target[key].set(source[key].subarray(0, source.count * width), target.count * width);
+  }
+  target.count += source.count;
+}
+
+/**
+ * Every path at a receiver from the parts of its tracing, in the order one thread traces them:
+ * every emitter's sources in order, direct before ground; then each emitter's specular echoes by
+ * place and cell, and its scattered echoes merged across all its cells. The scattered sums add up
+ * in another order than in one thread, so they agree to rounding; which member is the strongest
+ * does not depend on it.
+ */
+export function assemblePaths(preparedEmitters, receiver, scene, parts) {
+  const frame = tracingFrame(preparedEmitters, receiver, scene);
+  const merged = frame.cells.map((_, emitterIndex) => {
+    const sums = new Map();
+    for (const part of parts) {
+      for (const [key, entry] of part.scattered[emitterIndex] ?? []) {
+        const sum = sums.get(key);
+        if (!sum) { sums.set(key, { ...entry }); continue; }
+        for (const field of MERGED_SUM_KEYS) sum[field] += entry[field];
+        if (entry.strongest > sum.strongest) Object.assign(sum, { strongest: entry.strongest, cell: entry.cell, seconds: entry.seconds });
+      }
+    }
+    return sums;
+  });
+  const count = parts.reduce((sum, part) => sum + part.direct.count + part.specular.reduce((total, table) => total + (table?.count ?? 0), 0), 0)
+    + merged.reduce((sum, sums) => sum + sums.size, 0);
+  const paths = pathTable(count);
+  for (const part of parts) appendPaths(paths, part.direct);
+  const add = pathWriter(frame, scene, paths);
+  frame.cells.forEach((table, emitterIndex) => {
+    for (const part of parts) appendPaths(paths, part.specular[emitterIndex]);
+    for (const sum of merged[emitterIndex].values()) add(emitterIndex, sum.cell, table, PATH_SCATTER, mergedPath(sum, table));
+  });
+  paths.cells = frame.cells;
   return paths;
+}
+
+/**
+ * Every path from the prepared sources to one receiver, as parallel typed arrays: the direct ray,
+ * or in the refraction shadow the creeping path, and the ground-reflected ray where one exists.
+ * Order is emitter, source, then direct before ground, so it is deterministic. `metres` is the
+ * length along the path, which absorption and the weak shock use; `spreadMetres` the distance
+ * whose inverse is the geometric amplitude; `edges` the geometric factors of the terrain edges
+ * that shield a direct path (see `diffraction.js`).
+ *
+ * Over terrain, the refraction shadow and the ground reflection are found from the ground under the
+ * receiver, as if the ground there extended level; the shielding checks the actual terrain.
+ */
+export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
+  return assemblePaths(preparedEmitters, receiver, scene, [tracePart(preparedEmitters, receiver, scene, { onProgress })]);
 }
 
 /**
@@ -322,10 +454,9 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
  * transferred rather than copied.
  */
 export function compactPaths(paths) {
-  const widths = { direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 };
   const compact = { count: paths.count, cells: paths.cells };
   for (const [key, array] of Object.entries(paths)) {
-    if (ArrayBuffer.isView(array)) compact[key] = array.slice(0, paths.count * (widths[key] ?? 1));
+    if (ArrayBuffer.isView(array)) compact[key] = array.slice(0, paths.count * (PATH_WIDTHS[key] ?? 1));
   }
   return { paths: compact, buffers: Object.values(compact).filter(ArrayBuffer.isView).map(array => array.buffer) };
 }
@@ -363,42 +494,6 @@ function boomEchoRow(boom, member) {
     amplitudePaMetres: boom.overpressurePa * boom.focus * boom.ray.metres, pulse: 'n-wave',
     durationSeconds: boom.durationSeconds, decay: 0, spanSeconds: boom.durationSeconds, linearRadiusMetres: 0, flight: true
   };
-}
-
-/**
- * The terrain echoes of every emitter's cells at a receiver: traced once per place, specular ones
- * kept per cell, and scattered ones merged across cells (`mergeScattered`).
- */
-function terrainEchoes(emitterCells, scene, surface, profile, receiverPosition, tick) {
-  const field = echoField(surface, profile, receiverPosition, {
-    scattering: scene.terrain.scattering, limit: scene.terrain.echoLimit, shadowFloor: 10 ** (-scene.air.shadowFloorDecibels / 20)
-  });
-  const treeHeight = scene.ground.forest ? scene.ground.treeHeightMetres : 0;
-  const list = [];
-  emitterCells.forEach((cells, emitterIndex) => {
-    if (!cells) return;
-    const { places } = cells;
-    const cellsOf = Array.from({ length: places.length }, () => []);
-    for (let cell = 0; cell < cells.length; cell += 1) cellsOf[cells.place[cell]].push(cell);
-    const scattered = new Map();
-    // Place by place, so that only one place's traced paths are held at a time.
-    for (let place = 0; place < places.length; place += 1) {
-      tick();
-      const point = { x: places.x[place], y: places.y[place], z: places.z[place] };
-      const traced = echoPaths(field, point);
-      const sourceHeight = Math.max(0, point.z - surface.heightAt(point.x, point.y));
-      const receiverHeight = Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y));
-      for (const path of traced) Object.assign(path, endImages(path, sourceHeight, receiverHeight, treeHeight));
-      for (const cell of cellsOf[place]) {
-        for (const path of traced) {
-          if (path.kind === PATH_SCATTER) mergeScattered(scattered, cells, cell, path);
-          else list.push({ emitterIndex, cell, kind: path.kind, path });
-        }
-      }
-    }
-    for (const merged of scattered.values()) list.push({ emitterIndex, cell: merged.cell, kind: PATH_SCATTER, path: mergedPath(merged, cells) });
-  });
-  return list;
 }
 
 /**
@@ -445,6 +540,8 @@ function mergeScattered(merged, cells, cell, path) {
 }
 
 const MERGED_END_KEYS = Object.freeze(['sourceLift', 'receiverLift', 'sourceSine', 'receiverSine', 'sourceHeight', 'foliageMetres', 'spreadSeconds']);
+/** The fields of merged scattered echoes that add up across cells. */
+const MERGED_SUM_KEYS = Object.freeze(['energy', 'metres', 'cosine', 'x', 'y', 'z', ...MERGED_END_KEYS]);
 
 function mergedPath(entry, cells) {
   const { energy, cell } = entry;

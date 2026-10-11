@@ -1,28 +1,24 @@
-import { arrivalTable, compactPaths, prepareScene, receiverPaths, renderReceiverRange } from './domain/render.js';
+import { prepareScene, renderReceiverRange, tracePart } from './domain/render.js';
 import { parseScene } from './domain/scene.js';
 
 /**
- * `arrivals`: the arrival tables of the given receivers, and their traced paths. `render`: the given
- * receivers for the paths that arrive in [fromSeconds, toSeconds), from their traced `paths`.
+ * `trace`: parts of the tracing at receivers, `jobs` of { receiver, part, parts }, which the page
+ * puts together. `render`: the given receivers for the paths that arrive in [fromSeconds,
+ * toSeconds), from their traced `paths`.
  */
 self.addEventListener('message', ({ data }) => {
   const { revision, type, scene: value } = data;
   try {
     const scene = parseScene(value);
     const prepared = prepareScene(scene);
-    if (type === 'arrivals') {
-      const traced = data.receivers.map((receiverIndex, index) => {
-        const receiver = scene.receivers[receiverIndex];
-        const paths = receiverPaths(prepared, receiver, scene, {
-          onProgress: share => self.postMessage({ revision, type: 'progress', fraction: (index + share) / data.receivers.length })
-        });
-        return { table: arrivalTable(prepared, receiver, scene, { paths }), ...compactPaths(paths) };
-      });
-      const tables = traced.map(item => item.table);
-      self.postMessage({ revision, type: 'result', tables, paths: traced.map(item => item.paths) }, [
-        ...tables.flatMap(table => [table.seconds.buffer, table.heights.buffer, table.levels.buffer, table.bearings.buffer, table.kinds.buffer]),
-        ...traced.flatMap(item => item.buffers)
-      ]);
+    if (type === 'trace') {
+      const parts = data.jobs.map(({ receiver, part, parts: count }, index) => tracePart(prepared, scene.receivers[receiver], scene, {
+        part,
+        parts: count,
+        onProgress: share => self.postMessage({ revision, type: 'progress', fraction: (index + share) / data.jobs.length })
+      }));
+      const tables = parts.flatMap(result => [result.direct, ...result.specular].filter(Boolean));
+      self.postMessage({ revision, type: 'result', parts }, tables.flatMap(table => Object.values(table).filter(ArrayBuffer.isView).map(array => array.buffer)));
       return;
     }
     const segments = data.receivers.map((receiverIndex, index) => {

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PROPAGATION } from '../src/domain/constants.js';
-import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
+import { assemblePaths, prepareScene, receiverPaths, renderReceiver, tracePart } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
-import { defaultBlast, defaultFlight, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
+import { defaultBlast, defaultFlight, defaultLightning, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
 import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
@@ -314,4 +314,32 @@ test('echo candidates come strongest at the receiver first, ties by kind and the
   const strength = candidate => candidate.energy / (candidate.r1 + candidate.r2) ** 2;
   const expected = [...candidates].sort((a, b) => strength(b) - strength(a) || a.kind - b.kind || a.index - b.index);
   assert.deepEqual([...strongestFirst(candidates)].map(candidate => candidate.index), expected.map(candidate => candidate.index));
+});
+
+test('tracing split into parts, as on several threads, gives the paths of one thread in their order', () => {
+  const hills = (x, y) => 150 + 250 * Math.exp(-((x - 1200) ** 2 + y ** 2) / 5e5);
+  const scene = plainScene('thunder');
+  scene.emitters = [{ ...defaultLightning(), topMetres: { x: 200, y: 0, z: 1200 }, branchDepth: 1, strokeCount: 2 }];
+  scene.receivers[0].positionMetres = { x: 700, y: 100, z: 1.7 };
+  scene.terrain = terrain(hills, { scattering: .5, echoLimit: 40 });
+  const parsed = parseScene(scene);
+  const prepared = prepareScene(parsed);
+  const receiver = parsed.receivers[0];
+  const whole = receiverPaths(prepared, receiver, parsed);
+  assert.ok(whole.kind.slice(0, whole.count).includes(PATH_SCATTER));
+  for (const parts of [2, 5]) {
+    const split = assemblePaths(prepared, receiver, parsed, Array.from({ length: parts }, (_, part) => structuredClone(tracePart(prepared, receiver, parsed, { part, parts }))));
+    assert.equal(split.count, whole.count);
+    for (const key of Object.keys(whole)) {
+      if (!ArrayBuffer.isView(whole[key])) continue;
+      // Both are made to the size of their paths.
+      assert.equal(split[key].length, whole[key].length, key);
+      for (let index = 0; index < whole[key].length; index += 1) {
+        const [a, b] = [whole[key][index], split[key][index]];
+        // Integers match exactly; merged scattered sums add up in another order, so agree to rounding.
+        if (!(whole[key] instanceof Float64Array)) assert.equal(b, a, `${parts}:${key}[${index}]`);
+        else assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a)), `${parts}:${key}[${index}] ${a} ${b}`);
+      }
+    }
+  }
 });
