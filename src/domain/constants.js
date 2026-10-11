@@ -561,6 +561,11 @@ export const VIEW = Object.freeze({
    * the linear profile strays more than localProfileTolerance from it. A front crossing a face is a
    * ripple: the front and fading rings behind it, spaced by a share of the box. Over terrain, where a
    * front meets the ground is solved per direction, so fewer fronts are drawn.
+   * A flash's thunder swells again where other parts of its channel arrive: up to `peaks` peaks of
+   * the microphone's envelope, in `peakWindowSeconds` RMS windows, within `peakRangeDb` of its
+   * loudest and standing `peakProminenceDb` above the dip to any louder one, each send a front of
+   * their own from where their sound left, at their level; the flash's other fronts then show at
+   * `baseShare` (display only, class C).
    */
   wavefront: Object.freeze({
     spheres: 360,
@@ -571,7 +576,12 @@ export const VIEW = Object.freeze({
     localProfileTolerance: .05,
     rippleAlphas: Object.freeze([.5, .3, .16, .07]),
     rippleSpacingShare: .018,
-    terrainSpheres: 80
+    terrainSpheres: 80,
+    peaks: 8,
+    peakWindowSeconds: .1,
+    peakRangeDb: 12,
+    peakProminenceDb: 3,
+    baseShare: .4
   }),
   /**
    * The map on the floor: the finest zoom (OpenTopoMap serves up to 17) at which about pixelsAcross
