@@ -1437,24 +1437,28 @@ function drawPlotTabs(soloId) {
 
 /* Playback */
 
-/** Travel time of a blast's first sound from where it burst to the receiver the view follows. */
+/** Travel time of a blast's first sound from where it burst, in the scene frame, to the receiver the view follows. */
 function arrivalDelay(from) {
   if (!from || !state.results) return 0;
-  const to = focusReceiver().positionMetres;
+  const to = placedPoint(focusReceiver().positionMetres);
   return travelSeconds(pathProfile(soundSpeedProfile(state.scene.air), from, to), from, to);
 }
 
 const isBlastKind = emitter => emitter.kind === 'blast' || emitter.kind === 'barrage';
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
-/** Every stroke of an emitter as its flash, scene time, and route; a blast's, a round's, and a meteor's breakups and bursts also where they burst. */
+/**
+ * Every stroke of an emitter as its flash, scene time, and route; a blast's, a round's, and a
+ * meteor's breakups and bursts also where they burst, as stored (`position`) and in the scene frame
+ * over the terrain (`from`).
+ */
 function strokeTimeline(emitter) {
-  if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres }];
+  if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres, from: placedPoint(emitter.positionMetres) }];
   if (isMeteorKind(emitter)) {
-    return showerMembers(emitter).flatMap((meteor, index) => meteorBursts(meteor, state.scene.air).map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres })));
+    return showerMembers(emitter).flatMap((meteor, index) => meteorBursts(meteor, state.scene.air).map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
   }
   if (isTrackKind(emitter)) return [];
-  if (emitter.kind === 'barrage') return cachedRounds(emitter).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres }));
+  if (emitter.kind === 'barrage') return cachedRounds(emitter).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres) }));
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 
@@ -1476,11 +1480,11 @@ function animationState() {
     const timeline = strokeTimeline(emitter);
     if (realDelay || isBlastKind(emitter) || isMeteorKind(emitter)) {
       strokes.set(emitter.id, timeline
-        .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(stroke.position) }))
+        .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(stroke.from) }))
         .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < VIEW.flash.traverseSeconds + VIEW.flash.visibleSeconds));
     }
   }
-  const receiver = focusReceiver().positionMetres;
+  const receiver = placedPoint(focusReceiver().positionMetres);
   const sound = !realDelay && result ? { seconds: now, key: `${receiver.x},${receiver.y},${receiver.z}|${JSON.stringify(state.scene.air)}`, travelSeconds: point => travelSeconds(profile, point, receiver) } : null;
   const receivers = new Map();
   for (const [id, envelopeData] of state.envelopes) {
