@@ -4,12 +4,13 @@ import { secondaryShockDelay, secondaryShockFactors } from '../src/domain/explos
 import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
 import { FIREBALL_WINDOW_SECONDS, fireballSamples } from '../src/domain/fireball.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
-import { defaultScene, parseScene } from '../src/domain/scene.js';
+import { parseScene } from '../src/domain/scene.js';
+import { plainScene } from './plain-scene.js';
 
 const SAMPLE_RATE = 48000;
 
 function freeBlast(emitter, distance) {
-  const scene = defaultScene('blast');
+  const scene = plainScene('blast');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
   scene.ground = { ...scene.ground, enabled: false };
   scene.emitters[0] = { ...scene.emitters[0], positionMetres: { x: 0, y: 0, z: 100 }, ...emitter };
@@ -90,7 +91,7 @@ test('at the microphone the roar peaks its Fireball level below the shock’s li
     for (let index = start; index < start + window; index += 1) sum += roar[index] ** 2;
     largest = Math.max(largest, Math.sqrt(sum / window));
   }
-  const [{ sources }] = prepareScene(parseScene({ ...defaultScene('blast'), emitters: [{ ...defaultScene('blast').emitters[0], secondaryShock: false }] }));
+  const [{ sources }] = prepareScene(parseScene({ ...plainScene('blast'), emitters: [{ ...plainScene('blast').emitters[0], secondaryShock: false }] }));
   const linear = sources.amplitudePaMetres[0] / distance;
   const level = 20 * Math.log10(largest / linear);
   assert.ok(Math.abs(level + 20) < 1, `${level}`);

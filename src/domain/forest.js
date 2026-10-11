@@ -61,6 +61,24 @@ const REVERB_BUILD_SECONDS = .005;
 /** Length of the impulse response: the longest band has fallen 70 dB. */
 export const REVERB_LENGTH_SECONDS = 70 / 60 * Math.max(...REVERB_SECONDS);
 
+const FOREST = Object.freeze({ seconds: REVERB_SECONDS, energyShare: REVERB_ENERGY_SHARE, buildSeconds: REVERB_BUILD_SECONDS, salt: 0 });
+
+/**
+ * The rumble of the surroundings over level ground: what the distant land, its edges of forest,
+ * buildings, and hills return of a loud sound, which over loaded terrain its echoes trace instead.
+ * Class C, fitted to recorded sonic booms and the Chelyabinsk fireball (Doc/reference/audio
+ * sonic1–3, meteor1): a tail at 15–25 dB under the sound, falling 8–10 dB per second, mostly below
+ * 250 Hz. It builds up over SURROUNDINGS_BUILD_SECONDS, as the nearest of it is some way off.
+ */
+const SURROUNDINGS = Object.freeze({
+  seconds: Object.freeze([7, 7, 6, 4.5, 3, 2, 1.5, 1, .7, .5]),
+  energyShare: .04,
+  buildSeconds: .15,
+  salt: 0x5bd1e995
+});
+/** Length of the surroundings' response: its longest band has fallen 70 dB. */
+export const SURROUNDINGS_LENGTH_SECONDS = 70 / 60 * Math.max(...SURROUNDINGS.seconds);
+
 /** A 32-bit seed from a receiver's id, so that each receiver hears its own forest. */
 export function forestSeed(id) {
   let hash = 0x811c9dc5;
@@ -76,16 +94,25 @@ export function forestSeed(id) {
  * of the omnidirectional energy (SN3D). Deterministic from the seed.
  */
 export function forestResponses(seed, channels, sampleRate) {
-  // A thread renders several ranges of one receiver in turn; they share the last responses made.
-  const key = `${seed}:${channels}:${sampleRate}`;
-  if (lastResponses?.key !== key) lastResponses = { key, responses: makeResponses(seed, channels, sampleRate) };
-  return lastResponses.responses;
+  return cachedResponses(FOREST, seed, channels, sampleRate);
 }
 
-let lastResponses = null;
+/** The surroundings' tail at a receiver (see SURROUNDINGS), per channel, from its own seed. */
+export function surroundingsResponses(seed, channels, sampleRate) {
+  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, channels, sampleRate);
+}
 
-function makeResponses(seed, channels, sampleRate) {
-  const length = Math.ceil(REVERB_LENGTH_SECONDS * sampleRate);
+// A thread renders several ranges of one receiver in turn; they share the last responses made.
+const lastResponses = new Map();
+
+function cachedResponses(profile, seed, channels, sampleRate) {
+  const key = `${seed}:${channels}:${sampleRate}`;
+  if (lastResponses.get(profile)?.key !== key) lastResponses.set(profile, { key, responses: makeResponses(profile, seed, channels, sampleRate) });
+  return lastResponses.get(profile).responses;
+}
+
+function makeResponses(profile, seed, channels, sampleRate) {
+  const length = Math.ceil(70 / 60 * Math.max(...profile.seconds) * sampleRate);
   const size = nextPowerOfTwo(length);
   const binHz = sampleRate / size;
   const bands = REVERB_BANDS_HZ.length;
@@ -121,15 +148,15 @@ function makeResponses(seed, channels, sampleRate) {
       }
       if (!bandEnergy) continue;
       fft(re, im, true);
-      const decay = 3 * Math.LN10 / REVERB_SECONDS[band];
+      const decay = 3 * Math.LN10 / profile.seconds[band];
       let energy = 0;
       for (let index = 0; index < length; index += 1) {
         const t = index / sampleRate;
-        re[index] *= (1 - Math.exp(-t / REVERB_BUILD_SECONDS)) * Math.exp(-decay * t);
+        re[index] *= (1 - Math.exp(-t / profile.buildSeconds)) * Math.exp(-decay * t);
         energy += re[index] * re[index];
       }
       // A unit impulse carries bandEnergy / (size / 2) of its energy in this band.
-      const target = REVERB_ENERGY_SHARE * REVERB_SECONDS[band] / REVERB_SECONDS[5] * bandEnergy / (size / 2) / (2 * order + 1);
+      const target = profile.energyShare * profile.seconds[band] / profile.seconds[5] * bandEnergy / (size / 2) / (2 * order + 1);
       const scale = energy > 0 ? Math.sqrt(target / energy) : 0;
       for (let index = 0; index < length; index += 1) response[index] += re[index] * scale;
     }
@@ -138,7 +165,7 @@ function makeResponses(seed, channels, sampleRate) {
 }
 
 /**
- * Adds the forest's tail to rendered channels in place: every channel gains the omnidirectional
+ * Adds a diffuse tail (the forest's or the surroundings') to rendered channels in place: every channel gains the omnidirectional
  * pressure convolved with its own response. The channels must already hold room for the tail.
  */
 export function addForestTail(outputs, responses) {

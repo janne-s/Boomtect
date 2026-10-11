@@ -3,12 +3,13 @@ import test from 'node:test';
 import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
 import { FOLIAGE_BANDS_HZ, FOLIAGE_DECIBELS_PER_METRE, foliageExponent, foliageMetres, forestResponses } from '../src/domain/forest.js';
 import { combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
-import { defaultScene, parseScene } from '../src/domain/scene.js';
+import { parseScene } from '../src/domain/scene.js';
+import { plainScene } from './plain-scene.js';
 
 const SAMPLE_RATE = 48000;
 
 function forestBlast({ distance = 400, forest = true } = {}) {
-  const scene = defaultScene('blast');
+  const scene = plainScene('blast');
   scene.ground = { ...scene.ground, forest };
   // The shock alone, so that the tail is the forest's.
   scene.emitters[0] = { ...scene.emitters[0], secondaryShock: false, fireballDecibels: -60 };

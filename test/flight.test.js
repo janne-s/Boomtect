@@ -3,9 +3,10 @@ import test from 'node:test';
 import { carlsonBoom, flightBooms, flightPath, machCone, withApproach } from '../src/domain/flight.js';
 import { soundSpeedProfile } from '../src/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
-import { defaultFlight, defaultScene, parseScene } from '../src/domain/scene.js';
+import { defaultFlight, parseScene } from '../src/domain/scene.js';
+import { plainScene } from './plain-scene.js';
 
-const stillAir = { ...defaultScene('sonic').air, refraction: false };
+const stillAir = { ...plainScene('sonic').air, refraction: false };
 const level = (change = {}) => ({ ...defaultFlight(), startMetres: { x: -30000, y: 0, z: 10000 }, mach: 2, durationSeconds: 120, ...change });
 const origin = { x: 0, y: 0, z: 0 };
 
@@ -33,7 +34,7 @@ test('in still air a steady boom arrives h·√(M² − 1)/v after the body pass
 });
 
 test('a subsonic body leaves no boom, nor one the air turns away before the ground (Mach cutoff near 1.153 at 12 km)', () => {
-  const air = defaultScene('sonic').air;
+  const air = plainScene('sonic').air;
   const profile = soundSpeedProfile(air);
   const booms = mach => {
     const flight = level({ startMetres: { x: -60000, y: 0, z: 12000 }, mach, durationSeconds: 300 });
@@ -58,7 +59,7 @@ test('turning or accelerating flight focuses its boom where its rays converge', 
 });
 
 test('the rendered N-wave carries Carlson’s overpressure and duration in free air', () => {
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
   scene.ground = { ...scene.ground, enabled: false };
   scene.emitters = [{ ...level(), riseTimeSeconds: 1e-3 }];
@@ -85,7 +86,7 @@ test('a formation flies in a vee behind its leader, and each of its aircraft lea
   const formation = { ...defaultFormation(), startMetres: { x: -30000, y: 0, z: 10000 }, mach: 2, durationSeconds: 120, headingDegrees: 90, memberCount: 3, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
   const members = flightMembers(formation);
   assert.deepEqual(members.map(member => [Math.round(member.startMetres.x), Math.round(member.startMetres.y)]), [[-30000, 0], [-31500, -1000], [-31500, 1000]]);
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.emitters = [formation];
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
@@ -114,7 +115,7 @@ test('the Mach cone drawn at the clock opens at asin(1/M) behind the body, and a
 
 test('turbulence spikes a boom’s front, seeded, while its N-wave keeps its area', () => {
   const render = turbulenceStrength => {
-    const scene = defaultScene('sonic');
+    const scene = plainScene('sonic');
     scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength };
     scene.ground = { ...scene.ground, enabled: false };
     scene.emitters = [level()];
@@ -132,7 +133,7 @@ test('turbulence spikes a boom’s front, seeded, while its N-wave keeps its are
 });
 
 test('a body supersonic at its start has flown before it: a microphone beside the start hears its boom', () => {
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.emitters = [{ ...defaultFlight(), startMetres: { x: -500, y: 0, z: 6000 } }];
   const parsed = parseScene(scene);
   const flight = parsed.emitters[0];
@@ -147,7 +148,7 @@ test('a body supersonic at its start has flown before it: a microphone beside th
 });
 
 test('the default flight is heard within about half a minute, all of it within a few kilometres of the origin', () => {
-  const parsed = parseScene(defaultScene('sonic'));
+  const parsed = parseScene(plainScene('sonic'));
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   const first = result.arrivals.seconds.reduce((earliest, seconds) => Math.min(earliest, seconds), Infinity);
   assert.ok(first > 15 && first < 40, `${first} s`);

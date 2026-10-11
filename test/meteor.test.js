@@ -5,10 +5,11 @@ import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/domain/air
 import { meteorBlast, meteorBoom, meteorBursts, meteorKineticEnergy, meteorTrail, showerMembers } from '../src/domain/meteor.js';
 import { emitterSources, MAXIMUM_HIGH_BLAST_SECONDS } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
-import { defaultMeteor, defaultScene, defaultShower, parseScene } from '../src/domain/scene.js';
+import { defaultMeteor, defaultShower, parseScene } from '../src/domain/scene.js';
+import { plainScene } from './plain-scene.js';
 
 test('a meteor’s blast radius is √(E₀/p) = M·d·√(γ·C_D·π/8)', () => {
-  const air = defaultScene('sonic').air;
+  const air = plainScene('sonic').air;
   const meteor = defaultMeteor();
   const height = 60000;
   const c = Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, height));
@@ -19,7 +20,7 @@ test('a meteor’s blast radius is √(E₀/p) = M·d·√(γ·C_D·π/8)', () =
 });
 
 test('a meteor’s boom follows ReVelle: Δp/p = 0.0309 at 10 R₀, then x^(−3/4), and x^(−1/2) once linear', () => {
-  const air = defaultScene('sonic').air;
+  const air = plainScene('sonic').air;
   const meteor = defaultMeteor();
   const height = 60000;
   const { radiusMetres } = meteorBlast(meteor, air, height);
@@ -36,7 +37,7 @@ test('a meteor’s boom follows ReVelle: Δp/p = 0.0309 at 10 R₀, then x^(−3
 
 /** A meteor's render in plain air without ground, and its stationary arrival over the trail. */
 function plainMeteor(diameterMetres) {
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
   scene.ground = { ...scene.ground, enabled: false };
   scene.emitters = [{ ...defaultMeteor(), startMetres: { x: -20000, y: 0, z: 60000 }, endHeightMetres: 20000, diameterMetres, breakupCount: 0, burstShare: 0 }];
@@ -70,7 +71,7 @@ test('a meteor’s boom is one N-wave from where its Mach cone reaches the micro
 });
 
 test('a meteor breaks up in generations of fragments from its strength, seeded, and bursts where its trail ends', () => {
-  const air = defaultScene('sonic').air;
+  const air = plainScene('sonic').air;
   const meteor = { ...defaultMeteor(), breakupCount: 4 };
   const bursts = meteorBursts(meteor, air);
   assert.deepEqual(meteorBursts(meteor, air), bursts);
@@ -106,7 +107,7 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
 });
 
 test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer, and louder on its way down', () => {
-  const air = defaultScene('sonic').air;
+  const air = plainScene('sonic').air;
   const meteor = defaultMeteor();
   const sources = emitterSources(meteor, air).sources;
   const places = meteorBursts(meteor, air);
@@ -122,14 +123,14 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   // A large meteoroid's burst is held to the longest positive phase, and its scene renders.
   const large = { ...meteor, diameterMetres: 50 };
   assert.ok(emitterSources(large, air).sources.slice(1).every(source => source.durationSeconds === MAXIMUM_HIGH_BLAST_SECONDS));
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.emitters = [large];
   const parsed = parseScene(scene);
   assert.ok(renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed).samples.every(Number.isFinite));
 });
 
 test('a meteor’s breakups and burst are heard after its boom when they lie past its stationary point', () => {
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.emitters = [defaultMeteor()];
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);

@@ -3,7 +3,7 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, KELVIN_OFFSET, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
-import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES } from './forest.js';
+import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES, surroundingsResponses } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
@@ -111,8 +111,20 @@ const REFERENCE_TURBULENCE = 1e-6;
 const TURBULENT_RISE_RATIO = 10;
 /** The latest sub-arrival, in rise times. */
 const TURBULENT_LONGEST_RISES = 8;
-/** Knots of the seeded turbulent phase curve across frequency; the grid interpolates between them. */
-const TURBULENCE_KNOTS = 9;
+/**
+ * A ground reflection is only partly coherent with the direct sound: the ground's roughness
+ * (Rayleigh, σ² = (2k·h·sin ψ)², h GROUND_ROUGHNESS_METRES on natural ground) and the turbulence
+ * between the paths (`turbulentPhaseVariance`) scatter a share 1 − e^(−σ²) of its energy, which
+ * returns as REFLECTION_SCATTER_ARRIVALS seeded sub-arrivals of random sign over a few milliseconds
+ * (mean REFLECTION_SCATTER_SECONDS) rather than as one sharp copy (class C for the height and the
+ * spread). Without it every sharp pulse and its reflection sounded as a pitch at the inverse of
+ * their delay (measured: 160–270 Hz, correlation 0.29–0.46 at a microphone 1.7 m up).
+ */
+const GROUND_ROUGHNESS_METRES = .05;
+const REFLECTION_SCATTER_ARRIVALS = 12;
+const REFLECTION_SCATTER_SECONDS = .002;
+/** The scattered share of a reflection on the ground grid, per path. */
+const groundScatter = new Float64Array(GROUND_GRID_POINTS);
 const SMALL_ARGUMENT = 1e-4;
 /** Frequency at which the arrival diagram weighs a shadow path's creeping loss. */
 const DIAGRAM_FREQUENCY_HZ = 100;
@@ -598,8 +610,8 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
-    // A boom's turbulent front reaches TURBULENT_LONGEST_RISES rise times past it.
-    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + (sources.flight[source] ? TURBULENT_LONGEST_RISES * prepared.emitter.riseTimeSeconds : 0));
+    // A boom's turbulent front reaches TURBULENT_LONGEST_RISES rise times past it, a reflection's scattered part as many of its means.
+    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + TURBULENT_LONGEST_RISES * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + REFLECTION_SCATTER_SECONDS));
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
@@ -811,26 +823,30 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
   // Share of the reflection that follows the ground's impedance; the rest merges with the direct front.
   const merging = reflected ? 1 - shock * (1 - linearShare(paths.cosIncidence[index] / Math.sqrt(2 * AIR_NONLINEARITY * mach))) : 1;
+  let scattering = false;
   if (ground || turbulent) {
-    const random = createRandom(seed);
-    const knots = Float64Array.from({ length: TURBULENCE_KNOTS }, () => normalDeviate(random));
+    const roughness = reflected && ground ? GROUND_ROUGHNESS_METRES : 0;
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
       const frequency = plan.groundFrequencies[point];
       // A specular echo reflects like the ground; a scattered one keeps the reflected share of its energy.
       let q = !ground ? [1, 0]
         : kind === PATH_SCATTER ? [planeReflectionMagnitude(frequency, scene.ground.type, paths.cosIncidence[index]), 0]
           : sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed);
-      if (merging < 1) q = [merging * q[0] + 1 - merging, merging * q[1]];
+      // The coherent share, and the scattered rest; the part of a shock merging with the direct front stays whole.
+      const k = 2 * Math.PI * frequency / speed;
+      const variance = (2 * k * roughness * paths.cosIncidence[index]) ** 2
+        + (turbulent ? turbulentPhaseVariance(frequency, metres, paths.height[index], receiverHeight, scene.air, speed) : 0);
+      const coherent = reflected ? Math.exp(-variance / 2) : 1;
+      groundScatter[point] = reflected ? merging * Math.hypot(q[0], q[1]) * Math.sqrt(1 - coherent * coherent) : 0;
+      if (groundScatter[point] > 0) scattering = true;
+      q = [merging * coherent * q[0] + 1 - merging, merging * coherent * q[1]];
       // Every contact of a ray that touches the ground several times reflects it at the same angle (class C).
       for (let bounce = 1, single = q; bounce < paths.bounces[index]; bounce += 1) q = [q[0] * single[0] - q[1] * single[1], q[0] * single[1] + q[1] * single[0]];
-      const position = point / (GROUND_GRID_POINTS - 1) * (TURBULENCE_KNOTS - 1);
-      const lower = Math.min(TURBULENCE_KNOTS - 2, Math.floor(position));
-      const deviate = knots[lower] + (knots[lower + 1] - knots[lower]) * (position - lower);
-      const phase = turbulent ? deviate * Math.sqrt(turbulentPhaseVariance(frequency, metres, paths.height[index], receiverHeight, scene.air, speed)) : 0;
-      groundRe[point] = q[0] * Math.cos(phase) - q[1] * Math.sin(phase);
-      groundIm[point] = q[0] * Math.sin(phase) + q[1] * Math.cos(phase);
+      groundRe[point] = q[0];
+      groundIm[point] = q[1];
     }
   }
+  const reflectionScatter = scattering ? subArrivals(REFLECTION_SCATTER_ARRIVALS, REFLECTION_SCATTER_SECONDS, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz) : null;
@@ -963,8 +979,19 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       const position = gridPosition[bin];
       const lower = Math.floor(position);
       const mix = position - lower;
-      const qRe = groundRe[lower] + (groundRe[lower + 1] - groundRe[lower]) * mix;
-      const qIm = groundIm[lower] + (groundIm[lower + 1] - groundIm[lower]) * mix;
+      let qRe = groundRe[lower] + (groundRe[lower + 1] - groundRe[lower]) * mix;
+      let qIm = groundIm[lower] + (groundIm[lower + 1] - groundIm[lower]) * mix;
+      if (reflectionScatter) {
+        const share = groundScatter[lower] + (groundScatter[lower + 1] - groundScatter[lower]) * mix;
+        const { gain: subGain, re: subRe, im: subIm, stepRe, stepIm } = reflectionScatter;
+        for (let k = 0; k < subGain.length; k += 1) {
+          qRe += share * subGain[k] * subRe[k];
+          qIm += share * subGain[k] * subIm[k];
+          const nextRe = subRe[k] * stepRe[k] - subIm[k] * stepIm[k];
+          subIm[k] = subRe[k] * stepIm[k] + subIm[k] * stepRe[k];
+          subRe[k] = nextRe;
+        }
+      }
       const nextRe = re * qRe - im * qIm;
       im = re * qIm + im * qRe;
       re = nextRe;
@@ -1000,6 +1027,26 @@ function scatterArrivals(spread, seed, binHz) {
     re[k] = stepRe[k]; im[k] = stepIm[k];
   }
   return { gain, re, im, stepRe, stepIm, direct: 0 };
+}
+
+/**
+ * `count` seeded sub-arrivals of random sign and unit total energy, delayed exponentially with mean
+ * `seconds` (at most TURBULENT_LONGEST_RISES means), as rotations from bin 1.
+ */
+function subArrivals(count, seconds, seed, binHz) {
+  const random = createRandom(seed >>> 0);
+  const gain = new Float64Array(count);
+  const re = new Float64Array(count);
+  const im = new Float64Array(count);
+  const stepRe = new Float64Array(count);
+  const stepIm = new Float64Array(count);
+  for (let k = 0; k < count; k += 1) {
+    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(count);
+    const step = -2 * Math.PI * binHz * Math.min(TURBULENT_LONGEST_RISES, -Math.log(1 - random())) * seconds;
+    stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
+    re[k] = stepRe[k]; im[k] = stepIm[k];
+  }
+  return { gain, re, im, stepRe, stepIm };
 }
 
 /**
@@ -1102,6 +1149,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
   }
   const forest = scene.ground.forest ? forestResponses(forestSeed(receiver.id), channels, sampleRate) : null;
+  // Over loaded terrain its echoes are the surroundings; over level ground a diffuse tail stands for them.
+  const surroundings = scene.ground.surroundings && !(echoesActive(scene) && !terrainSurface(scene.terrain).flat) ? surroundingsResponses(forestSeed(receiver.id), channels, sampleRate) : null;
   // Each emitter's roar, which its impulses are convolved with; its ground reflection has a roar of its
   // own seed, because the roar comes from the whole moving fireball and debris cloud rather than a
   // point, and so does not interfere with its reflection (class C).
@@ -1113,7 +1162,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     return [0, 1].map(part => ({ samples: fireballSamples((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate), impulses: null }));
   });
   const roarLength = Math.max(0, ...roars.map(roar => (roar ? roar[0].samples.length : 0)));
-  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + roarLength + (forest ? forest[0].length : 0)));
+  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + roarLength + (forest ? forest[0].length : 0) + (surroundings ? surroundings[0].length : 0)));
   const gains = new Float64Array(channels);
   selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
@@ -1156,6 +1205,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     }
   }
   if (forest) addForestTail(outputs, forest);
+  if (surroundings) addForestTail(outputs, surroundings);
   return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
 }
 

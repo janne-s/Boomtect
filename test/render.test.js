@@ -3,10 +3,11 @@ import test from 'node:test';
 import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
 import { sphericalReflectionCoefficient } from '../src/domain/ground.js';
 import { airShockImpedance, blastStretch, combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
-import { defaultBlast, defaultLightning, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
+import { defaultBlast, defaultLightning, defaultReceiver, parseScene } from '../src/domain/scene.js';
+import { plainScene } from './plain-scene.js';
 
 function scene({ emitter, receivers, ground = { enabled: false, type: 'rigid' }, absorption = false, refraction = false }) {
-  const base = defaultScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
+  const base = plainScene(emitter.kind === 'blast' ? 'blast' : 'thunder');
   return parseScene({ ...base, air: { ...base.air, absorption, refraction, turbulenceStrength: 0 }, ground: { ...base.ground, ...ground }, emitters: [emitter], receivers });
 }
 
@@ -119,7 +120,7 @@ test('renders are finite and refuse an arrival span over the limit', () => {
   const result = render(scene({ emitter: lightning, receivers: [receiverAt('mic', { x: 500, y: 0, z: 1.7 })], ground: { enabled: true, type: 'grass' }, absorption: true }));
   assert.ok(result.samples.every(Number.isFinite));
   assert.ok(result.peakPa > 0);
-  const base = defaultScene('blast');
+  const base = plainScene('blast');
   const wide = parseScene({
     ...base,
     emitters: [{ ...smallBlast({ x: 0, y: 0, z: 1 }), id: 'a' }, { ...smallBlast({ x: 48000, y: 0, z: 1 }), id: 'b', startSeconds: 100 }],
@@ -169,8 +170,14 @@ test('turbulence fills the grazing ground dip of a distant blast', () => {
   const turbulentScene = scene(base);
   turbulentScene.air.turbulenceStrength = 1e-6;
   const windy = render(turbulentScene);
-  const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
-  assert.ok(energy(windy.samples) > energy(calm.samples));
+  // Here the dip of grass at grazing incidence lies at 1–4 kHz.
+  const dip = ({ samples, sampleRate }) => [1000, 1500, 2000, 3000, 4000].reduce((sum, frequency) => {
+    let re = 0;
+    let im = 0;
+    samples.forEach((value, index) => { re += value * Math.cos(2 * Math.PI * frequency * index / sampleRate); im += value * Math.sin(2 * Math.PI * frequency * index / sampleRate); });
+    return sum + re * re + im * im;
+  }, 0);
+  assert.ok(dip(windy) > dip(calm), `${dip(windy)} vs ${dip(calm)}`);
 });
 
 test('the omnidirectional channel is the pressure and a source in the east sounds from the east', () => {

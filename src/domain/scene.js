@@ -9,7 +9,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 20;
+export const SCENE_VERSION = 21;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -358,7 +358,7 @@ export function defaultScene(mode = 'thunder') {
       windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, humidityScaleHeightMetres: 2000,
       groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
     },
-    ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15 },
+    ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, surroundings: true },
     terrain: null,
     emitters: [blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning()],
     receivers: [receiver],
@@ -533,6 +533,7 @@ export function parseScene(value) {
   check(typeof ground.enabled === 'boolean', 'ground.enabled must be true or false.');
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
   check(typeof ground.forest === 'boolean', 'ground.forest must be true or false.');
+  check(typeof ground.surroundings === 'boolean', 'ground.surroundings must be true or false.');
   check(Array.isArray(value.emitters) && value.emitters.length >= 1 && value.emitters.length <= MAXIMUM_EMITTERS,
     `A scene needs 1–${MAXIMUM_EMITTERS} emitters.`);
   check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= MAXIMUM_RECEIVERS,
@@ -558,7 +559,7 @@ export function parseScene(value) {
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
       ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
     },
-    ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres') },
+    ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), surroundings: ground.surroundings },
     terrain: terrain(value.terrain),
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),

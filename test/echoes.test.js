@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
-import { defaultBlast, defaultFlight, defaultScene, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
+import { defaultBlast, defaultFlight, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
 import { CELL_SECONDS, clearBetween, echoField, echoPaths, echoSurface, SCATTER_BIN_SECONDS, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+import { plainScene } from './plain-scene.js';
 
 function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
   const cellMetres = extentMetres / cells;
@@ -65,7 +66,7 @@ test('an echo from a slope beyond level ground arrives along its image path, 2 0
 });
 
 test('on level terrain the only specular point is the ground reflection, which is left to the ground', () => {
-  const scene = defaultScene('blast');
+  const scene = plainScene('blast');
   scene.terrain = terrain(() => 120, { scattering: 0 });
   const prepared = prepareScene(scene);
   const paths = receiverPaths(prepared, scene.receivers[0], scene);
@@ -147,7 +148,7 @@ test('the horizon test agrees with tracing the line in at least 98 % of facet–
 
 test('echoes over hills render finite, reproducible, and later than the direct sound', () => {
   const hills = (x, y) => 150 + 250 * Math.exp(-((x - 1200) ** 2 + y ** 2) / 5e5);
-  const scene = defaultScene('blast');
+  const scene = plainScene('blast');
   scene.emitters = [{ ...defaultBlast(), positionMetres: { x: -300, y: 0, z: 2 } }];
   scene.receivers[0].positionMetres = { x: 300, y: 0, z: 1.7 };
   scene.terrain = terrain(hills, { scattering: .5, echoLimit: 100 });
@@ -173,7 +174,7 @@ test('echoes over hills render finite, reproducible, and later than the direct s
 
 test('merged scattered echoes do not fall on a regular grid of arrival times, which would sound as a tone', () => {
   const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
-  const scene = defaultScene('thunder');
+  const scene = plainScene('thunder');
   scene.terrain = terrain(hills, { cells: 120, extentMetres: 6000, scattering: 1 });
   const parsed = parseScene(scene);
   const prepared = prepareScene(parsed);
@@ -197,7 +198,7 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
   // A ridge 1.5 km away; blast 1 m and microphone 1.7 m above level ground, so both images merge with the echo.
   const ridge = x => Math.max(0, .4 * (x - 1500));
   const echoEnergy = groundEnabled => {
-    const scene = defaultScene('blast');
+    const scene = plainScene('blast');
     scene.terrain = terrain(ridge, { cells: 120, extentMetres: 6000, scattering: 1 });
     scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
     scene.ground = { ...scene.ground, enabled: groundEnabled, type: 'rigid' };
@@ -235,7 +236,7 @@ test('an echo whose legs pass through the refraction shadow keeps the shadow flo
 test('scattered echoes spread over their patches rather than arriving as clicks', async () => {
   const { fft, nextPowerOfTwo } = await import('../src/domain/fft.js');
   const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
-  const scene = defaultScene('blast');
+  const scene = plainScene('blast');
   scene.terrain = terrain(hills, { cells: 120, extentMetres: 6000, scattering: 1 });
   scene.emitters[0] = { ...scene.emitters[0], chargeKilograms: 1000, secondaryShock: false, fireballDecibels: -60 };
   scene.receivers[0].positionMetres = { x: 800, y: 0, z: 1.7 };
@@ -269,7 +270,7 @@ test('scattered echoes spread over their patches rather than arriving as clicks'
 
 test('a boom over hills echoes from them, after it and from where it left the flight path', () => {
   const hills = (x, y) => 150 + 250 * Math.exp(-((x - 1200) ** 2 + y ** 2) / 5e5);
-  const scene = defaultScene('sonic');
+  const scene = plainScene('sonic');
   scene.emitters = [{ ...defaultFlight(), startMetres: { x: -20000, y: 0, z: 3000 }, mach: 1.5, durationSeconds: 40 }];
   scene.receivers[0].positionMetres = { x: 300, y: 0, z: 1.7 };
   scene.terrain = terrain(hills, { scattering: .5, echoLimit: 100 });

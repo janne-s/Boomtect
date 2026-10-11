@@ -143,6 +143,8 @@ microphone along the Mach cone.
 - **Ground** — What the ground is made of. Water reflects like rigid ground.
 - **Forest** and **Tree height** — Trees around the scene: sound under their
   canopy is muffled, and the forest answers every sound with a reverberant tail.
+- **Surroundings** — Over level ground, the long rumble the land around returns
+  of a loud sound. Over terrain with echoes, the echoes take its place.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
@@ -237,6 +239,8 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Forest, under the canopy | ISO 9613-2 foliage attenuation as `0.006·f^(1/3)` dB/m, up to 200 m, with a causal phase | B |
 | Forest reverberation | seeded diffuse tail at the microphone, octave times around 1.5 s at 1 kHz (Koli, Finland) | B/C |
+| Surroundings | seeded diffuse tail at the microphone over level ground, falling about 9 dB/s, mostly below 250 Hz, fitted to recorded booms | C |
+| Ground reflection, partly coherent | ground roughness of 5 cm (Rayleigh) and turbulence scatter a share of the reflection over a few milliseconds | C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
