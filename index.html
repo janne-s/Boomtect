@@ -6,6 +6,8 @@
     <title>Boomtect</title>
     <meta name="description" content="Physical acoustics laboratory for thunder and blasts: synthetic sources, height, ground, and air, rendered to sound." />
     <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="assets/vendor/fontawesome/css/fontawesome.min.css" />
+    <link rel="stylesheet" href="assets/vendor/fontawesome/css/solid.min.css" />
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="src/app.js"></script>
   </head>
@@ -18,15 +20,11 @@
         <button type="button" role="radio" data-mode="sonic" aria-checked="false">Sonic</button>
       </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
-      <label class="toggle" title="Off: render when the button says Render"><input type="checkbox" id="auto-render" checked /> Auto</label>
-      <label class="toggle" title="Off: skip the silence before the first sound"><input type="checkbox" id="real-delay" checked /> Real delay</label>
-      <label class="toggle"><input type="checkbox" id="wavefront" /> Wavefront</label>
-      <label class="toggle" id="cone-toggle" hidden><input type="checkbox" id="cone" /> Cone</label>
-      <label class="toggle" id="names-toggle" hidden><input type="checkbox" id="names" /> Names</label>
-      <label class="toggle" id="map-toggle" hidden><input type="checkbox" id="map" /> Map</label>
-      <label class="toggle" id="clouds-toggle" hidden><input type="checkbox" id="clouds" /> Cloud</label>
+      <div class="icon-toggles" role="group" aria-label="Rendering and playback">
+        <button type="button" class="icon-toggle" id="auto-render" aria-pressed="true" aria-label="Auto render" title="Auto render"><i class="fa-solid fa-repeat" aria-hidden="true"></i></button>
+        <button type="button" class="icon-toggle" id="real-delay" aria-pressed="true" aria-label="Real delay" title="Real delay"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></button>
+      </div>
       <span id="listen-label" class="listen-label"></span>
-      <span id="status" class="status" role="status" aria-live="polite"></span>
       <span class="spacer"></span>
       <button type="button" id="open">Open</button>
       <button type="button" id="save">Save</button>
@@ -38,15 +36,25 @@
       <figure class="view" aria-label="Scene">
         <canvas id="cube" aria-label="Scene"></canvas>
         <div class="overlay overlay-top" id="cube-selected"></div>
-        <div class="attribution" id="cube-attribution" hidden>
-          <button type="button" class="info-button" id="attribution-button" aria-expanded="false" aria-controls="attribution-text" title="Data sources">i</button>
-          <div class="attribution-text" id="attribution-text" hidden>
-            <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Terrain Tiles: Mapzen / AWS Open Data</a> (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, national datasets)<br />
-            Place names and search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors<br />
-            Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, SRTM; style © <a href="https://opentopomap.org/" target="_blank" rel="noopener">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA</a>)
+        <div class="view-side">
+          <div class="icon-toggles view-tools" role="toolbar" aria-label="View" aria-orientation="vertical">
+            <button type="button" class="icon-toggle" id="wavefront" aria-pressed="false" aria-label="Wavefronts" title="Wavefronts"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="cone" aria-pressed="false" aria-label="Mach cone" title="Mach cone" hidden><i class="fa-solid fa-jet-fighter" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="clouds" aria-pressed="false" aria-label="Cloud" title="Cloud" hidden><i class="fa-solid fa-cloud" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="names" aria-pressed="false" aria-label="Place names" title="Place names" hidden><i class="fa-solid fa-tag" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="map" aria-pressed="false" aria-label="Map" title="Map" hidden><i class="fa-solid fa-map" aria-hidden="true"></i></button>
+          </div>
+          <div class="attribution" id="cube-attribution" hidden>
+            <button type="button" class="info-button" id="attribution-button" aria-expanded="false" aria-controls="attribution-text" title="Data sources">i</button>
+            <div class="attribution-text" id="attribution-text" hidden>
+              <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Terrain Tiles: Mapzen / AWS Open Data</a> (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, national datasets)<br />
+              Place names and search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors<br />
+              Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, SRTM; style © <a href="https://opentopomap.org/" target="_blank" rel="noopener">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA</a>)
+            </div>
           </div>
         </div>
         <div class="overlay overlay-corner">
+          <p class="status" id="status" role="status" aria-live="polite"></p>
           <ul class="operations" id="cube-operations" aria-live="polite"></ul>
           <div class="overlay-timeline" id="cube-timeline" hidden>
             <span id="cube-timeline-time"></span>

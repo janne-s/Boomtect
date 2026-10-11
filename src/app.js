@@ -191,9 +191,14 @@ function select(selection) {
   if (selection.type === 'receiver') state.soloId = selection.id;
 }
 
+/** The last message in the scene's corner: a note fades after VIEW.statusSeconds, an error stays until the next message. */
 function setStatus(text, error = false) {
-  $('status').textContent = text;
-  $('status').classList.toggle('error', error);
+  const status = $('status');
+  clearTimeout(setStatus.timer);
+  status.textContent = text;
+  status.classList.toggle('error', error);
+  status.classList.remove('faded');
+  if (text && !error) setStatus.timer = setTimeout(() => status.classList.add('faded'), VIEW.statusSeconds * 1000);
 }
 
 /** Applies a change to a copy of the scene and keeps it only if the result validates. */
@@ -1276,11 +1281,11 @@ function rebuildPanel() {
   terrainFields.replaceChildren();
   terrainPanel(terrainFields);
   $('cube-attribution').hidden = !scene.terrain;
-  $('names-toggle').hidden = !scene.terrain;
-  $('map-toggle').hidden = !scene.terrain;
-  $('cone-toggle').hidden = scene.mode !== 'sonic';
-  $('wavefront').checked = wavefrontsShown();
-  $('clouds-toggle').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
+  $('names').hidden = !scene.terrain;
+  $('map').hidden = !scene.terrain;
+  $('cone').hidden = scene.mode !== 'sonic';
+  $('clouds').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
+  syncToggles();
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -1961,38 +1966,54 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   if (state.preferences.autoRender) startRender();
 }));
 
-$('auto-render').checked = state.preferences.autoRender;
-$('auto-render').addEventListener('change', () => {
-  state.preferences.autoRender = $('auto-render').checked;
-  savePreferences();
-  if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender();
+/**
+ * The icon switches: each button is pressed while its preference is on, and a press turns it over.
+ * `after` runs once the preference has changed.
+ */
+const TOGGLES = Object.freeze({
+  'auto-render': {
+    read: () => state.preferences.autoRender,
+    write: on => { state.preferences.autoRender = on; },
+    after: () => { if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender(); }
+  },
+  'real-delay': { read: () => state.preferences.realDelay, write: on => { state.preferences.realDelay = on; } },
+  wavefront: {
+    read: wavefrontsShown,
+    write: on => { state.preferences.wavefronts = { ...state.preferences.wavefronts, [state.scene.mode]: on }; },
+    after: () => redrawViews()
+  },
+  cone: { read: () => state.preferences.cone, write: on => { state.preferences.cone = on; }, after: () => redrawViews() },
+  clouds: { read: () => state.preferences.clouds, write: on => { state.preferences.clouds = on; }, after: () => redrawViews() },
+  names: {
+    read: () => state.preferences.names,
+    write: on => { state.preferences.names = on; },
+    after: () => {
+      // Switched on over a terrain without names, it asks for them again: the service may have failed before.
+      if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
+      redrawViews();
+    }
+  },
+  map: { read: () => state.preferences.map, write: on => { state.preferences.map = on; }, after: () => redrawViews() }
 });
-$('clouds').checked = state.preferences.clouds;
-$('clouds').addEventListener('change', () => { state.preferences.clouds = $('clouds').checked; savePreferences(); redrawViews(); });
-$('names').checked = state.preferences.names;
-$('names').addEventListener('change', () => {
-  state.preferences.names = $('names').checked;
-  savePreferences();
-  // Switched on over a terrain without names, it asks for them again: the service may have failed before.
-  if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
-  redrawViews();
-});
-$('cone').checked = state.preferences.cone;
-$('cone').addEventListener('change', () => { state.preferences.cone = $('cone').checked; savePreferences(); redrawViews(); });
-$('map').checked = state.preferences.map;
-$('map').addEventListener('change', () => { state.preferences.map = $('map').checked; savePreferences(); redrawViews(); });
+
+function syncToggles() {
+  for (const [id, { read }] of Object.entries(TOGGLES)) $(id).setAttribute('aria-pressed', String(Boolean(read())));
+}
+
+for (const [id, { read, write, after }] of Object.entries(TOGGLES)) {
+  $(id).addEventListener('click', () => {
+    write(!read());
+    savePreferences();
+    syncToggles();
+    after?.();
+  });
+}
+syncToggles();
 $('attribution-button').addEventListener('click', () => {
   const open = $('attribution-text').hidden;
   $('attribution-text').hidden = !open;
   $('attribution-button').setAttribute('aria-expanded', String(open));
 });
-$('wavefront').addEventListener('change', () => {
-  state.preferences.wavefronts = { ...state.preferences.wavefronts, [state.scene.mode]: $('wavefront').checked };
-  savePreferences();
-  redrawViews();
-});
-$('real-delay').checked = state.preferences.realDelay;
-$('real-delay').addEventListener('change', () => { state.preferences.realDelay = $('real-delay').checked; savePreferences(); });
 const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
 $('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));
 $('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudFlash(uniqueId('cloud', scene.emitters), nextName(scene, 'Cloud flash'), newSeed())));

@@ -229,22 +229,45 @@ figcaption {
   font-weight: 600;
   letter-spacing: .02em;
 }
-.toggle {
+/* Switches shown as icons: dim while off, the accent while on, the same size either way. */
+.icon-toggles {
   display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
+  gap: 2px;
+}
+.icon-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--faint);
+  font-size: 13px;
+}
+.icon-toggle[aria-pressed="true"] {
+  color: var(--accent);
+}
+.icon-toggle[hidden] {
+  display: none;
 }
 .listen-label {
+  margin-left: 4px;
   color: var(--ink);
+  font-weight: 500;
   white-space: nowrap;
 }
+/* The last message, in the scene's corner above the operations; a note fades, an error stays. */
 .status {
-  min-width: 0;
-  overflow: hidden;
+  margin: 0;
   color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: right;
+  overflow-wrap: anywhere;
+  transition: opacity .6s;
+}
+.status:empty {
+  display: none;
+}
+.status.faded {
+  opacity: 0;
 }
 .status.error {
   color: var(--accent);
@@ -526,19 +549,31 @@ input[type="range"]:hover::-moz-range-thumb {
   height: 120px;
   cursor: grab;
 }
-.attribution {
+/* The view's switches down its right edge, with the data sources under them. */
+.view-side {
   position: absolute;
   top: 10px;
   right: 12px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
   max-width: 45%;
 }
+.view-tools {
+  flex-direction: column;
+}
+.view-tools .icon-toggle {
+  background: color-mix(in srgb, var(--raised) 80%, transparent);
+}
+.attribution {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
 .attribution[hidden],
-.attribution-text[hidden],
-.toggle[hidden] {
+.attribution-text[hidden] {
   display: none;
 }
 .info-button {

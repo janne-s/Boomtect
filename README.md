@@ -85,18 +85,23 @@ microphone along the Mach cone.
 - **Scrubbing** — Press either plot to move playback to that moment, and drag to
   move it further; on release it plays on from there. Sound fades in and out
   as it starts and stops.
-- **Auto** — Renders again soon after every change. Off, changes wait for
-  Render.
+- **Auto** (circling arrows, beside Play) — Renders again soon after every
+  change. Off, changes wait for Render.
 - **In progress** — Rendering and loading are listed in the corner of the
   scene while they run, each with how far it has come, how long it has run, and
-  for requests over the network when it gives up.
-- **Real delay** — On: the sound arrives as late as it would outdoors, and the
+  for requests over the network when it gives up. The last message stands above
+  them: a note fades, an error stays.
+- **Real delay** (hourglass, beside Play) — On: the sound arrives as late as it would outdoors, and the
   clock in the corner counts from the flash, its bar brightening when the sound
   arrives. Off: the silence before the first sound is skipped, and the channel
   glows where the sound being heard comes from.
+- **View switches** — Down the scene's right edge, each icon lit while on, only
+  those that apply.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls, fading as their sound
-  spreads out and the air absorbs it.
+  spreads out and the air absorbs it. Each swell of a flash's thunder at the
+  followed microphone sends a front of its own from where it came, at its level;
+  the flash's other fronts dim. On in every mode at first.
 - **Cone** — While the sound plays, each supersonic body's Mach cone trails behind
   it through the fronts it has left, within the box and above the ground.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
@@ -292,6 +297,10 @@ Both are fetched only when asked for.
 Binaural decoding uses [Omnitone](https://github.com/GoogleChrome/omnitone)
 1.3.0 with its SADIE HRIRs, under the Apache License 2.0
 ([notice](assets/vendor/omnitone/NOTICE)).
+
+Icons are [Font Awesome Free](https://fontawesome.com) 7.3.1, solid style,
+as in Echotect: font under the SIL OFL 1.1, CSS under the MIT License, icons
+under CC BY 4.0 ([license](assets/vendor/fontawesome/LICENSE.txt)).
 
 ## License
 

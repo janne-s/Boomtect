@@ -623,6 +623,8 @@ export const VIEW = Object.freeze({
     terrainSources: 120,
     planeSamples: 8
   }),
+  /** Seconds a note stays in the scene's corner before it fades; an error stays. */
+  statusSeconds: 8,
   /** Microphone levels in the scene: envelope window, and the range below the loudest microphone's peak. */
   envelopeSeconds: .01,
   envelopeRangeDb: 40,
