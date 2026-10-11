@@ -53,3 +53,20 @@ test('every channel gets the same processing as the pressure', () => {
   const [w, x] = applyEar([loud, loud.map(value => value * .5)], SAMPLE_RATE);
   w.forEach((value, index) => assert.ok(Math.abs(x[index] - value * .5) < 1e-6));
 });
+
+test('the reflex moving under a loud bass adds no buzz at the frame rate', () => {
+  const sampleRate = SAMPLE_RATE;
+  const x = Float32Array.from({ length: 2 * sampleRate }, (_, index) => (index > sampleRate / 2 ? 200 : 0) * Math.sin(2 * Math.PI * 20 * index / sampleRate));
+  const [y] = applyEar([x], sampleRate, { reflex: true, loudness: false });
+  // While it engages: the level at 1 kHz against the tone, which has none there.
+  const from = Math.round(.55 * sampleRate);
+  const length = sampleRate / 2;
+  let re = 0;
+  let im = 0;
+  for (let index = from; index < from + length; index += 1) {
+    re += y[index] * Math.cos(2 * Math.PI * 1000 * index / sampleRate);
+    im += y[index] * Math.sin(2 * Math.PI * 1000 * index / sampleRate);
+  }
+  const decibels = 20 * Math.log10(Math.hypot(re, im) / length * 2 / 200);
+  assert.ok(decibels < -100, `${decibels} dB`);
+});

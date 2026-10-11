@@ -79,22 +79,6 @@ export function reflexAttenuation(pressureEnvelope, frameSeconds) {
   return attenuation;
 }
 
-/** Low-shelf biquad coefficients with shelf slope 1 (RBJ cookbook), normalized by a0. */
-function lowShelf(gainDb, cutoffHz, sampleRate) {
-  const a = 10 ** (gainDb / 40);
-  const omega = 2 * Math.PI * cutoffHz / sampleRate;
-  const cosine = Math.cos(omega);
-  const term = 2 * Math.sqrt(a) * Math.sin(omega) / 2 * Math.SQRT2;
-  const a0 = (a + 1) + (a - 1) * cosine + term;
-  return {
-    b0: a * ((a + 1) - (a - 1) * cosine + term) / a0,
-    b1: 2 * a * ((a - 1) - (a + 1) * cosine) / a0,
-    b2: a * ((a + 1) - (a - 1) * cosine - term) / a0,
-    a1: -2 * ((a - 1) + (a + 1) * cosine) / a0,
-    a2: ((a + 1) + (a - 1) * cosine - term) / a0
-  };
-}
-
 /** Per-sample gain from per-frame decibels, interpolated between frame centres. */
 function frameGains(decibels, window, length) {
   const gains = new Float64Array(length);
@@ -117,18 +101,30 @@ export function applyEar(channels, sampleRate, { reflex = true, loudness = true 
   if (reflex) {
     const { window, values } = envelope(output[0], sampleRate);
     const attenuation = reflexAttenuation(values, window / sampleRate);
+    // A low shelf as a state-variable filter (Simper's trapezoidal SVF, the RBJ shelf's response),
+    // its gain moving smoothly sample by sample. Switching a biquad's coefficients every frame instead
+    // stepped its state under a loud bass: as the reflex moved under a 20 Hz tone it added 6–18 dB
+    // more at 300 Hz–2 kHz, a buzz at the frame rate.
+    const gains = frameGains(attenuation.map(decibels => -decibels), window, length);
+    const warped = Math.tan(Math.PI * EAR.shelfHz / sampleRate);
+    const damping = Math.SQRT2;
     output = output.map(channel => {
       const result = new Float32Array(length);
-      let x1 = 0; let x2 = 0; let y1 = 0; let y2 = 0;
-      for (let frame = 0; frame < attenuation.length; frame += 1) {
-        const { b0, b1, b2, a1, a2 } = lowShelf(-attenuation[frame], EAR.shelfHz, sampleRate);
-        const end = Math.min(length, (frame + 1) * window);
-        for (let index = frame * window; index < end; index += 1) {
-          const x0 = channel[index];
-          const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-          x2 = x1; x1 = x0; y2 = y1; y1 = y0;
-          result[index] = y0;
-        }
+      let ic1 = 0;
+      let ic2 = 0;
+      for (let index = 0; index < length; index += 1) {
+        const a = Math.sqrt(gains[index]);
+        const g = warped / Math.sqrt(a);
+        const a1 = 1 / (1 + g * (g + damping));
+        const a2 = g * a1;
+        const a3 = g * a2;
+        const v0 = channel[index];
+        const v3 = v0 - ic2;
+        const v1 = a1 * ic1 + a2 * v3;
+        const v2 = ic2 + a2 * ic1 + a3 * v3;
+        ic1 = 2 * v1 - ic1;
+        ic2 = 2 * v2 - ic2;
+        result[index] = v0 + damping * (a - 1) * v1 + (a * a - 1) * v2;
       }
       return result;
     });
