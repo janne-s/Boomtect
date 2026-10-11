@@ -156,6 +156,7 @@ const views = [createCubeView($('cube'), {
 /** Whether a point is stored as a height above the ground under it rather than above the datum. */
 function groundAnchored(handle, item) {
   if (handle.field === 'centreMetres') return true;
+  if (handle.field === 'startMetres') return item.kind === 'whip';
   if (handle.field === 'baseMetres') return item.flashType === 'cloud-to-ground';
   return handle.field === 'positionMetres';
 }
@@ -170,7 +171,8 @@ function storedPoint(handle, item, point) {
   if (handle.onGround) return { ...point, z: 0 };
   if (handle.plane?.fixed === 'z') return { ...point, z: item[handle.field].z };
   const above = point.z - currentSurface().heightAt(point.x, point.y);
-  return { ...point, z: Math.round(Math.min(PARAMETERS.heightMetres.maximum, Math.max(0, above)) * 10) / 10 };
+  const step = Math.min(.1, handle.resolution ?? .1);
+  return { ...point, z: +(Math.round(Math.min(PARAMETERS.heightMetres.maximum, Math.max(0, above)) / step) * step).toFixed(Math.max(0, -Math.log10(step))) };
 }
 views[0].setView(state.preferences.cubeViews?.[state.scene.mode] ?? VIEW.box.defaultView);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {

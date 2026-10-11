@@ -94,11 +94,13 @@ function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (isTrackKind(emitter)) {
-      list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: emitter.startMetres, role: 'start' });
+      // A whip stands on the ground, as a blast does; a flight's start is above the datum.
+      const start = emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
+      list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
       // A handle ahead of the start along the first heading turns it.
       const reach = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare : 1000;
       const heading = emitter.headingDegrees * Math.PI / 180;
-      list.push({ type: 'emitter', id: emitter.id, field: 'flightHeading', point: { x: emitter.startMetres.x + reach * Math.sin(heading), y: emitter.startMetres.y + reach * Math.cos(heading), z: emitter.startMetres.z }, role: 'end', ownPlaneOnly: true });
+      list.push({ type: 'emitter', id: emitter.id, field: 'flightHeading', point: { x: start.x + reach * Math.sin(heading), y: start.y + reach * Math.cos(heading), z: start.z }, role: 'end', ownPlaneOnly: true });
       continue;
     }
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' });
@@ -1711,13 +1713,17 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const solved = fromScreen(drag.plane, onPlane(drag.origin, drag.plane), x, y);
     if (!solved) return;
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
+    // Points move in steps of a thousandth of the box or so, a metre at most: a whip's box is 4 m.
+    const { box } = frame;
+    drag.resolution = Math.min(1, 10 ** Math.floor(Math.log10(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0) / 1000)));
+    const round = (value, step) => +(Math.round(value / step) * step).toFixed(Math.max(0, -Math.log10(step)));
     const point = { ...drag.origin };
     for (const axis of drag.plane.free) {
       if (drag.verticalOnly && axis !== 'z') continue;
       const moved = drag.origin[axis] + solved[axis] - drag.grabbed[axis];
       if (axis === 'z') {
-        if (!drag.onGround) point.z = Math.round(clamp(moved, RENDER.maximumHeightMetres, 0) * 10) / 10;
-      } else point[axis] = Math.round(clamp(moved, RENDER.sceneExtentMetres));
+        if (!drag.onGround) point.z = round(clamp(moved, RENDER.maximumHeightMetres, 0), Math.min(.1, drag.resolution));
+      } else point[axis] = round(clamp(moved, RENDER.sceneExtentMetres), drag.resolution);
     }
     drag.point = point;
     onMove(drag, point);
