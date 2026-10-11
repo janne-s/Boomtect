@@ -4,6 +4,7 @@
   --panel: #19212a;
   --panel-dim: #141a21;
   --raised: #222c37;
+  --band-hover: #0d1116;
   --line: #2e3a46;
   --ink: #e3e9ef;
   --muted: #8b99a8;
@@ -314,23 +315,21 @@ canvas {
   flex-direction: column;
   gap: 4px;
 }
-.card {
-  border-radius: 4px;
-}
+/* An emitter or receiver opens like the panel's groups: its header a band in the gutter's colour, edge to edge. */
 .card[aria-selected="true"] {
-  background: var(--raised);
-  padding-bottom: 8px;
+  padding-bottom: 12px;
 }
 .card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-radius: 4px;
-  padding: 6px 8px;
+  margin: 0 -12px;
+  padding: 6px 12px;
+  background: var(--bg);
   cursor: pointer;
 }
 .card-header:hover {
-  background: var(--raised);
+  background: var(--band-hover);
 }
 .card[aria-selected="true"] .card-header .name {
   color: var(--accent);
@@ -346,20 +345,20 @@ canvas {
   margin: 0;
 }
 .card-summary {
-  margin: 0 8px 8px;
+  margin: 8px 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
 }
 .card .fields {
-  margin: 0 8px;
+  margin: 8px 0 0;
 }
 .macros {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr) 96px;
   align-items: center;
   gap: 6px 8px;
-  margin: 0 8px;
+  margin: 0;
 }
 .macros label {
   color: var(--muted);
@@ -446,7 +445,7 @@ input[type="range"]:hover::-moz-range-thumb {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin: 10px 8px 0;
+  margin: 10px 0 0;
 }
 .card-actions button {
   background: var(--line);
