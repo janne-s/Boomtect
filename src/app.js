@@ -860,7 +860,8 @@ function emitterCard(container, emitter, selected) {
   if (selected) {
     card.append(element('p', 'card-summary', emitterSummary(emitter)));
     const macros = element('div', 'macros');
-    macrosFor(emitter).forEach(macro => macroRow(macros, emitter, macro));
+    // The onset matters once the emitter sounds with others, or once it is set.
+    macrosFor(emitter, { onset: scene.emitters.length > 1 || emitter.startSeconds > 0 }).forEach(macro => macroRow(macros, emitter, macro));
     card.append(macros);
     const actions = element('div', 'card-actions');
     actions.append(button('Details…', () => openDetails(emitter.id)));

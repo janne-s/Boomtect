@@ -64,7 +64,8 @@ microphone along the Mach cone.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
-  salvo, charge, and fireball for a barrage; Mach, height, heading, climb,
+  salvo, charge, and fireball for a barrage, each with its onset when the scene
+  has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
   for a meteor; meteors, size, duration, speed, diameter, and entry angle for a

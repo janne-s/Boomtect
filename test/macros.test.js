@@ -3,7 +3,7 @@ import test from 'node:test';
 import { entryText, macrosFor, parseEntry } from '../src/ui/macros.js';
 import { defaultBarrage, defaultBlast, parseScene, defaultScene } from '../src/domain/scene.js';
 
-const macro = (emitter, label) => macrosFor(emitter).find(item => item.label === label);
+const macro = (emitter, label) => macrosFor(emitter, { onset: true }).find(item => item.label === label);
 
 test('a typed charge reads in g, kg, t, or kt, and in the shown unit when none is given', () => {
   const blast = { ...defaultBlast(), chargeKilograms: 3.5e8 };
@@ -39,4 +39,18 @@ test('typed counts are whole, and a typed value beyond the slider is left to the
   assert.equal(parseScene(scene).emitters[0].positionMetres.z, 8000);
   macro(blast, 'Charge').entry.set(blast, parseEntry(macro(blast, 'Charge').entry, '400 kt', blast));
   assert.throws(() => parseScene(scene), /chargeKilograms/);
+});
+
+test('the onset slider is fine near zero, takes typed seconds, and reads back what it wrote', () => {
+  const blast = defaultBlast();
+  const onset = macro(blast, 'Onset');
+  for (const t of [0, .1, .5, 1]) {
+    onset.write(blast, t);
+    assert.ok(Math.abs(onset.read(blast) - t) < 1e-3, `${t}`);
+  }
+  onset.write(blast, .1);
+  assert.equal(blast.startSeconds, .24);
+  assert.equal(parseEntry(onset.entry, '1,25 s', blast), 1.25);
+  assert.ok(macrosFor(defaultBarrage(), { onset: true }).some(item => item.label === 'Onset'));
+  assert.ok(!macrosFor(defaultBarrage()).some(item => item.label === 'Onset'));
 });

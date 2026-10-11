@@ -367,15 +367,31 @@ const whipCracker = {
   entry: { units: 'metres', get: item => item.crackerLengthMetres, set: (item, value) => { item.crackerLengthMetres = value; } }
 };
 
-/** Macro sliders for an emitter, in display order. */
-export function macrosFor(emitter) {
-  if (emitter.kind === 'lightning') return [energy, height, branching, jaggedness, crack, strokes];
-  if (emitter.kind === 'storm') return [stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack];
+/**
+ * When an emitter starts on the scene timeline: the slider is cubic, in hundredths of a second near
+ * zero and seconds near the end of its range, where a typed value is more precise.
+ */
+const onset = {
+  label: 'Onset',
+  read: item => clamp01(Math.cbrt(item.startSeconds / range('startSeconds')[1])),
+  write: (item, t) => { item.startSeconds = +(range('startSeconds')[1] * t ** 3).toFixed(2); },
+  show: item => `${+item.startSeconds.toFixed(2)} s`,
+  entry: { unit: 's', get: item => item.startSeconds, set: (item, value) => { item.startSeconds = value; } }
+};
+
+/**
+ * Macro sliders for an emitter, in display order. Flashes, storms, blasts, and barrages also take
+ * their onset when `onset` is set, as when they sound with others.
+ */
+export function macrosFor(emitter, { onset: withOnset = false } = {}) {
+  const timed = list => (withOnset ? [...list, onset] : list);
+  if (emitter.kind === 'lightning') return timed([energy, height, branching, jaggedness, crack, strokes]);
+  if (emitter.kind === 'storm') return timed([stormSize, stormDuration, stormFlashes, stormGround, stormCloud, energy, branching, crack]);
   if (emitter.kind === 'meteor') return [meteorSpeed, meteorDiameter, meteorEntry, flightHeight, flightHeading, meteorEnd];
   if (emitter.kind === 'shower') return [showerCount, showerSize, stormDuration, meteorSpeed, meteorDiameter, meteorEntry];
   if (emitter.kind === 'formation') return [formationCount, machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
-  if (emitter.kind === 'barrage') return [barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball];
-  return [charge, blastHeight, fireball];
+  if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
+  return timed([charge, blastHeight, fireball]);
 }
