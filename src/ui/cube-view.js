@@ -1148,7 +1148,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
   }
 
-  /** A flight's or formation's paths, and its bodies where the clock has them. */
+  /** A flight's or meteor's paths, its bodies where the clock has them, and a meteor's breakups and bursts as they flash. */
   function drawFlight(context, emitter, colors, selected, state) {
     context.strokeStyle = selected ? colors.accent : colors.end;
     context.lineWidth = selected ? 1.4 : 1.2;
@@ -1168,6 +1168,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.beginPath(); context.arc(p.x, p.y, 5, 0, 2 * Math.PI); context.fill();
       context.shadowBlur = 0;
     }
+    for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
   }
 
   /** A burst's flash, fading after it starts; the emitter's dimming is restored after it. */

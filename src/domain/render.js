@@ -141,13 +141,17 @@ export function prepareScene(scene) {
   const surface = terrainSurface(scene.terrain);
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
-    const sources = sourceTable(emitterSources(emitter, scene.air, surface).sources);
-    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary; their echoes are not traced.
+    const rows = emitterSources(emitter, scene.air, surface).sources;
+    const sources = sourceTable(rows);
+    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary; the booms' echoes are not traced.
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
       return { emitter, sources, cells: null, flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air), booms: flightBooms })) };
     }
+    // A meteor's breakups and burst are blasts, whose echoes are traced from a table of their own.
     if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
-      return { emitter, sources, cells: null, flights: showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms })) };
+      const flights = showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms }));
+      const bursts = sourceTable(rows.slice(flights.length));
+      return { emitter, sources, cells: echoes && bursts.length ? sourceCells(bursts, scene.terrain.echoCellMetres) : null, flights };
     }
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
@@ -317,9 +321,8 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
           if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
         }
       });
-      return;
     }
-    for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
+    for (let sourceIndex = prepared.flights?.length ?? 0; sourceIndex < sources.length; sourceIndex += 1) {
       tick();
       const position = sourcePosition(sources, sourceIndex);
       // In wind, the air along this path has its own effective profile.

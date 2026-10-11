@@ -52,7 +52,8 @@ microphone along the Mach cone.
   booms.
 - **Meteor** — A meteoroid entering the atmosphere down to the height where its
   trail ends; its boom leaves the trail where its Mach cone reaches the
-  microphone.
+  microphone. It breaks up where the air's pressure on it exceeds its strength
+  and bursts where the trail ends, each a blast high in the air.
 - **Shower** — Meteoroids from one radiant over an area and a time span.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
@@ -213,7 +214,9 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
 | Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
-| Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed; its echoes are not traced | B/C |
+| Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed; the boom's echoes are not traced | B/C |
+| Meteor breakup | breakups where ρv² reaches the strength and each next at twice the last, a burst at the end of the trail, each a share of the kinetic energy | B/C |
+| Blast high in the air | Sachs scaling of the ground blast to the pressure and sound speed there; positive phase at most 2 s | B/C |
 | Shower | trails parallel from one radiant, seeded over a disc and a time span | C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |

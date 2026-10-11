@@ -27,8 +27,15 @@ const START_RADII = WEAK_SHOCK.startRadii;
 const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** (8 / 3)) ** (3 / 8) - 1);
 /** Seconds between the points of a meteor's track. */
 const TRACK_STEP_SECONDS = .02;
+const TNT_JOULES_PER_KILOGRAM = 4.184e6;
+/**
+ * The ram pressure ρv² grows by this factor from one breakup to the next: the fragments are smaller
+ * and stronger (class C; Popova et al. 2011 find several breakups per fireball at rising pressures).
+ */
+const BREAKUP_PRESSURE_RATIO = 2;
 
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
+const densityAt = (air, heightMetres) => pressureAtHeightPa(air, heightMetres) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 
 /** The straight trail of a meteor: its start, unit direction of flight, speed, and length to its end height. */
 export function meteorTrail(meteor) {
@@ -42,7 +49,7 @@ export function meteorTrail(meteor) {
 /** The blast radius R₀, m, and source period τ₀, s, of a meteor's trail at a height. */
 export function meteorBlast(meteor, air, heightMetres) {
   const pressurePa = pressureAtHeightPa(air, heightMetres);
-  const density = pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
+  const density = densityAt(air, heightMetres);
   const speed = meteor.speedKilometresPerSecond * 1000;
   const energy = .5 * density * speed * speed * meteor.dragCoefficient * Math.PI * (meteor.diameterMetres / 2) ** 2;
   const radius = Math.sqrt(energy / pressurePa);
@@ -58,6 +65,46 @@ export function meteorBoom(meteor, air, heightMetres, metres, receiverPressurePa
     overpressurePa: ratio * Math.sqrt(pressurePa * receiverPressurePa),
     durationSeconds: weakShockPulse(radiusMetres, sourcePeriodSeconds, metres, LIMIT_RADII).durationSeconds
   };
+}
+
+/** A meteoroid's kinetic energy, J, as a sphere of its diameter and density. */
+export function meteorKineticEnergy(meteor) {
+  const mass = meteor.densityKilogramsPerCubicMetre * Math.PI / 6 * meteor.diameterMetres ** 3;
+  return .5 * mass * (meteor.speedKilometresPerSecond * 1000) ** 2;
+}
+
+/**
+ * Where a meteoroid breaks up and where it bursts, as blasts of a TNT equivalent (class C for the
+ * shares of its kinetic energy they release). The first breakup comes where the ram pressure ρv²
+ * reaches its strength (class B, Popova et al. 2011: 0.1–1 MPa for most fireballs, 1–5 MPa at
+ * Chelyabinsk), each next at BREAKUP_PRESSURE_RATIO times the last, while above the end of the
+ * trail; the terminal burst is where the trail ends.
+ */
+export function meteorBursts(meteor, air) {
+  const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
+  const energy = meteorKineticEnergy(meteor);
+  const heightAt = along => start.z + direction.z * along;
+  const ramPressure = along => densityAt(air, heightAt(along)) * speed * speed;
+  const places = [];
+  for (let breakup = 0; breakup < meteor.breakupCount; breakup += 1) {
+    const target = meteor.strengthMegapascals * 1e6 * BREAKUP_PRESSURE_RATIO ** breakup;
+    if (ramPressure(0) >= target) continue;
+    if (ramPressure(lengthMetres) < target) break;
+    // The air thickens downward along the trail, so the crossing is found by bisection.
+    let low = 0;
+    let high = lengthMetres;
+    for (let step = 0; step < 50; step += 1) {
+      const middle = (low + high) / 2;
+      if (ramPressure(middle) < target) low = middle; else high = middle;
+    }
+    places.push({ along: high, energyJoules: meteor.breakupShare * energy });
+  }
+  if (meteor.burstShare > 0) places.push({ along: lengthMetres, energyJoules: meteor.burstShare * energy });
+  return places.filter(place => place.energyJoules > 0).map(({ along, energyJoules }) => ({
+    positionMetres: { x: start.x + direction.x * along, y: start.y + direction.y * along, z: heightAt(along) },
+    emissionSeconds: meteor.startSeconds + along / speed,
+    chargeKilograms: energyJoules / TNT_JOULES_PER_KILOGRAM
+  }));
 }
 
 /** The booms of a meteor's track at a receiver, in the frame of the track (heights above the datum). */

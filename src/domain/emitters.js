@@ -2,9 +2,10 @@ import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
 import { SECONDARY_MASS_SHARE, secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
-import { showerMembers } from './meteor.js';
+import { meteorBursts, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
 
@@ -42,6 +43,37 @@ function flightSource(flight, flash = 0) {
 
 /** The Fireball level at which a blast has no roar. */
 export const FIREBALL_OFF_DECIBELS = -60;
+
+/**
+ * A TNT blast's shock pulse: the scaled distance from where it propagates linearly, m/kg^⅓, its
+ * positive phase per cube root of the charge, s/kg^⅓, and its Friedlander decay (see `blastSources`).
+ */
+export const BLAST_PULSE = Object.freeze({ linearScaledDistance: 20, durationSecondsPerCubeRootKilogram: .006, decay: 1 });
+
+/**
+ * The longest positive phase of a blast high in the air (class C, a render limit): a burst of a
+ * meteoroid over a few metres would last tens of seconds, all of it infrasound, and its frames would
+ * exceed the longest render. Its front, which is what is heard, keeps its pressure.
+ */
+export const MAXIMUM_HIGH_BLAST_SECONDS = 2;
+
+/**
+ * A blast high in thin air as the shock of a ground-level one (class B, Sachs scaling): at pressure p
+ * and sound speed c a charge W behaves as W·p₀/p does at the ground in size, with pressures scaled by
+ * p/p₀ and times by c₀/c. Its amplitude is stated in ground-level air, √(p₀/p) higher, as a ray tube
+ * carries it down (temperature neglected, as for a meteor's boom). No secondary shock or roar.
+ */
+function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, air, flash) {
+  const groundPressurePa = air.pressureKpa * 1000;
+  const pressurePa = pressureAtHeightPa(air, positionMetres.z);
+  const scale = groundPressurePa / pressurePa;
+  const [shock] = blastSources({
+    positionMetres, startSeconds: emissionSeconds, chargeKilograms: chargeKilograms * scale, explosive: 'tnt', secondaryShock: false,
+    fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0, ...BLAST_PULSE
+  }, { ...air, pressureKpa: pressurePa / 1000 });
+  const durationSeconds = Math.min(MAXIMUM_HIGH_BLAST_SECONDS, shock.durationSeconds * Math.sqrt(temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, positionMetres.z)));
+  return { ...shock, flash, amplitudePaMetres: shock.amplitudePaMetres * Math.sqrt(scale), durationSeconds, spanSeconds: friedlanderSpanSeconds(durationSeconds, BLAST_PULSE.decay) };
+}
 
 export function blastSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
@@ -85,9 +117,15 @@ export function emitterFlashes(emitter, surface = null) {
 }
 
 /** Point sources of an emitter, with the flashes they came from. */
+/** A meteor's or shower's rows: one per meteor for its booms, first, then the blasts where each breaks up and bursts. */
+function meteorSources(emitter, air) {
+  const members = showerMembers(emitter);
+  return [...members.map(flightSource), ...members.flatMap((meteor, index) => meteorBursts(meteor, air).map(burst => highBlastSource(burst, air, index)))];
+}
+
 export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
-  if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: showerMembers(emitter).map(flightSource) };
+  if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   const flashes = emitterFlashes(emitter, surface);

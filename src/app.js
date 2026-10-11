@@ -19,7 +19,7 @@ import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODIES, BODY_TYPES, carlsonBoom } from './domain/flight.js';
-import { meteorBoom, showerMembers } from './domain/meteor.js';
+import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
@@ -857,10 +857,8 @@ function detailSections(emitter) {
         pointFields(container, { label: 'Start', point: emitter.startMetres, onCommit: set('startMetres') });
         numbers(['headingDegrees', 'entryDegrees', 'endHeightMetres'])(container);
       }),
-      section('Meteoroid', container => {
-        numbers(['speedKilometresPerSecond', 'diameterMetres', 'dragCoefficient', 'riseTimeSeconds'])(container);
-        numberField(container, { key: 'trailSegmentMetres', value: emitter.segmentLengthMetres, onCommit: set('segmentLengthMetres') });
-      })
+      section('Meteoroid', numbers(['speedKilometresPerSecond', 'diameterMetres', 'densityKilogramsPerCubicMetre', 'dragCoefficient', 'riseTimeSeconds'])),
+      section('Breakup', numbers(['strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']))
     ];
   }
   if (isFlightKind(emitter)) {
@@ -1449,10 +1447,14 @@ function arrivalDelay(from) {
 }
 
 const isBlastKind = emitter => emitter.kind === 'blast' || emitter.kind === 'barrage';
+const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
-/** Every stroke of an emitter as its flash, scene time, and route; a blast's and a round's also where they burst. */
+/** Every stroke of an emitter as its flash, scene time, and route; a blast's, a round's, and a meteor's breakups and bursts also where they burst. */
 function strokeTimeline(emitter) {
   if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres }];
+  if (isMeteorKind(emitter)) {
+    return showerMembers(emitter).flatMap((meteor, index) => meteorBursts(meteor, state.scene.air).map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres })));
+  }
   if (isTrackKind(emitter)) return [];
   if (emitter.kind === 'barrage') return cachedRounds(emitter).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres }));
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
@@ -1474,7 +1476,7 @@ function animationState() {
   for (const emitter of state.scene.emitters) {
     if (!emitter.enabled) continue;
     const timeline = strokeTimeline(emitter);
-    if (realDelay || isBlastKind(emitter)) {
+    if (realDelay || isBlastKind(emitter) || isMeteorKind(emitter)) {
       strokes.set(emitter.id, timeline
         .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(stroke.position) }))
         .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS));

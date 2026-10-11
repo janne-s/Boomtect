@@ -1,7 +1,7 @@
 import {
   ISA_LAPSE_RATE_KELVIN_PER_METRE, MAXIMUM_EMITTERS, MAXIMUM_HEIGHT_METRES, MAXIMUM_RECEIVERS, MODEL_VERSION, SAMPLE_RATE_HZ, SCENE_EXTENT_METRES
 } from './constants.js';
-import { EMITTER_KINDS } from './emitters.js';
+import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODIES, BODY_TYPES } from './flight.js';
 import { GROUND_TYPES } from './ground.js';
@@ -9,7 +9,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 19;
+export const SCENE_VERSION = 20;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -109,7 +109,11 @@ export const PARAMETERS = Object.freeze({
   diameterMetres: { minimum: .001, maximum: 50, unit: 'm', label: 'Diameter', reliability: null },
   endHeightMetres: { minimum: 0, maximum: 100000, unit: 'm', label: 'End height', reliability: 'C' },
   dragCoefficient: { minimum: .3, maximum: 3, unit: '', label: 'Drag coefficient', reliability: 'C' },
-  trailSegmentMetres: { minimum: 5, maximum: 1000, unit: 'm', label: 'Trail piece', reliability: 'C' },
+  densityKilogramsPerCubicMetre: { minimum: 300, maximum: 8000, unit: 'kg/m³', label: 'Density', reliability: 'B' },
+  strengthMegapascals: { minimum: .01, maximum: 100, unit: 'MPa', label: 'Strength', reliability: 'B' },
+  breakupCount: { minimum: 0, maximum: 6, unit: '', label: 'Breakups', reliability: 'C', integer: true },
+  breakupShare: { minimum: 0, maximum: .5, unit: '', label: 'Breakup energy', reliability: 'C' },
+  burstShare: { minimum: 0, maximum: 1, unit: '', label: 'Burst energy', reliability: 'C' },
   meteorCount: { minimum: 1, maximum: 200, unit: '', label: 'Meteors', reliability: null, integer: true },
   diameterSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Diameter spread σ', reliability: 'C' },
   memberCount: { minimum: 1, maximum: 24, unit: '', label: 'Aircraft', reliability: null, integer: true },
@@ -149,7 +153,8 @@ const BARRAGE_NUMBERS = Object.freeze([
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
-const METEOR_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'entryDegrees', 'speedKilometresPerSecond', 'diameterMetres', 'endHeightMetres', 'dragCoefficient', 'riseTimeSeconds']);
+const METEOR_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'entryDegrees', 'speedKilometresPerSecond', 'diameterMetres', 'endHeightMetres', 'dragCoefficient', 'riseTimeSeconds',
+  'densityKilogramsPerCubicMetre', 'strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']);
 const SHOWER_NUMBERS = Object.freeze(['meteorCount', 'radiusMetres', 'durationSeconds', 'diameterSpread']);
 
 export class SceneError extends Error {}
@@ -241,9 +246,7 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
     secondaryShock: true,
     fireballDecibels: -20,
     fireballSecondsPerSixthRootKilogram: .92,
-    linearScaledDistance: 20,
-    durationSecondsPerCubeRootKilogram: .006,
-    decay: 1,
+    ...BLAST_PULSE,
     riseTimeSeconds: 4e-5
   };
 }
@@ -301,8 +304,9 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 }
 
 /**
- * A bright fireball: a 0.5 m meteoroid entering at 20 km/s and 35° from 100 km, its trail ending at
- * 25 km. Its shock rises in about a millisecond (class C).
+ * A bright fireball: a 0.5 m stony meteoroid entering at 20 km/s and 35° from 100 km, its trail
+ * ending at 25 km. Its shock rises in about a millisecond (class C). It breaks up twice from 1 MPa,
+ * each time releasing 5 % of its kinetic energy, and bursts at the end with 30 % (class C).
  */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
@@ -315,8 +319,12 @@ export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015)
     diameterMetres: .5,
     endHeightMetres: 25000,
     dragCoefficient: 1,
-    segmentLengthMetres: 100,
-    riseTimeSeconds: .001
+    riseTimeSeconds: .001,
+    densityKilogramsPerCubicMetre: 3300,
+    strengthMegapascals: 1,
+    breakupCount: 2,
+    breakupShare: .05,
+    burstShare: .3
   };
 }
 
@@ -403,7 +411,6 @@ function emitter(value, index) {
   if (value.kind === 'meteor' || value.kind === 'shower') {
     const meteor = {
       ...common, startMetres: point(value.startMetres, `${path}.startMetres`), ...numbers(value, METEOR_NUMBERS, path),
-      segmentLengthMetres: number(value.segmentLengthMetres, 'trailSegmentMetres', `${path}.segmentLengthMetres`),
       ...(value.kind === 'shower' ? numbers(value, SHOWER_NUMBERS, path) : {})
     };
     check(meteor.endHeightMetres < meteor.startMetres.z, `${path} must end below its start.`);
