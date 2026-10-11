@@ -1,3 +1,4 @@
+import { BLAST } from './constants.js';
 import { createRandom, normalDeviate } from './random.js';
 
 /**
@@ -11,8 +12,6 @@ import { createRandom, normalDeviate } from './random.js';
 
 /** Height of a round that bursts on the ground, as the single blast's default. */
 export const GROUND_BURST_METRES = 1;
-/** Jitter of a salvo's time as a share of the interval between salvos. */
-const SALVO_JITTER = .15;
 
 /** The blast settings every round shares with the barrage. */
 const SHARED_KEYS = Object.freeze(['explosive', 'secondaryShock', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
@@ -28,7 +27,7 @@ export function barrageRounds(barrage) {
   const shared = Object.fromEntries(SHARED_KEYS.map(key => [key, barrage[key]]));
   const rounds = [];
   for (let salvo = 0; salvo < salvos; salvo += 1) {
-    const salvoSeconds = Math.max(0, salvo * interval + (random() - .5) * 2 * SALVO_JITTER * interval);
+    const salvoSeconds = Math.max(0, salvo * interval + (random() - .5) * 2 * BLAST.salvoJitter * interval);
     const count = Math.min(barrage.salvoSize, barrage.roundCount - rounds.length);
     for (let round = 0; round < count; round += 1) {
       const radius = barrage.radiusMetres * Math.sqrt(random());

@@ -1,3 +1,4 @@
+import { VIEW } from '../domain/constants.js';
 import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
 import { fitCanvas, formatSeconds, niceStep, palette } from './canvas.js';
 
@@ -5,11 +6,6 @@ const LEFT = 8;
 const RIGHT = 8;
 const TOP = 22;
 const BOTTOM = 20;
-/** Opacity of microphones other than the solo one, of muted ones, and of the rest, which may overlap. */
-const DIMMED = .4;
-const MUTED = .35;
-const OVERLAPPING = .6;
-const SOLO = .85;
 
 /** Scene-time window of a result: from its first rendered sample to its last. */
 function resultWindow(result) {
@@ -52,7 +48,7 @@ function traceStyles(traces, soloId, colors) {
   return traces
     .map(trace => {
       const emphasized = soloId ? trace.id === soloId : trace.listening;
-      const alpha = single ? 1 : soloId ? (emphasized ? SOLO : DIMMED) : emphasized ? OVERLAPPING : MUTED;
+      const alpha = single ? 1 : soloId ? (emphasized ? VIEW.plots.solo : VIEW.plots.dimmed) : emphasized ? VIEW.plots.overlapping : VIEW.plots.muted;
       return { trace, emphasized, single, color: single ? colors.ink : colors.mics[trace.index % colors.mics.length], alpha };
     })
     .sort((a, b) => Number(a.emphasized) - Number(b.emphasized));

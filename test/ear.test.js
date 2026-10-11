@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyEar, EAR, envelope, reflexAttenuation } from '../src/domain/ear.js';
+import { EAR } from '../src/domain/constants.js';
+import { applyEar, envelope, reflexAttenuation } from '../src/domain/ear.js';
 
 const SAMPLE_RATE = 48000;
 const pascals = decibels => EAR.referencePressurePa * 10 ** (decibels / 20);

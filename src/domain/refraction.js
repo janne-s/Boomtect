@@ -1,5 +1,5 @@
 import { speedOfSoundMetresPerSecond, temperatureAtHeightKelvin, temperatureLayers } from './air.js';
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
+import { AIR, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, PROPAGATION, VIEW } from './constants.js';
 
 /**
  * Sound paths in air whose sound speed changes linearly with height, c(z) = c₀ + g·z. Coordinates
@@ -13,18 +13,15 @@ import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
  * from the hyperbolic sphere, (a sinh σ)² per steradian with σ = |g|·t.
  *
  * Class B: the profile is the secant of c = sqrt(γ R T(z)) between the ground and
- * PROFILE_FIT_HEIGHT_METRES for T(z) = T₀ − Γz. That height keeps the shadow distance within 1.5 %
+ * AIR.profileFitHeightMetres for T(z) = T₀ − Γz. That height keeps the shadow distance within 1.5 %
  * of the exact profile's for sources up to 12 km and Γ from 6.5 to 12 K/km; with the ISA gradient
  * the speed departs by at most 1.8 m/s up to 10 km.
  */
 
-export const PROFILE_FIT_HEIGHT_METRES = 3000;
 /** Below this gradient (1/s) the air is homogeneous and rays are straight. */
 const FLAT_GRADIENT = 1e-12;
 /** First zero of Ai′(−τ): the least-attenuated creeping mode over rigid ground. */
 const RIGID_CREEPING_ZERO = 1.0187929716;
-/** Greatest focusing gain of a reflected ray tube near a caustic, in decibels (class C). */
-export const CAUSTIC_LIMIT_DB = 10;
 const ROOT_ITERATIONS = 100;
 /** Relative tolerance of the reflected ray's horizontal distance. */
 const ROOT_TOLERANCE_METRES = 1e-11;
@@ -49,7 +46,7 @@ export function soundSpeedProfile(air) {
   const groundSpeed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   if (!air.refraction) return { groundSpeed, gradient: 0 };
   // Over a ground layer the profile is fitted across it; a path reaching higher is fitted to its own top (`pathProfile`).
-  const fitHeight = air.groundLayerMetres > 0 ? air.groundLayerMetres : PROFILE_FIT_HEIGHT_METRES;
+  const fitHeight = air.groundLayerMetres > 0 ? air.groundLayerMetres : AIR.profileFitHeightMetres;
   const trueSpeed = height => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, height));
   const gradient = (trueSpeed(fitHeight) - groundSpeed) / fitHeight;
   // Heights where the layered profile bends, so that its slowness is integrated smoothly between them.
@@ -337,7 +334,7 @@ export function reflectedRay(profile, source, receiver) {
   const area = horizontal * derivative * legs.first.sine * legs.second.sine / (xi * cs * cs);
   const metres = down.metres + up.metres;
   let spreadMetres = Number.isFinite(area) && area > 0 ? Math.sqrt(area) : horizontal > 0 ? Infinity : metres;
-  spreadMetres = Math.max(spreadMetres, metres * 10 ** (-CAUSTIC_LIMIT_DB / 20));
+  spreadMetres = Math.max(spreadMetres, metres * 10 ** (-PROPAGATION.causticLimitDb / 20));
   return {
     seconds: down.seconds + up.seconds,
     metres,
@@ -349,14 +346,12 @@ export function reflectedRay(profile, source, receiver) {
   };
 }
 
-/** Most ground contacts of a ray in air whose speed grows with height (class C: more lose too much to the ground to matter). */
-export const MAXIMUM_BOUNCES = 6;
 /** Scan of the grazing angle for rays with several contacts, refined by bisection. */
 const BOUNCE_SCAN_STEPS = 48;
 const BOUNCE_BISECTIONS = 50;
 
 /**
- * Rays that touch the ground 2…MAXIMUM_BOUNCES times between a source and a receiver above level
+ * Rays that touch the ground 2…PROPAGATION.maximumBounces times between a source and a receiver above level
  * ground, where the speed grows with height and bends rays back down (class A on the profile). Every
  * contact is at the same grazing angle ψ, and between two contacts the ray is a circular hop of
  * 2·(c₀/g)·tan ψ. Each end's leg may reach its height rising or, past its highest point, falling, so
@@ -364,7 +359,7 @@ const BOUNCE_BISECTIONS = 50;
  * distance are bracketed on a scan of ψ and refined by bisection. Spreading follows the ray tube as
  * for one contact, with ∂(hop)/∂ξ = −2/(g·sin ψ·ξ²). Returns the rays, each with its `bounces`.
  */
-export function multipleReflections(profile, source, receiver, maximumBounces = MAXIMUM_BOUNCES) {
+export function multipleReflections(profile, source, receiver, maximumBounces = PROPAGATION.maximumBounces) {
   const g = profile.gradient;
   if (!(g > 0) || flat(profile) || maximumBounces < 2) return [];
   const dx = receiver.x - source.x;
@@ -437,7 +432,7 @@ function bounceRay(profile, source, receiver, { first, second, sinPsi, cosPsi },
   return {
     seconds: down.seconds + (bounces - 1) * hopRay.seconds + up.seconds,
     metres,
-    spreadMetres: Math.max(Math.sqrt(area), metres * 10 ** (-CAUSTIC_LIMIT_DB / 20)),
+    spreadMetres: Math.max(Math.sqrt(area), metres * 10 ** (-PROPAGATION.causticLimitDb / 20)),
     departure: down.departure,
     arrival: up.arrival,
     groundSine: sinPsi,
@@ -542,10 +537,8 @@ export function localProfile(profile, heightMetres) {
   const trueSpeed = profile.layered?.trueSpeed;
   if (!trueSpeed) return profile;
   const speed = trueSpeed(heightMetres);
-  return Math.abs(speedAt(profile, heightMetres) - speed) <= LOCAL_PROFILE_TOLERANCE * speed ? profile : { groundSpeed: speed, gradient: 0 };
+  return Math.abs(speedAt(profile, heightMetres) - speed) <= VIEW.wavefront.localProfileTolerance * speed ? profile : { groundSpeed: speed, gradient: 0 };
 }
-/** How far the linear profile may stray from the layered air before a front is drawn in homogeneous air. */
-const LOCAL_PROFILE_TOLERANCE = .05;
 
 /**
  * The wavefront of a point source after `seconds`: a sphere whose centre moves away from the

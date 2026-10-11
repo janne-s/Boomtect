@@ -1,12 +1,9 @@
 import Omnitone from '../../assets/vendor/omnitone/omnitone.min.esm.js';
 import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
+import { RENDER } from '../domain/constants.js';
 
 /** Seconds between pressing Play and the start of the timeline, so scheduling never lands in the past. */
 const SCHEDULE_LEAD_SECONDS = .08;
-/** Without the real delay, the first sound starts this long after playback begins. */
-const SHORTENED_LEAD_SECONDS = .5;
-/** Playback fades in when it starts and out when it stops over this time, so a cut into a sound does not click. */
-const FADE_SECONDS = .05;
 
 /**
  * Omnitone's higher-order decoder mirrors left and right relative to AmbiX: measured with a source
@@ -155,16 +152,16 @@ export function createPlayer() {
       const at = context.currentTime;
       fader.gain.cancelScheduledValues(at);
       fader.gain.setValueAtTime(fader.gain.value, at);
-      fader.gain.linearRampToValueAtTime(0, at + FADE_SECONDS);
+      fader.gain.linearRampToValueAtTime(0, at + RENDER.fadeSeconds);
       for (const source of sources) {
         source.onended = null;
-        try { source.stop(at + FADE_SECONDS); } catch { /* Not started. */ }
+        try { source.stop(at + RENDER.fadeSeconds); } catch { /* Not started. */ }
       }
       setTimeout(() => {
         sources.forEach(source => source.disconnect());
         nodes.forEach(node => node.disconnect());
         fader.disconnect();
-      }, (FADE_SECONDS * 2) * 1000);
+      }, (RENDER.fadeSeconds * 2) * 1000);
     }
     current = null;
     clock = null;
@@ -204,12 +201,12 @@ export function createPlayer() {
       return false;
     }
     current = connected;
-    const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - SHORTENED_LEAD_SECONDS));
+    const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds));
     const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - (atSceneSeconds ?? skipped);
     const when = origin + composition.startSeconds;
     const now = context.currentTime;
     fader.gain.setValueAtTime(0, now);
-    fader.gain.linearRampToValueAtTime(1, now + FADE_SECONDS);
+    fader.gain.linearRampToValueAtTime(1, now + RENDER.fadeSeconds);
     for (const source of connected.sources) {
       if (when >= now) source.start(when); else source.start(now, now - when);
     }

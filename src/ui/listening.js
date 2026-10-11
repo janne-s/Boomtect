@@ -1,3 +1,5 @@
+import { RENDER } from '../domain/constants.js';
+
 /**
  * What the listening microphones make together. Omni microphones give their pressure: one is mono,
  * two are a stereo pair, more are one channel each. A binaural microphone gives its sound field,
@@ -14,16 +16,13 @@ export const LISTENING_LABELS = Object.freeze({
   mix: 'Mix'
 });
 
-/** Below this share of the peak a sample is silence, so playback without the real delay skips it. */
-const SILENCE_SHARE = 1e-4;
-
 /**
  * When the first sound is heard: a render starts on a frame boundary, which for long pulses or
  * echoes lies seconds before the earliest arrival.
  */
 function firstSoundSeconds(results, peakPa) {
   return Math.min(...results.map(result => {
-    const index = result.samples.findIndex(sample => Math.abs(sample) > SILENCE_SHARE * peakPa);
+    const index = result.samples.findIndex(sample => Math.abs(sample) > RENDER.silenceShare * peakPa);
     return index < 0 ? Infinity : result.startSeconds + index / result.sampleRate;
   }));
 }

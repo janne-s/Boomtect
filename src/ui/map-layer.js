@@ -1,3 +1,4 @@
+import { VIEW } from '../domain/constants.js';
 import { mapTiles } from '../domain/terrain.js';
 import { palette } from './canvas.js';
 
@@ -27,22 +28,16 @@ function styledTile(image) {
     const [r, g, b] = [data[at], data[at + 1], data[at + 2]];
     const light = (.299 * r + .587 * g + .114 * b) / 255;
     // Contours and lettering are the dark parts; light land is the ground.
-    const line = Math.min(1, Math.max(0, (MAP_LIGHT_LAND - light) / (MAP_LIGHT_LAND - MAP_DARK_LINE)));
+    const line = Math.min(1, Math.max(0, (VIEW.map.lightLand - light) / (VIEW.map.lightLand - VIEW.map.darkLine)));
     // Water is the blue that is bluer than it is red and no less blue than green.
-    const wet = b - r > MAP_WATER_BLUE && b >= g;
+    const wet = b - r > VIEW.map.waterBlue && b >= g;
     for (let channel = 0; channel < 3; channel += 1) {
-      data[at + channel] = ground[channel] + ((wet ? water[channel] : ink[channel]) - ground[channel]) * (wet ? MAP_WATER_SHARE : line);
+      data[at + channel] = ground[channel] + ((wet ? water[channel] : ink[channel]) - ground[channel]) * (wet ? VIEW.map.waterShare : line);
     }
   }
   context.putImageData(pixels, 0, 0);
   return canvas;
 }
-
-/** Lightness of open land and of the darkest lines in OpenTopoMap, and how blue water is and how much it shows. */
-const MAP_LIGHT_LAND = .92;
-const MAP_DARK_LINE = .35;
-const MAP_WATER_BLUE = 40;
-const MAP_WATER_SHARE = .12;
 
 /**
  * The map laid on the floor of a terrain: its tiles, loaded on first use and kept per terrain.

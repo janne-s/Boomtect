@@ -1,17 +1,5 @@
+import { GROUND } from './constants.js';
 import { faddeeva } from './faddeeva.js';
-
-/**
- * Effective flow resistivity of natural ground in kPa·s/m² (cgs rayls): the mean of each range in
- * FHWA TNM ground types (Embleton, Piercy & Daigle 1983). Adopted from Echotect `src/materials.js`
- * at commit cb712ef6. Rigid ground reflects without loss.
- */
-export const GROUND_FLOW_RESISTIVITY = Object.freeze({
-  snow: 20,
-  forestFloor: 50,
-  grass: 212.5,
-  soil: 278,
-  stonyGround: 550
-});
 
 /**
  * Ground that reflects without loss: rigid ground, and water, whose impedance is some 3 600 times
@@ -20,7 +8,7 @@ export const GROUND_FLOW_RESISTIVITY = Object.freeze({
 export const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);
 export const isReflecting = groundType => REFLECTING_GROUNDS.includes(groundType);
 
-export const GROUND_TYPES = Object.freeze([...REFLECTING_GROUNDS, ...Object.keys(GROUND_FLOW_RESISTIVITY)]);
+export const GROUND_TYPES = Object.freeze([...REFLECTING_GROUNDS, ...Object.keys(GROUND.flowResistivity)]);
 
 export const GROUND_LABELS = Object.freeze({
   rigid: 'Rigid',
@@ -55,7 +43,7 @@ export function delanyBazleyImpedance(frequencyHz, flowResistivityKpaSecondsPerS
  * ground with normalized admittance β, as [re, im] in the e^(−iωt) convention, and β itself.
  */
 function planeWave(frequencyHz, groundType, cosIncidence) {
-  const flowResistivity = GROUND_FLOW_RESISTIVITY[groundType];
+  const flowResistivity = GROUND.flowResistivity[groundType];
   if (!flowResistivity) throw new RangeError(`Unknown ground type: ${groundType}`);
   const [zRe, zIm] = delanyBazleyImpedance(frequencyHz, flowResistivity);
   const zScale = zRe * zRe + zIm * zIm;

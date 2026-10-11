@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PROPAGATION } from '../src/domain/constants.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
 import { defaultBlast, defaultFlight, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { encodeHeights, terrainSurface } from '../src/domain/terrain.js';
-import { CELL_SECONDS, clearBetween, echoField, echoPaths, echoSurface, SCATTER_BIN_SECONDS, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
 import { plainScene } from './plain-scene.js';
 
 function terrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
@@ -104,7 +105,7 @@ test('source cells keep the total energy and keep strokes apart', () => {
   const sources = sourceTable([
     pointSource({ x: 10, y: 10, z: 1010 }, { amplitude: 3 }),
     pointSource({ x: 50, y: 20, z: 1050 }, { amplitude: 4 }),
-    pointSource({ x: 50, y: 20, z: 1050 }, { amplitude: 2, emission: 2 * CELL_SECONDS }),
+    pointSource({ x: 50, y: 20, z: 1050 }, { amplitude: 2, emission: 2 * PROPAGATION.echoCellSeconds }),
     pointSource({ x: 250, y: 20, z: 1050 }, { amplitude: 1 })
   ]);
   const cells = sourceCells(sources, 100);
@@ -114,7 +115,7 @@ test('source cells keep the total energy and keep strokes apart', () => {
   let total = 0;
   for (let cell = 0; cell < cells.length; cell += 1) total += cells.amplitudePaMetres[cell] ** 2;
   assert.ok(Math.abs(total - 30) < 1e-9);
-  assert.equal(cells.emissionSeconds[1], 2 * CELL_SECONDS);
+  assert.equal(cells.emissionSeconds[1], 2 * PROPAGATION.echoCellSeconds);
   // The later stroke shares its place, and the echo geometry traced from it, with the first.
   assert.equal(cells.places.length, 2);
   assert.equal(cells.place[0], cells.place[1]);
@@ -185,7 +186,7 @@ test('merged scattered echoes do not fall on a regular grid of arrival times, wh
   let count = 0;
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.kind[index] !== PATH_SCATTER) continue;
-    const phase = 2 * Math.PI * paths.seconds[index] / SCATTER_BIN_SECONDS;
+    const phase = 2 * Math.PI * paths.seconds[index] / PROPAGATION.scatterBinSeconds;
     re += Math.cos(phase);
     im += Math.sin(phase);
     count += 1;

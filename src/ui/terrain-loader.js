@@ -1,9 +1,9 @@
+import { GROUND } from '../domain/constants.js';
 import { decodePngRgb } from '../domain/png.js';
 import { PLACE_NAME_KINDS, TERRAIN_DEFAULTS } from '../domain/scene.js';
 import { buildHeightfield, decodeTerrarium, encodeHeights, metresPerDegree, TERRAIN_PROVIDER, terrainPlan, TILE_SIZE } from '../domain/terrain.js';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const MAXIMUM_NAMES = 400;
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
@@ -48,7 +48,7 @@ export async function fetchPlaceNames({ latitude, longitude, extentMetres }, sig
   const { north, east } = metresPerDegree(latitude);
   const half = extentMetres / 2;
   const box = [latitude - half / north, longitude - half / east, latitude + half / north, longitude + half / east].map(value => value.toFixed(6)).join(',');
-  const query = `[out:json][timeout:25];(node["place"~"^(city|town|village|hamlet|locality)$"]["name"](${box});node["natural"="peak"]["name"](${box});way["natural"="water"]["name"](${box});relation["natural"="water"]["name"](${box}););out center ${MAXIMUM_NAMES};`;
+  const query = `[out:json][timeout:25];(node["place"~"^(city|town|village|hamlet|locality)$"]["name"](${box});node["natural"="peak"]["name"](${box});way["natural"="water"]["name"](${box});relation["natural"="water"]["name"](${box}););out center ${GROUND.terrain.maximumPlaceNames};`;
   try {
     const response = await fetch(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: query }), signal });
     if (!response.ok) return null;
@@ -64,7 +64,7 @@ export async function fetchPlaceNames({ latitude, longitude, extentMetres }, sig
       if (Math.abs(x) > half || Math.abs(y) > half) return [];
       const elevation = Number.parseFloat(tags.ele);
       return [{ name: (tags.name ?? '').slice(0, 80), kind, x, y, elevationMetres: kind === 'peak' && Number.isFinite(elevation) ? elevation : null }];
-    }).filter(item => item.name).slice(0, MAXIMUM_NAMES);
+    }).filter(item => item.name).slice(0, GROUND.terrain.maximumPlaceNames);
   } catch (error) {
     if (signal?.aborted) throw error;
     return null;

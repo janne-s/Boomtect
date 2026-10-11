@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { GROUND } from '../src/domain/constants.js';
 import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
-import { FOLIAGE_BANDS_HZ, FOLIAGE_DECIBELS_PER_METRE, foliageExponent, foliageMetres, forestResponses } from '../src/domain/forest.js';
+import { foliageExponent, foliageMetres, forestResponses } from '../src/domain/forest.js';
 import { combineSegments, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -18,9 +19,9 @@ function forestBlast({ distance = 400, forest = true } = {}) {
 }
 
 test('the causal foliage loss follows ISO 9613-2 Table A.1 within 0.006 dB/m in every band', () => {
-  FOLIAGE_BANDS_HZ.forEach((frequency, band) => {
+  GROUND.foliageBandsHz.forEach((frequency, band) => {
     const decibels = foliageExponent(frequency)[0] * 20 / Math.LN10;
-    assert.ok(Math.abs(decibels - FOLIAGE_DECIBELS_PER_METRE[band]) < .006, `${frequency} Hz: ${decibels}`);
+    assert.ok(Math.abs(decibels - GROUND.foliageDecibelsPerMetre[band]) < .006, `${frequency} Hz: ${decibels}`);
   });
 });
 

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { GROUND } from '../src/domain/constants.js';
 import { deygoutEdges, fresnelIntegrals, knifeEdge } from '../src/domain/diffraction.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';
 import { defaultBlast, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
-import { MAXIMUM_TILE_REQUESTS, buildHeightfield, curvatureDropMetres, decodeHeights, encodeHeights, mapTiles, terrainPlan, terrainSurface } from '../src/domain/terrain.js';
+import { buildHeightfield, curvatureDropMetres, decodeHeights, encodeHeights, mapTiles, terrainPlan, terrainSurface } from '../src/domain/terrain.js';
 import { meanPlaneFrame, shieldingEdges, shiftedProfile, terrainReflection } from '../src/domain/terrain-propagation.js';
 
 /** A captured terrain of `cells` × `cells` with heights from height(x, y) in metres above sea level. */
@@ -192,7 +193,7 @@ test('a microphone on a hilltop hears a source that its own ground alone would p
 test('the map tiles cover the terrain square, laid in the scene frame, within the request budget', () => {
   for (const extentMetres of [5000, 20000, 50000]) {
     const { tiles } = mapTiles({ latitude: 63.0964, longitude: 29.8061, extentMetres });
-    assert.ok(tiles.length <= MAXIMUM_TILE_REQUESTS);
+    assert.ok(tiles.length <= GROUND.terrain.maximumTileRequests);
     const west = Math.min(...tiles.map(tile => tile.northWest.x));
     const east = Math.max(...tiles.map(tile => tile.northEast.x));
     const north = Math.max(...tiles.map(tile => tile.northWest.y));

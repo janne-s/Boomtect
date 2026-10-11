@@ -1,46 +1,11 @@
 import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from './air.js';
-import { MAXIMUM_SEGMENTS_PER_EMITTER } from './constants.js';
+import { THUNDER } from './constants.js';
 import { nWaveDurationForPeak } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import { add, deflected, distance, length, scaled, subtract, unit } from './vector.js';
 
 export const FLASH_TYPES = Object.freeze(['cloud-to-ground', 'intra-cloud']);
 
-/**
- * Class B: ReVelle's cylindrical weak-shock theory (ReVelle 1974, 1976; used for thunder and
- * meteors). The fundamental period at x = r/R₀ = 10 is τ₀ = k·R₀/c with k ≈ 2.81, and in the weakly
- * nonlinear regime it grows as τ(x) = 0.562·τ₀·x^(1/4) while the overpressure falls as x^(−3/4),
- * that is x^(−1/4) faster than linear cylindrical spreading.
- */
-export const WEAK_SHOCK = Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 });
-
-/** Class C: branches leave their parent between these shares of its length. */
-const BRANCH_JUNCTION_RANGE = Object.freeze([.1, .95]);
-/** Class C: ground-flash branches descend at this angle from straight down, in degrees. */
-const GROUND_BRANCH_ANGLE_DEGREES = Object.freeze([15, 65]);
-/** Class C: a sub-branch leaves its parent's direction by this angle, in degrees. */
-const SUB_BRANCH_ANGLE_DEGREES = Object.freeze([20, 60]);
-/** Class C: cloud-flash branches stay within this elevation of the horizontal, in degrees. */
-const CLOUD_BRANCH_ELEVATION_DEGREES = 20;
-/**
- * Class C: a ground flash's in-cloud channels. Mapped ground flashes show long, near-horizontal
- * channels inside the cloud (VHF lightning mapping; no typical length verified yet). Two leave the
- * top in roughly opposite directions, within this elevation, each reaching this share of the
- * nominal length or more.
- */
-const IN_CLOUD_CHANNELS = 2;
-const IN_CLOUD_ELEVATION_DEGREES = 10;
-const IN_CLOUD_SPREAD_DEGREES = 50;
-const IN_CLOUD_LENGTH_SHARE = Object.freeze([.6, 1]);
-/** Class C: a branch reaches between this share and all of its nominal length. */
-const BRANCH_LENGTH_MINIMUM_SHARE = .3;
-/** Class C: each branching level has this share of the previous level's count and length. */
-const SUB_BRANCH_COUNT_SHARE = .5;
-const SUB_BRANCH_LENGTH_SHARE = .45;
-/** Class C: a new ground termination leaves the channel between these shares of its height. */
-const TERMINATION_JUNCTION_RANGE = Object.freeze([.2, .7]);
-/** Class C: a new ground point lies this far from the junction per metre of junction height. */
-const TERMINATION_REACH_RANGE = Object.freeze([.2, .8]);
 /** Segments a tortuous walk may need per metre of straight reach, as a share of the step. */
 const BUDGET_MARGIN = 2;
 /** Rounding slack when dividing a straight path into steps. */
@@ -58,7 +23,7 @@ const uniform = (random, [low, high]) => low + random() * (high - low);
  * its end. A path that would go below the ground (`groundAt(x, y)`, the plane z = 0 by default) is
  * reflected above it, or ends when `endAtGround` is set; a target below the ground is lifted onto it.
  */
-export function tortuousPath(random, start, target, stepMetres, tortuosityDegrees, { endAtGround = false, budget = MAXIMUM_SEGMENTS_PER_EMITTER, groundAt = FLAT_GROUND } = {}) {
+export function tortuousPath(random, start, target, stepMetres, tortuosityDegrees, { endAtGround = false, budget = THUNDER.maximumSegmentsPerEmitter, groundAt = FLAT_GROUND } = {}) {
   // A target inside rising ground could never be reached by a walk kept above it; it moves up onto the ground.
   const groundAtTarget = groundAt(target.x, target.y);
   const end = target.z < groundAtTarget ? { ...target, z: groundAtTarget } : target;
@@ -146,19 +111,19 @@ function pointAtArc(points, arcMetres) {
  */
 function growBranches(random, spec, budget, parent, level, channels) {
   if (level > spec.branchDepth) return;
-  const count = Math.round(spec.branchCount * SUB_BRANCH_COUNT_SHARE ** (level - 1));
+  const count = Math.round(spec.branchCount * THUNDER.channel.subBranchCountShare ** (level - 1));
   const parentLength = pathLength(parent.points);
   const ground = spec.type === 'cloud-to-ground';
   for (let branch = 0; branch < count; branch += 1) {
-    const junctionArc = parentLength * uniform(random, BRANCH_JUNCTION_RANGE);
+    const junctionArc = parentLength * uniform(random, THUNDER.channel.branchJunctionRange);
     const { point: junction, direction: parentDirection } = pointAtArc(parent.points, junctionArc);
-    const nominal = spec.branchLengthRatio * SUB_BRANCH_LENGTH_SHARE ** (level - 1) * parent.mainLength * uniform(random, [BRANCH_LENGTH_MINIMUM_SHARE, 1]);
+    const nominal = spec.branchLengthRatio * THUNDER.channel.subBranchLengthShare ** (level - 1) * parent.mainLength * uniform(random, [THUNDER.channel.branchLengthMinimumShare, 1]);
     let direction;
-    if (level > 1) direction = deflected(parentDirection, toRadians(uniform(random, SUB_BRANCH_ANGLE_DEGREES)), 2 * Math.PI * random());
-    else if (ground) direction = deflected({ x: 0, y: 0, z: -1 }, toRadians(uniform(random, GROUND_BRANCH_ANGLE_DEGREES)), 2 * Math.PI * random());
+    if (level > 1) direction = deflected(parentDirection, toRadians(uniform(random, THUNDER.channel.subBranchAngleDegrees)), 2 * Math.PI * random());
+    else if (ground) direction = deflected({ x: 0, y: 0, z: -1 }, toRadians(uniform(random, THUNDER.channel.groundBranchAngleDegrees)), 2 * Math.PI * random());
     else {
       const azimuth = 2 * Math.PI * random();
-      const elevation = toRadians((2 * random() - 1) * CLOUD_BRANCH_ELEVATION_DEGREES);
+      const elevation = toRadians((2 * random() - 1) * THUNDER.channel.cloudBranchElevationDegrees);
       direction = { x: Math.cos(elevation) * Math.cos(azimuth), y: Math.cos(elevation) * Math.sin(azimuth), z: Math.sin(elevation) };
     }
     const reach = direction.z < 0 ? Math.min(nominal, (junction.z - spec.groundAt(junction.x, junction.y) - GROUND_CLEARANCE_METRES) / -direction.z) : nominal;
@@ -189,7 +154,7 @@ function growBranches(random, spec, budget, parent, level, channels) {
 export function lightningFlash(input) {
   const spec = { groundAt: FLAT_GROUND, ...input };
   const random = createRandom(spec.seed);
-  const budget = { remaining: MAXIMUM_SEGMENTS_PER_EMITTER };
+  const budget = { remaining: THUNDER.maximumSegmentsPerEmitter };
   const mainPoints = channelPath(random, spec.baseMetres, spec.topMetres, spec, budget);
   if (spec.branchBudget !== undefined) budget.remaining = Math.min(budget.remaining, spec.branchBudget);
   const mainLength = pathLength(mainPoints);
@@ -203,10 +168,10 @@ export function lightningFlash(input) {
   const inCloud = [];
   if (ground && spec.inCloudLengthMetres > 0) {
     const firstAzimuth = 2 * Math.PI * random();
-    for (let index = 0; index < IN_CLOUD_CHANNELS; index += 1) {
-      const azimuth = firstAzimuth + index * Math.PI + toRadians((2 * random() - 1) * IN_CLOUD_SPREAD_DEGREES);
-      const elevation = toRadians((2 * random() - 1) * IN_CLOUD_ELEVATION_DEGREES);
-      const reach = spec.inCloudLengthMetres * uniform(random, IN_CLOUD_LENGTH_SHARE);
+    for (let index = 0; index < THUNDER.channel.inCloudChannels; index += 1) {
+      const azimuth = firstAzimuth + index * Math.PI + toRadians((2 * random() - 1) * THUNDER.channel.inCloudSpreadDegrees);
+      const elevation = toRadians((2 * random() - 1) * THUNDER.channel.inCloudElevationDegrees);
+      const reach = spec.inCloudLengthMetres * uniform(random, THUNDER.channel.inCloudLengthShare);
       const direction = { x: Math.cos(elevation) * Math.cos(azimuth), y: Math.cos(elevation) * Math.sin(azimuth), z: Math.sin(elevation) };
       if (reach * BUDGET_MARGIN / spec.segmentLengthMetres > budget.remaining) continue;
       const points = channelPath(random, spec.topMetres, add(spec.topMetres, scaled(direction, reach)), spec, budget);
@@ -221,10 +186,10 @@ export function lightningFlash(input) {
     if (stroke > 0) {
       offsetSeconds += spec.strokeIntervalSeconds * Math.exp(spec.strokeIntervalSpread * normalDeviate(random));
       if (ground && random() < spec.newTerminationProbability) {
-        const junctionArc = mainLength * uniform(random, TERMINATION_JUNCTION_RANGE);
+        const junctionArc = mainLength * uniform(random, THUNDER.channel.terminationJunctionRange);
         const { point: junction } = pointAtArc(mainPoints, junctionArc);
         const above = junction.z - spec.groundAt(junction.x, junction.y);
-        const reach = above * uniform(random, TERMINATION_REACH_RANGE);
+        const reach = above * uniform(random, THUNDER.channel.terminationReachRange);
         const azimuth = 2 * Math.PI * random();
         const groundX = junction.x + reach * Math.cos(azimuth);
         const groundY = junction.y + reach * Math.sin(azimuth);
@@ -269,9 +234,6 @@ export function emissionSeconds(flash, stroke, step, arcMetres) {
     + (step.offsetMetres + arcMetres - step.fromArc) / (step.speedMetresPerSecond ?? flash.channelSpeedMetresPerSecond);
 }
 
-/** Class C: an in-cloud channel's energy per metre falls to e^(−IN_CLOUD_TAPER) at its far end. */
-const IN_CLOUD_TAPER = 4;
-
 /**
  * The share of a flash's energy per metre that a segment deposits. Return-stroke channels: class B
  * for the decay (MTLE return-stroke model: the current falls as I(z) = I₀·e^(−z/λ) with height;
@@ -280,7 +242,7 @@ const IN_CLOUD_TAPER = 4;
  * they thin out toward their tips (class C).
  */
 export function segmentEnergyShare(flash, channel, segment) {
-  if (channel.inCloud) return Math.exp(-IN_CLOUD_TAPER * segment.arcMetres / channel.lengthMetres);
+  if (channel.inCloud) return Math.exp(-THUNDER.channel.inCloudTaper * segment.arcMetres / channel.lengthMetres);
   return Math.exp(-2 * Math.max(0, segment.centreMetres.z) / flash.currentDecayHeightMetres);
 }
 
@@ -295,11 +257,11 @@ export const relaxationRadiusMetres = (energyJoulesPerMetre, pressurePa) => Math
  * the period grows from τ₀ at 10 R₀ until the wave turns linear at `limitRadii` relaxation radii.
  */
 export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii) {
-  const x = Math.min(limitRadii, Math.max(WEAK_SHOCK.startRadii, metres / relaxationRadius));
-  const period = WEAK_SHOCK.periodGrowth * sourcePeriodSeconds * x ** WEAK_SHOCK.periodExponent;
+  const x = Math.min(limitRadii, Math.max(THUNDER.weakShock.startRadii, metres / relaxationRadius));
+  const period = THUNDER.weakShock.periodGrowth * sourcePeriodSeconds * x ** THUNDER.weakShock.periodExponent;
   return {
     durationSeconds: nWaveDurationForPeak(1 / period),
-    amplitudeScale: (x / WEAK_SHOCK.startRadii) ** WEAK_SHOCK.extraDecayExponent
+    amplitudeScale: (x / THUNDER.weakShock.startRadii) ** THUNDER.weakShock.extraDecayExponent
   };
 }
 
@@ -339,7 +301,7 @@ export function flashSources(flashes, physics, air, sources = []) {
             durationSeconds: reference.durationSeconds,
             decay: 0,
             spanSeconds: weakShockPulse(radius, sourcePeriodSeconds, Infinity, physics.weakShockLimitRadii).durationSeconds,
-            linearRadiusMetres: radius * WEAK_SHOCK.startRadii
+            linearRadiusMetres: radius * THUNDER.weakShock.startRadii
           });
         });
       }

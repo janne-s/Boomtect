@@ -1,3 +1,4 @@
+import { PROPAGATION } from './constants.js';
 import { inShadow, PATH_ECHO, PATH_SCATTER, pathProfile, rayBetween, rayTiming } from './refraction.js';
 import { meanPlaneFrame } from './terrain-propagation.js';
 
@@ -6,7 +7,7 @@ import { meanPlaneFrame } from './terrain-propagation.js';
  * scattering share `s` splits each surface's reflected energy, `1 − s` specularly at the stationary
  * points of the path length on the surface (Fermat), `s` from every facet as a Lambertian patch.
  * Adapted to Boomtect's frame and units, to a coarser echo grid of its own, and to source cells:
- * point sources are pooled into cells of `cellMetres` and `CELL_SECONDS`, and each cell's echoes at a
+ * point sources are pooled into cells of `cellMetres` and `PROPAGATION.echoCellSeconds`, and each cell's echoes at a
  * receiver are traced once (architecture decision 2, option B).
  *
  * Classes: the specular geometry is A on the given surface; the Lambertian energy
@@ -15,19 +16,9 @@ import { meanPlaneFrame } from './terrain-propagation.js';
  * visibility test, and the echo limit are C.
  */
 
-/** The echo grid's longest side; finer terrain is sampled down to it. */
-const ECHO_GRID_SIDE = 150;
 /** Directions and growing steps of each facet's horizon, which settles most visibility questions at once. */
 const HORIZON_AZIMUTHS = 16;
 const HORIZON_STEP_GROWTH = .15;
-/** Sources whose emissions lie this far apart fall in different cells, so strokes stay apart. */
-export const CELL_SECONDS = .02;
-/** Scattered patches merge by arrival in bins of this width and by direction in these sectors. */
-export const SCATTER_BIN_SECONDS = .01;
-const AZIMUTH_SECTORS = 8;
-const ELEVATION_SECTORS = 3;
-/** Ground within this many echo cells of a receiver, or of a source near the ground, is the ground reflection's. */
-const EXCLUSION_SPACINGS = 1.5;
 /** Newton search for specular points: finite-difference step, convergence, and iterations, in echo cells. */
 const NEWTON_STEP_SPACINGS = .25;
 const NEWTON_TOLERANCE_SPACINGS = 1e-3;
@@ -39,13 +30,11 @@ const NEWTON_ITERATIONS = 12;
 const COPLANAR_COSINE = Math.cos(2 * Math.PI / 180);
 const COPLANAR_METRES = .5;
 const COPLANAR_SPACINGS = .035;
-/** Energy gain of a focusing concave reflection at most, where the caustic would diverge: 10 dB. */
-const MAXIMUM_FOCUSING = 10;
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
 /**
- * Pools an emitter's point sources into cells of `cellMetres` in space and CELL_SECONDS in emission
+ * Pools an emitter's point sources into cells of `cellMetres` in space and PROPAGATION.echoCellSeconds in emission
  * time. A cell is one point source at the energy-weighted centre, emission time, and pulse of its
  * sources; its amplitude adds their energies, because their arrivals spread over more than a pulse
  * at any echo. Returns a table shaped like `sourceTable`, without directivity (class C), with each
@@ -64,7 +53,7 @@ export function sourceCells(sources, cellMetres) {
     if (place === undefined) { place = placeMembers.length; placeIndex.set(where, place); placeMembers.push([]); }
     placeMembers[place].push(source);
     // A blast's shock, secondary shock, and roar keep cells of their own: they differ in pulse and delay.
-    const key = `${where},${Math.floor(sources.emissionSeconds[source] / CELL_SECONDS)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.flight[source]}`;
+    const key = `${where},${Math.floor(sources.emissionSeconds[source] / PROPAGATION.echoCellSeconds)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.flight[source]}`;
     let cell = index.get(key);
     if (cell === undefined) { cell = members.length; index.set(key, cell); members.push([]); placeOf.push(place); }
     members[cell].push(source);
@@ -136,7 +125,7 @@ export function echoSurface(surface) {
   const cached = surfaces.get(surface);
   if (cached) return cached;
   const half = surface.halfExtentMetres;
-  const side = Math.max(2, Math.min(ECHO_GRID_SIDE, Math.round(2 * half / surface.cellMetres)));
+  const side = Math.max(2, Math.min(PROPAGATION.echoGridSide, Math.round(2 * half / surface.cellMetres)));
   const spacing = 2 * half / side;
   const count = side * side;
   const centre = index => -half + (index + .5) * spacing;
@@ -233,7 +222,7 @@ function visibleFromFacet(echo, facet, facetPoint, point) {
 export function echoField(surface, profile, receiverPosition, { scattering, limit, shadowFloor = 0 }) {
   const echo = echoSurface(surface);
   const R = receiverPosition;
-  const exclusion = EXCLUSION_SPACINGS * echo.spacing;
+  const exclusion = PROPAGATION.exclusionSpacings * echo.spacing;
   const visible = [];
   const distance = new Float64Array(echo.count);
   const exitCosine = new Float64Array(echo.count);
@@ -289,7 +278,7 @@ const determinant = matrix => matrix[0][0] * matrix[1][1] - matrix[0][1] * matri
  * vanishes, found by Newton from every grid square whose corners bracket zero. Each point's energy
  * relative to an image source follows stationary phase, the ratio of the path Hessians on the
  * tangent plane and on the curved surface, so a convex slope weakens its echo and a concave one
- * focuses it, up to MAXIMUM_FOCUSING.
+ * focuses it, up to PROPAGATION.maximumFocusing.
  */
 export function specularPoints(echo, S, R, field = null) {
   const { side, spacing } = echo;
@@ -344,7 +333,7 @@ export function specularPoints(echo, S, R, field = null) {
       const slope = echo.slopeAt(x, y);
       const plane = jacobian((px, py) => pathGradient(S, R, px, py, z + slope.x * (px - x) + slope.y * (py - y), slope), x, y, step);
       const curved = jacobian(surfaceGradient, x, y, step);
-      const focusing = Math.min(MAXIMUM_FOCUSING, Math.abs(determinant(plane)) / Math.max(Number.MIN_VALUE, Math.abs(determinant(curved))));
+      const focusing = Math.min(PROPAGATION.maximumFocusing, Math.abs(determinant(plane)) / Math.max(Number.MIN_VALUE, Math.abs(determinant(curved))));
       const length = Math.hypot(slope.x, slope.y, 1);
       found.set(key, { point: { x, y, z }, normal: { x: -slope.x / length, y: -slope.y / length, z: 1 / length }, focusing });
     }
@@ -414,7 +403,7 @@ function clusterBuffers(field, size) {
  */
 export function echoPaths(field, S) {
   const { echo, R, scattering, limit } = field;
-  const exclusion = EXCLUSION_SPACINGS * echo.spacing;
+  const exclusion = PROPAGATION.exclusionSpacings * echo.spacing;
   const nearGround = S.z - echo.heightAt(S.x, S.y) < echo.spacing;
   const candidates = [];
 
@@ -433,9 +422,9 @@ export function echoPaths(field, S) {
   }
 
   if (scattering > 0) {
-    const sectors = AZIMUTH_SECTORS * ELEVATION_SECTORS;
+    const sectors = PROPAGATION.azimuthSectors * PROPAGATION.elevationSectors;
     const area = echo.spacing * echo.spacing;
-    const binsPerMetre = 1 / (field.profile.groundSpeed * SCATTER_BIN_SECONDS);
+    const binsPerMetre = 1 / (field.profile.groundSpeed * PROPAGATION.scatterBinSeconds);
     const clusters = clusterBuffers(field, sectors * (Math.floor(maximumPathMetres(echo, S, R) * binsPerMetre) + 1));
     const touched = [];
     for (const facet of field.visible) {
@@ -521,7 +510,7 @@ export function echoPaths(field, S) {
 
 /** The direction sector of a propagation direction arriving at a receiver, as the clusters use. */
 export function arrivalSector(arrival) {
-  const azimuth = Math.floor(((Math.atan2(-arrival.y, -arrival.x) / (2 * Math.PI) + 1) % 1) * AZIMUTH_SECTORS) % AZIMUTH_SECTORS;
-  const elevation = Math.min(ELEVATION_SECTORS - 1, Math.floor((Math.asin(clamp(-arrival.z, -1, 1)) / Math.PI + .5) * ELEVATION_SECTORS));
-  return azimuth * ELEVATION_SECTORS + elevation;
+  const azimuth = Math.floor(((Math.atan2(-arrival.y, -arrival.x) / (2 * Math.PI) + 1) % 1) * PROPAGATION.azimuthSectors) % PROPAGATION.azimuthSectors;
+  const elevation = Math.min(PROPAGATION.elevationSectors - 1, Math.floor((Math.asin(clamp(-arrival.z, -1, 1)) / Math.PI + .5) * PROPAGATION.elevationSectors));
+  return azimuth * PROPAGATION.elevationSectors + elevation;
 }

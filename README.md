@@ -275,6 +275,9 @@ npm start
 
 Open http://localhost:8000/. Run the tests with `npm test`.
 
+The model's and the view's tuning values and limits are in `src/domain/constants.js`; the
+parameters a scene sets, with their defaults and ranges, in `src/domain/scene.js`.
+
 ## Data
 
 Terrain heights: [Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)

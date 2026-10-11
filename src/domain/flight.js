@@ -1,4 +1,4 @@
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
+import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, VIEW } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
 
@@ -17,22 +17,11 @@ import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds
  * with the ray's length r in place of his effective altitude, K_p = K_t = 1 (his charts' atmospheric
  * factors, 0.7–1.4 in his samples; class C), and the ground reflection K_R left to the ground model,
  * so that it is counted once. Where the flight accelerates or turns, rays from neighbouring points
- * converge: the boom grows as √(T″ of straight, steady flight / T″), up to FOCUS_LIMIT (class B for
+ * converge: the boom grows as √(T″ of straight, steady flight / T″), up to FLIGHT.focusLimit (class B for
  * the stationary-phase law, class C for the limit, where ray theory fails at a caustic).
  */
 
-/**
- * Bodies from Carlson's sample problems: length l and shape factor K_S (which replaces Whitham's
- * F-function). The rocket's boom is dominated by its exhaust plume (Apollo launch vehicle at M 4.08
- * and 36 km; K_S = 0.68 reproduces both his 184 Pa and 3.90 s).
- */
-export const BODIES = Object.freeze({
-  reconnaissance: Object.freeze({ label: 'Reconnaissance aircraft', lengthMetres: 32.7, shapeFactor: .087 }),
-  bomber: Object.freeze({ label: 'Medium bomber', lengthMetres: 30, shapeFactor: .088 }),
-  rocket: Object.freeze({ label: 'Launch vehicle', lengthMetres: 104.5, shapeFactor: .68 }),
-  custom: Object.freeze({ label: 'Custom', lengthMetres: null, shapeFactor: null })
-});
-export const BODY_TYPES = Object.freeze(Object.keys(BODIES));
+export const BODY_TYPES = Object.freeze(Object.keys(FLIGHT.bodies));
 
 /**
  * The bodies of a flight emitter: a flight is one; a formation flies in a vee behind its leader,
@@ -64,8 +53,6 @@ export function flightMembers(emitter) {
 /** Time step of the flight path, seconds, and the most steps kept. */
 const STEP_SECONDS = .05;
 const MAXIMUM_STEPS = 12000;
-/** The growth of a focused boom over the steady one, at most (class C). */
-export const FOCUS_LIMIT = 5;
 /** Below this speed the body has stopped. */
 const STOPPED_METRES_PER_SECOND = 1;
 
@@ -100,20 +87,15 @@ export function flightPath(flight, air) {
 }
 
 /**
- * A body supersonic at its start has been flying before it: its booms near the start left from
- * there. The path the renderer searches therefore begins APPROACH_HEIGHTS·h/√(M² − 1) plus
- * APPROACH_METRES before the start, straight and at the start's speed (class C); views draw the
- * path from the start.
+ * The flight path with its approach before the start: a body supersonic at its start has been flying
+ * before it, so its booms near the start left from there (FLIGHT.approachHeights). A subsonic start
+ * has none. Views draw the path from the start.
  */
-const APPROACH_HEIGHTS = 2;
-const APPROACH_METRES = 20000;
-
-/** The flight path with its approach before the start (see APPROACH_HEIGHTS); a subsonic start has none. */
 export function withApproach(path, air) {
   const speed = path.speed[0];
   const mach = speed / soundSpeedAt(air, path.z[0]);
   if (!(mach > 1)) return path;
-  const metres = APPROACH_HEIGHTS * Math.max(0, path.z[0]) / Math.sqrt(mach * mach - 1) + APPROACH_METRES;
+  const metres = FLIGHT.approachHeights * Math.max(0, path.z[0]) / Math.sqrt(mach * mach - 1) + FLIGHT.approachMetres;
   const steps = Math.min(MAXIMUM_STEPS, Math.ceil(metres / speed / path.step));
   const approach = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step: path.step };
   for (let index = steps; index >= 1; index -= 1) {
@@ -184,19 +166,15 @@ export function flightBooms(path, flight, receiver, profile, air) {
     // Steady straight flight at this Mach number and distance: T″ = v²(1 − 1/M²)/(c·r), c the ray's mean speed.
     const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
     const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
-    const focus = Math.min(FOCUS_LIMIT, Math.sqrt(steady / Math.max(curvature, steady / FOCUS_LIMIT ** 2)));
+    const focus = Math.min(FLIGHT.focusLimit, Math.sqrt(steady / Math.max(curvature, steady / FLIGHT.focusLimit ** 2)));
     booms.push({ point, emissionSeconds, ray, along, mach, focus, ...boom });
   }
   return booms;
 }
 
-/** Fronts of a body's past that its Mach cone is drawn through, and points around each. */
-const CONE_RINGS = 16;
-const CONE_RING_POINTS = 32;
-
 /**
  * A body's Mach cone at the clock, as the envelope of the fronts it has left (for views): on the
- * front from each of CONE_RINGS past points of its path, the circle that the rays leaving at
+ * front from each of VIEW.cone.rings past points of its path, the circle that the rays leaving at
  * cos α = c/v to its flight reach, with the fronts' refraction. Where it flew no faster than sound
  * it leaves no ring. The apex is the body while it flies.
  */
@@ -206,8 +184,8 @@ export function machCone(path, now, profile) {
   if (last < 1) return null;
   const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
   const rings = [];
-  for (let ring = 1; ring <= CONE_RINGS; ring += 1) {
-    const index = Math.round(last * (1 - ring / CONE_RINGS));
+  for (let ring = 1; ring <= VIEW.cone.rings; ring += 1) {
+    const index = Math.round(last * (1 - ring / VIEW.cone.rings));
     const before = at(Math.max(0, index - 1));
     const after = at(Math.min(count - 1, index + 1));
     const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
@@ -226,8 +204,8 @@ export function machCone(path, now, profile) {
     const { centre, radiusMetres } = wavefront(local, point, now - path.seconds[index]);
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
-    rings.push(Array.from({ length: CONE_RING_POINTS }, (_, step) => {
-      const angle = 2 * Math.PI * step / CONE_RING_POINTS;
+    rings.push(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
+      const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
       const a = radius * Math.cos(angle);
       const b = radius * Math.sin(angle);
       return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };

@@ -1,3 +1,5 @@
+import { GROUND, VIEW } from './constants.js';
+
 /**
  * Terrain from Terrarium elevation tiles as a heightfield in the scene frame: x east and y north
  * in metres from the scene origin at the capture centre, row 0 in the south. Heights are metres
@@ -20,10 +22,7 @@ const EARTH_CIRCUMFERENCE_METRES = 40075016.686;
 export const TILE_SIZE = 256;
 const MAXIMUM_TILE_ZOOM = 15;
 const MINIMUM_TILE_ZOOM = 1;
-export const MAXIMUM_TILE_REQUESTS = 36;
 const MAXIMUM_MERCATOR_LATITUDE = 85.05112878;
-/** The heightfield's long side is capped so that a capture stays light to store and trace. */
-export const MAXIMUM_GRID_CELLS = 600;
 const METRES_PER_DEGREE = EARTH_RADIUS_METRES * Math.PI / 180;
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
@@ -54,24 +53,20 @@ function tileRange(bounds, zoom) {
   return { west, east, north, south, count: (east - west + 1) * (south - north + 1) };
 }
 
-/** Zoom limits and request budget of the map tiles laid on the floor (OpenTopoMap serves up to zoom 17). */
-const MAP_MAXIMUM_ZOOM = 17;
-const MAP_PIXELS_ACROSS = 2048;
-
 /** Latitude of a tile row's edge at a zoom, the inverse of `tileY`. */
 const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zoom))) * 180 / Math.PI;
 
 /**
  * The map tiles covering a terrain square, each with its north-west, north-east, and south-west
  * corners in the scene frame (x east, y north, metres from the centre). The zoom is the finest at
- * which about MAP_PIXELS_ACROSS pixels span the square, within MAXIMUM_TILE_REQUESTS tiles.
+ * which about VIEW.map.pixelsAcross pixels span the square, within GROUND.terrain.maximumTileRequests tiles.
  */
 export function mapTiles({ latitude, longitude, extentMetres }) {
   const { north, east } = metresPerDegree(latitude);
   const half = extentMetres / 2;
   const bounds = { west: longitude - half / east, east: longitude + half / east, south: latitude - half / north, north: latitude + half / north };
-  let zoom = MAP_MAXIMUM_ZOOM;
-  while (zoom > MINIMUM_TILE_ZOOM && (tilePixelMetres(latitude, zoom) < extentMetres / MAP_PIXELS_ACROSS || tileRange(bounds, zoom).count > MAXIMUM_TILE_REQUESTS)) zoom -= 1;
+  let zoom = VIEW.map.maximumZoom;
+  while (zoom > MINIMUM_TILE_ZOOM && (tilePixelMetres(latitude, zoom) < extentMetres / VIEW.map.pixelsAcross || tileRange(bounds, zoom).count > GROUND.terrain.maximumTileRequests)) zoom -= 1;
   const range = tileRange(bounds, zoom);
   const local = (x, y) => ({ x: ((x / 2 ** zoom) * 360 - 180 - longitude) * east, y: (tileLatitude(y, zoom) - latitude) * north });
   const tiles = [];
@@ -83,17 +78,17 @@ export function mapTiles({ latitude, longitude, extentMetres }) {
 
 /**
  * The tiles and grid for a square capture of `extentMetres` around a centre. The tiles are the
- * coarsest whose pixels are no larger than the cell, within MAXIMUM_TILE_REQUESTS; the cell grows
- * if the grid would exceed MAXIMUM_GRID_CELLS on a side.
+ * coarsest whose pixels are no larger than the cell, within GROUND.terrain.maximumTileRequests; the cell grows
+ * if the grid would exceed GROUND.terrain.maximumGridCells on a side.
  */
 export function terrainPlan({ latitude, longitude, extentMetres, cellMetres }) {
   const { north, east } = metresPerDegree(latitude);
   const half = extentMetres / 2;
   const bounds = { west: longitude - half / east, east: longitude + half / east, south: latitude - half / north, north: latitude + half / north };
-  const cell = Math.max(cellMetres, extentMetres / MAXIMUM_GRID_CELLS);
+  const cell = Math.max(cellMetres, extentMetres / GROUND.terrain.maximumGridCells);
   let zoom = MAXIMUM_TILE_ZOOM;
   while (zoom > MINIMUM_TILE_ZOOM && tilePixelMetres(latitude, zoom - 1) <= cell) zoom -= 1;
-  while (zoom > MINIMUM_TILE_ZOOM && tileRange(bounds, zoom).count > MAXIMUM_TILE_REQUESTS) zoom -= 1;
+  while (zoom > MINIMUM_TILE_ZOOM && tileRange(bounds, zoom).count > GROUND.terrain.maximumTileRequests) zoom -= 1;
   const cells = Math.max(2, Math.round(extentMetres / cell));
   return { latitude, longitude, extentMetres, cellMetres: extentMetres / cells, columns: cells, rows: cells, zoom, tiles: tileRange(bounds, zoom) };
 }

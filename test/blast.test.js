@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { BLAST } from '../src/domain/constants.js';
 import { secondaryShockDelay, secondaryShockFactors } from '../src/domain/explosives.js';
 import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
-import { FIREBALL_WINDOW_SECONDS, fireballSamples } from '../src/domain/fireball.js';
+import { fireballSamples } from '../src/domain/fireball.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -48,7 +49,7 @@ test('the roar is seeded, peaks at unit RMS over 50 ms, falls 30 dB over its dur
   const samples = fireballSamples(7, duration, SAMPLE_RATE);
   assert.deepEqual(fireballSamples(7, duration, SAMPLE_RATE), samples);
   assert.notDeepEqual(fireballSamples(8, duration, SAMPLE_RATE), samples);
-  const window = Math.round(FIREBALL_WINDOW_SECONDS * SAMPLE_RATE);
+  const window = Math.round(BLAST.roar.windowSeconds * SAMPLE_RATE);
   const rms = start => Math.sqrt(samples.slice(start, start + window).reduce((sum, value) => sum + value * value, 0) / window);
   let largest = 0;
   for (let start = 0; start + window <= samples.length; start += window >> 2) largest = Math.max(largest, rms(start));
@@ -84,7 +85,7 @@ test('at the microphone the roar peaks its Fireball level below the shock’s li
   const shock = freeBlast({ secondaryShock: false, fireballDecibels: -60 }, distance);
   const offset = Math.round((both.startSeconds - shock.startSeconds) * SAMPLE_RATE);
   const roar = both.samples.map((value, index) => value - (shock.samples[index + offset] ?? 0));
-  const window = Math.round(FIREBALL_WINDOW_SECONDS * SAMPLE_RATE);
+  const window = Math.round(BLAST.roar.windowSeconds * SAMPLE_RATE);
   let largest = 0;
   for (let start = 0; start + window <= roar.length; start += window >> 2) {
     let sum = 0;

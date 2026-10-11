@@ -1,20 +1,20 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, KELVIN_OFFSET, MAXIMUM_RENDER_SECONDS, MAXIMUM_SOURCES, MODEL_VERSION } from './constants.js';
+import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
-import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, MAXIMUM_FOLIAGE_METRES, surroundingsResponses } from './forest.js';
+import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
 import { flightBooms, flightMembers, flightPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { onGround, terrainSurface } from './terrain.js';
-import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
+import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
 import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
-import { GROUND_FLOW_RESISTIVITY, isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
+import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
@@ -39,97 +39,15 @@ const GROUND_GRID_POINTS = 64;
  */
 const ABSORPTION_LAYER_METRES = 250;
 const ABSORPTION_GRID_POINTS = 128;
-/**
- * A shock keeps a steep front while nonlinear steepening outpaces absorption: its front rises no
- * slower than the steady rise time τ = SHOCK_RISE_PASCAL_SECONDS / Δp, whatever the linear absorption
- * along the path (class C; the 1/Δp law of a steady shock, with a constant to verify against Pierce &
- * Kang 1990 and Blackstock, Fundamentals of Physical Acoustics: 8 µs at 600 Pa, 5 ms at 1 Pa).
- */
-const SHOCK_RISE_PASCAL_SECONDS = .005;
 /** Gaussian kernel standard deviation per 10–90 % rise time, as in `pulses.js`. */
 const RISE_TIME_PER_SIGMA = 2.5631;
 /** Coefficient of nonlinearity of air, (γ + 1)/2 (class A). */
 const AIR_NONLINEARITY = (GAMMA_AIR + 1) / 2;
-/**
- * A shock meeting the ground at grazing angle ψ reflects nonlinearly when a = sin ψ/√(2βε) is small,
- * ε = Δp/(γp₀): the incident and reflected fronts merge into one (von Neumann reflection, regular
- * above a ≈ √2; Baskar, Coulouvrat & Marchiano 2007, JFM; class B for the criterion). Below
- * MERGED_PARAMETER the ground reflects the pulse as rigid ground would, above LINEAR_PARAMETER with
- * its impedance, smoothly between (class C).
- */
-const MERGED_PARAMETER = 1;
-const LINEAR_PARAMETER = 2;
-/**
- * Both hold only while the pulse is still a shock: when its steady rise time is short against its
- * duration T. At T/τ ≥ SHOCK_DURATION_RATIO it acts fully, at T/τ ≤ OLD_AGE_DURATION_RATIO not at all,
- * where absorption has the last word and the pulse reflects linearly (class C).
- */
-const SHOCK_DURATION_RATIO = 10;
-const OLD_AGE_DURATION_RATIO = 2;
-/**
- * A blast's shock ages as it spreads (class B, weak-shock theory of a spherical wave; Whitham 1956,
- * Pierce, Acoustics, ch. 11): its front outruns the zero crossing by βp/(2ρc³) per metre while p·T·r
- * stays fixed, so from the linearization radius r₀ on its positive phase lengthens as
- * T = T₀·√(1 + σ·ln(r/r₀)), σ = β·p₀·r₀/(ρc³T₀), and its peak falls by the same factor. The growth
- * stops where the pulse is no longer a shock, T/τ = OLD_AGE_DURATION_RATIO, at r = T₀p₀r₀/(2K).
- * A blast within its linearization radius of the ground spreads as a merged hemispherical front of
- * twice the pressure (class C, as the merged reflection).
- */
-const MERGED_FRONT_FACTOR = 2;
 /** Refraction radii at which a frame group tabulates its ground's creeping mode when the wind varies them. */
 const CREEPING_RADII = 8;
-/** The largest lag of the creeping mode over soft ground relative to rigid ground, measured 3.14 (snow to stony ground, 10 Hz–20 kHz). */
-const SOFT_CREEP_LAG = 3.5;
-/**
- * An echo leaves a source near the ground and reaches a receiver near it together with its image in
- * the ground there: each end adds the ground's reflection delayed by 2·h·sin φ, the image's extra
- * path (class B, the same reflection as the direct sound's). Ends whose image lags more than this
- * arrive as echoes of their own, which are not traced (class C).
- */
-const END_IMAGE_SECONDS = .02;
-/**
- * A scattered echo is not one sharp copy: a patch of ground returns its sound over the time its
- * width adds to the path, and a merged echo gathers patches from across its arrival bin. It is
- * rendered as this many seeded sub-arrivals of random sign spread over that time, which keeps its
- * energy at every frequency on average (class C; a point copy sounds as a click).
- */
-const SCATTER_ARRIVALS = 12;
-/**
- * A boom crosses the turbulent air near the ground, which bends its front into spikes and rounds
- * (peaked and rounded booms). Its front is rendered as the direct front plus a scattered part of
- * TURBULENT_ARRIVALS seeded sub-arrivals of zero sum, delayed exponentially by the rise time on
- * average, so the N-wave keeps its shape and area while its front gains spikes (class C). The
- * scattered part's RMS against the front is TURBULENT_FRONT_SHARE at the default turbulence and
- * grows with the square root of its strength (class C, not fitted: it adds the spikes and 1–3 dB
- * at 250–1000 Hz). The 1–4 kHz band follows from each part's rise (TURBULENT_RISE_RATIO): 18 dB
- * under 80–250 Hz, against 14–27 dB in recorded booms (Doc/reference/audio/sonic1–3).
- */
-const TURBULENT_ARRIVALS = 24;
-const TURBULENT_FRONT_SHARE = .5;
-const REFERENCE_TURBULENCE = 1e-6;
-/** Each part of a turbulent front rises in the rise time divided by this, about a steady shock's rise at tens of pascals (class C). */
-const TURBULENT_RISE_RATIO = 10;
-/** The latest sub-arrival, in rise times. */
-const TURBULENT_LONGEST_RISES = 8;
-/**
- * A ground reflection is only partly coherent with the direct sound: the ground's roughness
- * (Rayleigh, σ² = (2k·h·sin ψ)², h GROUND_ROUGHNESS_METRES on natural ground) and the turbulence
- * between the paths (`turbulentPhaseVariance`) scatter a share 1 − e^(−σ²) of its energy, which
- * returns as REFLECTION_SCATTER_ARRIVALS seeded sub-arrivals of random sign over a few milliseconds
- * (mean REFLECTION_SCATTER_SECONDS) rather than as one sharp copy (class C for the height and the
- * spread). Without it every sharp pulse and its reflection sounded as a pitch at the inverse of
- * their delay (measured: 160–270 Hz, correlation 0.29–0.46 at a microphone 1.7 m up).
- */
-const GROUND_ROUGHNESS_METRES = .05;
-const REFLECTION_SCATTER_ARRIVALS = 12;
-const REFLECTION_SCATTER_SECONDS = .002;
 /** The scattered share of a reflection on the ground grid, per path. */
 const groundScatter = new Float64Array(GROUND_GRID_POINTS);
 const SMALL_ARGUMENT = 1e-4;
-/** Frequency at which the arrival diagram weighs a shadow path's creeping loss. */
-const DIAGRAM_FREQUENCY_HZ = 100;
-/** Below this frequency the creeping response is regularized so that its tail decays within a frame. */
-const SHADOW_REGULARIZATION_HZ = 5;
 
 /**
  * Seconds until the shadow response for a creeping loss of `nepersAtOneHertz` has fallen 80 dB below
@@ -185,7 +103,7 @@ export function prepareScene(scene) {
     return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
   });
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
-  if (count > MAXIMUM_SOURCES) throw new RangeError(`The scene has ${count} point sources; the limit is ${MAXIMUM_SOURCES}.`);
+  if (count > RENDER.maximumSources) throw new RangeError(`The scene has ${count} point sources; the limit is ${RENDER.maximumSources}.`);
   return prepared;
 }
 
@@ -405,13 +323,22 @@ export function airShockImpedance(air) {
   return density * soundSpeedProfile(air).groundSpeed ** 3;
 }
 
-/** How much a blast's positive phase has lengthened, and its peak fallen, after `metres` of path (see MERGED_FRONT_FACTOR). */
+/**
+ * How much a blast's positive phase has lengthened, and its peak fallen, after `metres` of path.
+ * A blast's shock ages as it spreads (class B, weak-shock theory of a spherical wave; Whitham 1956,
+ * Pierce, Acoustics, ch. 11): its front outruns the zero crossing by βp/(2ρc³) per metre while p·T·r
+ * stays fixed, so from the linearization radius r₀ on its positive phase lengthens as
+ * T = T₀·√(1 + σ·ln(r/r₀)), σ = β·p₀·r₀/(ρc³T₀), and its peak falls by the same factor. The growth
+ * stops where the pulse is no longer a shock, T/τ = PROPAGATION.oldAgeDurationRatio, at
+ * r = T₀p₀r₀/(2K). A blast within its linearization radius of the ground spreads as a merged
+ * hemispherical front of PROPAGATION.mergedFrontFactor times the pressure.
+ */
 export function blastStretch(sources, index, metres, shockImpedance, heightMetres) {
   const r0 = sources.linearRadiusMetres[index];
   const T0 = sources.durationSeconds[index];
   if (!(metres > r0 && r0 > 0 && T0 > 0)) return 1;
-  const p0 = sources.amplitudePaMetres[index] / r0 * (heightMetres < r0 ? MERGED_FRONT_FACTOR : 1);
-  const oldAge = T0 * p0 * r0 / (OLD_AGE_DURATION_RATIO * SHOCK_RISE_PASCAL_SECONDS);
+  const p0 = sources.amplitudePaMetres[index] / r0 * (heightMetres < r0 ? PROPAGATION.mergedFrontFactor : 1);
+  const oldAge = T0 * p0 * r0 / (PROPAGATION.oldAgeDurationRatio * PROPAGATION.shockRisePascalSeconds);
   const sigma = AIR_NONLINEARITY * p0 * r0 / (shockImpedance * T0);
   return Math.sqrt(1 + sigma * Math.log(Math.min(metres, oldAge) / r0));
 }
@@ -463,7 +390,10 @@ function terrainEchoes(emitterCells, scene, surface, profile, receiverPosition, 
 
 /**
  * The image path differences and leg sines at an echo's two ends, over the ground taken level there
- * (class C), and the length of its two legs under the forest's canopy.
+ * (class C), and the length of its two legs under the forest's canopy. An echo leaves a source near
+ * the ground and reaches a receiver near it together with its image in the ground there: each end
+ * adds the ground's reflection delayed by 2·h·sin φ, the image's extra path (class B, the same
+ * reflection as the direct sound's), up to PROPAGATION.endImageSeconds.
  */
 function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   const sourceSine = Math.abs(path.departure.z);
@@ -475,16 +405,16 @@ function endImages(path, sourceHeight, receiverHeight, treeHeight) {
 
 /**
  * Scattered echoes from all of an emitter's cells that reach the receiver within one
- * SCATTER_BIN_SECONDS and from one direction sector merge into one path (class C): its energy is
+ * PROPAGATION.scatterBinSeconds and from one direction sector merge into one path (class C): its energy is
  * their sum, its direction, length, and incidence their energy-weighted means, and its arrival and
  * pulse those of the strongest. Scattering is incoherent, so this keeps the tail's energy and
  * density while the number of paths stays bounded by time and direction rather than by cells.
  * A mean arrival would settle near the middle of each bin and space the paths evenly, which sounds
- * as a tone at 1/SCATTER_BIN_SECONDS (measured: 100 Hz, 40 dB above the tail's spectrum).
+ * as a tone at 1/PROPAGATION.scatterBinSeconds (measured: 100 Hz, 40 dB above the tail's spectrum).
  */
 function mergeScattered(merged, cells, cell, path) {
   const arrival = cells.emissionSeconds[cell] + path.seconds;
-  const key = Math.floor(arrival / SCATTER_BIN_SECONDS) * 64 + arrivalSector(path.arrival);
+  const key = Math.floor(arrival / PROPAGATION.scatterBinSeconds) * 64 + arrivalSector(path.arrival);
   const energy = (cells.amplitudePaMetres[cell] / path.spreadMetres) ** 2;
   let entry = merged.get(key);
   if (!entry) {
@@ -516,7 +446,7 @@ function mergedPath(entry, cells) {
     groundSine: entry.cosine / energy,
     ...Object.fromEntries(MERGED_END_KEYS.map(key => [key, entry[key] / energy])),
     // Its patches arrive across the bin as well as across their own widths.
-    timeSpread: entry.spreadSeconds / energy + SCATTER_BIN_SECONDS
+    timeSpread: entry.spreadSeconds / energy + PROPAGATION.scatterBinSeconds
   };
 }
 
@@ -531,7 +461,7 @@ function edgeDecibels(paths, index, frequencyHz) {
 
 /**
  * Arrival time, source height, and geometric level of every path, for the arrival diagram; a
- * shadow path's level includes its creeping loss at DIAGRAM_FREQUENCY_HZ.
+ * shadow path's level includes its creeping loss at VIEW.arrivalDiagramHz.
  */
 export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const paths = receiverPaths(preparedEmitters, receiver, scene, options);
@@ -546,7 +476,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const diagramCreep = radius => {
     if (!soft) return 0;
     const key = radius.toPrecision(4);
-    if (!transitions.has(key)) transitions.set(key, creepingTransitionHz(GROUND_FLOW_RESISTIVITY[scene.ground.type], speed, radius));
+    if (!transitions.has(key)) transitions.set(key, creepingTransitionHz(GROUND.flowResistivity[scene.ground.type], speed, radius));
     return transitions.get(key);
   };
   for (let index = 0; index < paths.count; index += 1) {
@@ -555,8 +485,8 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
     // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
-      + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(DIAGRAM_FREQUENCY_HZ, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
-      + edgeDecibels(paths, index, DIAGRAM_FREQUENCY_HZ);
+      + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(VIEW.arrivalDiagramHz, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
+      + edgeDecibels(paths, index, VIEW.arrivalDiagramHz);
   }
   return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, bearings, kinds: paths.kind.slice(0, paths.count) };
 }
@@ -610,8 +540,8 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
-    // A boom's turbulent front reaches TURBULENT_LONGEST_RISES rise times past it, a reflection's scattered part as many of its means.
-    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + TURBULENT_LONGEST_RISES * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + REFLECTION_SCATTER_SECONDS));
+    // A boom's turbulent front reaches FLIGHT.turbulentFront.longestRises rise times past it, a reflection's scattered part as many of its means.
+    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + FLIGHT.turbulentFront.longestRises * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
     largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
       smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
@@ -620,9 +550,9 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     highest = Math.max(highest, paths.height[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
-  // Soft ground lags the creeping response up to SOFT_CREEP_LAG times as much as rigid ground, which spreads it.
+  // Soft ground lags the creeping response up to PROPAGATION.softCreepLag times as much as rigid ground, which spreads it.
   const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
-  const shadowTail = Math.ceil(shadowTailSeconds(largestCreep * (soft ? SOFT_CREEP_LAG : 1)) * sampleRate);
+  const shadowTail = Math.ceil(shadowTailSeconds(largestCreep * (soft ? PROPAGATION.softCreepLag : 1)) * sampleRate);
   const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES + shadowTail);
   const size = 2 * hop;
   const bins = hop + 1;
@@ -636,7 +566,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     const frequency = bin * sampleRate / size;
     absorption[bin] = scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(frequency, scene.air) : 0;
     // A boom's rise comes mostly from its turbulent front (`turbulentFront`); each part of it rises in a tenth.
-    smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds / (prepared.flights ? TURBULENT_RISE_RATIO : 1));
+    smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds / (prepared.flights ? FLIGHT.turbulentFront.riseRatio : 1));
     if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
@@ -721,7 +651,7 @@ function binAbsorption(plan, bin) {
 function groundCreeping(groundType, speed, smallest, largest) {
   const rows = largest > smallest * 1.0001 ? CREEPING_RADII : 1;
   const radii = Float64Array.from({ length: rows }, (_, row) => (rows > 1 ? smallest * (largest / smallest) ** (row / (rows - 1)) : smallest));
-  const transitions = Float64Array.from(radii, radius => creepingTransitionHz(GROUND_FLOW_RESISTIVITY[groundType], speed, radius));
+  const transitions = Float64Array.from(radii, radius => creepingTransitionHz(GROUND.flowResistivity[groundType], speed, radius));
   return { radii, transitions };
 }
 
@@ -737,7 +667,7 @@ function pathTransitionHz(ground, radius) {
 
 /** Share of a grazing shock's reflection that is linear, from its parameter a; smooth between the regimes. */
 function linearShare(parameter) {
-  return smoothStep((parameter - MERGED_PARAMETER) / (LINEAR_PARAMETER - MERGED_PARAMETER));
+  return smoothStep((parameter - PROPAGATION.mergedParameter) / (PROPAGATION.linearParameter - PROPAGATION.mergedParameter));
 }
 
 function smoothStep(x) {
@@ -761,7 +691,7 @@ function absorptionLimit(plan, metres) {
  * is the creeping loss αL at 1 Hz, which grows as f^(1/3). The creeping mode's propagation constant
  * carries s^(1/3), s = iω, so its loss comes with a phase lag of 1/√3 of it: H = exp(−β·s^(1/3)) is
  * causal and delays the low frequencies (class B). Its impulse response has a t^(−4/3) tail, so
- * s^(1/3) becomes s·(s + ω_c)^(−2/3): a plain delay well below SHADOW_REGULARIZATION_HZ, a
+ * s^(1/3) becomes s·(s + ω_c)^(−2/3): a plain delay well below PROPAGATION.shadowRegularizationHz, a
  * loss 4.4 % short of the creeping law at 50 Hz, 2.1 % at 100 Hz, and 0.5 % at 400 Hz, and an
  * impulse response whose tail decays exponentially (class C).
  * The scattered share F of the shadow floor joins it smoothly, (1 − F)·H + F (class C).
@@ -777,7 +707,7 @@ export function shadowResponse(frequencyHz, nepersAtOneHertz, floor, transitionH
 const creepingBeta = nepersAtOneHertz => 2 * nepersAtOneHertz / (Math.sqrt(3) * Math.cbrt(2 * Math.PI));
 
 /** Real and imaginary parts of s·(s + ω_c)^(−2/3) at s = iω, which depend on frequency alone. */
-const shadowExponent = frequencyHz => cubeRootExponent(frequencyHz, SHADOW_REGULARIZATION_HZ);
+const shadowExponent = frequencyHz => cubeRootExponent(frequencyHz, PROPAGATION.shadowRegularizationHz);
 
 function shadowFromExponent(loss, lag, beta, floor) {
   const magnitude = (1 - floor) * Math.exp(-beta * loss);
@@ -796,17 +726,17 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
   const { absorption, layered, foliage, smoothing, gridPosition, binHz, size } = plan;
   // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
-  const underCanopy = foliage ? Math.min(paths.foliageMetres[index], MAXIMUM_FOLIAGE_METRES) : 0;
+  const underCanopy = foliage ? Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) : 0;
   // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
   const mach = gain / (GAMMA_AIR * scene.air.pressureKpa * 1000);
   // Absorption beyond the steady shock's own smoothing is undone by steepening: the loss is capped at
-  // that of a front rising in SHOCK_RISE_PASCAL_SECONDS / Δp, as far as the pulse is still a shock.
-  const riseSeconds = SHOCK_RISE_PASCAL_SECONDS / gain;
+  // that of a front rising in PROPAGATION.shockRisePascalSeconds / Δp, as far as the pulse is still a shock.
+  const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   // A blast's roar is no shock.
   const pulseKind = sources.pulse[sourceIndex];
-  const shock = pulseKind === PULSE_NOISE ? 0 : smoothStep((paths.duration[index] / riseSeconds - OLD_AGE_DURATION_RATIO) / (SHOCK_DURATION_RATIO - OLD_AGE_DURATION_RATIO));
+  const shock = pulseKind === PULSE_NOISE ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
   const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
@@ -825,7 +755,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const merging = reflected ? 1 - shock * (1 - linearShare(paths.cosIncidence[index] / Math.sqrt(2 * AIR_NONLINEARITY * mach))) : 1;
   let scattering = false;
   if (ground || turbulent) {
-    const roughness = reflected && ground ? GROUND_ROUGHNESS_METRES : 0;
+    const roughness = reflected && ground ? GROUND.roughnessMetres : 0;
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
       const frequency = plan.groundFrequencies[point];
       // A specular echo reflects like the ground; a scattered one keeps the reflected share of its energy.
@@ -846,12 +776,12 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       groundIm[point] = q[1];
     }
   }
-  const reflectionScatter = scattering ? subArrivals(REFLECTION_SCATTER_ARRIVALS, REFLECTION_SCATTER_SECONDS, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
+  const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz) : null;
   // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
-  const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, TURBULENT_FRONT_SHARE * Math.sqrt(scene.air.turbulenceStrength / REFERENCE_TURBULENCE), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
+  const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
   const phaseStepIm = Math.sin(phaseStep);
@@ -1010,18 +940,18 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
 
 /**
  * A scattered echo's sub-arrivals: seeded times across `spread` seconds, from half a merging bin
- * before its arrival, each of gain ±1/√SCATTER_ARRIVALS, as rotations that start at bin 1.
+ * before its arrival, each of gain ±1/√PROPAGATION.scatterArrivals, as rotations that start at bin 1.
  */
 function scatterArrivals(spread, seed, binHz) {
   const random = createRandom(seed >>> 0);
-  const gain = new Float64Array(SCATTER_ARRIVALS);
-  const re = new Float64Array(SCATTER_ARRIVALS);
-  const im = new Float64Array(SCATTER_ARRIVALS);
-  const stepRe = new Float64Array(SCATTER_ARRIVALS);
-  const stepIm = new Float64Array(SCATTER_ARRIVALS);
-  for (let k = 0; k < SCATTER_ARRIVALS; k += 1) {
-    const delay = random() * spread - SCATTER_BIN_SECONDS / 2;
-    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(SCATTER_ARRIVALS);
+  const gain = new Float64Array(PROPAGATION.scatterArrivals);
+  const re = new Float64Array(PROPAGATION.scatterArrivals);
+  const im = new Float64Array(PROPAGATION.scatterArrivals);
+  const stepRe = new Float64Array(PROPAGATION.scatterArrivals);
+  const stepIm = new Float64Array(PROPAGATION.scatterArrivals);
+  for (let k = 0; k < PROPAGATION.scatterArrivals; k += 1) {
+    const delay = random() * spread - PROPAGATION.scatterBinSeconds / 2;
+    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(PROPAGATION.scatterArrivals);
     const step = -2 * Math.PI * binHz * delay;
     stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
     re[k] = stepRe[k]; im[k] = stepIm[k];
@@ -1031,7 +961,7 @@ function scatterArrivals(spread, seed, binHz) {
 
 /**
  * `count` seeded sub-arrivals of random sign and unit total energy, delayed exponentially with mean
- * `seconds` (at most TURBULENT_LONGEST_RISES means), as rotations from bin 1.
+ * `seconds` (at most FLIGHT.turbulentFront.longestRises means), as rotations from bin 1.
  */
 function subArrivals(count, seconds, seed, binHz) {
   const random = createRandom(seed >>> 0);
@@ -1042,7 +972,7 @@ function subArrivals(count, seconds, seed, binHz) {
   const stepIm = new Float64Array(count);
   for (let k = 0; k < count; k += 1) {
     gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(count);
-    const step = -2 * Math.PI * binHz * Math.min(TURBULENT_LONGEST_RISES, -Math.log(1 - random())) * seconds;
+    const step = -2 * Math.PI * binHz * Math.min(FLIGHT.turbulentFront.longestRises, -Math.log(1 - random())) * seconds;
     stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
     re[k] = stepRe[k]; im[k] = stepIm[k];
   }
@@ -1050,21 +980,21 @@ function subArrivals(count, seconds, seed, binHz) {
 }
 
 /**
- * A boom's turbulent front (see TURBULENT_ARRIVALS): the direct front and seeded sub-arrivals of
+ * A boom's turbulent front (see FLIGHT.turbulentFront.arrivals): the direct front and seeded sub-arrivals of
  * zero sum whose energy is `share`² of the front's, delayed exponentially with mean `riseSeconds`, as rotations from bin 1.
  */
 function turbulentFront(riseSeconds, share, seed, binHz) {
   const random = createRandom((seed ^ 0x5bd1e995) >>> 0);
-  const gain = Float64Array.from({ length: TURBULENT_ARRIVALS }, () => normalDeviate(random));
-  const mean = gain.reduce((sum, value) => sum + value, 0) / TURBULENT_ARRIVALS;
-  const spread = Math.sqrt(gain.reduce((sum, value) => sum + (value - mean) ** 2, 0) / TURBULENT_ARRIVALS) || 1;
-  const re = new Float64Array(TURBULENT_ARRIVALS);
-  const im = new Float64Array(TURBULENT_ARRIVALS);
-  const stepRe = new Float64Array(TURBULENT_ARRIVALS);
-  const stepIm = new Float64Array(TURBULENT_ARRIVALS);
-  for (let k = 0; k < TURBULENT_ARRIVALS; k += 1) {
-    gain[k] = (gain[k] - mean) / spread * share / Math.sqrt(TURBULENT_ARRIVALS);
-    const step = -2 * Math.PI * binHz * Math.min(TURBULENT_LONGEST_RISES, -Math.log(1 - random())) * riseSeconds;
+  const gain = Float64Array.from({ length: FLIGHT.turbulentFront.arrivals }, () => normalDeviate(random));
+  const mean = gain.reduce((sum, value) => sum + value, 0) / FLIGHT.turbulentFront.arrivals;
+  const spread = Math.sqrt(gain.reduce((sum, value) => sum + (value - mean) ** 2, 0) / FLIGHT.turbulentFront.arrivals) || 1;
+  const re = new Float64Array(FLIGHT.turbulentFront.arrivals);
+  const im = new Float64Array(FLIGHT.turbulentFront.arrivals);
+  const stepRe = new Float64Array(FLIGHT.turbulentFront.arrivals);
+  const stepIm = new Float64Array(FLIGHT.turbulentFront.arrivals);
+  for (let k = 0; k < FLIGHT.turbulentFront.arrivals; k += 1) {
+    gain[k] = (gain[k] - mean) / spread * share / Math.sqrt(FLIGHT.turbulentFront.arrivals);
+    const step = -2 * Math.PI * binHz * Math.min(FLIGHT.turbulentFront.longestRises, -Math.log(1 - random())) * riseSeconds;
     stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
     re[k] = stepRe[k]; im[k] = stepIm[k];
   }
@@ -1081,7 +1011,7 @@ function echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres,
   let count = 0;
   for (let side = 0; side < 2; side += 1) {
     const lift = paths.endLift[2 * index + side];
-    if (!(lift > 0) || lift / speed > END_IMAGE_SECONDS) continue;
+    if (!(lift > 0) || lift / speed > PROPAGATION.endImageSeconds) continue;
     const rigid = isReflecting(scene.ground.type) || (side === 0 && paths.sourceHeight[index] < sources.linearRadiusMetres[sourceIndex]);
     const sine = paths.endSine[2 * index + side];
     const end = ends[count];
@@ -1145,8 +1075,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
   if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0 };
-  if ((last - first) / sampleRate > MAXIMUM_RENDER_SECONDS) {
-    throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
+  if ((last - first) / sampleRate > RENDER.maximumSeconds) {
+    throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
   }
   const forest = scene.ground.forest ? forestResponses(forestSeed(receiver.id), channels, sampleRate) : null;
   // Over loaded terrain its echoes are the surroundings; over level ground a diffuse tail stands for them.
@@ -1220,7 +1150,7 @@ export function combineSegments(segments, sampleRate) {
   if (!present.length) return { startSeconds: 0, channels: Array.from({ length: count }, () => new Float32Array(0)), peakPa: 0 };
   const start = Math.min(...present.map(segment => segment.startSample));
   const end = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length));
-  if ((end - start) / sampleRate > MAXIMUM_RENDER_SECONDS) throw new RangeError(`The arrivals span ${((end - start) / sampleRate).toFixed(1)} s; the limit is ${MAXIMUM_RENDER_SECONDS} s.`);
+  if ((end - start) / sampleRate > RENDER.maximumSeconds) throw new RangeError(`The arrivals span ${((end - start) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
   let peakPa = 0;
   const channels = Array.from({ length: count }, (_, channel) => {
     const sum = new Float64Array(end - start);

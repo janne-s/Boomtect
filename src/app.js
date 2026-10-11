@@ -1,14 +1,14 @@
 import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
-import { MAXIMUM_EMITTERS, MAXIMUM_RECEIVERS, MODEL_VERSION } from './domain/constants.js';
+import { BLAST, FLIGHT, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, THUNDER, VIEW } from './domain/constants.js';
 import { blastSources, emitterSources } from './domain/emitters.js';
-import { EXPLOSIVE_TYPES, EXPLOSIVES } from './domain/explosives.js';
+import { EXPLOSIVE_TYPES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { combineSegments, partitionSeconds, prepareScene } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MINIMUM_CLOUD_DEPTH_METRES, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultLightning, defaultReceiver, defaultScene, defaultStorm, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { applyEar } from './domain/ear.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
@@ -16,10 +16,10 @@ import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
 import { createPlaceMap } from './ui/place-map.js';
-import { createCubeView, DEFAULT_CUBE_VIEW, FLASH_TRAVERSE_SECONDS } from './ui/cube-view.js';
+import { createCubeView, DEFAULT_CUBE_VIEW } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
-import { BODIES, BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
+import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
 import { macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
@@ -30,27 +30,7 @@ import { attachSplitters } from './ui/splitters.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
-const RENDER_DEBOUNCE_MILLISECONDS = 200;
-/** Peak normalization leaves 3 dB of headroom for resampling and inter-sample peaks. */
-const PEAK_TARGET = 10 ** (-3 / 20);
-/** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
-const BINAURAL_HEADROOM = 10 ** (-3 / 20);
-/** Source points whose wavefronts are drawn on the box's faces, at most. */
-const WAVEFRONT_SPHERES = 360;
-/** How long a stroke stays on screen after it has run its route. */
-const FLASH_VISIBLE_SECONDS = 1.2;
-const ENVELOPE_SECONDS = .01;
-/** Level range of the microphone rings in the scene, below the loudest microphone's peak. */
-const ENVELOPE_RANGE_DB = 40;
 const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
-/**
- * Every worker holds the whole scene, so very large scenes use fewer of them to bound memory: a
- * worker peaks at about 0.8 kB per point source while it prepares the sources (102 MB for 130 912
- * sources, measured on heap and buffers), and the budget keeps all workers together near 800 MB.
- */
-const SOURCE_COPIES_BUDGET = 1000000;
-/** A render whose workers have sent nothing for this long has failed, for example out of memory. */
-const RENDER_STALL_SECONDS = 60;
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -145,8 +125,8 @@ const views = [createCubeView($('cube'), {
     if (handle.field === 'cloudBaseMetres' || handle.field === 'cloudTopMetres') {
       const { cloudBaseMetres: base, cloudTopMetres: top } = PARAMETERS;
       const height = Math.round(point.z / 10) * 10;
-      if (handle.field === 'cloudBaseMetres') item.cloudBaseMetres = Math.min(base.maximum, item.cloudTopMetres - MINIMUM_CLOUD_DEPTH_METRES, Math.max(base.minimum, height));
-      else item.cloudTopMetres = Math.min(top.maximum, Math.max(top.minimum, item.cloudBaseMetres + MINIMUM_CLOUD_DEPTH_METRES, height));
+      if (handle.field === 'cloudBaseMetres') item.cloudBaseMetres = Math.min(base.maximum, item.cloudTopMetres - THUNDER.minimumCloudDepthMetres, Math.max(base.minimum, height));
+      else item.cloudTopMetres = Math.min(top.maximum, Math.max(top.minimum, item.cloudBaseMetres + THUNDER.minimumCloudDepthMetres, height));
     } else if (handle.field === 'radiusMetres') {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else {
@@ -305,7 +285,7 @@ function requestRender() {
 
 function scheduleRender() {
   clearTimeout(state.renderTimer);
-  state.renderTimer = setTimeout(startRender, RENDER_DEBOUNCE_MILLISECONDS);
+  state.renderTimer = setTimeout(startRender, RENDER.autoDelayMilliseconds);
 }
 
 function stopWorkers() {
@@ -366,7 +346,7 @@ function startRender() {
   let workerCount = WORKER_COUNT;
   try {
     sources = prepareScene(scene).reduce((sum, item) => sum + item.sources.length, 0);
-    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(SOURCE_COPIES_BUDGET / Math.max(1, sources))));
+    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
   } catch (error) {
     setStatus(error.message, true);
     drawResults();
@@ -377,7 +357,7 @@ function startRender() {
   operation('render', 'Tracing paths', { share: 0 });
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
-    if (revision !== state.revision || performance.now() - state.heard < RENDER_STALL_SECONDS * 1000) return;
+    if (revision !== state.revision || performance.now() - state.heard < RENDER.stallSeconds * 1000) return;
     stopWorkers();
     setStatus(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`, true);
     drawResults();
@@ -478,12 +458,12 @@ function finishRender(scene, arrivals, parts, info) {
 }
 
 /**
- * RMS envelopes in ENVELOPE_SECONDS windows for every microphone, on one decibel scale from the
- * loudest window of any microphone (1) down ENVELOPE_RANGE_DB (0), so their rings compare.
+ * RMS envelopes in VIEW.envelopeSeconds windows for every microphone, on one decibel scale from the
+ * loudest window of any microphone (1) down VIEW.envelopeRangeDb (0), so their rings compare.
  */
 function envelopes(results) {
   const raw = results.map(result => {
-    const window = Math.max(1, Math.round(result.sampleRate * ENVELOPE_SECONDS));
+    const window = Math.max(1, Math.round(result.sampleRate * VIEW.envelopeSeconds));
     const values = new Float32Array(Math.ceil(result.samples.length / window));
     for (let block = 0; block < values.length; block += 1) {
       let sum = 0;
@@ -496,10 +476,10 @@ function envelopes(results) {
   const maximum = Math.max(0, ...raw.map(({ values }) => values.reduce((a, b) => Math.max(a, b), 0)));
   for (const { values } of raw) {
     for (let block = 0; block < values.length; block += 1) {
-      values[block] = maximum > 0 && values[block] > 0 ? Math.max(0, 1 + 20 * Math.log10(values[block] / maximum) / ENVELOPE_RANGE_DB) : 0;
+      values[block] = maximum > 0 && values[block] > 0 ? Math.max(0, 1 + 20 * Math.log10(values[block] / maximum) / VIEW.envelopeRangeDb) : 0;
     }
   }
-  return new Map(raw.map(({ result, values }) => [result.receiverId, { window: ENVELOPE_SECONDS, startSeconds: result.startSeconds, values }]));
+  return new Map(raw.map(({ result, values }) => [result.receiverId, { window: VIEW.envelopeSeconds, startSeconds: result.startSeconds, values }]));
 }
 
 /** The receiver the plots and scene facts follow: the solo one, or the first listening one, heads first. */
@@ -513,7 +493,7 @@ function focusReceiver() {
 function outputGainForPeak(peakPa) {
   const { levelMode, fullScalePa } = state.scene.render;
   if (levelMode === 'fixed') return 1 / fullScalePa;
-  return peakPa > 0 ? PEAK_TARGET / peakPa : 1;
+  return peakPa > 0 ? RENDER.peakTarget / peakPa : 1;
 }
 
 const earCache = new Map();
@@ -552,7 +532,7 @@ function listening() {
   const composition = earApplied(composeListening(state.scene, state.results));
   if (!composition) return null;
   let gain = outputGainForPeak(composition.peakPa);
-  if (composition.heads.length) gain *= BINAURAL_HEADROOM;
+  if (composition.heads.length) gain *= RENDER.binauralHeadroom;
   if (composition.kind === 'mix') gain /= Math.sqrt(composition.parts);
   return { composition, gain };
 }
@@ -599,7 +579,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${+emitter.chargeKilograms.toPrecision(3)} kg TNT at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
-  if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${BODIES[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
+  if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
     return `${emitter.roundCount} rounds of ${+emitter.chargeKilograms.toPrecision(3)} kg TNT in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
@@ -719,7 +699,7 @@ function emitterCard(container, emitter, selected) {
         const source = next.emitters.find(item => item.id === emitter.id);
         source.enabled = false;
         return { ...structuredClone(source), id: uniqueId(source.kind, next.emitters), name: `${source.name} variant`.slice(0, 64), seed: newSeed(), enabled: true };
-      }), { disabled: scene.emitters.length >= MAXIMUM_EMITTERS, title: 'Copy with a new seed; the original is switched off' }));
+      }), { disabled: scene.emitters.length >= RENDER.maximumEmitters, title: 'Copy with a new seed; the original is switched off' }));
     }
     actions.append(button('Remove', () => commit(next => { next.emitters = next.emitters.filter(item => item.id !== emitter.id); }), { disabled: scene.emitters.length <= 1 }));
     card.append(actions);
@@ -765,7 +745,6 @@ function orientationTarget() {
   if (selected?.type === 'binaural') return selected;
   return state.scene.receivers.find(receiver => receiver.listen && receiver.type === 'binaural') ?? null;
 }
-
 
 function drawOrientation() {
   const target = orientationTarget();
@@ -899,10 +878,10 @@ function detailSections(emitter) {
       }),
       section('Body', container => {
         selectField(container, {
-          label: 'Body', value: emitter.body, reliability: 'B', options: BODY_TYPES.map(type => [type, BODIES[type].label]),
+          label: 'Body', value: emitter.body, reliability: 'B', options: BODY_TYPES.map(type => [type, FLIGHT.bodies[type].label]),
           onCommit: body => updateEmitter(emitter.id, item => {
             item.body = body;
-            if (BODIES[body].lengthMetres) Object.assign(item, { lengthMetres: BODIES[body].lengthMetres, shapeFactor: BODIES[body].shapeFactor });
+            if (FLIGHT.bodies[body].lengthMetres) Object.assign(item, { lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor });
           })
         });
         // Editing the length or shape makes the body custom.
@@ -923,7 +902,7 @@ function detailSections(emitter) {
       section('Source', container => {
         selectField(container, {
           label: 'Explosive', value: emitter.explosive, reliability: 'B',
-          options: EXPLOSIVE_TYPES.map(type => [type, EXPLOSIVES[type].label]), onCommit: set('explosive')
+          options: EXPLOSIVE_TYPES.map(type => [type, BLAST.explosives[type].label]), onCommit: set('explosive')
         });
         numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
         checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
@@ -951,7 +930,7 @@ function detailSections(emitter) {
     section('Source', container => {
       selectField(container, {
         label: 'Explosive', value: emitter.explosive, reliability: 'B',
-        options: EXPLOSIVE_TYPES.map(type => [type, EXPLOSIVES[type].label]), onCommit: set('explosive')
+        options: EXPLOSIVE_TYPES.map(type => [type, BLAST.explosives[type].label]), onCommit: set('explosive')
       });
       numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
       checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
@@ -1312,10 +1291,10 @@ function rebuildPanel() {
   const names = [...heads, ...omnis].map(receiver => receiver.name).join(', ');
   const kindLabel = kind === 'surround' ? `Surround ${omnis.length} ch` : LISTENING_LABELS[kind];
   $('listen-label').textContent = names ? `${kindLabel} · ${names}` : kindLabel;
-  const full = scene.emitters.length >= MAXIMUM_EMITTERS;
+  const full = scene.emitters.length >= RENDER.maximumEmitters;
   document.querySelectorAll('.add-row [data-mode]').forEach(item => { item.hidden = item.dataset.mode !== scene.mode; item.disabled = full; });
   document.querySelectorAll('.modes [data-mode]').forEach(item => item.setAttribute('aria-checked', String(item.dataset.mode === scene.mode)));
-  $('add-receiver').disabled = scene.receivers.length >= MAXIMUM_RECEIVERS;
+  $('add-receiver').disabled = scene.receivers.length >= RENDER.maximumReceivers;
   if ($('details').open) renderDetails();
   redrawViews();
   drawResults();
@@ -1491,7 +1470,7 @@ function strokeTimeline(emitter) {
 /**
  * What the scene view shows at the playback clock: every stroke that has started and not yet
  * faded, and the listening receiver's level. A stroke's light runs its route
- * figuratively in FLASH_TRAVERSE_SECONDS; physically a return stroke takes microseconds.
+ * figuratively in VIEW.flash.traverseSeconds; physically a return stroke takes microseconds.
  */
 function animationState() {
   const clock = playbackClock();
@@ -1507,7 +1486,7 @@ function animationState() {
     if (realDelay || isBlastKind(emitter) || isMeteorKind(emitter)) {
       strokes.set(emitter.id, timeline
         .map(stroke => ({ ...stroke, elapsed: realDelay ? now - stroke.time : now - stroke.time - arrivalDelay(stroke.position) }))
-        .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < FLASH_TRAVERSE_SECONDS + FLASH_VISIBLE_SECONDS));
+        .filter(stroke => stroke.elapsed >= 0 && stroke.elapsed < VIEW.flash.traverseSeconds + VIEW.flash.visibleSeconds));
     }
   }
   const receiver = focusReceiver().positionMetres;
@@ -1533,17 +1512,6 @@ function animationState() {
 }
 
 const wavefrontSources = new WeakMap();
-/** Points along a flight path whose fronts draw its Mach cone. */
-const FLIGHT_FRONTS = 120;
-/**
- * A wavefront is drawn as strong as its sound where it has spread to: the pressure of its flash or
- * blast after spreading as 1/r and air absorption at WAVEFRONT_FREQUENCY_HZ, fully at the top level
- * and gone at the floor (display only; model pascals, not calibrated).
- */
-const WAVEFRONT_FREQUENCY_HZ = 1000;
-const WAVEFRONT_TOP_DB = 140;
-const WAVEFRONT_FLOOR_DB = 60;
-const REFERENCE_PRESSURE_PA = 20e-6;
 
 /** Each flash's and blast's amplitude at 1 m, Pa·m: a flash's from the energy of all its sources. */
 function wavefrontAmplitudes(emitter) {
@@ -1585,7 +1553,7 @@ function wavefrontCandidates(scene) {
     if (isTrackKind(emitter)) {
       // Points along each body's path: their spheres together draw its Mach cone.
       cachedTracks(emitter, scene.air).forEach((path, member) => {
-        const every = Math.max(1, Math.ceil(path.seconds.length / FLIGHT_FRONTS));
+        const every = Math.max(1, Math.ceil(path.seconds.length / VIEW.wavefront.flightFronts));
         for (let index = 0; index < path.seconds.length; index += every) candidates.push({ point: { x: path.x[index], y: path.y[index], z: path.z[index] }, emitted: path.seconds[index], group: `${emitter.id}:${member}` });
       });
       continue;
@@ -1605,7 +1573,7 @@ function wavefrontCandidates(scene) {
       }
     }
   }
-  const stride = Math.max(1, Math.ceil(candidates.length / WAVEFRONT_SPHERES));
+  const stride = Math.max(1, Math.ceil(candidates.length / VIEW.wavefront.spheres));
   // Each keeps its place in the list, so that views can thin the fronts the same way in every frame.
   const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, amplitude: amplitudes.get(candidate.group) ?? 0 }));
   wavefrontSources.set(scene, sampled);
@@ -1615,10 +1583,10 @@ function wavefrontCandidates(scene) {
 const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, point.y) + point.z });
 
 function wavefrontSpheres(now, profile) {
-  const absorption = state.scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(WAVEFRONT_FREQUENCY_HZ, state.scene.air) * 20 / Math.LN10 : 0;
+  const absorption = state.scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(VIEW.wavefront.frequencyHz, state.scene.air) * 20 / Math.LN10 : 0;
   const strengthAt = (amplitude, radius) => {
-    const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_PRESSURE_PA) - absorption * radius;
-    return Math.min(1, Math.max(0, (level - WAVEFRONT_FLOOR_DB) / (WAVEFRONT_TOP_DB - WAVEFRONT_FLOOR_DB)));
+    const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_SOUND_PRESSURE_PA) - absorption * radius;
+    return Math.min(1, Math.max(0, (level - VIEW.wavefront.floorDb) / (VIEW.wavefront.topDb - VIEW.wavefront.floorDb)));
   };
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
@@ -1813,7 +1781,6 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-
 $('save').addEventListener('click', () => {
   download('boomtect-scene.json', new Blob([serializeScene(state.scene)], { type: 'application/json' }));
 });
@@ -2004,7 +1971,6 @@ $('add-receiver').addEventListener('click', () => commit(scene => {
   scene.receivers.push(receiver);
   select({ type: 'receiver', id: receiver.id });
 }));
-
 
 window.addEventListener('resize', () => drawResults());
 

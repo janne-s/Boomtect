@@ -1,4 +1,5 @@
 import { airy, divide, multiply } from './airy.js';
+import { PROPAGATION } from './constants.js';
 import { delanyBazleyImpedance } from './ground.js';
 
 /**
@@ -41,8 +42,6 @@ const SWEEP_HIGHEST_HZ = 20000;
 const SWEEP_POINTS = 80;
 /** Largest ratio between frequencies at which the root is followed. */
 const FOLLOW_STEP = 1.1;
-/** The transition is kept at or above this, the rigid response's regularization frequency (`render.js`). */
-export const TRANSITION_FLOOR_HZ = 5;
 
 /** The root of Ai′(t) + q·Ai(t) = 0 nearest `start` by Newton, or null if it does not converge. */
 export function modeRoot(q, start) {
@@ -100,17 +99,17 @@ export function creepingLossRatios(frequencies, flowResistivity, speed, radiusMe
 
 /**
  * The transition frequency in hertz where the mode's loss over the ground rises halfway from rigid
- * to pressure-release, interpolated in log frequency, and at least TRANSITION_FLOOR_HZ.
+ * to pressure-release, interpolated in log frequency, and at least PROPAGATION.shadowRegularizationHz.
  */
 export function creepingTransitionHz(flowResistivity, speed, radiusMetres) {
   const frequencies = Float64Array.from({ length: SWEEP_POINTS }, (_, index) => SWEEP_LOWEST_HZ * (SWEEP_HIGHEST_HZ / SWEEP_LOWEST_HZ) ** (index / (SWEEP_POINTS - 1)));
   const ratios = creepingLossRatios(frequencies, flowResistivity, speed, radiusMetres);
   const half = (1 + SOFT_RATIO) / 2;
-  if (ratios[0] >= half) return TRANSITION_FLOOR_HZ;
+  if (ratios[0] >= half) return PROPAGATION.shadowRegularizationHz;
   for (let index = 1; index < SWEEP_POINTS; index += 1) {
     if (ratios[index] < half) continue;
     const share = (half - ratios[index - 1]) / (ratios[index] - ratios[index - 1]);
-    return Math.max(TRANSITION_FLOOR_HZ, frequencies[index - 1] * (frequencies[index] / frequencies[index - 1]) ** share);
+    return Math.max(PROPAGATION.shadowRegularizationHz, frequencies[index - 1] * (frequencies[index] / frequencies[index - 1]) ** share);
   }
   return SWEEP_HIGHEST_HZ;
 }

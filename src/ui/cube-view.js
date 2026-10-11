@@ -1,4 +1,4 @@
-import { MAXIMUM_HEIGHT_METRES, SCENE_EXTENT_METRES } from '../domain/constants.js';
+import { RENDER, VIEW } from '../domain/constants.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../domain/random.js';
 import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
@@ -20,9 +20,6 @@ const LINE_PIXELS = 16;
 /** Below this screen-space area a plane is seen edge-on and offers no handles. */
 const DEGENERATE_AREA = .08;
 const DISC_POINTS = 64;
-/** Figurative flash: every stroke runs its route in this time, then fades. */
-export const FLASH_TRAVERSE_SECONDS = .12;
-const FLASH_FADE_SECONDS = .2;
 
 /**
  * The view of the box: its turn, its zoom over the fit, and its pan in units of the box's half-extent
@@ -33,63 +30,15 @@ const MICROPHONE_RADIUS = 5.5;
 const ARROWHEAD_PIXELS = 8;
 /** Length of a receiver's facing arrow, as a share of the box. */
 const FACING_LENGTH_SHARE = .1;
-/** While the sound plays without the real delay, a point glows from its arrival for this long. */
-const SOUND_GLOW_SECONDS = .25;
-/** Source points sampled for the shadow boundary on the floor. */
-const BOUNDARY_POINTS = 600;
 const OUTLINE_STEPS = 48;
-/** The map on the floor is drawn opaque: its tiles are already in the box's palette. */
-const MAP_ALPHA = 1;
-/** A Mach cone's lines: every this many of a ring's points leads to the next ring; pieces per line kept above the ground. */
-const CONE_LINE_EVERY = 4;
-const CONE_PIECES = 12;
-const CONE_ALPHA = .45;
 /** A press that moves less than this is a click rather than a turn of the view. */
 const CLICK_PIXELS = 4;
-/** The terrain is drawn on a grid of at most this many cells a side, separate from its heightfield. */
-const TERRAIN_DRAW_CELLS = 110;
-/** Direction the terrain is lit from: north-west and above. */
-const TERRAIN_LIGHT = (() => { const length = Math.hypot(-1, 1, 1.6); return { x: -1 / length, y: 1 / length, z: 1.6 / length }; })();
-/**
- * Terrain outside the box fades into the panel over this share of the box's width, and the edge of
- * the captured terrain over this share of its own width, so neither ends in a hard line.
- */
-const TERRAIN_FOG_SHARE = .3;
-const TERRAIN_EDGE_SHARE = .05;
-/**
- * A storm's cloud is drawn as soft puffs placed by its seed in the cloud layer: a dark, flat base and
- * a paler top that spreads into an anvil. Representational only.
- */
-const CLOUD_PUFFS = 240;
-const CLOUD_PUFF_ALPHA = .34;
-const CLOUD_ANVIL_SPREAD = .45;
-/** A flash lights the cloud around its top for as long as its channel glows. */
-const CLOUD_FLASH_ALPHA = 1.2;
-/** Radius of each glow of a flash's light in its cloud, as a share of the cloud's depth. */
-const CLOUD_FLASH_REACH = .32;
-/** Glows per flash, and how far they stray from its channel, as a share of the cloud's depth. */
-const CLOUD_BLOBS = 6;
-const CLOUD_BLOB_SCATTER = .25;
-/** A stroke's light flickers between seeded levels this far apart in time. */
-const FLICKER_SECONDS = .025;
-/** Contour stripes: roughly this many bands over the terrain's height range. */
-const CONTOUR_BANDS = 12;
-/** Place names drawn at most, in the order of PLACE_NAME_KINDS, without overlapping. */
-const MAXIMUM_LABELS = 60;
+/** Unit direction the terrain is lit from. */
+const TERRAIN_LIGHT = (() => { const { x, y, z } = VIEW.terrain.light; const length = Math.hypot(x, y, z); return { x: x / length, y: y / length, z: z / length }; })();
+/** Place names are drawn in this order of their kinds, without overlapping. */
 const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
-/** A wavefront crossing a face is drawn as a ripple: the front and fading rings behind it. */
-const RIPPLE_ALPHAS = Object.freeze([.5, .3, .16, .07]);
-/** Spacing of the ripple rings as a share of the box. */
-const RIPPLE_SPACING_SHARE = .018;
-/** Over terrain, where a front meets the ground is solved per direction, so fewer fronts are drawn. */
-const TERRAIN_RIPPLE_SPHERES = 80;
+/** Iterations that find where a front meets the terrain. */
 const TERRAIN_RIPPLE_ITERATIONS = 14;
-const BOUNDARY_EDGE_ALPHA = .7;
-/** Over terrain the boundary is found on a grid of this many cells a side, from this many source points. */
-const BOUNDARY_TERRAIN_CELLS = 48;
-const BOUNDARY_TERRAIN_SOURCES = 120;
-/** Ground samples for each mean plane the terrain boundary judges, fewer than the render uses. */
-const BOUNDARY_PLANE_SAMPLES = 8;
 /** Width of an outline outside its shape, and of the seam cut along every edge. */
 const OUTLINE_PIXELS = 1.2;
 const SEAM_PIXELS = 1;
@@ -168,7 +117,7 @@ function handles(scene, box) {
 
 /** The point where a stroke's figurative front has reached on one channel, as an arc length. */
 /**
- * A flash's flicker at a time after it starts: seeded levels between 0.35 and 1 every FLICKER_SECONDS,
+ * A flash's flicker at a time after it starts: seeded levels between 0.35 and 1 every VIEW.flash.flickerSeconds,
  * eased between, the first one full. Deterministic, so a replay looks the same.
  */
 function flicker(seed, elapsed) {
@@ -178,7 +127,7 @@ function flicker(seed, elapsed) {
     value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35) >>> 0;
     return .35 + .65 * ((value ^ (value >>> 16)) >>> 0) / 4294967296;
   };
-  const position = Math.max(0, elapsed) / FLICKER_SECONDS;
+  const position = Math.max(0, elapsed) / VIEW.flash.flickerSeconds;
   const knot = Math.floor(position);
   const t = position - knot;
   const eased = t * t * (3 - 2 * t);
@@ -186,7 +135,7 @@ function flicker(seed, elapsed) {
 }
 
 function frontArc(step, elapsed, routeLength) {
-  return step.fromArc + elapsed / FLASH_TRAVERSE_SECONDS * routeLength - step.offsetMetres;
+  return step.fromArc + elapsed / VIEW.flash.traverseSeconds * routeLength - step.offsetMetres;
 }
 
 /**
@@ -481,7 +430,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const flash = flashes[stroke.flash];
       if (!flash) continue;
       const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
-      const fade = stroke.elapsed > FLASH_TRAVERSE_SECONDS ? Math.exp(-(stroke.elapsed - FLASH_TRAVERSE_SECONDS) / FLASH_FADE_SECONDS) : 1;
+      const fade = stroke.elapsed > VIEW.flash.traverseSeconds ? Math.exp(-(stroke.elapsed - VIEW.flash.traverseSeconds) / VIEW.flash.fadeSeconds) : 1;
       context.shadowColor = colors.glow;
       context.strokeStyle = colors.flash;
       for (const step of stroke.route) {
@@ -512,7 +461,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { seconds, travelSeconds } = sound;
     const glow = arrival => {
       const age = seconds - arrival;
-      return age >= 0 && age < SOUND_GLOW_SECONDS ? 1 - age / SOUND_GLOW_SECONDS : 0;
+      return age >= 0 && age < VIEW.soundGlowSeconds ? 1 - age / VIEW.soundGlowSeconds : 0;
     };
     for (const flash of cachedFlashes(emitter)) {
       for (const stroke of flash.strokes) {
@@ -608,8 +557,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
 
   /**
-   * How far a ground point has faded into the panel, 0–1: outside the box over TERRAIN_FOG_SHARE of
-   * its width, and toward the edge of the captured terrain over TERRAIN_EDGE_SHARE of its width.
+   * How far a ground point has faded into the panel, 0–1: outside the box over VIEW.terrain.fogShare of
+   * its width, and toward the edge of the captured terrain over VIEW.terrain.edgeShare of its width.
    */
   function terrainFog(surface, x, y) {
     const { box } = frame;
@@ -617,7 +566,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const outside = Math.hypot(Math.max(0, box.x0 - x, x - box.x1), Math.max(0, box.y0 - y, y - box.y1));
     const half = surface.halfExtentMetres;
     const inside = half - Math.max(Math.abs(x), Math.abs(y));
-    return Math.max(smooth(outside / (TERRAIN_FOG_SHARE * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (TERRAIN_EDGE_SHARE * 2 * half)));
+    return Math.max(smooth(outside / (VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (VIEW.terrain.edgeShare * 2 * half)));
   }
 
   /**
@@ -646,11 +595,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     });
     // The grid covers what can be seen: the box and its fog, within the captured terrain.
     const half = surface.halfExtentMetres;
-    const fogMetres = TERRAIN_FOG_SHARE * Math.max(box.x1 - box.x0, box.y1 - box.y0);
+    const fogMetres = VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0);
     const west = Math.max(-half, box.x0 - fogMetres);
     const south = Math.max(-half, box.y0 - fogMetres);
     const side = Math.max(Math.min(half, box.x1 + fogMetres) - west, Math.min(half, box.y1 + fogMetres) - south);
-    const cells = Math.max(2, Math.min(TERRAIN_DRAW_CELLS, Math.ceil(side / surface.cellMetres)));
+    const cells = Math.max(2, Math.min(VIEW.terrain.drawCells, Math.ceil(side / surface.cellMetres)));
     const spacing = side / cells;
     const vertices = [];
     for (let row = 0; row <= cells; row += 1) {
@@ -663,7 +612,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     let lowest = Infinity;
     let highest = -Infinity;
     for (const vertex of vertices) { lowest = Math.min(lowest, vertex.z); highest = Math.max(highest, vertex.z); }
-    const band = niceStep(Math.max(1, highest - lowest), CONTOUR_BANDS);
+    const band = niceStep(Math.max(1, highest - lowest), VIEW.terrain.contourBands);
     const dark = rgb(colors.ground);
     const light = mixColors(rgb(colors.line), rgb(colors.muted), .35);
     const fogColor = rgb(colors.panel);
@@ -727,7 +676,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.save();
     polygon(context, [{ x: box.x0, y: box.y0, z }, { x: box.x1, y: box.y0, z }, { x: box.x1, y: box.y1, z }, { x: box.x0, y: box.y1, z }]);
     context.clip();
-    context.globalAlpha *= MAP_ALPHA;
+    context.globalAlpha *= VIEW.map.alpha;
     for (const { image, northWest, northEast, southWest } of tiles) {
       const origin = frame.project({ ...northWest, z });
       const across = frame.project({ ...northEast, z });
@@ -751,7 +700,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.textBaseline = 'middle';
     const sorted = [...list].sort((a, b) => LABEL_PRIORITY[a.kind] - LABEL_PRIORITY[b.kind]);
     for (const item of sorted) {
-      if (placed.length >= MAXIMUM_LABELS) break;
+      if (placed.length >= VIEW.terrain.maximumLabels) break;
       const p = frame.project({ x: item.x, y: item.y, z: map() ? frame.box.z0 : ground(item.x, item.y) });
       const text = item.kind === 'peak' && item.elevationMetres !== null ? `${item.name} ${Math.round(item.elevationMetres)} m` : item.name;
       const width = context.measureText(text).width;
@@ -798,7 +747,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       drawTerrainShadowBoundary(context, colors, profile, points, receiver.positionMetres.z);
       return;
     }
-    const stride = Math.ceil(points.length / BOUNDARY_POINTS);
+    const stride = Math.ceil(points.length / VIEW.shadowBoundary.points);
     const height = receiver.positionMetres.z;
     // Outward from a source, so each direction's radius uses the air along it; downwind of a strong shear none is cast.
     const directions = Array.from({ length: OUTLINE_STEPS }, (_, step) => {
@@ -814,13 +763,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const point = points[index];
       addPolygon(path, directions.map(({ cos, sin }) => {
         const along = pathProfile(profile, point, { x: point.x + cos, y: point.y + sin, z: height });
-        const radius = Math.min(2 * SCENE_EXTENT_METRES, grazingRange(along, point.z) + grazingRange(along, height));
+        const radius = Math.min(2 * RENDER.sceneExtentMetres, grazingRange(along, point.z) + grazingRange(along, height));
         return toScreen(point.x + radius * cos, point.y + radius * sin);
       }));
     }
     context.save();
     context.clip(floorPath());
-    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: BOUNDARY_EDGE_ALPHA });
+    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: VIEW.shadowBoundary.edgeAlpha });
     context.restore();
   }
 
@@ -836,18 +785,18 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const middle = points[points.length >> 1];
     const key = [points.length, points[0].x, points[0].z, middle.x, middle.y, middle.z, profile.groundSpeed, profile.gradient, profile.wind?.x, profile.wind?.y, profile.shear?.x, profile.shear?.y, heightAboveGround, box.x0, box.x1, box.y0, box.y1].join('|');
     if (terrainBoundary?.key !== key || terrainBoundary.surface !== surface) {
-      const stride = Math.ceil(points.length / BOUNDARY_TERRAIN_SOURCES);
+      const stride = Math.ceil(points.length / VIEW.shadowBoundary.terrainSources);
       const sampled = points.filter((_, index) => index % stride === 0);
-      const lit = new Uint8Array(BOUNDARY_TERRAIN_CELLS * BOUNDARY_TERRAIN_CELLS);
-      const width = (box.x1 - box.x0) / BOUNDARY_TERRAIN_CELLS;
-      const depth = (box.y1 - box.y0) / BOUNDARY_TERRAIN_CELLS;
-      for (let row = 0; row < BOUNDARY_TERRAIN_CELLS; row += 1) {
-        for (let column = 0; column < BOUNDARY_TERRAIN_CELLS; column += 1) {
+      const lit = new Uint8Array(VIEW.shadowBoundary.terrainCells * VIEW.shadowBoundary.terrainCells);
+      const width = (box.x1 - box.x0) / VIEW.shadowBoundary.terrainCells;
+      const depth = (box.y1 - box.y0) / VIEW.shadowBoundary.terrainCells;
+      for (let row = 0; row < VIEW.shadowBoundary.terrainCells; row += 1) {
+        for (let column = 0; column < VIEW.shadowBoundary.terrainCells; column += 1) {
           const x = box.x0 + (column + .5) * width;
           const y = box.y0 + (row + .5) * depth;
           const receiver = { x, y, z: ground(x, y) + heightAboveGround };
-          lit[row * BOUNDARY_TERRAIN_CELLS + column] = sampled.some(point => {
-            const plane = meanPlaneFrame(pathProfile(profile, point, receiver), ground, point, receiver, BOUNDARY_PLANE_SAMPLES);
+          lit[row * VIEW.shadowBoundary.terrainCells + column] = sampled.some(point => {
+            const plane = meanPlaneFrame(pathProfile(profile, point, receiver), ground, point, receiver, VIEW.shadowBoundary.planeSamples);
             return !inShadow(plane.profile, plane.from, plane.to);
           }) ? 1 : 0;
         }
@@ -857,15 +806,15 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { lit, width, depth } = terrainBoundary;
     if (lit.every(Boolean)) return;
     const path = new Path2D();
-    for (let row = 0; row < BOUNDARY_TERRAIN_CELLS; row += 1) {
-      for (let column = 0; column < BOUNDARY_TERRAIN_CELLS; column += 1) {
-        if (!lit[row * BOUNDARY_TERRAIN_CELLS + column]) continue;
+    for (let row = 0; row < VIEW.shadowBoundary.terrainCells; row += 1) {
+      for (let column = 0; column < VIEW.shadowBoundary.terrainCells; column += 1) {
+        if (!lit[row * VIEW.shadowBoundary.terrainCells + column]) continue;
         const x0 = box.x0 + column * width;
         const y0 = box.y0 + row * depth;
         addPolygon(path, [[x0, y0], [x0 + width, y0], [x0 + width, y0 + depth], [x0, y0 + depth]].map(([x, y]) => frame.project({ x, y, z: ground(x, y) })));
       }
     }
-    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: BOUNDARY_EDGE_ALPHA });
+    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: VIEW.shadowBoundary.edgeAlpha });
   }
 
   /**
@@ -881,7 +830,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const half = currentSurface().flat ? 0 : currentSurface().halfExtentMetres;
     const bounds = { x0: Math.min(box.x0, -half), x1: Math.max(box.x1, half), y0: Math.min(box.y0, -half), y1: Math.max(box.y1, half) };
     // Fronts over terrain are thinned by their fixed order, so the same ones are drawn in every frame.
-    const terrainStride = Math.max(1, Math.ceil(total / TERRAIN_RIPPLE_SPHERES));
+    const terrainStride = Math.max(1, Math.ceil(total / VIEW.wavefront.terrainSpheres));
     const groups = new Map();
     for (const sphere of spheres) {
       const { centre, radiusMetres } = sphere;
@@ -903,7 +852,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'x', value: farX, axes: ['y', 'z'], corners: [[box.y0, 0], [box.y1, 0], [box.y1, box.z1], [box.y0, box.z1]] },
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
-    const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * RIPPLE_SPACING_SHARE;
+    const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * VIEW.wavefront.rippleSpacingShare;
     if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing, strength);
     for (const face of faces) {
       const [u, v] = face.axes;
@@ -912,7 +861,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       addPolygon(outline, face.corners.map(([a, b]) => place(a, b)));
       context.save();
       context.clip(outline);
-      RIPPLE_ALPHAS.forEach((alpha, ring) => {
+      VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         const path = new Path2D();
         let any = false;
         for (const { source, centre, radiusMetres } of spheres) {
@@ -951,7 +900,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     paint.globalCompositeOperation = 'source-over';
     paint.clearRect(0, 0, rippleLayer.width, rippleLayer.height);
     paint.setTransform(ratio, 0, 0, ratio, 0, 0);
-    RIPPLE_ALPHAS.forEach((alpha, ring) => {
+    VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
       const path = new Path2D();
       let any = false;
       for (const { centre, radiusMetres } of spheres) {
@@ -1034,10 +983,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const { x, y } = emitter.centreMetres;
     const base = emitter.cloudBaseMetres;
     const depth = emitter.cloudTopMetres - base;
-    return Array.from({ length: CLOUD_PUFFS }, () => {
+    return Array.from({ length: VIEW.cloud.puffs }, () => {
       // More of the cloud low down, where it is broad and dark; the top spreads into an anvil.
       const share = random() ** 1.4;
-      const reach = emitter.radiusMetres * (.75 + CLOUD_ANVIL_SPREAD * share ** 4);
+      const reach = emitter.radiusMetres * (.75 + VIEW.cloud.anvilSpread * share ** 4);
       const angle = 2 * Math.PI * random();
       const distance = reach * Math.sqrt(random());
       return {
@@ -1073,8 +1022,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       for (const { p, size, share } of puffs) {
         const [r, g, b] = mixColors(dark, light, share ** 1.5);
         const gradient = paint.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-        gradient.addColorStop(0, `rgba(${r},${g},${b},${CLOUD_PUFF_ALPHA})`);
-        gradient.addColorStop(.6, `rgba(${r},${g},${b},${CLOUD_PUFF_ALPHA * .5})`);
+        gradient.addColorStop(0, `rgba(${r},${g},${b},${VIEW.cloud.puffAlpha})`);
+        gradient.addColorStop(.6, `rgba(${r},${g},${b},${VIEW.cloud.puffAlpha * .5})`);
         gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
         paint.fillStyle = gradient;
         paint.beginPath();
@@ -1116,8 +1065,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const stroke of strokes) {
       const flash = flashes[stroke.flash];
       if (!flash) continue;
-      const fade = stroke.elapsed > FLASH_TRAVERSE_SECONDS ? Math.exp(-(stroke.elapsed - FLASH_TRAVERSE_SECONDS) / FLASH_FADE_SECONDS) : 1;
-      const intensity = CLOUD_FLASH_ALPHA * fade * flicker(emitter.seed + stroke.flash * 7919, stroke.elapsed);
+      const fade = stroke.elapsed > VIEW.flash.traverseSeconds ? Math.exp(-(stroke.elapsed - VIEW.flash.traverseSeconds) / VIEW.flash.fadeSeconds) : 1;
+      const intensity = VIEW.cloud.flashAlpha * fade * flicker(emitter.seed + stroke.flash * 7919, stroke.elapsed);
       if (intensity < .01) continue;
       // The lit channel inside the cloud, or the flash's top when none of it is there yet.
       const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
@@ -1127,15 +1076,15 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }).filter(point => point.z >= emitter.cloudBaseMetres);
       const along = inCloud.length ? inCloud : [flash.channels[0].points.at(-1)];
       const random = createRandom((emitter.seed ^ Math.imul(stroke.flash + 1, 0x27d4eb2d)) >>> 0);
-      for (let blob = 0; blob < CLOUD_BLOBS; blob += 1) {
-        const at = along[Math.min(along.length - 1, Math.floor((blob + random()) / CLOUD_BLOBS * along.length))];
-        const offset = depth * CLOUD_BLOB_SCATTER;
+      for (let blob = 0; blob < VIEW.cloud.flashBlobs; blob += 1) {
+        const at = along[Math.min(along.length - 1, Math.floor((blob + random()) / VIEW.cloud.flashBlobs * along.length))];
+        const offset = depth * VIEW.cloud.blobScatter;
         const centre = { x: at.x + offset * (random() - .5), y: at.y + offset * (random() - .5), z: at.z + offset * (random() - .5) };
         const p = frame.project(centre);
-        const edge = frame.project({ ...centre, z: centre.z + depth * CLOUD_FLASH_REACH * (.6 + .8 * random()) });
+        const edge = frame.project({ ...centre, z: centre.z + depth * VIEW.cloud.flashReach * (.6 + .8 * random()) });
         const size = Math.hypot(edge.x - p.x, edge.y - p.y);
         const gradient = glow.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-        const alpha = intensity / CLOUD_BLOBS * 2.2;
+        const alpha = intensity / VIEW.cloud.flashBlobs * 2.2;
         gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
         gradient.addColorStop(.45, `rgba(${r},${g},${b},${alpha * .45})`);
         gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
@@ -1233,9 +1182,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       if (!(to > from)) return;
       const point = t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
-      for (let piece = 0; piece < CONE_PIECES; piece += 1) {
-        const start = from + (to - from) * piece / CONE_PIECES;
-        const end = from + (to - from) * (piece + 1) / CONE_PIECES;
+      for (let piece = 0; piece < VIEW.cone.pieces; piece += 1) {
+        const start = from + (to - from) * piece / VIEW.cone.pieces;
+        const end = from + (to - from) * (piece + 1) / VIEW.cone.pieces;
         const middle = point((start + end) / 2);
         if (middle.z < ground(middle.x, middle.y)) continue;
         const p = frame.project(point(start));
@@ -1247,13 +1196,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     rings.forEach((ring, index) => {
       ring.forEach((point, step) => {
         line(point, ring[(step + 1) % ring.length]);
-        if (step % CONE_LINE_EVERY) return;
+        if (step % VIEW.cone.lineEvery) return;
         const previous = index ? rings[index - 1][step] : apex;
         if (previous) line(previous, point);
       });
     });
     const alpha = context.globalAlpha;
-    context.globalAlpha = alpha * CONE_ALPHA;
+    context.globalAlpha = alpha * VIEW.cone.alpha;
     context.strokeStyle = colors.glow;
     context.lineWidth = 1;
     context.stroke(path);
@@ -1263,7 +1212,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   /** A burst's flash, fading after it starts; the emitter's dimming is restored after it. */
   function drawBurst(context, centre, stroke, colors) {
     const alpha = context.globalAlpha;
-    const level = Math.exp(-stroke.elapsed / FLASH_FADE_SECONDS);
+    const level = Math.exp(-stroke.elapsed / VIEW.flash.fadeSeconds);
     context.fillStyle = colors.flash;
     context.shadowColor = colors.glow;
     context.shadowBlur = 30 * level;
@@ -1550,8 +1499,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (drag.verticalOnly && axis !== 'z') continue;
       const moved = drag.origin[axis] + solved[axis] - drag.grabbed[axis];
       if (axis === 'z') {
-        if (!drag.onGround) point.z = Math.round(clamp(moved, MAXIMUM_HEIGHT_METRES, 0) * 10) / 10;
-      } else point[axis] = Math.round(clamp(moved, SCENE_EXTENT_METRES));
+        if (!drag.onGround) point.z = Math.round(clamp(moved, RENDER.maximumHeightMetres, 0) * 10) / 10;
+      } else point[axis] = Math.round(clamp(moved, RENDER.sceneExtentMetres));
     }
     drag.point = point;
     onMove(drag, point);

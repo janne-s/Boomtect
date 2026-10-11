@@ -1,7 +1,7 @@
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from './constants.js';
+import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, METEOR, THUNDER, TNT_JOULES_PER_KILOGRAM } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { stationaryArrivals } from './flight.js';
-import { WEAK_SHOCK, weakShockPulse } from './lightning.js';
+import { weakShockPulse } from './lightning.js';
 import { createRandom, normalDeviate } from './random.js';
 
 /**
@@ -15,28 +15,16 @@ import { createRandom, normalDeviate } from './random.js';
  * wave already integrates the line, so the boom is one N-wave from there (class B, ReVelle 1976 as
  * restated by Silber et al. 2015): at x = r/R₀ = 10, where the weak-shock regime begins,
  *   Δp/p = 2γ/(γ+1) · 0.4503 / ((1 + 4.803·x^(8/3))^(3/8) − 1),
- * then Δp ∝ x^(−3/4) as a weak cylindrical shock up to LIMIT_RADII and x^(−1/2) as a linear wave
+ * then Δp ∝ x^(−3/4) as a weak cylindrical shock up to METEOR.limitRadii and x^(−1/2) as a linear wave
  * beyond; its period τ₀ = 2.81·R₀/c lengthens as x^¼ (`weakShockPulse`). From the air at the
  * trail to the air at the receiver the overpressure scales with √(p_trail·p_receiver), as
  * Carlson's (class B for the impedance law, temperature neglected).
  */
 
-const PERIOD_COEFFICIENT = 2.81;
-const LIMIT_RADII = 1e4;
-const START_RADII = WEAK_SHOCK.startRadii;
+const START_RADII = THUNDER.weakShock.startRadii;
 const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** (8 / 3)) ** (3 / 8) - 1);
 /** Seconds between the points of a meteor's track. */
 const TRACK_STEP_SECONDS = .02;
-const TNT_JOULES_PER_KILOGRAM = 4.184e6;
-/**
- * A meteoroid breaks up in generations: each fragment splits in two, and generation k breaks where
- * the ram pressure ρv² reaches the strength times BREAKUP_PRESSURE_RATIO^k, the smaller fragments
- * being stronger, each fragment at its own pressure spread lognormally by BREAKUP_PRESSURE_SPREAD
- * (class C; Popova et al. 2011 find several breakups per fireball at rising pressures, Chelyabinsk
- * a cascade of them). Each generation releases the breakup share of the kinetic energy.
- */
-const BREAKUP_PRESSURE_RATIO = 2;
-const BREAKUP_PRESSURE_SPREAD = .5;
 
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 const densityAt = (air, heightMetres) => pressureAtHeightPa(air, heightMetres) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
@@ -57,17 +45,17 @@ export function meteorBlast(meteor, air, heightMetres) {
   const speed = meteor.speedKilometresPerSecond * 1000;
   const energy = .5 * density * speed * speed * meteor.dragCoefficient * Math.PI * (meteor.diameterMetres / 2) ** 2;
   const radius = Math.sqrt(energy / pressurePa);
-  return { radiusMetres: radius, sourcePeriodSeconds: PERIOD_COEFFICIENT * radius / soundSpeedAt(air, heightMetres), pressurePa };
+  return { radiusMetres: radius, sourcePeriodSeconds: METEOR.periodCoefficient * radius / soundSpeedAt(air, heightMetres), pressurePa };
 }
 
 /** A meteor's boom `metres` along the ray from a point of its trail at a height: overpressure, Pa, and N-wave duration, s. */
 export function meteorBoom(meteor, air, heightMetres, metres, receiverPressurePa) {
   const { radiusMetres, sourcePeriodSeconds, pressurePa } = meteorBlast(meteor, air, heightMetres);
   const x = Math.max(START_RADII, metres / radiusMetres);
-  const ratio = START_OVERPRESSURE_RATIO * (Math.min(x, LIMIT_RADII) / START_RADII) ** -.75 * (Math.max(x, LIMIT_RADII) / LIMIT_RADII) ** -.5;
+  const ratio = START_OVERPRESSURE_RATIO * (Math.min(x, METEOR.limitRadii) / START_RADII) ** -.75 * (Math.max(x, METEOR.limitRadii) / METEOR.limitRadii) ** -.5;
   return {
     overpressurePa: ratio * Math.sqrt(pressurePa * receiverPressurePa),
-    durationSeconds: weakShockPulse(radiusMetres, sourcePeriodSeconds, metres, LIMIT_RADII).durationSeconds
+    durationSeconds: weakShockPulse(radiusMetres, sourcePeriodSeconds, metres, METEOR.limitRadii).durationSeconds
   };
 }
 
@@ -80,7 +68,7 @@ export function meteorKineticEnergy(meteor) {
 /**
  * Where a meteoroid breaks up and where it bursts, as blasts of a TNT equivalent (class C for the
  * shares of its kinetic energy they release). Its fragments break in generations (see
- * BREAKUP_PRESSURE_RATIO), the first where the ram pressure ρv² reaches its strength (class B,
+ * METEOR.breakupPressureRatio), the first where the ram pressure ρv² reaches its strength (class B,
  * Popova et al. 2011: 0.1–1 MPa for most fireballs, 1–5 MPa at Chelyabinsk), seeded; a fragment
  * whose pressure is not reached before the end of the trail does not break. The terminal burst is
  * where the trail ends.
@@ -95,8 +83,8 @@ export function meteorBursts(meteor, air) {
   for (let generation = 0; generation < meteor.breakupCount; generation += 1) {
     const fragments = 2 ** generation;
     for (let fragment = 0; fragment < fragments; fragment += 1) {
-      const target = meteor.strengthMegapascals * 1e6 * BREAKUP_PRESSURE_RATIO ** generation
-        * Math.exp(BREAKUP_PRESSURE_SPREAD * normalDeviate(random));
+      const target = meteor.strengthMegapascals * 1e6 * METEOR.breakupPressureRatio ** generation
+        * Math.exp(METEOR.breakupPressureSpread * normalDeviate(random));
       if (ramPressure(0) >= target || ramPressure(lengthMetres) < target) continue;
       // The air thickens downward along the trail, so the crossing is found by bisection.
       let low = 0;

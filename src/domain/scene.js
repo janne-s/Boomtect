@@ -1,9 +1,7 @@
-import {
-  ISA_LAPSE_RATE_KELVIN_PER_METRE, MAXIMUM_EMITTERS, MAXIMUM_HEIGHT_METRES, MAXIMUM_RECEIVERS, MODEL_VERSION, SAMPLE_RATE_HZ, SCENE_EXTENT_METRES
-} from './constants.js';
+import { FLIGHT, GROUND, ISA_LAPSE_RATE_KELVIN_PER_METRE, MODEL_VERSION, RENDER, SAMPLE_RATE_HZ, THUNDER } from './constants.js';
 import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
-import { BODIES, BODY_TYPES } from './flight.js';
+import { BODY_TYPES } from './flight.js';
 import { GROUND_TYPES } from './ground.js';
 import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
@@ -16,12 +14,7 @@ export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
-/** Minimum depth of a storm's cloud layer. */
-export const MINIMUM_CLOUD_DEPTH_METRES = 100;
-/** Largest terrain grid side, matching the capture limit in terrain.js. */
-const MAXIMUM_TERRAIN_CELLS = 600;
-/** Place names kept with a terrain, from OpenStreetMap, and their kinds in drawing priority. */
-const MAXIMUM_PLACE_NAMES = 400;
+/** Kinds of the place names kept with a terrain, from OpenStreetMap, in drawing priority. */
 export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak', 'water', 'hamlet', 'locality']);
 
 /**
@@ -52,8 +45,8 @@ export const PARAMETERS = Object.freeze({
   scattering: { minimum: 0, maximum: 1, unit: '', label: 'Scattering', reliability: 'C' },
   echoCellMetres: { minimum: 25, maximum: 500, unit: 'm', label: 'Echo cells', reliability: 'C' },
   echoLimit: { minimum: 10, maximum: 2000, unit: '', label: 'Echoes per cell', reliability: 'C', integer: true },
-  coordinateMetres: { minimum: -SCENE_EXTENT_METRES, maximum: SCENE_EXTENT_METRES, unit: 'm', reliability: null },
-  heightMetres: { minimum: 0, maximum: MAXIMUM_HEIGHT_METRES, unit: 'm', reliability: null },
+  coordinateMetres: { minimum: -RENDER.sceneExtentMetres, maximum: RENDER.sceneExtentMetres, unit: 'm', reliability: null },
+  heightMetres: { minimum: 0, maximum: RENDER.maximumHeightMetres, unit: 'm', reliability: null },
   startSeconds: { minimum: 0, maximum: 240, unit: 's', label: 'Onset', reliability: null },
   segmentLengthMetres: { minimum: 1, maximum: 100, unit: 'm', label: 'Segment length', reliability: 'C' },
   straightLengthMetres: { minimum: .1, maximum: 100, unit: 'm', label: 'Straight element', reliability: 'C' },
@@ -285,7 +278,7 @@ export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 202610
  * few milliseconds (class C until verified; turbulence and molecular relaxation set it).
  */
 export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013) {
-  const body = BODIES.reconnaissance;
+  const body = FLIGHT.bodies.reconnaissance;
   return {
     id, name, kind: 'flight', enabled: true, seed,
     startSeconds: 0,
@@ -434,7 +427,7 @@ function emitter(value, index) {
   if (value.kind === 'storm') {
     const storm = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, STORM_NUMBERS, path) };
     check(storm.centreMetres.z === 0, `${path}.centreMetres must lie on the ground.`);
-    check(storm.cloudTopMetres >= storm.cloudBaseMetres + MINIMUM_CLOUD_DEPTH_METRES, `${path} needs a cloud top above its cloud base.`);
+    check(storm.cloudTopMetres >= storm.cloudBaseMetres + THUNDER.minimumCloudDepthMetres, `${path} needs a cloud top above its cloud base.`);
     check(storm.straightLengthMetres <= storm.segmentLengthMetres, `${path}.straightLengthMetres must not exceed the segment length.`);
     return storm;
   }
@@ -464,7 +457,7 @@ function terrain(value) {
   check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean' && typeof value.echoes === 'boolean', 'terrain.enabled, terrain.shielding, and terrain.echoes must be true or false.');
   check(typeof value.place === 'string' && value.place.length <= 120, 'terrain.place must be a short text.');
   const grid = key => {
-    check(Number.isInteger(value[key]) && value[key] >= 2 && value[key] <= MAXIMUM_TERRAIN_CELLS, `terrain.${key} must be a whole number of cells.`);
+    check(Number.isInteger(value[key]) && value[key] >= 2 && value[key] <= GROUND.terrain.maximumGridCells, `terrain.${key} must be a whole number of cells.`);
     return value[key];
   };
   const columns = grid('columns');
@@ -472,7 +465,7 @@ function terrain(value) {
   check(Number.isInteger(value.zoom) && value.zoom >= 1 && value.zoom <= 15, 'terrain.zoom must be a tile zoom level.');
   check(typeof value.heights === 'string' && value.heights.length === 4 * Math.ceil(columns * rows * 4 / 3), 'terrain.heights do not match the grid.');
   check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && Math.abs(value.cellMetres * columns - value.extentMetres) < 1e-6 * value.extentMetres, 'terrain.cellMetres does not match the area.');
-  check(Array.isArray(value.names) && value.names.length <= MAXIMUM_PLACE_NAMES, 'terrain.names must be a list of place names.');
+  check(Array.isArray(value.names) && value.names.length <= GROUND.terrain.maximumPlaceNames, 'terrain.names must be a list of place names.');
   const half = value.extentMetres / 2;
   const names = value.names.map((item, index) => {
     const path = `terrain.names[${index}]`;
@@ -534,10 +527,10 @@ export function parseScene(value) {
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
   check(typeof ground.forest === 'boolean', 'ground.forest must be true or false.');
   check(typeof ground.surroundings === 'boolean', 'ground.surroundings must be true or false.');
-  check(Array.isArray(value.emitters) && value.emitters.length >= 1 && value.emitters.length <= MAXIMUM_EMITTERS,
-    `A scene needs 1–${MAXIMUM_EMITTERS} emitters.`);
-  check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= MAXIMUM_RECEIVERS,
-    `A scene needs 1–${MAXIMUM_RECEIVERS} receivers.`);
+  check(Array.isArray(value.emitters) && value.emitters.length >= 1 && value.emitters.length <= RENDER.maximumEmitters,
+    `A scene needs 1–${RENDER.maximumEmitters} emitters.`);
+  check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= RENDER.maximumReceivers,
+    `A scene needs 1–${RENDER.maximumReceivers} receivers.`);
   const render = value.render ?? {};
   check(render.sampleRate === SAMPLE_RATE_HZ, `render.sampleRate must be ${SAMPLE_RATE_HZ}.`);
   check(LEVEL_MODES.includes(render.levelMode), 'render.levelMode is not supported.');

@@ -1,3 +1,4 @@
+import { GROUND } from './constants.js';
 import { cubeRootExponent } from './creeping.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { createRandom, normalDeviate } from './random.js';
@@ -7,26 +8,11 @@ import { createRandom, normalDeviate } from './random.js';
  * passes under its canopy and leaves a reverberant tail at the receiver.
  */
 
-/**
- * Class B: ISO 9613-2:1996, Table A.1, attenuation through dense foliage per metre of path, octave
- * bands 63 Hz–8 kHz, for 20–200 m of foliage; beyond 200 m the 200 m value holds. ISO 9613-2
- * excludes blast waves, which holds here once the blast is linear.
- */
-export const FOLIAGE_BANDS_HZ = Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000]);
-export const FOLIAGE_DECIBELS_PER_METRE = Object.freeze([.02, .03, .04, .05, .06, .08, .09, .12]);
-export const MAXIMUM_FOLIAGE_METRES = 200;
-/**
- * The table follows 0.006·f^(1/3) dB/m within 0.006 dB/m in every band, the frequency law of Hoover's
- * forest formula, 0.01·f^(1/3) dB/m. As s·(s + ω_c)^(−2/3) it has the phase lag that keeps it causal
- * (as the creeping wave in `render.js`); well below the cutoff it becomes a delay (class C).
- */
-const FOLIAGE_DECIBELS_PER_CUBE_ROOT_HERTZ = .006;
-const FOLIAGE_CUTOFF_HZ = 10;
-const FOLIAGE_SCALE = FOLIAGE_DECIBELS_PER_CUBE_ROOT_HERTZ * Math.LN10 / 20 / (Math.cbrt(2 * Math.PI) * Math.cos(Math.PI / 6));
+const FOLIAGE_SCALE = GROUND.foliageDecibelsPerCubeRootHertz * Math.LN10 / 20 / (Math.cbrt(2 * Math.PI) * Math.cos(Math.PI / 6));
 
 /** Foliage loss and phase lag per metre of path at a frequency, nepers and radians. */
 export function foliageExponent(frequencyHz) {
-  const [loss, lag] = cubeRootExponent(frequencyHz, FOLIAGE_CUTOFF_HZ);
+  const [loss, lag] = cubeRootExponent(frequencyHz, GROUND.foliageCutoffHz);
   return [FOLIAGE_SCALE * loss, FOLIAGE_SCALE * lag];
 }
 
@@ -42,40 +28,13 @@ export function foliageMetres(metres, a, b, treeHeightMetres) {
   return metres * (treeHeightMetres - low) / (high - low);
 }
 
-/**
- * Reverberation of the forest around the receiver, per octave band 31.5 Hz–16 kHz. Class B at 1 kHz:
- * T30 of 1.3–1.7 s in snowy forest at Koli National Park (Shelley, Murphy & Chadwick, DAFx 2013),
- * where most of the reverberant energy lies at 1 kHz and the low bands are dry. The other bands'
- * times are shaped around it (class C).
- */
-const REVERB_BANDS_HZ = Object.freeze([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]);
-const REVERB_SECONDS = Object.freeze([.2, .3, .5, .8, 1.15, 1.5, 1.3, 1, .7, .5]);
-/**
- * Energy of the tail against the energy of the sound that excites it, at 1 kHz; other bands scale
- * with their reverberation time. Class C: the Koli clarity C50 was high, so the tail is well below
- * the direct sound near the source.
- */
-const REVERB_ENERGY_SHARE = .1;
-/** The tail builds up from the nearest trunks over a few milliseconds (class C). */
-const REVERB_BUILD_SECONDS = .005;
 /** Length of the impulse response: the longest band has fallen 70 dB. */
-export const REVERB_LENGTH_SECONDS = 70 / 60 * Math.max(...REVERB_SECONDS);
+export const REVERB_LENGTH_SECONDS = 70 / 60 * Math.max(...GROUND.forest.seconds);
 
-const FOREST = Object.freeze({ seconds: REVERB_SECONDS, energyShare: REVERB_ENERGY_SHARE, buildSeconds: REVERB_BUILD_SECONDS, salt: 0 });
+const FOREST = Object.freeze({ ...GROUND.forest, salt: 0 });
 
-/**
- * The rumble of the surroundings over level ground: what the distant land, its edges of forest,
- * buildings, and hills return of a loud sound, which over loaded terrain its echoes trace instead.
- * Class C, fitted to recorded sonic booms and the Chelyabinsk fireball (Doc/reference/audio
- * sonic1–3, meteor1): a tail at 15–25 dB under the sound, falling 8–10 dB per second, mostly below
- * 250 Hz. It builds up over SURROUNDINGS_BUILD_SECONDS, as the nearest of it is some way off.
- */
-const SURROUNDINGS = Object.freeze({
-  seconds: Object.freeze([7, 7, 6, 4.5, 3, 2, 1.5, 1, .7, .5]),
-  energyShare: .04,
-  buildSeconds: .15,
-  salt: 0x5bd1e995
-});
+/** The rumble of the surroundings over level ground, which over loaded terrain its echoes trace instead (GROUND.surroundings). */
+const SURROUNDINGS = Object.freeze({ ...GROUND.surroundings, salt: 0x5bd1e995 });
 /** Length of the surroundings' response: its longest band has fallen 70 dB. */
 export const SURROUNDINGS_LENGTH_SECONDS = 70 / 60 * Math.max(...SURROUNDINGS.seconds);
 
@@ -115,11 +74,11 @@ function makeResponses(profile, seed, channels, sampleRate) {
   const length = Math.ceil(70 / 60 * Math.max(...profile.seconds) * sampleRate);
   const size = nextPowerOfTwo(length);
   const binHz = sampleRate / size;
-  const bands = REVERB_BANDS_HZ.length;
+  const bands = GROUND.reverbBandsHz.length;
   // Crossover weights per bin; their squares sum to one, so the bands split the noise's energy.
-  const weights = REVERB_BANDS_HZ.map(() => new Float64Array(size / 2 + 1));
+  const weights = GROUND.reverbBandsHz.map(() => new Float64Array(size / 2 + 1));
   for (let bin = 1; bin <= size / 2; bin += 1) {
-    const position = Math.log2(bin * binHz / REVERB_BANDS_HZ[0]);
+    const position = Math.log2(bin * binHz / GROUND.reverbBandsHz[0]);
     if (position <= 0) { weights[0][bin] = 1; continue; }
     if (position >= bands - 1) { weights[bands - 1][bin] = 1; continue; }
     const lower = Math.floor(position);

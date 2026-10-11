@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from '../src/domain/constants.js';
+import { BLAST, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from '../src/domain/constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/domain/air.js';
 import { meteorBlast, meteorBoom, meteorBursts, meteorKineticEnergy, meteorTrail, showerMembers } from '../src/domain/meteor.js';
-import { emitterSources, MAXIMUM_HIGH_BLAST_SECONDS } from '../src/domain/emitters.js';
+import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultMeteor, defaultShower, parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -122,7 +122,7 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   assert.ok(Math.abs(burst.durationSeconds / (.006 * cubeRoot * slower) - 1) < 1e-9);
   // A large meteoroid's burst is held to the longest positive phase, and its scene renders.
   const large = { ...meteor, diameterMetres: 50 };
-  assert.ok(emitterSources(large, air).sources.slice(1).every(source => source.durationSeconds === MAXIMUM_HIGH_BLAST_SECONDS));
+  assert.ok(emitterSources(large, air).sources.slice(1).every(source => source.durationSeconds === BLAST.maximumHighBlastSeconds));
   const scene = plainScene('sonic');
   scene.emitters = [large];
   const parsed = parseScene(scene);

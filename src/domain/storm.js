@@ -1,30 +1,6 @@
-import { STORM_SEGMENT_BUDGET } from './constants.js';
+import { THUNDER } from './constants.js';
 import { lightningFlash } from './lightning.js';
 import { createRandom, normalDeviate } from './random.js';
-
-/**
- * Flash statistics of a generated storm. Values marked B are typical literature figures that still
- * need verification against primary sources; values marked C are synthetic choices.
- */
-const STORM = Object.freeze({
-  groundStrokeMean: 3.5,                      // B: strokes per ground flash, typically 3–5 (CIGRÉ C4.407)
-  groundStrokeMaximum: 10,
-  groundStrokeIntervalMedianSeconds: .06,     // B: geometric mean interstroke interval (CIGRÉ C4.407)
-  strokeIntervalSpread: .6,                   // C: lognormal σ
-  laterStrokeEnergy: [.3, .7],                // C
-  returnStrokeSpeed: [5e7, 2e8],              // B: m/s, log-uniform
-  groundTopRiseShare: .3,                     // C: tops reach this share into the cloud depth
-  groundLean: .15,                            // C: horizontal offset of the top per height
-  groundBranchLengthRatio: .35,               // C
-  cloudPulseCount: [2, 6],                    // C: K-change-like pulses
-  cloudPulseIntervalMedianSeconds: .04,       // C
-  cloudChannelSpeed: [1e5, 1e6],              // B: leader speeds, m/s, log-uniform
-  cloudChannelLength: [2000, 8000],           // C: metres
-  cloudChannelRise: .1,                       // C: vertical share of a cloud channel
-  cloudLayer: [.3, .9],                       // C: cloud flashes sit between these shares of the cloud depth
-  cloudEnergyScale: .3,                       // C: cloud channels relative to ground channels
-  cloudBranchLengthRatio: .2                  // C
-});
 
 const logUniform = (random, [low, high]) => low * (high / low) ** random();
 const uniform = (random, [low, high]) => low + random() * (high - low);
@@ -58,26 +34,26 @@ export function stormFlashes(storm, surface = null) {
       branchDepth: storm.branchDepth,
       branchEnergyRatio: storm.branchEnergyRatio,
       energyVariation: storm.energyVariation,
-      strokeIntervalSpread: STORM.strokeIntervalSpread,
-      subsequentStrokeEnergyRatio: uniform(random, STORM.laterStrokeEnergy),
+      strokeIntervalSpread: THUNDER.storm.strokeIntervalSpread,
+      subsequentStrokeEnergyRatio: uniform(random, THUNDER.storm.laterStrokeEnergy),
       branchCount: Math.round(storm.branchCount * (.5 + random()))
     };
     if (ground) {
-      const height = storm.cloudBaseMetres + random() * STORM.groundTopRiseShare * depth;
-      const lean = height * STORM.groundLean * random();
+      const height = storm.cloudBaseMetres + random() * THUNDER.storm.groundTopRiseShare * depth;
+      const lean = height * THUNDER.storm.groundLean * random();
       const leanAngle = 2 * Math.PI * random();
       let strokeCount = 1;
-      while (strokeCount < STORM.groundStrokeMaximum && random() < 1 - 1 / STORM.groundStrokeMean) strokeCount += 1;
+      while (strokeCount < THUNDER.storm.groundStrokeMaximum && random() < 1 - 1 / THUNDER.storm.groundStrokeMean) strokeCount += 1;
       specs.push({
         ...shared,
         type: 'cloud-to-ground',
         baseMetres: { x, y, z: groundAt(x, y) },
         topMetres: { x: x + lean * Math.cos(leanAngle), y: y + lean * Math.sin(leanAngle), z: height },
-        branchLengthRatio: STORM.groundBranchLengthRatio,
+        branchLengthRatio: THUNDER.storm.groundBranchLengthRatio,
         energyJoulesPerMetre: energy,
-        channelSpeedMetresPerSecond: logUniform(random, STORM.returnStrokeSpeed),
+        channelSpeedMetresPerSecond: logUniform(random, THUNDER.storm.returnStrokeSpeed),
         strokeCount,
-        strokeIntervalSeconds: STORM.groundStrokeIntervalMedianSeconds,
+        strokeIntervalSeconds: THUNDER.storm.groundStrokeIntervalMedianSeconds,
         newTerminationProbability: storm.newTerminationProbability,
         currentDecayHeightMetres: storm.currentDecayHeightMetres,
         inCloudLengthMetres: storm.inCloudLengthMetres,
@@ -85,11 +61,11 @@ export function stormFlashes(storm, surface = null) {
         inCloudSpeedMetresPerSecond: storm.inCloudSpeedMetresPerSecond
       });
     } else {
-      const [low, high] = STORM.cloudLayer;
+      const [low, high] = THUNDER.storm.cloudLayer;
       const z = storm.cloudBaseMetres + uniform(random, [low, high]) * depth;
-      const channelLength = uniform(random, STORM.cloudChannelLength);
+      const channelLength = uniform(random, THUNDER.storm.cloudChannelLength);
       const heading = 2 * Math.PI * random();
-      const rise = (2 * random() - 1) * STORM.cloudChannelRise * channelLength;
+      const rise = (2 * random() - 1) * THUNDER.storm.cloudChannelRise * channelLength;
       const half = channelLength / 2;
       const clampZ = value => Math.min(storm.cloudTopMetres, Math.max(storm.cloudBaseMetres, value));
       specs.push({
@@ -97,17 +73,17 @@ export function stormFlashes(storm, surface = null) {
         type: 'intra-cloud',
         baseMetres: { x: x - half * Math.cos(heading), y: y - half * Math.sin(heading), z: clampZ(z - rise / 2) },
         topMetres: { x: x + half * Math.cos(heading), y: y + half * Math.sin(heading), z: clampZ(z + rise / 2) },
-        branchLengthRatio: STORM.cloudBranchLengthRatio,
-        energyJoulesPerMetre: energy * STORM.cloudEnergyScale,
-        channelSpeedMetresPerSecond: logUniform(random, STORM.cloudChannelSpeed),
-        strokeCount: Math.round(uniform(random, STORM.cloudPulseCount)),
-        strokeIntervalSeconds: STORM.cloudPulseIntervalMedianSeconds,
+        branchLengthRatio: THUNDER.storm.cloudBranchLengthRatio,
+        energyJoulesPerMetre: energy * THUNDER.storm.cloudEnergyScale,
+        channelSpeedMetresPerSecond: logUniform(random, THUNDER.storm.cloudChannelSpeed),
+        strokeCount: Math.round(uniform(random, THUNDER.storm.cloudPulseCount)),
+        strokeIntervalSeconds: THUNDER.storm.cloudPulseIntervalMedianSeconds,
         newTerminationProbability: 0
       });
     }
   }
   specs.sort((a, b) => a.startSeconds - b.startSeconds);
-  let budget = STORM_SEGMENT_BUDGET;
+  let budget = THUNDER.stormSegmentBudget;
   return specs.map(spec => {
     const flash = lightningFlash({ ...spec, branchBudget: Math.max(0, budget) });
     budget -= flash.channels.reduce((sum, channel) => sum + channel.segments.length, 0);

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { airy } from '../src/domain/airy.js';
+import { GROUND } from '../src/domain/constants.js';
 import { creepingLossRatios, creepingTransitionHz, modeRoot, SOFT_RATIO } from '../src/domain/creeping.js';
 import { fft } from '../src/domain/fft.js';
-import { GROUND_FLOW_RESISTIVITY } from '../src/domain/ground.js';
 import { shadowResponse } from '../src/domain/render.js';
 
 const close = (actual, expected, tolerance, label) => assert.ok(Math.abs(actual - expected) < tolerance, `${label}: ${actual} vs ${expected}`);
@@ -31,16 +31,16 @@ test('the creeping mode is that of rigid ground at q = 0 and of a pressure-relea
   close(modeRoot([1e7, 0], [-2.3, 0])[0], -2.338107410459767, 1e-6, 'pressure release');
   close(SOFT_RATIO, 2.338107410459767 / 1.018792971647471, 1e-12, 'ratio');
   // Grass under the standard atmosphere: rigid-like at low frequencies, soft at high ones.
-  const ratios = creepingLossRatios([20, 10000], GROUND_FLOW_RESISTIVITY.grass, 340, 340 / .0039);
+  const ratios = creepingLossRatios([20, 10000], GROUND.flowResistivity.grass, 340, 340 / .0039);
   assert.ok(Math.abs(ratios[0] - 1) < .15, `${ratios[0]}`);
   assert.ok(Math.abs(ratios[1] - SOFT_RATIO) < .05, `${ratios[1]}`);
   // Softer ground turns soft at lower frequencies.
-  assert.ok(creepingTransitionHz(GROUND_FLOW_RESISTIVITY.snow, 340, 87000) < creepingTransitionHz(GROUND_FLOW_RESISTIVITY.grass, 340, 87000));
+  assert.ok(creepingTransitionHz(GROUND.flowResistivity.snow, 340, 87000) < creepingTransitionHz(GROUND.flowResistivity.grass, 340, 87000));
 });
 
 test('soft ground never lets more through the shadow than rigid ground, and its response is causal', () => {
   const nepers = 3;
-  const transition = creepingTransitionHz(GROUND_FLOW_RESISTIVITY.grass, 340, 87000);
+  const transition = creepingTransitionHz(GROUND.flowResistivity.grass, 340, 87000);
   for (let frequency = .5; frequency < 20000; frequency *= 1.05) {
     assert.ok(Math.hypot(...shadowResponse(frequency, nepers, 0, transition)) <= Math.hypot(...shadowResponse(frequency, nepers, 0)) * (1 + 1e-12), `${frequency} Hz`);
   }

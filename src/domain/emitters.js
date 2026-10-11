@@ -1,6 +1,7 @@
+import { BLAST } from './constants.js';
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
-import { SECONDARY_MASS_SHARE, secondaryShockFactors } from './explosives.js';
+import { secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
 import { meteorBursts, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
@@ -51,13 +52,6 @@ export const FIREBALL_OFF_DECIBELS = -60;
 export const BLAST_PULSE = Object.freeze({ linearScaledDistance: 20, durationSecondsPerCubeRootKilogram: .006, decay: 1 });
 
 /**
- * The longest positive phase of a blast high in the air (class C, a render limit): a burst of a
- * meteoroid over a few metres would last tens of seconds, all of it infrasound, and its frames would
- * exceed the longest render. Its front, which is what is heard, keeps its pressure.
- */
-export const MAXIMUM_HIGH_BLAST_SECONDS = 2;
-
-/**
  * A blast high in thin air as the shock of a ground-level one (class B, Sachs scaling): at pressure p
  * and sound speed c a charge W behaves as W·p₀/p does at the ground in size, with pressures scaled by
  * p/p₀ and times by c₀/c. Its amplitude is stated in ground-level air, √(p₀/p) higher, as a ray tube
@@ -71,7 +65,7 @@ function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, a
     positionMetres, startSeconds: emissionSeconds, chargeKilograms: chargeKilograms * scale, explosive: 'tnt', secondaryShock: false,
     fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0, ...BLAST_PULSE
   }, { ...air, pressureKpa: pressurePa / 1000 });
-  const durationSeconds = Math.min(MAXIMUM_HIGH_BLAST_SECONDS, shock.durationSeconds * Math.sqrt(temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, positionMetres.z)));
+  const durationSeconds = Math.min(BLAST.maximumHighBlastSeconds, shock.durationSeconds * Math.sqrt(temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, positionMetres.z)));
   return { ...shock, flash, amplitudePaMetres: shock.amplitudePaMetres * Math.sqrt(scale), durationSeconds, spanSeconds: friedlanderSpanSeconds(durationSeconds, BLAST_PULSE.decay) };
 }
 
@@ -91,7 +85,7 @@ export function blastSources(emitter, air, surface = null) {
     };
   };
   const primary = shock(emitter.chargeKilograms);
-  const secondary = { ...shock(SECONDARY_MASS_SHARE * emitter.chargeKilograms), secondaryShock: secondaryShockFactors(emitter.explosive, emitter.chargeKilograms) };
+  const secondary = { ...shock(BLAST.secondaryMassShare * emitter.chargeKilograms), secondaryShock: secondaryShockFactors(emitter.explosive, emitter.chargeKilograms) };
   // A large fireball burns as its buoyancy lifts it, in a time that grows as the sixth root of its mass
   // (Fay & Lewis 1976); a momentum-driven one as the cube root (Roberts 1981). The roar follows the
   // first (class C), from 1.2 s at 5 kg as fitted to the recordings to about 9 s at 1 000 t.

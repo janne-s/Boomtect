@@ -1,3 +1,5 @@
+import { EAR } from './constants.js';
+
 /**
  * An optional listener model applied to what plays: the middle-ear acoustic reflex and loudness
  * compression. Both read the model's pressure in pascals, which is not calibrated, so their
@@ -16,27 +18,8 @@
  * ear's temporal integration of loudness, of the order of 100 ms (class B, Zwicker & Fastl,
  * Psychoacoustics; class C for the two stages): a mean square over 25 ms, smoothed in decibels over
  * 50 ms, so a sharp onset passes before it is turned down and a quiet tail is raised as soon after
- * a loud sound however much quieter it is.
+ * a loud sound however much quieter it is. The values are in EAR (`constants.js`).
  */
-export const EAR = Object.freeze({
-  referencePressurePa: 20e-6,
-  envelopeSeconds: .01,
-  reflexThresholdDb: 85,
-  latencyNearThresholdSeconds: .15,
-  latencyAtHighLevelSeconds: .03,
-  latencyRangeDb: 30,
-  attenuationPerDb: .75,
-  maximumAttenuationDb: 20,
-  onsetSeconds: .05,
-  releaseSeconds: .5,
-  adaptationHalfLifeSeconds: 3,
-  shelfHz: 1000,
-  loudnessExponent: .6,
-  loudnessMeanSquareSeconds: .025,
-  loudnessLevelSeconds: .05,
-  loudnessFloorDb: -60,
-  loudnessMaximumBoostDb: 40
-});
 
 const toDb = value => 20 * Math.log10(Math.max(value, 1e-30));
 const fromDb = decibels => 10 ** (decibels / 20);
