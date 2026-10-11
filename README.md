@@ -1,4 +1,4 @@
-# Boomtect: Build thunder where you want it
+# Boomtect: Make your own thunder
 
 Boomtect simulates the sound of lightning, blasts, and sonic booms from their physics. Shape
 a flash or a whole storm in 3D above the ground, place microphones, and hear
@@ -214,6 +214,17 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 
 ## Model
 
+Every part of the model is marked with a class that says how far it can be
+trusted, here and in the details of each parameter:
+
+- **A** — Derived from first principles, such as travel time in uniform air.
+- **B** — An approximation from the literature, valid in the range its source
+  gives.
+- **C** — A heuristic or synthetic assumption, chosen to behave plausibly
+  rather than derived or measured.
+
+B/C marks a part that combines the two.
+
 | Part | Model | Class |
 |---|---|---|
 | Speed of sound | `c = sqrt(γRT)` | A |
@@ -310,3 +321,9 @@ under CC BY 4.0 ([license](assets/vendor/fontawesome/LICENSE.txt)).
 ## License
 
 MIT
+
+## Support Boomtect
+
+Support development through [GitHub Sponsors](https://github.com/sponsors/janne-s)
+or [Ko-fi](https://ko-fi.com/jannesarkela). See
+[Sanara Creations](https://www.sanaracreations.fi/) for related work.
