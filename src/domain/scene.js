@@ -280,9 +280,9 @@ export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 202610
 }
 
 /**
- * A reconnaissance aircraft at Mach 1.99 and 15 km, Carlson's first sample problem, flying east
- * over the origin. Booms rise in a few milliseconds (class C until verified; turbulence and
- * molecular relaxation set it).
+ * A reconnaissance aircraft at Mach 1.6 and 6 km flying east past the origin, its boom heard there
+ * about half a minute after the start, the time sound takes down from its height. Booms rise in a
+ * few milliseconds (class C until verified; turbulence and molecular relaxation set it).
  */
 export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013) {
   const body = BODIES.reconnaissance;
@@ -290,13 +290,13 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
     id, name, kind: 'flight', enabled: true, seed,
     startSeconds: 0,
     body: 'reconnaissance',
-    startMetres: { x: -40000, y: 0, z: 15000 },
+    startMetres: { x: -8000, y: 0, z: 6000 },
     headingDegrees: 90,
     climbDegrees: 0,
-    mach: 1.99,
+    mach: 1.6,
     accelerationMetresPerSecondSquared: 0,
     turnDegreesPerSecond: 0,
-    durationSeconds: 120,
+    durationSeconds: 30,
     lengthMetres: body.lengthMetres,
     shapeFactor: body.shapeFactor,
     riseTimeSeconds: .002

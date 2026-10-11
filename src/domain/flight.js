@@ -99,6 +99,33 @@ export function flightPath(flight, air) {
   return path;
 }
 
+/**
+ * A body supersonic at its start has been flying before it: its booms near the start left from
+ * there. The path the renderer searches therefore begins APPROACH_HEIGHTS·h/√(M² − 1) plus
+ * APPROACH_METRES before the start, straight and at the start's speed (class C); views draw the
+ * path from the start.
+ */
+const APPROACH_HEIGHTS = 2;
+const APPROACH_METRES = 20000;
+
+/** The flight path with its approach before the start (see APPROACH_HEIGHTS); a subsonic start has none. */
+export function withApproach(path, air) {
+  const speed = path.speed[0];
+  const mach = speed / soundSpeedAt(air, path.z[0]);
+  if (!(mach > 1)) return path;
+  const metres = APPROACH_HEIGHTS * Math.max(0, path.z[0]) / Math.sqrt(mach * mach - 1) + APPROACH_METRES;
+  const steps = Math.min(MAXIMUM_STEPS, Math.ceil(metres / speed / path.step));
+  const approach = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step: path.step };
+  for (let index = steps; index >= 1; index -= 1) {
+    const t = index * path.step;
+    approach.seconds.push(path.seconds[0] - t);
+    approach.x.push(path.x[0] - path.vx[0] * t); approach.y.push(path.y[0] - path.vy[0] * t); approach.z.push(path.z[0] - path.vz[0] * t);
+    approach.vx.push(path.vx[0]); approach.vy.push(path.vy[0]); approach.vz.push(path.vz[0]); approach.speed.push(speed);
+  }
+  for (const key of ['seconds', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'speed']) approach[key].push(...path[key]);
+  return approach;
+}
+
 /** Carlson's bow-shock overpressure, Pa, and signature duration, s, at a distance (see the module note). */
 export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicleSoundSpeed, lengthMetres, shapeFactor, distanceMetres, pressureFactor = 1, durationFactor = 1, reflectionFactor = 1 }) {
   const beta = mach * mach - 1;

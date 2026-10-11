@@ -47,7 +47,8 @@ microphone along the Mach cone.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
-  them away before the ground.
+  them away before the ground. Supersonic at its start, it has flown straight
+  there, so the ground around the start hears it too.
 - **Formation** — Aircraft flying in a vee behind a leader, each with its own
   booms.
 - **Meteor** — A meteoroid entering the atmosphere down to the height where its
@@ -220,6 +221,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
 | Barrage | rounds seeded over a disc, salvos spread over the duration, charges lognormal about the mean | C |
 | Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
+| Approach | a body supersonic at its start flew straight before it, at the start's speed | C |
 | Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
 | Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |

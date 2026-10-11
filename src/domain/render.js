@@ -7,7 +7,7 @@ import { addForestTail, foliageExponent, foliageMetres, forestResponses, forestS
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
-import { flightBooms, flightMembers, flightPath } from './flight.js';
+import { flightBooms, flightMembers, flightPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, SCATTER_BIN_SECONDS, sourceCells } from './terrain-echoes.js';
@@ -164,7 +164,7 @@ export function prepareScene(scene) {
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
-      return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: flightPath(flight, scene.air), booms: flightBooms })) };
+      return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: withApproach(flightPath(flight, scene.air), scene.air), booms: flightBooms })) };
     }
     if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
       const flights = showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms }));

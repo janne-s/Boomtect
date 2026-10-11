@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { carlsonBoom, flightBooms, flightPath, machCone } from '../src/domain/flight.js';
+import { carlsonBoom, flightBooms, flightPath, machCone, withApproach } from '../src/domain/flight.js';
 import { soundSpeedProfile } from '../src/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultFlight, defaultScene, parseScene } from '../src/domain/scene.js';
@@ -82,7 +82,7 @@ test('the rendered N-wave carries Carlson’s overpressure and duration in free 
 test('a formation flies in a vee behind its leader, and each of its aircraft leaves its own boom', async () => {
   const { flightMembers } = await import('../src/domain/flight.js');
   const { defaultFormation } = await import('../src/domain/scene.js');
-  const formation = { ...defaultFormation(), startMetres: { x: -30000, y: 0, z: 10000 }, headingDegrees: 90, memberCount: 3, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
+  const formation = { ...defaultFormation(), startMetres: { x: -30000, y: 0, z: 10000 }, mach: 2, durationSeconds: 120, headingDegrees: 90, memberCount: 3, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
   const members = flightMembers(formation);
   assert.deepEqual(members.map(member => [Math.round(member.startMetres.x), Math.round(member.startMetres.y)]), [[-30000, 0], [-31500, -1000], [-31500, 1000]]);
   const scene = defaultScene('sonic');
@@ -129,4 +129,28 @@ test('turbulence spikes a boom’s front, seeded, while its N-wave keeps its are
   // Its front is no longer one clean step: the peak moves and the first milliseconds differ.
   const peak = samples => samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0);
   assert.ok(Math.abs(peak(rough.samples) / peak(calm.samples) - 1) > .03, `${peak(rough.samples)} vs ${peak(calm.samples)}`);
+});
+
+test('a body supersonic at its start has flown before it: a microphone beside the start hears its boom', () => {
+  const scene = defaultScene('sonic');
+  scene.emitters = [{ ...defaultFlight(), startMetres: { x: -500, y: 0, z: 6000 } }];
+  const parsed = parseScene(scene);
+  const flight = parsed.emitters[0];
+  const path = flightPath(flight, parsed.air);
+  const receiver = parsed.receivers[0].positionMetres;
+  // From the start alone the boom would leave before it; with the approach it is found there.
+  assert.equal(flightBooms(path, flight, receiver, soundSpeedProfile(parsed.air), parsed.air).length, 0);
+  const [boom] = flightBooms(withApproach(path, parsed.air), flight, receiver, soundSpeedProfile(parsed.air), parsed.air);
+  assert.ok(boom && boom.emissionSeconds < flight.startSeconds && boom.point.x < flight.startMetres.x);
+  const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  assert.ok(result.peakPa > 10, `${result.peakPa} Pa`);
+});
+
+test('the default flight is heard within about half a minute, all of it within a few kilometres of the origin', () => {
+  const parsed = parseScene(defaultScene('sonic'));
+  const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  const first = result.arrivals.seconds.reduce((earliest, seconds) => Math.min(earliest, seconds), Infinity);
+  assert.ok(first > 15 && first < 40, `${first} s`);
+  const path = flightPath(parsed.emitters[0], parsed.air);
+  assert.ok(Math.max(...path.x.map(Math.abs)) < 10000);
 });
