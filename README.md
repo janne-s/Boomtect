@@ -53,8 +53,9 @@ microphone along the Mach cone.
   booms.
 - **Meteor** — A meteoroid entering the atmosphere down to the height where its
   trail ends; its boom leaves the trail where its Mach cone reaches the
-  microphone. It breaks up where the air's pressure on it exceeds its strength
-  and bursts where the trail ends, each a blast high in the air.
+  microphone. Its fragments break up in generations where the air's pressure on
+  them exceeds their strength, and it bursts where the trail ends, each a blast
+  high in the air.
 - **Shower** — Meteoroids from one radiant over an area and a time span.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
@@ -228,7 +229,7 @@ echo field, export a microphone's file and load it in Echotect as the source sou
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed | B/C |
-| Meteor breakup | breakups where ρv² reaches the strength and each next at twice the last, a burst at the end of the trail, each a share of the kinetic energy | B/C |
+| Meteor breakup | fragments break in generations, each splitting in two: generation k where ρv² reaches the strength times 2^k, spread lognormally per fragment and seeded; a burst at the end of the trail; each generation and the burst a share of the kinetic energy | B/C |
 | Blast high in the air | Sachs scaling of the ground blast to the pressure and sound speed there; positive phase at most 2 s | B/C |
 | Shower | trails parallel from one radiant, seeded over a disc and a time span | C |
 | Shock front | stays steep against absorption while a shock; merges with its grazing reflection (von Neumann) | B/C |

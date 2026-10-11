@@ -29,10 +29,14 @@ const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 +
 const TRACK_STEP_SECONDS = .02;
 const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 /**
- * The ram pressure ρv² grows by this factor from one breakup to the next: the fragments are smaller
- * and stronger (class C; Popova et al. 2011 find several breakups per fireball at rising pressures).
+ * A meteoroid breaks up in generations: each fragment splits in two, and generation k breaks where
+ * the ram pressure ρv² reaches the strength times BREAKUP_PRESSURE_RATIO^k, the smaller fragments
+ * being stronger, each fragment at its own pressure spread lognormally by BREAKUP_PRESSURE_SPREAD
+ * (class C; Popova et al. 2011 find several breakups per fireball at rising pressures, Chelyabinsk
+ * a cascade of them). Each generation releases the breakup share of the kinetic energy.
  */
 const BREAKUP_PRESSURE_RATIO = 2;
+const BREAKUP_PRESSURE_SPREAD = .5;
 
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 const densityAt = (air, heightMetres) => pressureAtHeightPa(air, heightMetres) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
@@ -75,32 +79,37 @@ export function meteorKineticEnergy(meteor) {
 
 /**
  * Where a meteoroid breaks up and where it bursts, as blasts of a TNT equivalent (class C for the
- * shares of its kinetic energy they release). The first breakup comes where the ram pressure ρv²
- * reaches its strength (class B, Popova et al. 2011: 0.1–1 MPa for most fireballs, 1–5 MPa at
- * Chelyabinsk), each next at BREAKUP_PRESSURE_RATIO times the last, while above the end of the
- * trail; the terminal burst is where the trail ends.
+ * shares of its kinetic energy they release). Its fragments break in generations (see
+ * BREAKUP_PRESSURE_RATIO), the first where the ram pressure ρv² reaches its strength (class B,
+ * Popova et al. 2011: 0.1–1 MPa for most fireballs, 1–5 MPa at Chelyabinsk), seeded; a fragment
+ * whose pressure is not reached before the end of the trail does not break. The terminal burst is
+ * where the trail ends.
  */
 export function meteorBursts(meteor, air) {
   const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
   const energy = meteorKineticEnergy(meteor);
   const heightAt = along => start.z + direction.z * along;
   const ramPressure = along => densityAt(air, heightAt(along)) * speed * speed;
+  const random = createRandom(meteor.seed);
   const places = [];
-  for (let breakup = 0; breakup < meteor.breakupCount; breakup += 1) {
-    const target = meteor.strengthMegapascals * 1e6 * BREAKUP_PRESSURE_RATIO ** breakup;
-    if (ramPressure(0) >= target) continue;
-    if (ramPressure(lengthMetres) < target) break;
-    // The air thickens downward along the trail, so the crossing is found by bisection.
-    let low = 0;
-    let high = lengthMetres;
-    for (let step = 0; step < 50; step += 1) {
-      const middle = (low + high) / 2;
-      if (ramPressure(middle) < target) low = middle; else high = middle;
+  for (let generation = 0; generation < meteor.breakupCount; generation += 1) {
+    const fragments = 2 ** generation;
+    for (let fragment = 0; fragment < fragments; fragment += 1) {
+      const target = meteor.strengthMegapascals * 1e6 * BREAKUP_PRESSURE_RATIO ** generation
+        * Math.exp(BREAKUP_PRESSURE_SPREAD * normalDeviate(random));
+      if (ramPressure(0) >= target || ramPressure(lengthMetres) < target) continue;
+      // The air thickens downward along the trail, so the crossing is found by bisection.
+      let low = 0;
+      let high = lengthMetres;
+      for (let step = 0; step < 50; step += 1) {
+        const middle = (low + high) / 2;
+        if (ramPressure(middle) < target) low = middle; else high = middle;
+      }
+      places.push({ along: high, energyJoules: meteor.breakupShare * energy / fragments });
     }
-    places.push({ along: high, energyJoules: meteor.breakupShare * energy });
   }
   if (meteor.burstShare > 0) places.push({ along: lengthMetres, energyJoules: meteor.burstShare * energy });
-  return places.filter(place => place.energyJoules > 0).map(({ along, energyJoules }) => ({
+  return places.filter(place => place.energyJoules > 0).sort((a, b) => a.along - b.along).map(({ along, energyJoules }) => ({
     positionMetres: { x: start.x + direction.x * along, y: start.y + direction.y * along, z: heightAt(along) },
     emissionSeconds: meteor.startSeconds + along / speed,
     chargeKilograms: energyJoules / TNT_JOULES_PER_KILOGRAM
@@ -130,6 +139,7 @@ export function showerMembers(shower) {
     return {
       ...shower,
       id: `${shower.id}:${index}`,
+      seed: (shower.seed + Math.imul(index + 1, 0x9e3779b9)) >>> 0,
       startSeconds: shower.startSeconds + random() * shower.durationSeconds,
       startMetres: { x: shower.startMetres.x + radius * Math.cos(angle), y: shower.startMetres.y + radius * Math.sin(angle), z: shower.startMetres.z },
       diameterMetres: shower.diameterMetres * Math.exp(sigma * normalDeviate(random) - sigma * sigma / 2)

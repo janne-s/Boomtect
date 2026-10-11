@@ -69,28 +69,38 @@ test('a meteor’s boom is one N-wave from where its Mach cone reaches the micro
   }
 });
 
-test('a meteor breaks up where ρv² reaches its strength and twice that, and bursts where its trail ends', () => {
+test('a meteor breaks up in generations of fragments from its strength, seeded, and bursts where its trail ends', () => {
   const air = defaultScene('sonic').air;
-  const meteor = defaultMeteor();
+  const meteor = { ...defaultMeteor(), breakupCount: 4 };
   const bursts = meteorBursts(meteor, air);
-  assert.equal(bursts.length, 3);
+  assert.deepEqual(meteorBursts(meteor, air), bursts);
+  assert.notDeepEqual(meteorBursts({ ...meteor, seed: meteor.seed + 1 }, air), bursts);
+  // 1 + 2 + 4 + 8 fragments, those whose pressure the trail reaches, and the burst.
+  assert.ok(bursts.length > 8 && bursts.length <= 16, `${bursts.length}`);
   const speed = meteor.speedKilometresPerSecond * 1000;
   const ram = z => pressureAtHeightPa(air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, z)) * speed * speed;
-  assert.ok(Math.abs(ram(bursts[0].positionMetres.z) / 1e6 - 1) < 1e-6);
-  assert.ok(Math.abs(ram(bursts[1].positionMetres.z) / 2e6 - 1) < 1e-6);
-  assert.ok(Math.abs(bursts[2].positionMetres.z - meteor.endHeightMetres) < 1e-6);
-  // Each lies on the trail at the time the body passes.
+  const energy = meteorKineticEnergy(meteor);
+  assert.ok(Math.abs(energy / (3300 * Math.PI / 6 * .5 ** 3 * speed * speed / 2) - 1) < 1e-12);
+  const breakups = bursts.slice(0, -1);
+  for (const burst of breakups) {
+    // Within the pressure spread of one of the generations: S·2^k·e^(±4σ).
+    const ratio = Math.log2(ram(burst.positionMetres.z) / (meteor.strengthMegapascals * 1e6));
+    assert.ok(ratio > -3 && ratio < meteor.breakupCount + 2, `${ratio}`);
+    // Each fragment of generation k carries the breakup share over 2^k.
+    const share = burst.chargeKilograms * 4.184e6 / (meteor.breakupShare * energy);
+    assert.ok([1, 2, 4, 8].some(fragments => Math.abs(share * fragments - 1) < 1e-9));
+  }
+  const last = bursts.at(-1);
+  assert.ok(Math.abs(last.positionMetres.z - meteor.endHeightMetres) < 1e-6);
+  assert.ok(Math.abs(last.chargeKilograms - .3 * energy / 4.184e6) < 1e-9);
+  // Each lies on the trail at the time the body passes, in order along it.
   const { start, direction } = meteorTrail(meteor);
   for (const burst of bursts) {
     const along = (burst.emissionSeconds - meteor.startSeconds) * speed;
     assert.ok(Math.abs(start.x + direction.x * along - burst.positionMetres.x) < 1e-6);
   }
-  // Shares of a 3 300 kg/m³ sphere's kinetic energy, as TNT at 4.184 MJ/kg.
-  const energy = 3300 * Math.PI / 6 * .5 ** 3 * speed * speed / 2;
-  assert.ok(Math.abs(meteorKineticEnergy(meteor) / energy - 1) < 1e-12);
-  assert.ok(Math.abs(bursts[0].chargeKilograms - .05 * energy / 4.184e6) < 1e-9);
-  assert.ok(Math.abs(bursts[2].chargeKilograms - .3 * energy / 4.184e6) < 1e-9);
-  // A weak body that ends before its strength is reached only bursts; no shares, no blasts.
+  assert.ok(bursts.every((burst, index) => !index || burst.emissionSeconds >= bursts[index - 1].emissionSeconds));
+  // A body too strong for its trail only bursts; no shares, no blasts.
   assert.equal(meteorBursts({ ...meteor, strengthMegapascals: 100 }, air).length, 1);
   assert.equal(meteorBursts({ ...meteor, breakupShare: 0, burstShare: 0 }, air).length, 0);
 });
@@ -99,10 +109,11 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   const air = defaultScene('sonic').air;
   const meteor = defaultMeteor();
   const sources = emitterSources(meteor, air).sources;
-  assert.equal(sources.length, 4);
+  const places = meteorBursts(meteor, air);
+  assert.equal(sources.length, 1 + places.length);
   assert.ok(sources[0].flight && sources.slice(1).every(source => source.pulse === 'friedlander'));
-  const burst = sources[3];
-  const [place] = meteorBursts(meteor, air).slice(2);
+  const burst = sources.at(-1);
+  const place = places.at(-1);
   const scale = air.pressureKpa * 1000 / pressureAtHeightPa(air, place.positionMetres.z);
   const cubeRoot = Math.cbrt(place.chargeKilograms * scale);
   assert.ok(Math.abs(burst.linearRadiusMetres / (20 * cubeRoot) - 1) < 1e-9);

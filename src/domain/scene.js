@@ -111,7 +111,7 @@ export const PARAMETERS = Object.freeze({
   dragCoefficient: { minimum: .3, maximum: 3, unit: '', label: 'Drag coefficient', reliability: 'C' },
   densityKilogramsPerCubicMetre: { minimum: 300, maximum: 8000, unit: 'kg/m³', label: 'Density', reliability: 'B' },
   strengthMegapascals: { minimum: .01, maximum: 100, unit: 'MPa', label: 'Strength', reliability: 'B' },
-  breakupCount: { minimum: 0, maximum: 6, unit: '', label: 'Breakups', reliability: 'C', integer: true },
+  breakupCount: { minimum: 0, maximum: 6, unit: '', label: 'Breakup generations', reliability: 'C', integer: true },
   breakupShare: { minimum: 0, maximum: .5, unit: '', label: 'Breakup energy', reliability: 'C' },
   burstShare: { minimum: 0, maximum: 1, unit: '', label: 'Burst energy', reliability: 'C' },
   meteorCount: { minimum: 1, maximum: 200, unit: '', label: 'Meteors', reliability: null, integer: true },
@@ -305,8 +305,8 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 
 /**
  * A bright fireball: a 0.5 m stony meteoroid entering at 20 km/s and 35° from 100 km, its trail
- * ending at 25 km. Its shock rises in about a millisecond (class C). It breaks up twice from 1 MPa,
- * each time releasing 5 % of its kinetic energy, and bursts at the end with 30 % (class C).
+ * ending at 25 km. Its shock rises in about a millisecond (class C). It breaks up in two generations
+ * from 1 MPa, each releasing 5 % of its kinetic energy, and bursts at the end with 30 % (class C).
  */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
