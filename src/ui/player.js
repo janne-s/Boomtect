@@ -2,9 +2,6 @@ import Omnitone from '../../assets/vendor/omnitone/omnitone.min.esm.js';
 import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
 import { RENDER } from '../domain/constants.js';
 
-/** Seconds between pressing Play and the start of the timeline, so scheduling never lands in the past. */
-const SCHEDULE_LEAD_SECONDS = .08;
-
 /**
  * Omnitone's higher-order decoder mirrors left and right relative to AmbiX: measured with a source
  * in the east and the listener facing north, it puts the source on the left. Its sine components
@@ -202,7 +199,7 @@ export function createPlayer() {
     }
     current = connected;
     const skipped = skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds));
-    const origin = context.currentTime + SCHEDULE_LEAD_SECONDS - (atSceneSeconds ?? skipped);
+    const origin = context.currentTime + RENDER.scheduleLeadSeconds - (atSceneSeconds ?? skipped);
     const when = origin + composition.startSeconds;
     const now = context.currentTime;
     fader.gain.setValueAtTime(0, now);

@@ -1,3 +1,4 @@
+import { VIEW } from '../domain/constants.js';
 import { fitCanvas, palette } from './canvas.js';
 import { tilePixelMetres, tileX, tileY } from '../domain/terrain.js';
 
@@ -10,9 +11,6 @@ import { tilePixelMetres, tileX, tileY } from '../domain/terrain.js';
 
 const TILE_SIZE = 256;
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const MINIMUM_ZOOM = 3;
-const MAXIMUM_ZOOM = 17;
-const ZOOM_PER_PIXEL = .004;
 
 export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   let centre = { latitude: 61.5, longitude: 23.8 };
@@ -46,7 +44,7 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   function draw() {
     if (!mapCanvas.isConnected || mapCanvas.clientWidth === 0) return;
     const { context, width, height } = fitCanvas(mapCanvas);
-    const level = Math.max(MINIMUM_ZOOM, Math.min(MAXIMUM_ZOOM, Math.floor(zoom)));
+    const level = Math.max(VIEW.placeMap.minimumZoom, Math.min(VIEW.placeMap.maximumZoom, Math.floor(zoom)));
     const scale = 2 ** (zoom - level);
     const middle = pixel(centre.latitude, centre.longitude, level);
     const left = middle.x - width / 2 / scale;
@@ -86,7 +84,7 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   }
 
   function zoomBy(factor) {
-    zoom = Math.max(MINIMUM_ZOOM, Math.min(MAXIMUM_ZOOM, zoom + Math.log2(factor)));
+    zoom = Math.max(VIEW.placeMap.minimumZoom, Math.min(VIEW.placeMap.maximumZoom, zoom + Math.log2(factor)));
     draw();
   }
 
@@ -116,7 +114,7 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   overlayCanvas.addEventListener('pointercancel', release);
   overlayCanvas.addEventListener('wheel', event => {
     event.preventDefault();
-    zoomBy(2 ** (-event.deltaY * ZOOM_PER_PIXEL));
+    zoomBy(2 ** (-event.deltaY * VIEW.placeMap.zoomPerPixel));
   }, { passive: false });
   new ResizeObserver(draw).observe(mapCanvas);
 
@@ -126,7 +124,7 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
       centre = { latitude: next.latitude, longitude: next.longitude };
       extentMetres = extent;
       const width = mapCanvas.clientWidth || 600;
-      zoom = Math.max(MINIMUM_ZOOM, Math.min(MAXIMUM_ZOOM, Math.log2(tilePixelMetres(centre.latitude, 0) * width / (extent * 2.5))));
+      zoom = Math.max(VIEW.placeMap.minimumZoom, Math.min(VIEW.placeMap.maximumZoom, Math.log2(tilePixelMetres(centre.latitude, 0) * width / (extent * 2.5))));
       draw();
     },
     centre: () => ({ ...centre }),

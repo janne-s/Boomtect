@@ -116,7 +116,21 @@ export const GROUND = Object.freeze({
   terrain: Object.freeze({
     maximumGridCells: 600,
     maximumTileRequests: 36,
-    maximumPlaceNames: 400
+    maximumPlaceNames: 400,
+    /**
+     * Loaded terrain is widened when the scene reaches within edgeMargin times its reach plus
+     * marginMetres of its edge, coverageDelayMilliseconds after the last change; a new capture spans
+     * loadMargin times what the scene needs.
+     */
+    edgeMargin: 1.1,
+    marginMetres: 300,
+    coverageDelayMilliseconds: 800,
+    loadMargin: 1.25,
+    /** Seconds a network request for place names or a place search may take before it is given up. */
+    placeNamesLimitSeconds: 30,
+    placeSearchLimitSeconds: 15,
+    /** Nominatim's usage policy allows one search a second. */
+    searchIntervalMilliseconds: 1000
   })
 });
 
@@ -409,12 +423,16 @@ export const RENDER = Object.freeze({
   sourceCopiesBudget: 1000000,
   /** A render whose workers have sent nothing for this long has failed, for example out of memory. */
   stallSeconds: 60,
+  /** Render workers at most, one fewer than the processor's threads. */
+  maximumWorkers: 8,
   /** Auto renders this long after the last change. */
   autoDelayMilliseconds: 200,
   /** Peak normalization leaves 3 dB of headroom for resampling and inter-sample peaks. */
   peakTarget: 10 ** (-3 / 20),
   /** Binaural decoding can raise the peak above the pressure's; it gets 3 dB more room. */
   binauralHeadroom: 10 ** (-3 / 20),
+  /** Seconds between pressing Play and the start of the timeline, so scheduling never lands in the past. */
+  scheduleLeadSeconds: .08,
   /** Playback fades in when it starts and out when it stops over this time, so a cut into a sound does not click. */
   fadeSeconds: .05,
   /** Without the real delay, the first sound starts this long after playback begins. */
@@ -424,6 +442,77 @@ export const RENDER = Object.freeze({
 });
 
 export const VIEW = Object.freeze({
+  /**
+   * The box: its margin on screen in pixels; the smallest span it shows and its padding as a share of
+   * the scene; turning and zooming per pixel of drag, pinch, or wheel (a mouse wheel notch is about
+   * 100 pixels, a wheel that scrolls by lines wheelLinePixels a line) and their ranges; the view it starts from (turn, zoom over the fit, and pan in units
+   * of the box's half-extent on screen); a press that moves less than clickPixels is a click; below
+   * degenerateArea of screen a plane is seen edge-on and offers no handles. Then the sizes of handles,
+   * microphones, and arrows in pixels, and the facing arrow's length as a share of the box; outlines
+   * reach outlinePixels outside their shape, and a seam of seamPixels is cut along every edge.
+   */
+  box: Object.freeze({
+    marginPixels: 36,
+    minimumSpanMetres: 100,
+    padding: .08,
+    rotateRadiansPerPixel: .008,
+    pitchRange: Object.freeze([.12, 1.45]),
+    zoomRange: Object.freeze([.2, 40]),
+    zoomPerPixel: .006,
+    wheelLinePixels: 16,
+    defaultView: Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panU: 0, panV: 0 }),
+    clickPixels: 4,
+    degenerateArea: .08,
+    handleRadius: 5,
+    hitRadius: 10,
+    microphoneRadius: 5.5,
+    arrowheadPixels: 8,
+    facingLengthShare: .1,
+    outlinePixels: 1.2,
+    seamPixels: 1
+  }),
+  /**
+   * The orientation sphere: its margin, the width beside it for the elevation scale and how far left
+   * of the scale a press still grabs it, and its handles' radius, in pixels.
+   */
+  orientationBall: Object.freeze({
+    marginPixels: 12,
+    scaleSpacePixels: 30,
+    scaleGrabPixels: 10,
+    handleRadius: 4.5
+  }),
+  /** The map for choosing a place: its zoom range and zoom per pixel of drag, pinch, or wheel. */
+  placeMap: Object.freeze({
+    minimumZoom: 3,
+    maximumZoom: 17,
+    zoomPerPixel: .004
+  }),
+  /**
+   * Panels: the side panel's width range and the results' smallest height in pixels and largest
+   * share of the window, moved by keyboardStepPixels per key; a macro slider's steps, and half its
+   * thumb's width, as the filled track runs between thumb centres.
+   */
+  panels: Object.freeze({
+    widthRange: Object.freeze([260, 680]),
+    resultsMinimumPixels: 120,
+    resultsMaximumShare: .7,
+    keyboardStepPixels: 16,
+    macroSteps: 1000,
+    thumbHalfPixels: 6
+  }),
+  /**
+   * What the macros span: a flash's energy per metre (J/m, log), its crack's straight length (m, log,
+   * from coarse to fine), its branches and zigzag at most, the fine tortuosity the zigzag sets
+   * (degrees), and a storm's cloud layer (m, log).
+   */
+  macros: Object.freeze({
+    energyRange: Object.freeze([3e3, 3e6]),
+    crackStraightRange: Object.freeze([3, .2]),
+    maximumBranches: 24,
+    maximumZigzagDegrees: 45,
+    fineTortuosity: Object.freeze([4, 28]),
+    cloudRange: Object.freeze([200, 18000])
+  }),
   /**
    * Figurative flash: every stroke runs its route in traverseSeconds, then fades over fadeSeconds,
    * and leaves the screen visibleSeconds after it has run; its light flickers between seeded levels
@@ -527,8 +616,12 @@ export const VIEW = Object.freeze({
   /** Microphone levels in the scene: envelope window, and the range below the loudest microphone's peak. */
   envelopeSeconds: .01,
   envelopeRangeDb: 40,
-  /** Plots: opacity of microphones other than the solo one, of muted ones, and of the rest, which may overlap. */
+  /** Plots: margins in pixels, and opacity of microphones other than the solo one, of muted ones, and of the rest, which may overlap. */
   plots: Object.freeze({
+    leftPixels: 8,
+    rightPixels: 8,
+    topPixels: 22,
+    bottomPixels: 20,
     dimmed: .4,
     muted: .35,
     overlapping: .6,

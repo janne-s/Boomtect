@@ -7,8 +7,6 @@ const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
-/** Nominatim's usage policy allows one search a second. */
-const SEARCH_INTERVAL_MILLISECONDS = 1000;
 const searchCache = new Map();
 let lastSearchAt = 0;
 
@@ -26,7 +24,7 @@ export async function searchPlace(text, { signal } = {}) {
   }
   const key = text.toLocaleLowerCase();
   if (searchCache.has(key)) return searchCache.get(key);
-  const wait = Math.max(0, SEARCH_INTERVAL_MILLISECONDS - (Date.now() - lastSearchAt));
+  const wait = Math.max(0, GROUND.terrain.searchIntervalMilliseconds - (Date.now() - lastSearchAt));
   if (wait) await new Promise(resolve => setTimeout(resolve, wait));
   lastSearchAt = Date.now();
   const url = new URL(NOMINATIM_URL);

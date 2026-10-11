@@ -1,7 +1,5 @@
-const PANEL_WIDTH_RANGE = Object.freeze([260, 680]);
-const RESULTS_HEIGHT_MINIMUM = 120;
-const RESULTS_HEIGHT_MAXIMUM_SHARE = .7;
-const KEYBOARD_STEP = 16;
+import { VIEW } from '../domain/constants.js';
+
 
 /**
  * Lets the parameter column and the result row be resized by dragging or with the arrow keys.
@@ -9,9 +7,9 @@ const KEYBOARD_STEP = 16;
  */
 export function attachSplitters(layout, { column, row }, sizes, onChange) {
   const apply = next => {
-    const [low, high] = PANEL_WIDTH_RANGE;
+    const [low, high] = VIEW.panels.widthRange;
     const panelWidth = Math.round(Math.min(high, Math.max(low, next.panelWidth)));
-    const resultsHeight = Math.round(Math.min(layout.clientHeight * RESULTS_HEIGHT_MAXIMUM_SHARE, Math.max(RESULTS_HEIGHT_MINIMUM, next.resultsHeight)));
+    const resultsHeight = Math.round(Math.min(layout.clientHeight * VIEW.panels.resultsMaximumShare, Math.max(VIEW.panels.resultsMinimumPixels, next.resultsHeight)));
     layout.style.setProperty('--panel-width', `${panelWidth}px`);
     layout.style.setProperty('--results-height', `${resultsHeight}px`);
     return { panelWidth, resultsHeight };
@@ -40,7 +38,7 @@ export function attachSplitters(layout, { column, row }, sizes, onChange) {
       const delta = { ArrowLeft: 1, ArrowUp: 1, ArrowRight: -1, ArrowDown: -1 }[event.key];
       if (!delta) return;
       event.preventDefault();
-      current = apply({ ...current, [key]: current[key] + delta * direction * KEYBOARD_STEP });
+      current = apply({ ...current, [key]: current[key] + delta * direction * VIEW.panels.keyboardStepPixels });
       onChange(current);
     });
   }

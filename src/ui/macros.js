@@ -1,3 +1,4 @@
+import { VIEW } from '../domain/constants.js';
 import { PARAMETERS } from '../domain/scene.js';
 
 /**
@@ -12,28 +13,22 @@ const logValue = (t, [low, high]) => low * (high / low) ** t;
 const clamp01 = value => Math.min(1, Math.max(0, value));
 const range = key => [PARAMETERS[key].minimum, PARAMETERS[key].maximum];
 
-const ENERGY_RANGE = Object.freeze([3e3, 3e6]);
-const CRACK_STRAIGHT_RANGE = Object.freeze([3, .2]);
-const MAXIMUM_BRANCHES = 24;
-const MAXIMUM_ZIGZAG_DEGREES = 45;
-const FINE_TORTUOSITY = Object.freeze([4, 28]);
-
 const percent = t => `${Math.round(t * 100)} %`;
 const kilo = (value, unit) => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} k${unit}` : `${+value.toPrecision(3)} ${unit}`);
 const metres = value => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} km` : value >= 10 ? `${Math.round(value)} m` : `${+value.toPrecision(2)} m`);
 
 const energy = {
   label: 'Energy',
-  read: item => clamp01(logPosition(item.energyJoulesPerMetre, ENERGY_RANGE)),
-  write: (item, t) => { item.energyJoulesPerMetre = Math.round(logValue(t, ENERGY_RANGE)); },
+  read: item => clamp01(logPosition(item.energyJoulesPerMetre, VIEW.macros.energyRange)),
+  write: (item, t) => { item.energyJoulesPerMetre = Math.round(logValue(t, VIEW.macros.energyRange)); },
   show: item => kilo(item.energyJoulesPerMetre, 'J/m')
 };
 
 const branching = {
   label: 'Branching',
-  read: item => clamp01(item.branchCount / MAXIMUM_BRANCHES),
+  read: item => clamp01(item.branchCount / VIEW.macros.maximumBranches),
   write: (item, t) => {
-    item.branchCount = Math.round(t * MAXIMUM_BRANCHES);
+    item.branchCount = Math.round(t * VIEW.macros.maximumBranches);
     item.branchDepth = t === 0 ? 0 : t < .34 ? 1 : t < .67 ? 2 : 3;
     if ('branchLengthRatio' in item) item.branchLengthRatio = +(.15 + .3 * t).toFixed(3);
   },
@@ -42,18 +37,18 @@ const branching = {
 
 const jaggedness = {
   label: 'Zigzag',
-  read: item => clamp01(item.macroTortuosityDegrees / MAXIMUM_ZIGZAG_DEGREES),
+  read: item => clamp01(item.macroTortuosityDegrees / VIEW.macros.maximumZigzagDegrees),
   write: (item, t) => {
-    item.macroTortuosityDegrees = Math.round(t * MAXIMUM_ZIGZAG_DEGREES);
-    item.tortuosityDegrees = Math.round(FINE_TORTUOSITY[0] + t * (FINE_TORTUOSITY[1] - FINE_TORTUOSITY[0]));
+    item.macroTortuosityDegrees = Math.round(t * VIEW.macros.maximumZigzagDegrees);
+    item.tortuosityDegrees = Math.round(VIEW.macros.fineTortuosity[0] + t * (VIEW.macros.fineTortuosity[1] - VIEW.macros.fineTortuosity[0]));
   },
-  show: item => percent(item.macroTortuosityDegrees / MAXIMUM_ZIGZAG_DEGREES)
+  show: item => percent(item.macroTortuosityDegrees / VIEW.macros.maximumZigzagDegrees)
 };
 
 const crack = {
   label: 'Crack',
-  read: item => clamp01(logPosition(item.straightLengthMetres, CRACK_STRAIGHT_RANGE)),
-  write: (item, t) => { item.straightLengthMetres = Math.min(item.segmentLengthMetres, +logValue(t, CRACK_STRAIGHT_RANGE).toFixed(2)); },
+  read: item => clamp01(logPosition(item.straightLengthMetres, VIEW.macros.crackStraightRange)),
+  write: (item, t) => { item.straightLengthMetres = Math.min(item.segmentLengthMetres, +logValue(t, VIEW.macros.crackStraightRange).toFixed(2)); },
   show: item => `${item.straightLengthMetres} m elements`
 };
 
@@ -110,15 +105,13 @@ const stormGround = {
   show: item => percent(item.groundFlashShare)
 };
 
-/** The cloud layer: one slider with two handles, base and top. */
-const CLOUD_RANGE = Object.freeze([200, 18000]);
 const stormCloud = {
   label: 'Cloud layer',
   dual: true,
-  read: item => [clamp01(logPosition(item.cloudBaseMetres, CLOUD_RANGE)), clamp01(logPosition(item.cloudTopMetres, CLOUD_RANGE))],
+  read: item => [clamp01(logPosition(item.cloudBaseMetres, VIEW.macros.cloudRange)), clamp01(logPosition(item.cloudTopMetres, VIEW.macros.cloudRange))],
   write: (item, low, high) => {
-    const base = Math.min(PARAMETERS.cloudBaseMetres.maximum, Math.max(PARAMETERS.cloudBaseMetres.minimum, Math.round(logValue(low, CLOUD_RANGE))));
-    const top = Math.max(PARAMETERS.cloudTopMetres.minimum, Math.round(logValue(high, CLOUD_RANGE)));
+    const base = Math.min(PARAMETERS.cloudBaseMetres.maximum, Math.max(PARAMETERS.cloudBaseMetres.minimum, Math.round(logValue(low, VIEW.macros.cloudRange))));
+    const top = Math.max(PARAMETERS.cloudTopMetres.minimum, Math.round(logValue(high, VIEW.macros.cloudRange)));
     item.cloudBaseMetres = base;
     item.cloudTopMetres = Math.max(top, base + 100);
   },

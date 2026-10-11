@@ -1,5 +1,5 @@
 import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
-import { BLAST, FLIGHT, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, THUNDER, VIEW } from './domain/constants.js';
+import { BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, THUNDER, VIEW } from './domain/constants.js';
 import { blastSources, emitterSources } from './domain/emitters.js';
 import { EXPLOSIVE_TYPES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
@@ -16,7 +16,7 @@ import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { captureTerrain, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
 import { createPlaceMap } from './ui/place-map.js';
-import { createCubeView, DEFAULT_CUBE_VIEW } from './ui/cube-view.js';
+import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
@@ -30,7 +30,7 @@ import { attachSplitters } from './ui/splitters.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
-const WORKER_COUNT = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));
+const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -172,7 +172,7 @@ function storedPoint(handle, item, point) {
   const above = point.z - currentSurface().heightAt(point.x, point.y);
   return { ...point, z: Math.round(Math.min(PARAMETERS.heightMetres.maximum, Math.max(0, above)) * 10) / 10 };
 }
-views[0].setView(state.preferences.cubeViews?.[state.scene.mode] ?? DEFAULT_CUBE_VIEW);
+views[0].setView(state.preferences.cubeViews?.[state.scene.mode] ?? VIEW.box.defaultView);
 attachSplitters($('cube').closest('.layout'), { column: $('split-column'), row: $('split-row') }, state.preferences, sizes => {
   Object.assign(state.preferences, sizes);
   savePreferences();
@@ -253,10 +253,6 @@ function drawOperations() {
   if (operations.size && !operationsTimer) operationsTimer = setInterval(drawOperations, 500);
   if (!operations.size && operationsTimer) { clearInterval(operationsTimer); operationsTimer = null; }
 }
-
-/** Seconds a network request may take before it is given up. */
-const PLACE_NAMES_LIMIT_SECONDS = 30;
-const PLACE_SEARCH_LIMIT_SECONDS = 15;
 
 /** An abort signal that fires after a limit, for a network request listed with that limit. */
 const timeLimit = seconds => AbortSignal.timeout(seconds * 1000);
@@ -597,13 +593,9 @@ function emitterSummary(emitter) {
     + (terminations ? ` · ${terminations} new ground point${terminations > 1 ? 's' : ''}` : '');
 }
 
-const MACRO_STEPS = 1000;
-/** Half the slider thumb's width: the filled track runs between thumb centres. */
-const THUMB_HALF_PIXELS = 6;
-
 /** Sets a slider's filled track from `from` to `to`, positions in [0, 1] of its range. */
 function paintTrack(element, from, to) {
-  const at = t => `calc(${THUMB_HALF_PIXELS}px + (100% - ${2 * THUMB_HALF_PIXELS}px) * ${t})`;
+  const at = t => `calc(${VIEW.panels.thumbHalfPixels}px + (100% - ${2 * VIEW.panels.thumbHalfPixels}px) * ${t})`;
   element.style.setProperty('--from', from === 0 ? '0%' : at(from));
   element.style.setProperty('--to', at(to));
 }
@@ -617,7 +609,7 @@ function macroRow(container, emitter, macro) {
   const id = `macro-${emitter.id}-${macro.label}`;
   const label = element('label', '', macro.label);
   label.htmlFor = id;
-  const steps = macro.steps ?? MACRO_STEPS;
+  const steps = macro.steps ?? VIEW.panels.macroSteps;
   const value = element('span', 'macro-value', macro.show(emitter));
   const slider = position => {
     const input = element('input');
@@ -971,10 +963,6 @@ function rebuildDetails() {
   body.scrollTop = scroll;
 }
 
-/** The terrain is widened when the scene reaches this close to its edge, by this margin. */
-const TERRAIN_EDGE_MARGIN = 1.1;
-const TERRAIN_MARGIN_METRES = 300;
-const TERRAIN_COVERAGE_DELAY_MILLISECONDS = 800;
 let terrainCoverageTimer = null;
 let terrainCoverageRunning = false;
 
@@ -989,7 +977,7 @@ function sceneHalfExtentMetres(scene) {
     else for (const flash of cachedFlashes(emitter)) for (const channel of flash.channels) channel.points.forEach(include);
   }
   scene.receivers.forEach(receiver => include(receiver.positionMetres));
-  return reach * TERRAIN_EDGE_MARGIN + TERRAIN_MARGIN_METRES;
+  return reach * GROUND.terrain.edgeMargin + GROUND.terrain.marginMetres;
 }
 
 /**
@@ -1023,7 +1011,7 @@ function scheduleTerrainCoverage() {
       terrainCoverageRunning = false;
       operation('terrain', null);
     }
-  }, TERRAIN_COVERAGE_DELAY_MILLISECONDS);
+  }, GROUND.terrain.coverageDelayMilliseconds);
 }
 
 /**
@@ -1031,7 +1019,6 @@ function scheduleTerrainCoverage() {
  * margin: channels drawn again over the terrain reach a little farther than over level ground.
  */
 const neededTerrainExtentMetres = (scene, margin = 1) => Math.min(PARAMETERS.terrainExtentMetres.maximum, Math.ceil(2 * margin * sceneHalfExtentMetres(scene) / 500) * 500);
-const TERRAIN_LOAD_MARGIN = 1.25;
 
 let placeNamesLoading = false;
 
@@ -1044,10 +1031,10 @@ async function loadPlaceNames(terrain) {
   if (placeNamesLoading) return;
   placeNamesLoading = true;
   $('names').disabled = true;
-  operation('names', 'Place names', { limitSeconds: PLACE_NAMES_LIMIT_SECONDS });
+  operation('names', 'Place names', { limitSeconds: GROUND.terrain.placeNamesLimitSeconds });
   let names = null;
   try {
-    names = await fetchPlaceNames(terrain, timeLimit(PLACE_NAMES_LIMIT_SECONDS));
+    names = await fetchPlaceNames(terrain, timeLimit(GROUND.terrain.placeNamesLimitSeconds));
   } catch {
     // Given up at its time limit: the names already shown stay.
   } finally {
@@ -1069,7 +1056,7 @@ function terrainPanel(container) {
   const load = async trigger => {
     trigger.disabled = true;
     // At least the area the scene needs, so that the terrain is not widened again right after.
-    const extentMetres = Math.max(draft.extentMetres, neededTerrainExtentMetres(state.scene, TERRAIN_LOAD_MARGIN));
+    const extentMetres = Math.max(draft.extentMetres, neededTerrainExtentMetres(state.scene, GROUND.terrain.loadMargin));
     try {
       const terrain = await captureTerrain({ ...draft, extentMetres }, {
         onProgress: share => operation('terrain', `Loading terrain ${formatMetres(extentMetres)}`, { share })
@@ -1092,9 +1079,9 @@ function terrainPanel(container) {
     label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
-      operation('place', `Finding ${text}`, { limitSeconds: PLACE_SEARCH_LIMIT_SECONDS });
+      operation('place', `Finding ${text}`, { limitSeconds: GROUND.terrain.placeSearchLimitSeconds });
       try {
-        const found = await searchPlace(text, { signal: timeLimit(PLACE_SEARCH_LIMIT_SECONDS) });
+        const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
         operation('place', null);
         if (!found) { setStatus(`No place found for ${text}`, true); return; }
         setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
@@ -1153,9 +1140,9 @@ function openPlaceDialog(load) {
 
 /** Moves the map to a place found by name; false when none is found. */
 async function showFoundPlace(text) {
-  operation('place', `Finding ${text}`, { limitSeconds: PLACE_SEARCH_LIMIT_SECONDS });
+  operation('place', `Finding ${text}`, { limitSeconds: GROUND.terrain.placeSearchLimitSeconds });
   try {
-    const found = await searchPlace(text, { signal: timeLimit(PLACE_SEARCH_LIMIT_SECONDS) });
+    const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
     if (!found) { setStatus(`No place found for ${text}`, true); return false; }
     placeMap.show(found, state.preferences.terrainDraft.extentMetres);
     showPlaceCoordinates(found);
@@ -1920,7 +1907,7 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
   state.preferences.mode = mode;
   savePreferences();
-  views[0].setView(state.preferences.cubeViews?.[mode] ?? DEFAULT_CUBE_VIEW);
+  views[0].setView(state.preferences.cubeViews?.[mode] ?? VIEW.box.defaultView);
   invalidateResults();
   refreshPanel();
   if (state.preferences.autoRender) startRender();

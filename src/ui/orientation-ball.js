@@ -1,10 +1,6 @@
+import { VIEW } from '../domain/constants.js';
 import { fitCanvas, palette } from './canvas.js';
 
-const MARGIN = 12;
-/** Width beside the sphere for the elevation scale, and how far left of it a press still grabs it. */
-const SCALE_SPACE = 30;
-const SCALE_GRAB_PIXELS = 10;
-const HANDLE_RADIUS = 4.5;
 const CIRCLE_POINTS = 72;
 const toRadians = degrees => degrees * Math.PI / 180;
 
@@ -47,7 +43,7 @@ export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
 
   const pitchY = pitchDegrees => geometry.top + (90 - pitchDegrees) / 180 * (geometry.bottom - geometry.top);
   const pitchAt = y => Math.round(Math.min(90, Math.max(-90, 90 - (y - geometry.top) / (geometry.bottom - geometry.top) * 180)));
-  const onScale = x => x >= geometry.scaleX - SCALE_GRAB_PIXELS;
+  const onScale = x => x >= geometry.scaleX - VIEW.orientationBall.scaleGrabPixels;
 
   function circle(context, pointAt, front, back) {
     let previous = null;
@@ -63,19 +59,19 @@ export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
 
   function handle(context, x, y, color, active) {
     context.fillStyle = color;
-    context.beginPath(); context.arc(x, y, HANDLE_RADIUS, 0, 2 * Math.PI); context.fill();
+    context.beginPath(); context.arc(x, y, VIEW.orientationBall.handleRadius, 0, 2 * Math.PI); context.fill();
     if (active) {
       context.strokeStyle = color;
-      context.beginPath(); context.arc(x, y, HANDLE_RADIUS + 2.5, 0, 2 * Math.PI); context.stroke();
+      context.beginPath(); context.arc(x, y, VIEW.orientationBall.handleRadius + 2.5, 0, 2 * Math.PI); context.stroke();
     }
   }
 
   function draw() {
-    if (!orientation || !canvas.isConnected || canvas.clientWidth < 2 * MARGIN) return;
+    if (!orientation || !canvas.isConnected || canvas.clientWidth < 2 * VIEW.orientationBall.marginPixels) return;
     const { context, width, height } = fitCanvas(canvas);
     const colors = palette();
-    const radius = Math.min(height, width - SCALE_SPACE) / 2 - MARGIN;
-    geometry = { cx: MARGIN + radius, cy: height / 2, radius, scaleX: width - SCALE_SPACE / 2, top: height / 2 - radius, bottom: height / 2 + radius };
+    const radius = Math.min(height, width - VIEW.orientationBall.scaleSpacePixels) / 2 - VIEW.orientationBall.marginPixels;
+    geometry = { cx: VIEW.orientationBall.marginPixels + radius, cy: height / 2, radius, scaleX: width - VIEW.orientationBall.scaleSpacePixels / 2, top: height / 2 - radius, bottom: height / 2 + radius };
     const { cx, cy } = geometry;
     context.fillStyle = colors.wall;
     context.beginPath(); context.arc(cx, cy, radius, 0, 2 * Math.PI); context.fill();

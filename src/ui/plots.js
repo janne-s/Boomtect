@@ -2,11 +2,6 @@ import { VIEW } from '../domain/constants.js';
 import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
 import { fitCanvas, formatSeconds, niceStep, palette } from './canvas.js';
 
-const LEFT = 8;
-const RIGHT = 8;
-const TOP = 22;
-const BOTTOM = 20;
-
 /** Scene-time window of a result: from its first rendered sample to its last. */
 function resultWindow(result) {
   return { start: result.startSeconds, end: result.startSeconds + result.samples.length / result.sampleRate };
@@ -25,17 +20,17 @@ function timeAxis(context, width, height, window, colors) {
   context.fillStyle = colors.faint;
   context.strokeStyle = colors.raised;
   for (let t = Math.ceil(window.start / step) * step; t <= window.end; t += step) {
-    const x = LEFT + (t - window.start) / span * (width - LEFT - RIGHT);
-    context.beginPath(); context.moveTo(x, TOP); context.lineTo(x, height - BOTTOM); context.stroke();
+    const x = VIEW.plots.leftPixels + (t - window.start) / span * (width - VIEW.plots.leftPixels - VIEW.plots.rightPixels);
+    context.beginPath(); context.moveTo(x, VIEW.plots.topPixels); context.lineTo(x, height - VIEW.plots.bottomPixels); context.stroke();
     context.fillText(formatSeconds(t), x + 3, height - 6);
   }
 }
 
 function playhead(context, width, height, window, seconds, colors) {
   if (seconds == null || seconds < window.start || seconds > window.end) return;
-  const x = LEFT + (seconds - window.start) / (window.end - window.start) * (width - LEFT - RIGHT);
+  const x = VIEW.plots.leftPixels + (seconds - window.start) / (window.end - window.start) * (width - VIEW.plots.leftPixels - VIEW.plots.rightPixels);
   context.strokeStyle = colors.accent;
-  context.beginPath(); context.moveTo(x, TOP); context.lineTo(x, height - BOTTOM); context.stroke();
+  context.beginPath(); context.moveTo(x, VIEW.plots.topPixels); context.lineTo(x, height - VIEW.plots.bottomPixels); context.stroke();
 }
 
 /**
@@ -84,7 +79,7 @@ export function plotSeconds(canvas, clientX, clamp = false) {
   const entry = cache.get(canvas);
   if (!entry?.window) return null;
   const box = canvas.getBoundingClientRect();
-  const share = (clientX - box.left - LEFT) / (box.width - LEFT - RIGHT);
+  const share = (clientX - box.left - VIEW.plots.leftPixels) / (box.width - VIEW.plots.leftPixels - VIEW.plots.rightPixels);
   if (!clamp && (share < 0 || share > 1)) return null;
   const { start, end } = entry.window;
   return start + Math.min(1, Math.max(0, share)) * (end - start);
@@ -103,13 +98,13 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     timeAxis(context, width, height, window, colors);
     // One scale for every microphone, so their levels compare; a solo only brings one forward.
     const peakPa = Math.max(...live.map(trace => trace.result.peakPa));
-    const middle = (TOP + height - BOTTOM) / 2;
-    const half = (height - BOTTOM - TOP) / 2;
-    const columns = width - LEFT - RIGHT;
+    const middle = (VIEW.plots.topPixels + height - VIEW.plots.bottomPixels) / 2;
+    const half = (height - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
+    const columns = width - VIEW.plots.leftPixels - VIEW.plots.rightPixels;
     const span = window.end - window.start;
     const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
     context.strokeStyle = colors.line;
-    context.beginPath(); context.moveTo(LEFT, middle); context.lineTo(width - RIGHT, middle); context.stroke();
+    context.beginPath(); context.moveTo(VIEW.plots.leftPixels, middle); context.lineTo(width - VIEW.plots.rightPixels, middle); context.stroke();
     // Overlapping microphones add up like light, so one stays visible through another.
     context.globalCompositeOperation = live.length > 1 ? 'screen' : 'source-over';
     for (const { trace, color, alpha } of traceStyles(live, soloId, colors)) {
@@ -127,7 +122,7 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
           if (samples[index] < low) low = samples[index];
           if (samples[index] > high) high = samples[index];
         }
-        const x = LEFT + column + .5;
+        const x = VIEW.plots.leftPixels + column + .5;
         context.moveTo(x, y(high));
         context.lineTo(x, y(low) + .5);
       }
@@ -136,7 +131,7 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     context.globalCompositeOperation = 'source-over';
     context.globalAlpha = 1;
     context.fillStyle = colors.faint;
-    context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - RIGHT - 70, TOP - 6);
+    context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - VIEW.plots.rightPixels - 70, VIEW.plots.topPixels - 6);
     return window;
   }, playheadSeconds);
 }
@@ -163,16 +158,16 @@ export function drawArrivals(canvas, { key, traces, soloId, byDirection = false 
         strongest = Math.max(strongest, arrivals.levels[index]);
       }
     }
-    const plotWidth = width - LEFT - RIGHT;
-    const plotHeight = height - TOP - BOTTOM;
+    const plotWidth = width - VIEW.plots.leftPixels - VIEW.plots.rightPixels;
+    const plotHeight = height - VIEW.plots.topPixels - VIEW.plots.bottomPixels;
     const vertical = (arrivals, index) => (byDirection ? arrivals.bearings[index] / 360 : 1 - arrivals.heights[index] / maximumHeight);
     if (byDirection) {
       context.fillStyle = colors.faint;
       context.strokeStyle = colors.raised;
       COMPASS.forEach((label, quarter) => {
-        const y = TOP + quarter / 4 * plotHeight;
-        context.beginPath(); context.moveTo(LEFT, y); context.lineTo(width - RIGHT, y); context.stroke();
-        if (quarter > 0 && quarter < 4) context.fillText(label, LEFT + 3, y - 3);
+        const y = VIEW.plots.topPixels + quarter / 4 * plotHeight;
+        context.beginPath(); context.moveTo(VIEW.plots.leftPixels, y); context.lineTo(width - VIEW.plots.rightPixels, y); context.stroke();
+        if (quarter > 0 && quarter < 4) context.fillText(label, VIEW.plots.leftPixels + 3, y - 3);
       });
     }
     for (const { trace, single, color, alpha } of traceStyles(live, soloId, colors)) {
@@ -183,8 +178,8 @@ export function drawArrivals(canvas, { key, traces, soloId, byDirection = false 
         const strength = !single && reflected ? alpha / 2 : alpha;
         for (let index = 0; index < arrivals.count; index += 1) {
           if ((arrivals.kinds[index] !== PATH_DIRECT && arrivals.kinds[index] !== PATH_SHADOW) !== reflected) continue;
-          const x = LEFT + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
-          const y = TOP + vertical(arrivals, index) * plotHeight;
+          const x = VIEW.plots.leftPixels + (arrivals.seconds[index] - window.start) / (window.end - window.start) * plotWidth;
+          const y = VIEW.plots.topPixels + vertical(arrivals, index) * plotHeight;
           context.globalAlpha = strength * Math.max(.12, Math.min(1, 1 + (arrivals.levels[index] - strongest) / 40));
           context.fillRect(x - 1, y - 1, 2, 2);
         }
@@ -192,7 +187,7 @@ export function drawArrivals(canvas, { key, traces, soloId, byDirection = false 
     }
     context.globalAlpha = 1;
     context.fillStyle = colors.faint;
-    if (!byDirection) context.fillText(`${Math.round(maximumHeight)} m`, width - RIGHT - 50, TOP - 6);
+    if (!byDirection) context.fillText(`${Math.round(maximumHeight)} m`, width - VIEW.plots.rightPixels - 50, VIEW.plots.topPixels - 6);
     return window;
   }, playheadSeconds);
 }
