@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultBlast, defaultCloudFlash, defaultScene, defaultStorm, parseScene, SceneError, serializeScene } from '../src/domain/scene.js';
-import { encodeFloat32Wav } from '../src/domain/wav.js';
+import { encodeFloat32Wav, wavByteLength } from '../src/domain/wav.js';
 
 test('the default scene is valid and round-trips without loss', () => {
   const scene = defaultScene();
@@ -55,4 +55,38 @@ test('WAV header declares mono float32 at the given rate and keeps samples uncha
   assert.equal(view.getUint16(34, true), 32);
   assert.equal(view.getUint32(40, true), 16);
   assert.equal(view.getFloat32(44 + 8, true), -2);
+  assert.equal(view.byteLength, wavByteLength(4, 1));
+});
+
+test('WAV of more than two channels is WAVE_FORMAT_EXTENSIBLE with an IEEE float subformat and no speaker positions', () => {
+  const channels = [0, 1, 2, 3].map(channel => Float32Array.from([channel, -channel / 2, .25]));
+  const buffer = encodeFloat32Wav(channels, 48000);
+  const view = new DataView(buffer);
+  const text = (offset, length) => String.fromCharCode(...new Uint8Array(buffer, offset, length));
+  assert.equal(text(0, 4), 'RIFF');
+  assert.equal(view.getUint32(4, true), buffer.byteLength - 8);
+  assert.equal(text(12, 4), 'fmt ');
+  assert.equal(view.getUint32(16, true), 40);
+  assert.equal(view.getUint16(20, true), 0xfffe);
+  assert.equal(view.getUint16(22, true), 4);
+  assert.equal(view.getUint32(24, true), 48000);
+  assert.equal(view.getUint32(28, true), 48000 * 16);
+  assert.equal(view.getUint16(32, true), 16);
+  assert.equal(view.getUint16(34, true), 32);
+  assert.equal(view.getUint16(36, true), 22);
+  assert.equal(view.getUint16(38, true), 32);
+  assert.equal(view.getUint32(40, true), 0);
+  assert.deepEqual([...new Uint8Array(buffer, 44, 16)], [0x03, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71]);
+  assert.equal(text(60, 4), 'data');
+  assert.equal(view.getUint32(64, true), 3 * 16);
+  assert.equal(buffer.byteLength, wavByteLength(3, 4));
+  // Frame 1, channel 3, interleaved after the 68-byte header.
+  assert.equal(view.getFloat32(68 + 16 + 12, true), -1.5);
+});
+
+test('a stereo WAV keeps the plain IEEE float format', () => {
+  const view = new DataView(encodeFloat32Wav([new Float32Array(2), new Float32Array(2)], 44100));
+  assert.equal(view.getUint32(16, true), 16);
+  assert.equal(view.getUint16(20, true), 3);
+  assert.equal(view.byteLength, wavByteLength(2, 2));
 });

@@ -200,8 +200,9 @@ microphone along the Mach cone.
 - **Ambisonics** — One AmbiX file per microphone (ACN, SN3D; front is north,
   left is west), when the render is spatial.
 
-All files are 32-bit float at one full scale. With per-microphone files, every
-file starts at the same moment.
+All files are 32-bit float at one full scale. Files of more than two channels
+are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
+every file starts at the same moment.
 
 ## Echotect
 
