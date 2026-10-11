@@ -268,7 +268,10 @@ the heightfield, gusts, more than six ground contacts, repeated contacts over
 sloping ground, rays bending through several layers in turn, nonlinear
 propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
 the source, a forest that covers only part of the terrain, terrain echoes of
-sonic booms, booms bent back down from the upper atmosphere, engine noise.
+sonic booms, booms bent back down from the upper atmosphere, engine noise, a
+nuclear blast beyond its TNT equivalent (about half of a nuclear yield goes into
+the blast; charges up to 350 kt). The fireball roar of charges far beyond the
+recorded ones is scaled from them.
 Levels are model values in pascals and are not calibrated, so the ear model's
 response to level is only as reliable as the model's level.
 

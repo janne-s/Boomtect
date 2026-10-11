@@ -20,7 +20,7 @@ import { createMapLayer } from './ui/map-layer.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
-import { macrosFor } from './ui/macros.js';
+import { formatCharge, macrosFor } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
 import { createPlayer } from './ui/player.js';
@@ -687,13 +687,13 @@ function button(text, onClick, { disabled = false, title = '' } = {}) {
 
 /** One line describing what an emitter currently is. */
 function emitterSummary(emitter) {
-  if (emitter.kind === 'blast') return `${+emitter.chargeKilograms.toPrecision(3)} kg TNT at ${formatMetres(emitter.positionMetres.z)}`;
+  if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
-    return `${emitter.roundCount} rounds of ${+emitter.chargeKilograms.toPrecision(3)} kg TNT in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
+    return `${emitter.roundCount} rounds of ${formatCharge(emitter.chargeKilograms)} in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
   }
   const flashes = cachedFlashes(emitter);
   if (emitter.kind === 'storm') {

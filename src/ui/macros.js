@@ -118,16 +118,19 @@ const stormCloud = {
   show: item => `${metres(item.cloudBaseMetres)}–${metres(item.cloudTopMetres)}`
 };
 
+/** A TNT equivalent in g, kg, t, or kt. */
+export function formatCharge(kilograms) {
+  if (kilograms < 1) return `${+(kilograms * 1000).toPrecision(3)} g TNT`;
+  if (kilograms < 1000) return `${+kilograms.toPrecision(3)} kg TNT`;
+  if (kilograms < 1e6) return `${+(kilograms / 1000).toPrecision(3)} t TNT`;
+  return `${+(kilograms / 1e6).toPrecision(3)} kt TNT`;
+}
+
 const charge = {
   label: 'Charge',
   read: item => clamp01(logPosition(item.chargeKilograms, range('chargeKilograms'))),
   write: (item, t) => { item.chargeKilograms = +logValue(t, range('chargeKilograms')).toPrecision(3); },
-  show: item => {
-    const kilograms = item.chargeKilograms;
-    if (kilograms < 1) return `${+(kilograms * 1000).toPrecision(3)} g TNT`;
-    if (kilograms < 1000) return `${+kilograms.toPrecision(3)} kg TNT`;
-    return `${+(kilograms / 1000).toPrecision(3)} t TNT`;
-  }
+  show: item => formatCharge(item.chargeKilograms)
 };
 
 const blastHeight = {
