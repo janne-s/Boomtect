@@ -973,7 +973,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    * The wavefronts where they cross the floor and the two far walls, as ripples: each sampled
    * source's sphere meets a plane in a circle, and the outline of their union is drawn with fading
    * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
-   * floor the circle stops at the shadow boundary. At most VIEW.wavefront.groups of the strongest
+   * floor a circle past the shadow boundary is dimmer. At most VIEW.wavefront.groups of the strongest
    * groups are drawn.
    */
   function drawWavefronts(context, colors, { profile, spheres, total }) {
@@ -1025,20 +1025,22 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.save();
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
-        const path = new Path2D();
-        const bounds = emptyBounds();
-        let any = false;
+        // On the floor, a front past the shadow boundary goes on into the shadow, dimmer, as the
+        // sound that creeps there; held at the boundary it stood still while the front moved on.
+        const parts = [{ path: new Path2D(), bounds: emptyBounds(), any: false, share: 1 }, { path: new Path2D(), bounds: emptyBounds(), any: false, share: VIEW.wavefront.shadowShare }];
         for (const { source, centre, radiusMetres } of spheres) {
           const sphere = radiusMetres - ring * spacing;
           const offset = face.value - centre[face.fixed];
           if (!(sphere > Math.abs(offset))) continue;
-          let radius = Math.sqrt(sphere ** 2 - offset ** 2);
-          if (face.fixed === 'z' && profile.gradient < 0) radius = Math.min(radius, grazingRange(profile, source.z));
+          const radius = Math.sqrt(sphere ** 2 - offset ** 2);
           if (!(radius > 0)) continue;
-          any = true;
-          addPolygon(path, OUTLINE_DIRECTIONS.map(({ cos, sin }) => place(centre[u] + radius * cos, centre[v] + radius * sin)), bounds);
+          const part = parts[face.fixed === 'z' && profile.gradient < 0 && radius > grazingRange(profile, source.z) ? 1 : 0];
+          part.any = true;
+          addPolygon(part.path, OUTLINE_DIRECTIONS.map(({ cos, sin }) => place(centre[u] + radius * cos, centre[v] + radius * sin)), part.bounds);
         }
-        if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength, bounds });
+        for (const { path, bounds, any, share } of parts) {
+          if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength * share, bounds });
+        }
       });
       context.restore();
     }

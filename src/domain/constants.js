@@ -562,11 +562,13 @@ export const VIEW = Object.freeze({
    * ripple: the front and fading rings behind it, spaced by a share of the box. Over terrain, where a
    * front meets the ground is solved per direction, so fewer fronts are drawn. Each flash, blast, or
    * round is drawn as one group, and at most `groups` of the strongest at once: every group costs
-   * its own composited outlines, and a barrage of hundreds of rounds froze the view.
+   * its own composited outlines, and a barrage of hundreds of rounds froze the view. On the floor a
+   * front past the refraction shadow boundary is drawn at shadowShare of its strength.
    */
   wavefront: Object.freeze({
     spheres: 360,
     groups: 24,
+    shadowShare: .35,
     flightFronts: 120,
     frequencyHz: 1000,
     topDb: 140,
