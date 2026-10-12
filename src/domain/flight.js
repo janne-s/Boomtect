@@ -298,7 +298,9 @@ export function flightBooms(path, flight, receiver, profile, air) {
  * A body's Mach cone at the clock, as the envelope of the fronts it has left (for views): on the
  * front from each of VIEW.cone.rings past points of its path, the circle that the rays leaving at
  * cos α = c/v to its flight reach, with the fronts' refraction. Where it flew no faster than sound
- * it leaves no ring. The apex is the body while it flies. `radii` gives how far each ring's front
+ * it leaves no ring. While the body flies faster than sound it is the apex; once it has slowed
+ * below, the rings come from where it was last supersonic, and the newest of them, the front from
+ * there, leads the cone on to the ground without the body. `radii` gives how far each ring's front
  * has spread from where it left.
  */
 export function machCone(path, now, profile) {
@@ -306,10 +308,24 @@ export function machCone(path, now, profile) {
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
   if (last < 1) return null;
   const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
+  // Its speed over the steps around a point, as the cone's angle takes it.
+  const speedAround = index => {
+    const from = Math.max(0, index - 1);
+    const to = Math.min(count - 1, index + 1);
+    return Math.hypot(path.x[to] - path.x[from], path.y[to] - path.y[from], path.z[to] - path.z[from]) / ((to - from) * path.step);
+  };
+  const supersonic = index => speedAround(index) > speedAt(localProfile(profile, path.z[index]), path.z[index]);
+  // The newest point the rings may come from: the body, or where it last flew faster than sound.
+  let end = last;
+  while (end > 0 && !supersonic(end)) end -= 1;
+  if (end < 1) return null;
+  const flying = (now - path.seconds[0]) / path.step <= count - 1;
+  const apex = flying && end === last;
   const rings = [];
   const radii = [];
-  for (let ring = 1; ring <= VIEW.cone.rings; ring += 1) {
-    const index = Math.round(last * (1 - ring / VIEW.cone.rings));
+  // Behind a flying apex the first ring is a step back; without one, the front from `end` is the first.
+  for (let ring = apex ? 1 : 0; ring <= VIEW.cone.rings; ring += 1) {
+    const index = Math.round(end * (1 - ring / VIEW.cone.rings));
     const before = at(Math.max(0, index - 1));
     const after = at(Math.min(count - 1, index + 1));
     const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
@@ -337,6 +353,5 @@ export function machCone(path, now, profile) {
     }));
   }
   if (!rings.length) return null;
-  const flying = (now - path.seconds[0]) / path.step <= count - 1;
-  return { apex: flying ? at(last) : null, rings, radii };
+  return { apex: apex ? at(last) : null, rings, radii };
 }

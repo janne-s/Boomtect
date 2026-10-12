@@ -106,3 +106,22 @@ test('a booster’s scene round-trips, and its pad lies on the ground', () => {
   sonic.emitters[1].padMetres = { x: 0, y: 0, z: 10 };
   assert.throws(() => parseScene(sonic), /padMetres must lie on the ground/);
 });
+
+test('a booster below the speed of sound leaves its Mach cone: no apex, and the cone keeps its rings', async () => {
+  const { machCone } = await import('../src/domain/flight.js');
+  const scene = boosterScene();
+  const booster = scene.emitters[0];
+  const path = boosterPath(booster, scene.air);
+  const profile = soundSpeedProfile(scene.air);
+  const sound = z => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(scene.air, z));
+  const subsonic = path.speed.findIndex((speed, index) => index > 0 && speed < sound(path.z[index]));
+  // While supersonic the body is the apex.
+  assert.ok(machCone(path, path.seconds[subsonic - 40], profile).apex);
+  // Afterwards there is none, and the rings come from the same points of the path, only farther spread.
+  const early = machCone(path, path.seconds[subsonic + 20], profile);
+  const late = machCone(path, path.seconds[subsonic + 60], profile);
+  assert.equal(early.apex, null);
+  assert.equal(late.apex, null);
+  assert.equal(early.rings.length, late.rings.length);
+  assert.ok(late.radii.every((radius, index) => radius > early.radii[index]));
+});
