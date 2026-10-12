@@ -229,6 +229,21 @@ figcaption {
   font-weight: 600;
   letter-spacing: .02em;
 }
+.github-link {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--ink);
+}
+.github-link:hover {
+  color: var(--accent);
+}
+.github-link svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
 /* Switches shown as icons: dim while off, the accent while on, the same size either way. */
 .icon-toggles {
   display: inline-flex;
