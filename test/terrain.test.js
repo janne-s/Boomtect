@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
-import { deygoutEdges, fresnelIntegrals, knifeEdge } from '../src/domain/diffraction.js';
+import { fft } from '../src/domain/fft.js';
+import { deygoutEdges, edgeField, fresnelIntegrals, knifeEdge, roundingDecibels } from '../src/domain/diffraction.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';
 import { defaultBlast, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
@@ -43,8 +44,50 @@ test('Deygout finds the main ridge and one beside it, and nothing on a clear pat
   assert.equal(deygoutEdges({ ...common, terrain: new Float64Array(99) }).length, 0);
   const one = deygoutEdges({ ...common, terrain: terrainOne });
   assert.equal(one.length, 1);
-  assert.ok(Math.abs(one[0] - 20 * Math.sqrt(2 * 1000 / (340 * 500 * 500))) < 1e-12);
+  assert.ok(Math.abs(one[0].factor - 20 * Math.sqrt(2 * 1000 / (340 * 500 * 500))) < 1e-12);
   assert.equal(deygoutEdges({ ...common, terrain: terrainTwo }).length, 2);
+});
+
+test('a rounded ridge follows P.526 and its crest, costs more than a thin edge at high frequencies, and stays causal', () => {
+  // T(m, 0) = 8.2·m^0.73; T(1, 1) = 20.2·1^b.
+  assert.ok(Math.abs(roundingDecibels(.5, 0) - 8.2 * .5 ** .73) < 1e-12);
+  assert.ok(Math.abs(roundingDecibels(1, 1) - 20.2) < 1e-9);
+  const air = { ...defaultScene('blast').air, refraction: false };
+  const edgeOver = width => {
+    const surface = terrainSurface(terrain(x => 100 + 60 * Math.exp(-((x / width) ** 2))));
+    const source = { x: -1200, y: 0, z: surface.heightAt(-1200, 0) + 2 };
+    const receiver = { x: 1500, y: 0, z: surface.heightAt(1500, 0) + 1.7 };
+    return shieldingEdges(soundSpeedProfile(air), surface, source, receiver)[0];
+  };
+  // The crest of 60·exp(−(x/w)²) has the radius w²/120.
+  const broad = edgeOver(400);
+  const radius = broad.radiusRatio * soundSpeedProfile(air).groundSpeed / Math.PI;
+  assert.ok(Math.abs(radius / (400 ** 2 / 120) - 1) < .05, `${radius}`);
+  const extra = (edge, frequency) => 20 * Math.log10(Math.hypot(...knifeEdge(edge.factor * Math.sqrt(frequency))) / Math.hypot(...edgeField(edge, frequency)));
+  assert.ok(extra(broad, 1000) > 15 && extra(broad, 1000) > extra(broad, 30));
+  const thin = { ...broad, radiusRatio: 0 };
+  assert.equal(extra(thin, 1000), 0);
+  // The rounding's response alone, with the thin edge divided out, barely reaches before its arrival.
+  const size = 1 << 16;
+  const rate = 48000;
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  for (let bin = 1; bin < size / 2; bin += 1) {
+    const frequency = bin * rate / size;
+    const [kRe, kIm] = knifeEdge(broad.factor * Math.sqrt(frequency));
+    const [eRe, eIm] = edgeField(broad, frequency);
+    const scale = kRe * kRe + kIm * kIm;
+    re[bin] = (eRe * kRe + eIm * kIm) / scale;
+    im[bin] = (eIm * kRe - eRe * kIm) / scale;
+    re[size - bin] = re[bin];
+    im[size - bin] = -im[bin];
+  }
+  re[0] = 1;
+  fft(re, im, true);
+  let before = 0;
+  let total = 0;
+  re.forEach((value, index) => { total += value * value; if (index > size / 2) before += value * value; });
+  assert.ok(before / total < .05, `${before / total}`);
 });
 
 test('the surface reproduces a plane and its normal, relative to the ground at the origin', () => {
@@ -138,7 +181,7 @@ test('a ridge between a blast and a microphone shields it, and less so at low fr
   const clear = renderReceiver(prepareScene(open), open.receivers[0], open);
   const drop = 20 * Math.log10(clear.peakPa / shielded.peakPa);
   // The pulse's energy lies around 50–500 Hz, where the edge costs 10–25 dB.
-  const at = frequency => -20 * Math.log10(Math.hypot(...knifeEdge(edges[0] * Math.sqrt(frequency))));
+  const at = frequency => -20 * Math.log10(Math.hypot(...edgeField(edges[0], frequency)));
   assert.ok(drop > at(30) && drop < at(2000), `drop ${drop} dB, edge ${at(30)}–${at(2000)} dB`);
   shielded.samples.forEach(value => assert.ok(Number.isFinite(value)));
 });

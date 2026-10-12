@@ -1,3 +1,4 @@
+import { PROPAGATION } from './constants.js';
 import { deygoutEdges } from './diffraction.js';
 import { multipleReflections, rayBetween, rayHeightAt, reflectedRay, speedAt } from './refraction.js';
 
@@ -31,7 +32,7 @@ function sampleBuffers(count) {
   return buffers;
 }
 
-/** Geometric factors of the terrain edges that shield a path, at most three; none when clear. */
+/** The terrain edges that shield a path (`deygoutEdges`), at most three; none when clear. */
 export function shieldingEdges(profile, surface, source, receiver) {
   if (surface.flat) return [];
   const horizontal = Math.hypot(receiver.x - source.x, receiver.y - source.y);
@@ -57,7 +58,8 @@ export function shieldingEdges(profile, surface, source, receiver) {
     total: horizontal * slant,
     startHeight: source.z,
     endHeight: receiver.z,
-    speed: profile.groundSpeed
+    speed: profile.groundSpeed,
+    span: Math.max(1, Math.round(PROPAGATION.ridge.spanCells * SAMPLES_PER_CELL))
   });
 }
 

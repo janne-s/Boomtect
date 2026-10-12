@@ -14,7 +14,7 @@
  * This module imports nothing, so every module, the views included, may import it.
  */
 
-export const MODEL_VERSION = '32.1.0';
+export const MODEL_VERSION = '33.0.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 
@@ -137,6 +137,18 @@ export const GROUND = Object.freeze({
 });
 
 export const PROPAGATION = Object.freeze({
+  /**
+   * A rounded ridge (`diffraction.js`): its radius from the curvature of its crest over
+   * ridgeSpanCells of the heightfield either side, at most maximumRadiusMetres (a plateau's
+   * corners are Deygout's edges); its rounding's loss fades in as kR grows over fadeKR, since the
+   * cylinder's formula holds for kR ≫ 1 and a ridge small against the wavelength diffracts as a
+   * thin edge (class C).
+   */
+  ridge: Object.freeze({
+    spanCells: 1,
+    maximumRadiusMetres: 5000,
+    fadeKR: Object.freeze([1, 10])
+  }),
   /** Greatest focusing gain of a reflected ray tube near a caustic, in decibels (class C). */
   causticLimitDb: 10,
   /** Most ground contacts of a ray in air whose speed grows with height (class C: more lose too much to the ground to matter). */

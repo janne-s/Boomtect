@@ -2,7 +2,7 @@ import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, t
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
-import { knifeEdge } from './diffraction.js';
+import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
@@ -26,6 +26,14 @@ import {
 const PRE_ROLL_SAMPLES = 512;
 /** Terrain edges kept per path (Deygout's main edge and one on each side). */
 const MAXIMUM_EDGES = 3;
+/** A terrain edge as stored in a path table (`ridgeEdge`). */
+const EDGE_KEYS = Object.freeze(['factor', 'spread', 'rise', 'radiusRatio']);
+const EDGE_WIDTH = EDGE_KEYS.length;
+/** A path's terrain edge from its table. */
+function pathEdge(paths, index, edge) {
+  const at = (MAXIMUM_EDGES * index + edge) * EDGE_WIDTH;
+  return Object.fromEntries(EDGE_KEYS.map((key, offset) => [key, paths.edges[at + offset]]));
+}
 /** Samples kept after each pulse for the ground-reflection response to settle. */
 const TAIL_GUARD_SAMPLES = 2048;
 /** Attenuation beyond which a bin no longer contributes: 14 Np ≈ 122 dB. */
@@ -130,7 +138,7 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
 }
 
 /** Entries per path of the arrays wider than one. */
-const PATH_WIDTHS = Object.freeze({ direction: 3, edges: MAXIMUM_EDGES, endLift: 2, endSine: 2 });
+const PATH_WIDTHS = Object.freeze({ direction: 3, edges: MAXIMUM_EDGES * EDGE_WIDTH, endLift: 2, endSine: 2 });
 
 /** The arrays of a path table, by name, with their element types. */
 const PATH_ARRAYS = Object.freeze({
@@ -219,7 +227,7 @@ function pathWriter(frame, scene, paths) {
     const { departure, arrival } = path;
     paths.bounces[index] = path.bounces ?? (kind === PATH_GROUND ? 1 : 0);
     paths.edgeCount[index] = edges.length;
-    edges.forEach((edge, edgeIndex) => { paths.edges[MAXIMUM_EDGES * index + edgeIndex] = edge; });
+    edges.forEach((edge, edgeIndex) => { paths.edges.set(EDGE_KEYS.map(key => edge[key]), (MAXIMUM_EDGES * index + edgeIndex) * EDGE_WIDTH); });
     paths.emitter[index] = emitterIndex;
     paths.source[index] = sourceIndex;
     paths.kind[index] = kind;
@@ -574,7 +582,7 @@ function mergedPath(entry, cells) {
 function edgeDecibels(paths, index, frequencyHz) {
   let decibels = 0;
   for (let edge = 0; edge < paths.edgeCount[index]; edge += 1) {
-    decibels += 20 * Math.log10(Math.hypot(...knifeEdge(paths.edges[MAXIMUM_EDGES * index + edge] * Math.sqrt(frequencyHz))));
+    decibels += 20 * Math.log10(Math.hypot(...edgeField(pathEdge(paths, index, edge), frequencyHz)));
   }
   return decibels;
 }
@@ -868,6 +876,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const beta = creepNepers > 0 ? creepingBeta(creepNepers) : 0;
   const transitionHz = creepNepers > 0 && shadow.ground ? pathTransitionHz(shadow.ground, paths.creepRadius[index]) : 0;
   const edgeCount = paths.edgeCount[index];
+  const edges = Array.from({ length: edgeCount }, (_, edge) => pathEdge(paths, index, edge));
   const kind = paths.kind[index];
   const reflected = kind === PATH_GROUND;
   const ground = (reflected || isEcho(kind)) && !isReflecting(scene.ground.type);
@@ -993,7 +1002,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = nextRe;
     }
     for (let edge = 0; edge < edgeCount; edge += 1) {
-      const [eRe, eIm] = knifeEdge(paths.edges[MAXIMUM_EDGES * index + edge] * Math.sqrt(bin * binHz));
+      const [eRe, eIm] = edgeField(edges[edge], bin * binHz);
       const nextRe = re * eRe - im * eIm;
       im = re * eIm + im * eRe;
       re = nextRe;

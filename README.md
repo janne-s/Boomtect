@@ -308,6 +308,7 @@ B/C marks a part that combines the two.
 | Ground reflection, partly coherent | ground roughness of 5 cm (Rayleigh) and turbulence scatter a share of the reflection over a few milliseconds | C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
+| Rounded ridges | each edge adds a cylinder's loss for its crest's radius (ITU-R P.526), with a causal phase, fading to a thin edge where the ridge is small against the wavelength | B/C |
 | Terrain echoes, mirrored | stationary path on the surface, focusing by its curvature | A |
 | Terrain echoes, scattered | Lambert's law per patch of ground | B |
 | Echoes near the ground | the ground's image at the source and microphone ends, rigid within a blast's nonlinear radius | B/C |
