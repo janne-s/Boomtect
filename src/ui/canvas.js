@@ -14,6 +14,7 @@ export function fitCanvas(canvas) {
 }
 
 const MICROPHONE_COLORS = 8;
+const FIREWORK_COLORS = 6;
 
 /** CSS custom properties as canvas colors, read once per draw; `mics` holds one color per receiver slot. */
 export function palette() {
@@ -23,6 +24,7 @@ export function palette() {
     'lightning', 'flash', 'glow', 'start', 'end', 'receiver', 'direct', 'reflected', 'cloud-handle', 'storm-base', 'storm-top'];
   const colors = Object.fromEntries(names.map(name => [name, read(`--${name}`)]));
   colors.mics = Array.from({ length: MICROPHONE_COLORS }, (_, index) => read(`--mic-${index + 1}`));
+  colors.fireworks = Array.from({ length: FIREWORK_COLORS }, (_, index) => read(`--firework-${index + 1}`));
   return colors;
 }
 

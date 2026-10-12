@@ -1723,7 +1723,13 @@ function strokeTimeline(emitter) {
     return cachedBursts(emitter, state.scene.air).flatMap((places, index) => places.map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
   }
   if (isTrackKind(emitter)) return [];
-  if (isFieldKind(emitter)) return cachedRounds(emitter, state.scene.air).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres) }));
+  if (isFieldKind(emitter)) {
+    // A fireworks shell's burst carries its seed for its color and stars.
+    return cachedRounds(emitter, state.scene.air).map((round, index) => ({
+      flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres),
+      shell: round.id.endsWith(':burst') ? round.seed : null
+    }));
+  }
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 

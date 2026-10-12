@@ -1,4 +1,5 @@
-import { RENDER, VIEW } from '../domain/constants.js';
+import { FIREWORKS, RENDER, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW } from '../domain/constants.js';
+import { airDensityKilogramsPerCubicMetre } from '../domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../domain/random.js';
 import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
@@ -1318,7 +1319,44 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.stroke();
     }
     context.globalAlpha = alpha;
-    for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
+    for (const stroke of state?.strokes.get(emitter.id) ?? []) {
+      if (stroke.shell === null || stroke.shell === undefined) {
+        drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
+        continue;
+      }
+      const color = colors.fireworks[stroke.shell % colors.fireworks.length];
+      drawStars(context, placed(stroke.position), stroke, color);
+      drawBurst(context, frame.project(placed(stroke.position)), stroke, colors, color);
+    }
+  }
+
+  /**
+   * A shell's stars in its color, spread evenly over a sphere turned by its seed: each flies out as
+   * FIREWORKS' stars do, slowed by drag, sags under gravity, and burns out over VIEW.fireworks.burnSeconds.
+   */
+  function drawStars(context, centre, stroke, color) {
+    const { stars, burnSeconds } = VIEW.fireworks;
+    const t = stroke.elapsed;
+    if (t >= burnSeconds) return;
+    const pull = airDensityKilogramsPerCubicMetre(scene.air.pressureKpa * 1000, scene.air.temperatureCelsius) / (2 * FIREWORKS.starKilogramsPerSquareMetre);
+    const reach = Math.log1p(pull * FIREWORKS.starMetresPerSecond * t) / pull;
+    const sag = STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED * t * t / 2;
+    const turn = stroke.shell / 0x100000000 * 2 * Math.PI;
+    const alpha = context.globalAlpha;
+    context.globalAlpha = alpha * (1 - t / burnSeconds) ** 1.5;
+    context.fillStyle = color;
+    context.beginPath();
+    for (let star = 0; star < stars; star += 1) {
+      // A Fibonacci sphere: even heights, each turned by the golden angle.
+      const up = 1 - 2 * (star + .5) / stars;
+      const around = turn + star * Math.PI * (3 - Math.sqrt(5));
+      const across = Math.sqrt(1 - up * up);
+      const p = frame.project({ x: centre.x + reach * across * Math.cos(around), y: centre.y + reach * across * Math.sin(around), z: centre.z + reach * up - sag });
+      context.moveTo(p.x + 1.6, p.y);
+      context.arc(p.x, p.y, 1.6, 0, 2 * Math.PI);
+    }
+    context.fill();
+    context.globalAlpha = alpha;
   }
 
   /** A flight's or meteor's paths, its bodies where the clock has them, and a meteor's breakups and bursts as they flash. */
@@ -1417,12 +1455,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.globalAlpha = alpha;
   }
 
-  /** A burst's flash, fading after it starts; the emitter's dimming is restored after it. */
-  function drawBurst(context, centre, stroke, colors) {
+  /** A burst's flash, fading after it starts, glowing in a shell's color; the emitter's dimming is restored after it. */
+  function drawBurst(context, centre, stroke, colors, glow = colors.glow) {
     const alpha = context.globalAlpha;
     const level = Math.exp(-stroke.elapsed / VIEW.flash.fadeSeconds);
     context.fillStyle = colors.flash;
-    context.shadowColor = colors.glow;
+    context.shadowColor = glow;
     context.shadowBlur = 30 * level;
     context.globalAlpha = alpha * level;
     context.beginPath(); context.arc(centre.x, centre.y, 4 + 12 * level, 0, 2 * Math.PI); context.fill();

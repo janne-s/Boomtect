@@ -629,6 +629,14 @@ export const VIEW = Object.freeze({
   /** While the sound plays without the real delay, a point glows from its arrival for this long. */
   soundGlowSeconds: .25,
   /**
+   * A fireworks shell's burst, representational only: `stars` stars fly out as FIREWORKS' crackling
+   * stars do and burn out over burnSeconds (no longer than the flash stays on the screen).
+   */
+  fireworks: Object.freeze({
+    stars: 32,
+    burnSeconds: 1.2
+  }),
+  /**
    * A storm's cloud, representational only: soft puffs placed by its seed in the cloud layer, a dark,
    * flat base and a paler top that spreads into an anvil. A flash lights the cloud around its top
    * for as long as its channel glows, with `flashBlobs` glows that stray `blobScatter` of the cloud's

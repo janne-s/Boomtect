@@ -52,7 +52,7 @@ microphone along the Mach cone.
 - **Fireworks** — Shells fired from mortars over an area in salvos: each
   mortar's thump on the ground, the shell's burst high in the air a flight time
   later, and, for a share of the shells, crackling stars as a swarm of tiny
-  pops around the burst.
+  pops around the burst. In the scene each shell bursts in its own color.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn

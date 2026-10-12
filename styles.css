@@ -37,6 +37,13 @@
   --mic-6: #b5d67a;
   --mic-7: #6fd3e8;
   --mic-8: #93a4b8;
+  /* A fireworks shell's color, by its seed: the classic stars. */
+  --firework-1: #ff5a4f;
+  --firework-2: #52e07a;
+  --firework-3: #5b8cff;
+  --firework-4: #ffc94a;
+  --firework-5: #e9eef5;
+  --firework-6: #c77dff;
   font-family:
     Inter,
     ui-sans-serif,
