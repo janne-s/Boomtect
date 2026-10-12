@@ -1118,7 +1118,7 @@ details summary {
 }
 .settings-grid {
   display: grid;
-  grid-template-columns: 140px minmax(0, 1fr) 96px;
+  grid-template-columns: 140px minmax(0, 1fr) 120px;
   align-items: center;
   gap: 10px 12px;
 }
@@ -1132,6 +1132,57 @@ details summary {
   color: var(--ink);
   font-size: 12px;
   white-space: nowrap;
+}
+.settings-grid + h3,
+.settings-cost + h3 {
+  margin-top: 22px;
+}
+.settings-check {
+  display: flex;
+  grid-column: 2 / -1;
+  align-items: center;
+  gap: 10px;
+}
+.settings-check .settings-summary {
+  color: var(--muted);
+}
+/* The computation's cost against the full one: the fill, and a tick where the full one is. */
+.settings-cost {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.settings-cost > span {
+  color: var(--muted);
+}
+.settings-cost output {
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cost-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+}
+.cost-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width .15s;
+}
+.cost-full {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
 }
 
 /* The phone layout's parts (`mobile.js`), hidden on wider screens. */
@@ -1368,8 +1419,15 @@ details summary {
     overflow-y: auto;
   }
   .settings-grid {
-    grid-template-columns: 104px minmax(0, 1fr) 76px;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
     gap: 14px 10px;
+  }
+  .settings-cost {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+  .settings-cost output {
+    grid-column: 2;
   }
   .info-body {
     display: flex;

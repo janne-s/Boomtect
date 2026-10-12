@@ -118,9 +118,11 @@ microphone along the Mach cone.
   for requests over the network when it gives up. The last message stands above
   them: a note fades, an error stays.
 - **Settings** (gear) — How much of the sound a render computes, kept with the
-  scene: the cutoff level, the highest frequency, how many flash segments one
-  source stands for, the echo cells' scale, and a scattered echo's arrivals; and
-  the threads this device renders on.
+  scene: the cutoff level, the highest frequency, the flash detail (how many
+  segments one source stands for), the echo detail (the echo cells' size), and a
+  scattered echo's arrivals, with the cost against the full computation and an
+  estimate of its time from the last render; the preview; and the threads this
+  device renders on.
 - **Preview** (gauge, beside Play) — Renders a lighter version of the scene's
   settings: a flash's sources merged in fours, echo cells twice as large, and
   sound up to 2 kHz at most.

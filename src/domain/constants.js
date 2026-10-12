@@ -547,6 +547,24 @@ export const PREVIEW = Object.freeze({
   highestHz: 2000
 });
 
+/**
+ * The Settings dialog's estimate of a render's cost against the full computation, fitted to a ground
+ * flash over hills with terrain echoes (measured 2026-10-12): fixedShare of the time is tracing and
+ * the like; the rest sums the paths' spectra, split between direct and scattered paths by their
+ * counts. Their bins reach as far as the cutoff lets the air's absorption, which grows as f², about
+ * referenceHz at the full cutoff, or the highest frequency where lower, and cost as their share to
+ * binExponent. A flash's paths fall with its merging; scattered ones with echo cell scale to
+ * cellExponent; arrivalShare of a scattered path's work is its sub-arrivals.
+ */
+export const RENDER_COST = Object.freeze({
+  fixedShare: .3,
+  referenceHz: 4000,
+  binExponent: .8,
+  cellExponent: -.74,
+  arrivalShare: .5,
+  scatterShare: .68
+});
+
 export const RENDER = Object.freeze({
   /** The longest span of arrivals a render holds. */
   maximumSeconds: 400,

@@ -150,8 +150,8 @@ export const PARAMETERS = Object.freeze({
   // The render's computation (`render.quality`): how much of the sound it computes, not what the sound is.
   cutoffDecibels: { minimum: -140, maximum: -60, unit: 'dB', label: 'Cutoff level', reliability: null },
   highestFrequencyHz: { minimum: 1000, maximum: SAMPLE_RATE_HZ / 2, unit: 'Hz', label: 'Highest frequency', reliability: null },
-  sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Source merging', reliability: null, integer: true },
-  echoCellScale: { minimum: 1, maximum: 4, unit: '×', label: 'Echo cell scale', reliability: null },
+  sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Flash detail', reliability: null, integer: true },
+  echoCellScale: { minimum: 1, maximum: 4, unit: '×', label: 'Echo detail', reliability: null },
   scatterArrivals: { minimum: 4, maximum: 24, unit: '', label: 'Scatter arrivals', reliability: null, integer: true },
   headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
   pitchDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Elevation', reliability: null }

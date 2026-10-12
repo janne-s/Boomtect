@@ -1,6 +1,6 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PREVIEW, PROPAGATION, RENDER, VIEW } from './constants.js';
+import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
@@ -9,6 +9,7 @@ import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
 import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
+import { previewQuality } from './render-cost.js';
 import { secondaryBooms } from './secondary.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
@@ -94,14 +95,8 @@ export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.ter
  */
 export function previewScene(scene) {
   const preview = structuredClone(scene);
-  const quality = preview.render.quality;
   preview.render.preview = true;
-  preview.render.quality = {
-    ...quality,
-    sourceMerge: Math.max(quality.sourceMerge, PREVIEW.sourceMerge),
-    echoCellScale: Math.max(quality.echoCellScale, PREVIEW.echoCellScale),
-    highestFrequencyHz: Math.min(quality.highestFrequencyHz, PREVIEW.highestHz)
-  };
+  preview.render.quality = previewQuality(preview.render.quality);
   return preview;
 }
 

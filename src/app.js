@@ -1,12 +1,12 @@
 import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
-import { BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, THUNDER, VIEW } from './domain/constants.js';
+import { BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, RENDER_COST, THUNDER, VIEW } from './domain/constants.js';
 import { blastSources, emitterSources } from './domain/emitters.js';
 import { EXPLOSIVE_TYPES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
-import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
+import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -90,14 +90,39 @@ state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 const player = createPlayer();
 const mobile = createMobileLayout({ onResults: () => drawResults() });
 createSettings({
-  read: () => ({ quality: state.scene.render.quality, threads: workerLimit(), maximumThreads: WORKER_COUNT }),
-  save: ({ quality, threads }) => {
+  read: () => ({
+    quality: state.scene.render.quality,
+    preview: state.preferences.preview,
+    threads: workerLimit(),
+    maximumThreads: WORKER_COUNT,
+    echoCellMetres: echoesActive(state.scene) ? state.scene.terrain.echoCellMetres : null,
+    scatterShare: scatterShare(),
+    last: state.lastRender
+  }),
+  save: ({ quality, preview, threads }) => {
     state.preferences.threads = threads === WORKER_COUNT ? 0 : threads;
+    const previewChanged = preview !== state.preferences.preview;
+    state.preferences.preview = preview;
     savePreferences();
+    syncToggles();
     const current = state.scene.render.quality;
     if (Object.keys(quality).some(key => quality[key] !== current[key])) commit(next => { next.render.quality = quality; });
+    else if (previewChanged) { invalidateResults(); requestRender(); }
   }
 });
+
+/** The scattered echoes' share of the last render's paths, or the cost model's own without one; none without terrain echoes. */
+function scatterShare() {
+  if (!echoesActive(state.scene)) return 0;
+  if (!state.results) return RENDER_COST.scatterShare;
+  let scattered = 0;
+  let all = 0;
+  for (const { arrivals } of state.results.values()) {
+    for (let index = 0; index < arrivals.count; index += 1) if (arrivals.kinds[index] === PATH_SCATTER) scattered += 1;
+    all += arrivals.count;
+  }
+  return all ? scattered / all : 0;
+}
 const liveFields = { receiver: null, orientation: null };
 
 /** Rebuilds the panel at the next frame, at most once a frame. */
@@ -556,6 +581,7 @@ function finishRender(scene, arrivals, sums, parts, info) {
     return;
   }
   state.resultsPreview = Boolean(scene.render.preview);
+  state.lastRender = { milliseconds: info.milliseconds, workers: info.workers, quality: scene.render.quality };
   state.envelopes = envelopes([...state.results.values()]);
   earCache.clear();
   setStatus(`${state.resultsPreview ? 'Preview: rendered' : 'Rendered'} ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
