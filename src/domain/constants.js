@@ -646,14 +646,18 @@ export const VIEW = Object.freeze({
   /**
    * A Mach cone is drawn through the fronts from `rings` past points of the body's path, with
    * `ringPoints` points around each; every `lineEvery` of a ring's points leads to the next ring, in
-   * `pieces` pieces kept above the ground.
+   * `pieces` pieces kept above the ground where it may reach it. At most `bodies` of the strongest
+   * cones are drawn at once, so a shower of hundreds costs what a few do, and their rings in
+   * `levels` steps of strength, one stroke per step.
    */
   cone: Object.freeze({
     rings: 16,
     ringPoints: 32,
     lineEvery: 4,
     pieces: 12,
-    alpha: .45
+    alpha: .45,
+    bodies: 24,
+    levels: 12
   }),
   /**
    * Wavefronts: source points drawn at most, and points along a flight path. A front is drawn as
@@ -666,7 +670,8 @@ export const VIEW = Object.freeze({
    * front meets the ground is solved per direction, so fewer fronts are drawn. Each flash, blast, or
    * round is drawn as one group, and at most `groups` of the strongest at once: every group costs
    * its own composited outlines, and a barrage of hundreds of rounds froze the view. On the floor a
-   * front past the refraction shadow boundary is drawn at shadowShare of its strength.
+   * front past the refraction shadow boundary is drawn at shadowShare of its strength. A ripple
+   * fainter than visibleAlpha is not drawn.
    */
   wavefront: Object.freeze({
     spheres: 360,
@@ -678,7 +683,8 @@ export const VIEW = Object.freeze({
     localProfileTolerance: .05,
     rippleAlphas: Object.freeze([.5, .3, .16, .07]),
     rippleSpacingShare: .018,
-    terrainSpheres: 80
+    terrainSpheres: 80,
+    visibleAlpha: 1 / 255
   }),
   /**
    * The map on the floor: the finest zoom (OpenTopoMap serves up to 17) at which about pixelsAcross

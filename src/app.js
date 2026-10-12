@@ -18,9 +18,9 @@ import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrai
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
-import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
+import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
-import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
+import { meteorBoom, showerMembers } from './domain/meteor.js';
 import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
@@ -1720,7 +1720,7 @@ const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 's
 function strokeTimeline(emitter) {
   if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres, from: placedPoint(emitter.positionMetres) }];
   if (isMeteorKind(emitter)) {
-    return showerMembers(emitter).flatMap((meteor, index) => meteorBursts(meteor, state.scene.air).map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
+    return cachedBursts(emitter, state.scene.air).flatMap((places, index) => places.map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
   }
   if (isTrackKind(emitter)) return [];
   if (isFieldKind(emitter)) return cachedRounds(emitter, state.scene.air).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres) }));
@@ -1758,7 +1758,7 @@ function animationState() {
   const wavefronts = wavefrontsShown() ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
   // Where each flight's body is at the clock, and its Mach cone.
   const flights = new Map();
-  const cones = new Map();
+  let cones = [];
   for (const emitter of state.scene.emitters) {
     if (!isTrackKind(emitter) || !emitter.enabled) continue;
     const paths = cachedTracks(emitter, state.scene.air);
@@ -1769,13 +1769,17 @@ function animationState() {
     if (!state.preferences.cone) continue;
     // Each ring fades as the boom does with the distance it has spread, as the fronts do.
     const amplitudes = coneAmplitudes(emitter);
-    cones.set(emitter.id, paths.flatMap((path, member) => {
+    paths.forEach((path, member) => {
       const cone = machCone(path, now, profile);
-      if (!cone) return [];
+      if (!cone) return;
       const { amplitude, frequencyHz } = amplitudes.get(`${emitter.id}:${member}`) ?? { amplitude: 0, frequencyHz: 1000 };
-      return [{ ...cone, strengths: cone.radii.map(radius => frontStrength(amplitude, radius, frequencyHz)) }];
-    }));
+      const strengths = cone.radii.map(radius => frontStrength(amplitude, radius, frequencyHz));
+      const strength = Math.max(...strengths);
+      if (strength > 0) cones.push({ ...cone, strengths, strength });
+    });
   }
+  // Only the strongest cones, so that a shower costs what a few bodies do.
+  cones = cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies);
   return { strokes, receivers, sound, wavefronts, flights, cones };
 }
 

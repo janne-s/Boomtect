@@ -1,7 +1,7 @@
 import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
 import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flight.js';
-import { meteorTrack, showerMembers } from '../domain/meteor.js';
+import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
 /** Flashes per terrain surface, each keyed by emitter id. */
@@ -60,6 +60,22 @@ export function cachedTracks(emitter, air) {
   const value = emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]
     : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack);
   paths.set(emitter.id, { key, surface, paths: value });
+  return value;
+}
+
+const bursts = new Map();
+
+/**
+ * Where a meteor's or each of a shower's meteors breaks up and bursts in the given air, cached by
+ * everything except the name and switch.
+ */
+export function cachedBursts(emitter, air) {
+  const { name, enabled, ...shape } = emitter;
+  const key = JSON.stringify([shape, air]);
+  const cached = bursts.get(emitter.id);
+  if (cached?.key === key) return cached.bursts;
+  const value = showerMembers(emitter).map(meteor => meteorBursts(meteor, air));
+  bursts.set(emitter.id, { key, bursts: value });
   return value;
 }
 

@@ -178,8 +178,19 @@ export function terrainRange(terrain) {
 const surfaces = new Map();
 const MAXIMUM_CACHED_SURFACES = 4;
 
+/** Each patch list's key, so that a terrain drawn every frame is hashed once (scenes replace their patches, never change them). */
+const patchKeys = new WeakMap();
+
 /** A 32-bit FNV-1a hash of a terrain's patches, so that surfaces are cached by their content. */
 function terrainKey(terrain) {
+  const known = patchKeys.get(terrain.patches);
+  if (known?.cellMetres === terrain.cellMetres && known.datumMetres === terrain.datumMetres) return known.key;
+  const key = hashTerrain(terrain);
+  patchKeys.set(terrain.patches, { cellMetres: terrain.cellMetres, datumMetres: terrain.datumMetres, key });
+  return key;
+}
+
+function hashTerrain(terrain) {
   let hash = 0x811c9dc5;
   const mix = text => { for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193); };
   mix(`${terrain.cellMetres}|${terrain.datumMetres}|`);
@@ -211,6 +222,8 @@ export function terrainSurface(terrain) {
     for (let j = 0; j < cells; j += 1) values.set(heights.subarray(j * cells, (j + 1) * cells), (bottom + j) * columns + left);
   }
   const bounds = rangeBounds(range, cellMetres);
+  let highest = -Infinity;
+  for (const value of values) if (value > highest) highest = value;
   const sample = (x, y) => {
     const gridX = clamp((x - bounds.west) / cellMetres - .5, 0, columns - 1);
     const gridY = clamp((y - bounds.south) / cellMetres - .5, 0, rows - 1);
@@ -227,6 +240,8 @@ export function terrainSurface(terrain) {
     cellMetres,
     /** Height of the ground above the datum. */
     heightAt: (x, y) => sample(x, y) - datumMetres,
+    /** The highest ground above the datum, m: nothing above it can be under the ground. */
+    highestMetres: highest - datumMetres,
     /** Unit upward normal of the ground, from central differences one cell wide. */
     normalAt: (x, y) => {
       const gx = (sample(x + cellMetres, y) - sample(x - cellMetres, y)) / (2 * cellMetres);
@@ -250,6 +265,7 @@ export const FLAT_SURFACE = Object.freeze({
   datumMetres: 0,
   cellMetres: Infinity,
   heightAt: () => 0,
+  highestMetres: 0,
   normalAt: () => ({ x: 0, y: 0, z: 1 }),
   bounds: null
 });

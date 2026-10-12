@@ -1028,6 +1028,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.save();
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
+        if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
         // On the floor, a front past the shadow boundary goes on into the shadow, dimmer, as the
         // sound that creeps there; held at the boundary it stood still while the front moved on.
         const parts = [{ path: new Path2D(), bounds: emptyBounds(), any: false, share: 1 }, { path: new Path2D(), bounds: emptyBounds(), any: false, share: VIEW.wavefront.shadowShare }];
@@ -1042,7 +1043,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
           addPolygon(part.path, OUTLINE_DIRECTIONS.map(({ cos, sin }) => place(centre[u] + radius * cos, centre[v] + radius * sin)), part.bounds);
         }
         for (const { path, bounds, any, share } of parts) {
-          if (any) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength * share, bounds });
+          if (any && alpha * strength * share >= VIEW.wavefront.visibleAlpha) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength * share, bounds });
         }
       });
       context.restore();
@@ -1056,6 +1057,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
    */
   function drawTerrainRipples(context, colors, spheres, spacing, strength = 1) {
     const rings = VIEW.wavefront.rippleAlphas.map((alpha, ring) => {
+      if (alpha * strength < VIEW.wavefront.visibleAlpha) return null;
       const path = new Path2D();
       const bounds = emptyBounds();
       let any = false;
@@ -1339,63 +1341,78 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.beginPath(); context.arc(p.x, p.y, 5, 0, 2 * Math.PI); context.fill();
       context.shadowBlur = 0;
     }
-    for (const cone of state?.cones?.get(emitter.id) ?? []) drawCone(context, cone, colors);
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
   }
 
   /**
-   * A body's Mach cone: its rings and lines from the body through them, within the box and above the
-   * ground, each ring as strong as its boom where it has spread to (`strengths`).
+   * The bodies' Mach cones: their rings and lines from the body through them, within the box and
+   * above the ground, each ring as strong as its boom where it has spread to (`strengths`). Rings of
+   * about the same strength share one stroke, in VIEW.cone.levels steps.
    */
-  function drawCone(context, { apex, rings, strengths }, colors) {
+  function drawCones(context, cones, colors) {
     const { box } = frame;
     const terrain = currentSurface().bounds;
     const low = { x: Math.min(box.x0, terrain?.west ?? box.x0), y: Math.min(box.y0, terrain?.south ?? box.y0), z: box.z0 };
     const high = { x: Math.max(box.x1, terrain?.east ?? box.x1), y: Math.max(box.y1, terrain?.north ?? box.y1), z: box.z1 };
-    let path = new Path2D();
-    const line = (a, b) => {
-      // The part of the line within the box (Liang–Barsky), in pieces whose middle is above the ground.
-      let from = 0;
-      let to = 1;
-      for (const axis of ['x', 'y', 'z']) {
-        const delta = b[axis] - a[axis];
-        for (const [edge, sign] of [[low[axis], -1], [high[axis], 1]]) {
-          const room = sign * (edge - a[axis]);
-          const step = sign * delta;
-          if (step === 0) { if (room < 0) return; continue; }
-          const t = room / step;
-          if (step > 0) to = Math.min(to, t); else from = Math.max(from, t);
-        }
-      }
+    const highest = currentSurface().highestMetres;
+    const levels = Array.from({ length: VIEW.cone.levels }, () => new Path2D());
+    let path = null;
+    let from = 0;
+    let to = 1;
+    // Narrows [from, to] to where start + t·delta lies within [minimum, maximum]; false if it never does.
+    const within = (start, delta, minimum, maximum) => {
+      if (delta === 0) return start >= minimum && start <= maximum;
+      const t0 = (minimum - start) / delta;
+      const t1 = (maximum - start) / delta;
+      from = Math.max(from, Math.min(t0, t1));
+      to = Math.min(to, Math.max(t0, t1));
+      return true;
+    };
+    // The projection is affine, so a line's pieces follow on screen from its projected ends `p` and `q`.
+    const draw = (p, q, start, end) => {
+      path.moveTo(p.x + (q.x - p.x) * start, p.y + (q.y - p.y) * start);
+      path.lineTo(p.x + (q.x - p.x) * end, p.y + (q.y - p.y) * end);
+    };
+    const line = (a, b, p, q) => {
+      // The part of the line within the box (Liang–Barsky); where it may reach the ground, in pieces
+      // whose middle is above the ground.
+      from = 0;
+      to = 1;
+      if (!within(a.x, b.x - a.x, low.x, high.x) || !within(a.y, b.y - a.y, low.y, high.y) || !within(a.z, b.z - a.z, low.z, high.z)) return;
       if (!(to > from)) return;
-      const point = t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+      if (Math.min(a.z + (b.z - a.z) * from, a.z + (b.z - a.z) * to) > highest) { draw(p, q, from, to); return; }
       for (let piece = 0; piece < VIEW.cone.pieces; piece += 1) {
         const start = from + (to - from) * piece / VIEW.cone.pieces;
         const end = from + (to - from) * (piece + 1) / VIEW.cone.pieces;
-        const middle = point((start + end) / 2);
-        if (middle.z < ground(middle.x, middle.y)) continue;
-        const p = frame.project(point(start));
-        const q = frame.project(point(end));
-        path.moveTo(p.x, p.y);
-        path.lineTo(q.x, q.y);
+        const t = (start + end) / 2;
+        if (a.z + (b.z - a.z) * t < ground(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) continue;
+        draw(p, q, start, end);
       }
     };
-    // Each ring, with the lines that reach it from the newer one, as strong as its front.
+    for (const { apex, rings, strengths } of cones) {
+      const screen = rings.map(ring => ring.map(frame.project));
+      const apexScreen = apex && frame.project(apex);
+      // Each ring, with the lines that reach it from the newer one, in the step of its strength.
+      rings.forEach((ring, index) => {
+        const strength = strengths?.[index] ?? 1;
+        if (!(strength > 0)) return;
+        path = levels[Math.min(VIEW.cone.levels, Math.ceil(strength * VIEW.cone.levels)) - 1];
+        const points = screen[index];
+        ring.forEach((point, step) => {
+          const next = (step + 1) % ring.length;
+          line(point, ring[next], points[step], points[next]);
+          if (step % VIEW.cone.lineEvery) return;
+          if (index) line(rings[index - 1][step], point, screen[index - 1][step], points[step]);
+          else if (apex) line(apex, point, apexScreen, points[step]);
+        });
+      });
+    }
     const alpha = context.globalAlpha;
     context.strokeStyle = colors.glow;
     context.lineWidth = 1;
-    rings.forEach((ring, index) => {
-      const strength = strengths?.[index] ?? 1;
-      if (!(strength > 0)) return;
-      path = new Path2D();
-      ring.forEach((point, step) => {
-        line(point, ring[(step + 1) % ring.length]);
-        if (step % VIEW.cone.lineEvery) return;
-        const previous = index ? rings[index - 1][step] : apex;
-        if (previous) line(previous, point);
-      });
-      context.globalAlpha = alpha * VIEW.cone.alpha * strength;
-      context.stroke(path);
+    levels.forEach((level, index) => {
+      context.globalAlpha = alpha * VIEW.cone.alpha * (index + 1) / VIEW.cone.levels;
+      context.stroke(level);
     });
     context.globalAlpha = alpha;
   }
@@ -1535,6 +1552,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     drawNames(context, colors);
     drawShadowBoundary(context, colors);
     if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);
+    if (state?.cones.length) drawCones(context, state.cones, colors);
     for (const emitter of scene.emitters) {
       const selected = selection?.type === 'emitter' && selection.id === emitter.id;
       context.globalAlpha = emitter.enabled ? 1 : .35;

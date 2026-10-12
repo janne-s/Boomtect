@@ -58,6 +58,11 @@ const MAXIMUM_STEPS = 12000;
 const STOPPED_METRES_PER_SECOND = 1;
 
 /** The speed of sound the body flies against: the layered air's, or the ground's in homogeneous air, as the sound travels. */
+/** Directions around a Mach cone's ring, as computed once for every ring. */
+const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
+  const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
+  return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
+}));
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
 
 /**
@@ -345,10 +350,9 @@ export function machCone(path, now, profile) {
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
     radii.push(radiusMetres);
-    rings.push(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
-      const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
-      const a = radius * Math.cos(angle);
-      const b = radius * Math.sin(angle);
+    rings.push(CONE_RING.map(({ cos, sin }) => {
+      const a = radius * cos;
+      const b = radius * sin;
       return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };
     }));
   }
