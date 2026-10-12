@@ -99,6 +99,32 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
+/* Play keeps its width whatever it says, and spins while the render is made, as Echotect's buttons do. */
+#play {
+  width: 72px;
+}
+button[aria-busy="true"] {
+  cursor: wait;
+}
+button[aria-busy="true"]:disabled {
+  opacity: .85;
+}
+button[aria-busy="true"]::after {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -1px;
+  content: "";
+  animation: loading-spin .7s linear infinite;
+}
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 /*
  * Focus shows plainly only when moving by keyboard (data-keyboard, set on Tab and cleared by a
  * pointer). After a click a field keeps a quiet 1 px line, and other controls none.

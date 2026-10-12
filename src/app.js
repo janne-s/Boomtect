@@ -282,12 +282,15 @@ function drawOperations() {
 /** An abort signal that fires after a limit, for a network request listed with that limit. */
 const timeLimit = seconds => AbortSignal.timeout(seconds * 1000);
 
-/** One button for the result: Render when there is none, Rendering while it is made, then Play and Stop. */
+/** One button for the result: Render when there is none, a spinner while it is made, then Play and Stop. */
 function syncPlayButton() {
   const button = $('play');
   const playing = player.playing();
   const rendering = operations.has('render');
-  button.textContent = playing ? 'Stop' : rendering ? 'Rendering' : state.results ? 'Play' : 'Render';
+  const busy = !playing && rendering;
+  button.textContent = playing ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
+  button.setAttribute('aria-label', busy ? 'Rendering' : button.textContent);
+  if (busy) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
   button.disabled = !playing && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
   button.setAttribute('aria-pressed', playing ? 'true' : 'false');
   const pause = $('plot-play');
