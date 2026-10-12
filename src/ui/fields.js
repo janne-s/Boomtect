@@ -178,7 +178,7 @@ export function seedField(container, { value, onCommit, onNew }) {
   const input = document.createElement('input');
   input.type = 'number';
   input.id = id;
-  input.dataset.key = key;
+  input.dataset.key = 'seed';
   input.min = '0';
   input.max = String(0xffffffff);
   input.step = '1';
