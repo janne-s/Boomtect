@@ -3,6 +3,41 @@ import { channelCount, orientationRotation, rotationTerms } from '../domain/ambi
 import { RENDER } from '../domain/constants.js';
 
 /**
+ * iOS treats Web Audio as ambient sound, which the silent switch mutes. Declaring the page's audio
+ * session as playback (Safari 16.4+) makes it media, which plays through the switch; older iOS
+ * takes the session from an HTML audio element, so there a silent one loops while sound plays.
+ */
+const AUDIO_SESSION = typeof navigator !== 'undefined' && 'audioSession' in navigator;
+let silence = null;
+
+function declarePlayback() {
+  if (AUDIO_SESSION) {
+    try { navigator.audioSession.type = 'playback'; } catch { /* Not settable here. */ }
+    return;
+  }
+  silence ??= silentLoop();
+  silence.play().catch(() => { /* Without a gesture or support, Web Audio plays as it would. */ });
+}
+
+/** A looping HTML audio element of half a second of silence, as an 8-bit mono WAV. */
+function silentLoop() {
+  const rate = 8000;
+  const samples = rate / 2;
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const text = (at, value) => [...value].forEach((char, index) => { bytes[at + index] = char.charCodeAt(0); });
+  text(0, 'RIFF'); view.setUint32(4, 36 + samples, true); text(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+  text(36, 'data'); view.setUint32(40, samples, true);
+  bytes.fill(128, 44);
+  const audio = new Audio(`data:audio/wav;base64,${btoa(String.fromCharCode(...bytes))}`);
+  audio.loop = true;
+  audio.setAttribute('playsinline', '');
+  return audio;
+}
+
+/**
  * Omnitone's higher-order decoder mirrors left and right relative to AmbiX: measured with a source
  * in the east and the listener facing north, it puts the source on the left. Its sine components
  * (m < 0) therefore enter with the opposite sign, after the orientation rotation, because a mirror
@@ -177,17 +212,26 @@ export function createPlayer() {
   function stop() {
     request += 1;
     release();
+    silence?.pause();
   }
 
   /**
-   * Creates and resumes the audio context. Call it first thing in a user gesture: browsers allow
-   * audio to start only within a short time of the gesture, and preparing a long composition can
-   * take longer than that.
+   * Declares the page's audio as playback and creates and resumes the audio context. Call it first
+   * thing in a user gesture: browsers allow audio to start only within a short time of the gesture,
+   * and preparing a long composition can take longer than that.
    */
   function unlock(sampleRate) {
+    declarePlayback();
     context ??= new AudioContext({ sampleRate });
     return context.resume();
   }
+
+  // iOS suspends the context during a call or in the background ("interrupted") and does not resume it by itself.
+  const wake = () => {
+    if (document.visibilityState === 'visible' && current && context && context.state !== 'running') context.resume().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('pageshow', wake);
 
   /**
    * Plays a composition. `atSceneSeconds` starts it from that point of the scene timeline, keeping
