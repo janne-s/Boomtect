@@ -117,8 +117,13 @@ microphone along the Mach cone.
   scene while they run, each with how far it has come, how long it has run, and
   for requests over the network when it gives up. The last message stands above
   them: a note fades, an error stays.
-- **Preview** (gauge, beside Play) — Renders a lighter version of the scene:
-  a flash's sources merged in fours, larger echo cells, and sound up to 2 kHz.
+- **Settings** (gear) — How much of the sound a render computes, kept with the
+  scene: the cutoff level, the highest frequency, how many flash segments one
+  source stands for, the echo cells' scale, and a scattered echo's arrivals; and
+  the threads this device renders on.
+- **Preview** (gauge, beside Play) — Renders a lighter version of the scene's
+  settings: a flash's sources merged in fours, echo cells twice as large, and
+  sound up to 2 kHz at most.
   About as loud, as long, and as dark as the full render, a few times quicker
   over terrain. An export is always rendered in full.
 - **Real delay** (hourglass, beside Play) — On: the sound arrives as late as it would outdoors, and the

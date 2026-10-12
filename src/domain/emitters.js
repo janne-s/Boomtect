@@ -133,7 +133,7 @@ function fireworksSources(emitter, air, surface) {
   return [...events, ...pops].flatMap(blast => blastSources(fireworksBlast(blast), air, surface));
 }
 
-export function emitterSources(emitter, air, surface = null) {
+export function emitterSources(emitter, air, surface = null, quality = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
@@ -142,5 +142,6 @@ export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   if (emitter.kind === 'fireworks') return { flashes: [], sources: fireworksSources(emitter, air, surface) };
   const flashes = emitterFlashes(emitter, surface);
-  return { flashes, sources: flashSources(flashes, emitter, air) };
+  // The render's quality may let one source stand in for several segments of a flash.
+  return { flashes, sources: flashSources(flashes, quality?.sourceMerge > 1 ? { ...emitter, sourceMerge: quality.sourceMerge } : emitter, air) };
 }

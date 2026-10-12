@@ -41,6 +41,7 @@
       </div>
       <span id="listen-label" class="listen-label"></span>
       <span class="spacer"></span>
+      <button type="button" class="icon-toggle" id="settings" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
       <button type="button" id="open">Open</button>
       <button type="button" id="save">Save</button>
       <button type="button" id="export" disabled>Export</button>
@@ -136,6 +137,7 @@
             <button type="button" data-proxy="open">Open</button>
             <button type="button" data-proxy="save">Save</button>
             <button type="button" data-proxy="export">Export</button>
+            <button type="button" data-proxy="settings">Settings</button>
           </div>
         </details>
       </aside>
@@ -194,6 +196,21 @@
         <footer class="export-actions">
           <button type="submit" value="cancel">Cancel</button>
           <button type="submit" id="export-submit" class="primary" value="export">Export</button>
+        </footer>
+      </form>
+    </dialog>
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title" tabindex="-1">
+      <form method="dialog">
+        <header class="details-header">
+          <h2 id="settings-title">Settings</h2>
+        </header>
+        <div class="settings-body">
+          <h3>Computation</h3>
+          <div class="settings-grid" id="settings-grid"></div>
+        </div>
+        <footer class="export-actions">
+          <button type="submit" value="cancel">Cancel</button>
+          <button type="submit" class="primary" value="save">Save settings</button>
         </footer>
       </form>
     </dialog>

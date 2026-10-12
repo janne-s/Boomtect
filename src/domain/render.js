@@ -17,7 +17,6 @@ import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
-import { PARAMETERS } from './scene.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import {
@@ -39,7 +38,6 @@ function pathEdge(paths, index, edge) {
 /** Samples kept after each pulse for the ground-reflection response to settle. */
 const TAIL_GUARD_SAMPLES = 2048;
 /** Attenuation beyond which a bin no longer contributes: 14 Np ≈ 122 dB. */
-const NEGLIGIBLE_NEPERS = 14;
 const NEGLIGIBLE_SMOOTHING = 1e-7;
 const GROUND_GRID_POINTS = 64;
 /**
@@ -91,16 +89,27 @@ const pathSources = (preparedEmitters, paths, index) => (isEcho(paths.kind[index
 export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.terrain.echoes);
 
 /**
- * The scene as a preview renders it (PREVIEW): the same scene, marked `render.preview`, its flashes'
- * and storms' sources merged and its echo cells larger. Views and exports keep the scene itself.
+ * The scene as a preview renders it (PREVIEW): the same scene, marked `render.preview`, its quality
+ * at most as heavy as the preview's. Views and exports keep the scene itself.
  */
 export function previewScene(scene) {
   const preview = structuredClone(scene);
+  const quality = preview.render.quality;
   preview.render.preview = true;
-  preview.emitters.forEach(emitter => { if (emitter.kind === 'lightning' || emitter.kind === 'storm') emitter.sourceMerge = PREVIEW.sourceMerge; });
-  if (preview.terrain) preview.terrain.echoCellMetres = Math.min(PARAMETERS.echoCellMetres.maximum, preview.terrain.echoCellMetres * PREVIEW.echoCellScale);
+  preview.render.quality = {
+    ...quality,
+    sourceMerge: Math.max(quality.sourceMerge, PREVIEW.sourceMerge),
+    echoCellScale: Math.max(quality.echoCellScale, PREVIEW.echoCellScale),
+    highestFrequencyHz: Math.min(quality.highestFrequencyHz, PREVIEW.highestHz)
+  };
   return preview;
 }
+
+/** The size of the cells an emitter's sources are pooled in for their terrain echoes, with the quality's scale. */
+const echoCellMetres = scene => scene.terrain.echoCellMetres * scene.render.quality.echoCellScale;
+
+/** The loss along a path, in nepers, past which its higher frequencies are not summed. */
+const cutoffNepers = scene => -scene.render.quality.cutoffDecibels * Math.LN10 / 20;
 
 /**
  * Expands every enabled emitter into point sources, kept as a typed table so that the flash
@@ -111,7 +120,7 @@ export function prepareScene(scene) {
   const surface = terrainSurface(scene.terrain);
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
-    const rows = emitterSources(emitter, scene.air, surface).sources;
+    const rows = emitterSources(emitter, scene.air, surface, scene.render.quality).sources;
     const sources = sourceTable(rows);
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
@@ -125,7 +134,7 @@ export function prepareScene(scene) {
       const flights = showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms }));
       return { emitter, sources, cells: null, echoRows: rows.slice(flights.length), flights };
     }
-    return { emitter, sources, cells: echoes ? sourceCells(sources, scene.terrain.echoCellMetres) : null };
+    return { emitter, sources, cells: echoes ? sourceCells(sources, echoCellMetres(scene)) : null };
   });
   const count = prepared.reduce((sum, item) => sum + item.sources.length, 0);
   if (count > RENDER.maximumSources) throw new RangeError(`The scene has ${count} point sources; the limit is ${RENDER.maximumSources}.`);
@@ -221,7 +230,7 @@ function tracingFrame(preparedEmitters, receiver, scene) {
     if (!traceEchoes) return null;
     // A secondary boom comes down far from where it left; its echoes are not traced.
     const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.filter(boom => !boom.secondary).map(boom => boomEchoRow(boom, member, prepared.flights[member].pulse)))];
-    return rows.length ? sourceCells(sourceTable(rows), scene.terrain.echoCellMetres) : null;
+    return rows.length ? sourceCells(sourceTable(rows), echoCellMetres(scene)) : null;
   });
   return { profile, surface, receiverPosition, booms, cells, ground: scene.ground.enabled };
 }
@@ -745,7 +754,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
     if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
-  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds };
+  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds, cutoff: cutoffNepers(scene) };
 }
 
 /**
@@ -846,7 +855,7 @@ function absorptionLimit(plan, metres) {
   let high = plan.smoothingLimit;
   while (low < high) {
     const middle = (low + high) >> 1;
-    if (binAbsorption(plan, middle) * metres > NEGLIGIBLE_NEPERS) high = middle; else low = middle + 1;
+    if (binAbsorption(plan, middle) * metres > plan.cutoff) high = middle; else low = middle + 1;
   }
   return low;
 }
@@ -905,9 +914,10 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const shock = pulseKind === PULSE_NOISE || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
-  const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
+  const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(plan.cutoff / 2) / (Math.PI * shockSigma * binHz)) : 0;
   const absorbingMetres = metres * (1 + paths.absorptionExcess[index]);
-  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit), scene.render.preview ? Math.ceil(PREVIEW.highestHz / binHz) : Infinity);
+  const { highestFrequencyHz } = scene.render.quality;
+  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit), highestFrequencyHz < scene.render.sampleRate / 2 ? Math.ceil(highestFrequencyHz / binHz) : Infinity);
   if (limit < 2) return;
   const creepNepers = paths.creepNepers[index];
   const { shadow, shadowFloor } = plan;
@@ -947,7 +957,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
-  const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz) : null;
+  const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz, scene.render.quality.scatterArrivals) : null;
   // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
   const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
@@ -1125,18 +1135,19 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
 
 /**
  * A scattered echo's sub-arrivals: seeded times across `spread` seconds, from half a merging bin
- * before its arrival, each of gain ±1/√PROPAGATION.scatterArrivals, as rotations that start at bin 1.
+ * before its arrival, `count` of them (the quality's, PROPAGATION.scatterArrivals at the fullest) each of gain
+ * ±1/√count, as rotations that start at bin 1.
  */
-function scatterArrivals(spread, seed, binHz) {
+function scatterArrivals(spread, seed, binHz, count) {
   const random = createRandom(seed >>> 0);
-  const gain = new Float64Array(PROPAGATION.scatterArrivals);
-  const re = new Float64Array(PROPAGATION.scatterArrivals);
-  const im = new Float64Array(PROPAGATION.scatterArrivals);
-  const stepRe = new Float64Array(PROPAGATION.scatterArrivals);
-  const stepIm = new Float64Array(PROPAGATION.scatterArrivals);
-  for (let k = 0; k < PROPAGATION.scatterArrivals; k += 1) {
+  const gain = new Float64Array(count);
+  const re = new Float64Array(count);
+  const im = new Float64Array(count);
+  const stepRe = new Float64Array(count);
+  const stepIm = new Float64Array(count);
+  for (let k = 0; k < count; k += 1) {
     const delay = random() * spread - PROPAGATION.scatterBinSeconds / 2;
-    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(PROPAGATION.scatterArrivals);
+    gain[k] = (random() < .5 ? -1 : 1) / Math.sqrt(count);
     const step = -2 * Math.PI * binHz * delay;
     stepRe[k] = Math.cos(step); stepIm[k] = Math.sin(step);
     re[k] = stepRe[k]; im[k] = stepIm[k];

@@ -8,7 +8,8 @@ import { plainScene } from './plain-scene.js';
 test('a preview merges the sources of a flash and keeps their acoustic energy', () => {
   const scene = defaultScene('thunder');
   const preview = previewScene(scene);
-  assert.equal(scene.emitters[0].sourceMerge, undefined);
+  assert.equal(scene.render.quality.sourceMerge, 1);
+  assert.equal(preview.render.quality.sourceMerge, PREVIEW.sourceMerge);
   assert.equal(preview.render.preview, true);
   const full = prepareScene(scene)[0].sources;
   const merged = prepareScene(preview)[0].sources;

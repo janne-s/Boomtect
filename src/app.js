@@ -25,6 +25,7 @@ import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
 import { createMobileLayout } from './ui/mobile.js';
+import { createSettings } from './ui/settings.js';
 import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
@@ -32,6 +33,8 @@ import { attachSplitters } from './ui/splitters.js';
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
+/** The threads a render may use: the device's setting, all of them by default. */
+const workerLimit = () => Math.max(1, Math.min(WORKER_COUNT, state.preferences.threads || WORKER_COUNT));
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -86,6 +89,15 @@ state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 
 const player = createPlayer();
 const mobile = createMobileLayout({ onResults: () => drawResults() });
+createSettings({
+  read: () => ({ quality: state.scene.render.quality, threads: workerLimit(), maximumThreads: WORKER_COUNT }),
+  save: ({ quality, threads }) => {
+    state.preferences.threads = threads === WORKER_COUNT ? 0 : threads;
+    savePreferences();
+    const current = state.scene.render.quality;
+    if (Object.keys(quality).some(key => quality[key] !== current[key])) commit(next => { next.render.quality = quality; });
+  }
+});
 const liveFields = { receiver: null, orientation: null };
 
 /** Rebuilds the panel at the next frame, at most once a frame. */
@@ -370,11 +382,11 @@ function startRender({ full = false } = {}) {
   }
   let sources;
   let prepared;
-  let workerCount = WORKER_COUNT;
+  let workerCount = workerLimit();
   try {
     prepared = prepareScene(scene);
     sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
-    workerCount = Math.max(1, Math.min(WORKER_COUNT, Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
+    workerCount = Math.max(1, Math.min(workerLimit(), Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
   } catch (error) {
     setStatus(error.message, true);
     drawResults();

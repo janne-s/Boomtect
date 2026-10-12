@@ -1,4 +1,4 @@
-import { FLIGHT, GROUND, ISA_LAPSE_RATE_KELVIN_PER_METRE, MODEL_VERSION, RENDER, SAMPLE_RATE_HZ, THUNDER } from './constants.js';
+import { FLIGHT, GROUND, ISA_LAPSE_RATE_KELVIN_PER_METRE, MODEL_VERSION, PROPAGATION, RENDER, SAMPLE_RATE_HZ, THUNDER } from './constants.js';
 import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
@@ -8,7 +8,22 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 26;
+export const SCENE_VERSION = 27;
+
+/**
+ * The render's computation at its fullest, the default (`render.quality`): a path is summed until the
+ * air has taken 14 nepers (−121.6 dB) from it, at every frequency up to the Nyquist limit, every flash
+ * segment its own source, the terrain's echo cells as set, and a scattered echo in
+ * PROPAGATION.scatterArrivals sub-arrivals.
+ */
+export const DEFAULT_QUALITY = Object.freeze({
+  cutoffDecibels: -14 * 20 / Math.LN10,
+  highestFrequencyHz: SAMPLE_RATE_HZ / 2,
+  sourceMerge: 1,
+  echoCellScale: 1,
+  scatterArrivals: PROPAGATION.scatterArrivals
+});
+export const QUALITY_KEYS = Object.freeze(Object.keys(DEFAULT_QUALITY));
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -132,6 +147,12 @@ export const PARAMETERS = Object.freeze({
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
+  // The render's computation (`render.quality`): how much of the sound it computes, not what the sound is.
+  cutoffDecibels: { minimum: -140, maximum: -60, unit: 'dB', label: 'Cutoff level', reliability: null },
+  highestFrequencyHz: { minimum: 1000, maximum: SAMPLE_RATE_HZ / 2, unit: 'Hz', label: 'Highest frequency', reliability: null },
+  sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Source merging', reliability: null, integer: true },
+  echoCellScale: { minimum: 1, maximum: 4, unit: '×', label: 'Echo cell scale', reliability: null },
+  scatterArrivals: { minimum: 4, maximum: 24, unit: '', label: 'Scatter arrivals', reliability: null, integer: true },
   headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
   pitchDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Elevation', reliability: null }
 });
@@ -474,7 +495,7 @@ export function defaultScene(mode = 'thunder') {
     terrain: null,
     emitters: [emitter],
     receivers: [receiver],
-    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true }
+    render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true, quality: { ...DEFAULT_QUALITY } }
   };
 }
 
@@ -698,7 +719,8 @@ export function parseScene(value) {
       ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder'),
       earReflex: render.earReflex,
       earLoudness: render.earLoudness,
-      earCapOnsets: render.earCapOnsets
+      earCapOnsets: render.earCapOnsets,
+      quality: Object.fromEntries(QUALITY_KEYS.map(key => [key, number(render.quality?.[key], key, `render.quality.${key}`)]))
     }
   };
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));
