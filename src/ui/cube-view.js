@@ -1744,7 +1744,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (target) {
       onSelect({ type: target.type, id: target.id });
       const grabbed = fromScreen(target.plane, onPlane(target.point, target.plane), x, y);
-      drag = grabbed ? { kind: 'point', ...target, origin: { ...target.point }, grabbed } : null;
+      drag = grabbed ? { kind: 'point', ...target, origin: { ...target.point }, grabbed, x, y, moving: false } : null;
     } else if (event.button === 1 || event.button === 2 || event.shiftKey) {
       drag = { kind: 'pan', x, y };
     } else {
@@ -1782,6 +1782,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       drag = { ...drag, x, y };
       return;
     }
+    // A press that has not yet moved as far as a click may is a click: it selects and leaves the point where it was.
+    if (!drag.moving && Math.hypot(x - drag.x, y - drag.y) < VIEW.box.clickPixels * (event.pointerType === 'touch' ? 2 : 1)) return;
+    drag.moving = true;
     const solved = fromScreen(drag.plane, onPlane(drag.origin, drag.plane), x, y);
     if (!solved) return;
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
@@ -1808,7 +1811,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (!drag) return;
     const finished = drag;
     drag = null;
-    if (finished.kind === 'point') { onCommit(finished); return; }
+    if (finished.kind === 'point') { if (finished.point) onCommit(finished); return; }
     // A click on empty space, without turning the view, clears the selection.
     if (finished.kind === 'rotate' && event.type === 'pointerup') {
       const { x, y } = localPoint(event);

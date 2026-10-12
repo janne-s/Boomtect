@@ -322,6 +322,9 @@ figcaption {
   padding: 8px;
 }
 .view {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   grid-area: view;
 }
 .view,
@@ -339,6 +342,11 @@ canvas {
   width: 100%;
   height: 100%;
   touch-action: none;
+  /* A long press on a canvas would select it in iOS Safari. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .splitter {
   border-radius: 3px;
