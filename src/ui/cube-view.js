@@ -1748,7 +1748,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     } else if (event.button === 1 || event.button === 2 || event.shiftKey) {
       drag = { kind: 'pan', x, y };
     } else {
-      drag = { kind: 'rotate', x, y, view: { ...view } };
+      drag = { kind: 'rotate', x, y, view: { ...view }, touch: event.pointerType === 'touch' };
     }
   });
   canvas.addEventListener('pointermove', event => {
@@ -1772,7 +1772,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const [low, high] = VIEW.box.pitchRange;
       changeView({
         ...view,
-        yaw: drag.view.yaw - (x - drag.x) * VIEW.box.rotateRadiansPerPixel,
+        // A finger turns the scene as if dragging the ground along with it.
+        yaw: drag.view.yaw - (drag.touch ? -1 : 1) * (x - drag.x) * VIEW.box.rotateRadiansPerPixel,
         pitch: Math.min(high, Math.max(low, drag.view.pitch + (y - drag.y) * VIEW.box.rotateRadiansPerPixel))
       });
       return;
