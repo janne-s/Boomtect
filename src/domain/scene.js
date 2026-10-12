@@ -9,7 +9,7 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 const SCENE_FORMAT = 'boomtect.scene';
-const SCENE_VERSION = 28;
+const SCENE_VERSION = 29;
 
 /** The render's computation at its fullest, the default (`render.quality`); lighter settings trade accuracy for time. */
 export const DEFAULT_QUALITY = Object.freeze({
@@ -27,6 +27,9 @@ const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage', 'fireworks']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
 const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
+
+const PLACE_NAME_LENGTH = 120;
+export const DEFAULT_PLACE = Object.freeze({ name: 'Koli', latitude: 63.0964, longitude: 29.8061 });
 
 export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak', 'water', 'hamlet', 'locality']);
 
@@ -472,6 +475,7 @@ export function defaultScene(mode = 'thunder') {
       groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
     },
     ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
+    place: { ...DEFAULT_PLACE },
     terrain: null,
     emitters: [emitter],
     receivers: [receiver],
@@ -483,9 +487,16 @@ function check(condition, message) {
   if (!condition) throw new SceneError(message);
 }
 
+// While `readScene` runs, a number outside its range is brought into it instead of rejected.
+let bringIntoRange = false;
+
 function number(value, key, path) {
   const range = PARAMETERS[key];
   check(typeof value === 'number' && Number.isFinite(value), `${path} must be a number.`);
+  if (bringIntoRange) {
+    const inRange = Math.min(range.maximum, Math.max(range.minimum, value));
+    return range.integer ? Math.min(range.maximum, Math.max(range.minimum, Math.round(inRange))) : inRange;
+  }
   check(value >= range.minimum && value <= range.maximum, `${path} must be between ${range.minimum} and ${range.maximum} ${range.unit}.`);
   if (range.integer) check(Number.isInteger(value), `${path} must be a whole number.`);
   return value;
@@ -581,15 +592,14 @@ function emitter(value, index) {
 }
 
 /**
- * Loaded terrain: the place and the geographic point at the scene origin, the cell, the datum (sea
- * level height of z = 0), and a rectangle of whole patches whose heights are base64 16-bit steps
- * above each patch's base (`terrain.js`). Null when the scene has no terrain.
+ * Loaded terrain: the geographic point at the scene origin it was loaded around (the scene's place),
+ * the cell, the datum (sea level height of z = 0), and a rectangle of whole patches whose heights are
+ * base64 16-bit steps above each patch's base (`terrain.js`). Null when the scene has no terrain.
  */
 function terrain(value) {
   if (value === null || value === undefined) return null;
   check(typeof value === 'object', 'terrain must be an object or null.');
   check(typeof value.enabled === 'boolean' && typeof value.shielding === 'boolean' && typeof value.echoes === 'boolean', 'terrain.enabled, terrain.shielding, and terrain.echoes must be true or false.');
-  check(typeof value.place === 'string' && value.place.length <= 120, 'terrain.place must be a short text.');
   check(Number.isFinite(value.cellMetres) && value.cellMetres > 0 && value.cellMetres <= GROUND.terrain.maximumCellMetres, 'terrain.cellMetres must be a positive number of metres.');
   check(Number.isFinite(value.datumMetres), 'terrain.datumMetres must be a number.');
   const cells = GROUND.terrain.patchCells;
@@ -618,7 +628,6 @@ function terrain(value) {
     shielding: value.shielding,
     echoes: value.echoes,
     ...numbers(value, ['scattering', 'echoCellMetres', 'echoLimit'], 'terrain'),
-    place: value.place,
     names,
     latitude: number(value.latitude, 'latitude', 'terrain.latitude'),
     longitude: number(value.longitude, 'longitude', 'terrain.longitude'),
@@ -627,6 +636,19 @@ function terrain(value) {
     patches
   };
 }
+
+/**
+ * Where the scene lies: a name and the geographic point (WGS84 degrees) at its origin. Every scene
+ * has one, with or without terrain; terrain is loaded around it.
+ */
+function place(value) {
+  check(value && typeof value === 'object', 'place is missing.');
+  check(typeof value.name === 'string' && value.name.length <= PLACE_NAME_LENGTH, 'place.name must be a short text.');
+  return { name: value.name, latitude: number(value.latitude, 'latitude', 'place.latitude'), longitude: number(value.longitude, 'longitude', 'place.longitude') };
+}
+
+const coordinatesText = ({ latitude, longitude }) => `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+export const placeLabel = value => value.name || coordinatesText(value);
 
 function receiver(value, index) {
   const path = `receivers[${index}]`;
@@ -652,7 +674,6 @@ function uniqueIds(items, path) {
 export function parseScene(value) {
   check(value && typeof value === 'object', 'The scene is not an object.');
   check(value.format === SCENE_FORMAT, 'This is not a Boomtect scene.');
-  check(value.version === SCENE_VERSION, `Scene version ${value.version} is not supported.`);
   check(MODES.includes(value.mode), 'The scene mode is not supported.');
   const air = value.air ?? {};
   check(typeof air.absorption === 'boolean', 'air.absorption must be true or false.');
@@ -689,6 +710,7 @@ export function parseScene(value) {
       ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'upperWindMetresPerSecond', 'upperWindFromDegrees', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
     },
     ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), forestDensity: number(ground.forestDensity, 'forestDensity', 'ground.forestDensity'), surroundings: ground.surroundings },
+    place: place(value.place),
     terrain: terrain(value.terrain),
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),
@@ -712,7 +734,55 @@ export function parseScene(value) {
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));
   uniqueIds(scene.emitters, 'Emitter');
   uniqueIds(scene.receivers, 'Receiver');
+  check(!scene.terrain || (scene.terrain.latitude === scene.place.latitude && scene.terrain.longitude === scene.place.longitude), 'The terrain must lie at the scene\'s place.');
   return scene;
 }
 
 export const serializeScene = scene => JSON.stringify(parseScene(scene), null, 2);
+
+const EMITTER_DEFAULTS = Object.freeze({
+  lightning: value => (value.flashType === 'intra-cloud' ? defaultCloudFlash() : defaultLightning()), storm: defaultStorm,
+  blast: defaultBlast, barrage: defaultBarrage, fireworks: defaultFireworks,
+  flight: defaultFlight, formation: defaultFormation, meteor: defaultMeteor, shower: defaultShower, whip: defaultWhip, booster: defaultBooster
+});
+
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** `value` with every field it lacks taken from `defaults`, through nested objects; a list is kept whole. */
+function filled(value, defaults) {
+  if (!isRecord(defaults)) return value === undefined ? structuredClone(defaults) : value;
+  if (!isRecord(value)) return value === undefined ? structuredClone(defaults) : value;
+  const result = { ...value };
+  for (const [key, fallback] of Object.entries(defaults)) result[key] = filled(value[key], fallback);
+  return result;
+}
+
+/**
+ * Reads a scene document of any version, as saved in a file or the browser: a field it lacks takes
+ * its default, a field it does not know is dropped, and a number outside its range is brought into
+ * it. Only a document that is not a Boomtect scene, or whose content is broken, is rejected.
+ * Adding a field therefore needs only its default; a field whose meaning changes takes a new name.
+ */
+export function readScene(value) {
+  check(isRecord(value) && value.format === SCENE_FORMAT, 'This is not a Boomtect scene.');
+  const base = defaultScene(MODES.includes(value.mode) ? value.mode : undefined);
+  const scene = filled({ ...value, emitters: undefined, receivers: undefined, terrain: undefined }, { ...base, emitters: undefined, receivers: undefined, terrain: undefined });
+  scene.emitters = Array.isArray(value.emitters)
+    ? value.emitters.map(item => (isRecord(item) && EMITTER_DEFAULTS[item.kind] ? filled(item, EMITTER_DEFAULTS[item.kind](item)) : item))
+    : base.emitters;
+  scene.receivers = Array.isArray(value.receivers) ? value.receivers.map(item => filled(item, defaultReceiver())) : base.receivers;
+  scene.terrain = isRecord(value.terrain) ? filled(value.terrain, TERRAIN_DEFAULTS) : null;
+  // Terrain lies at the place: a place apart from its terrain takes the terrain's point.
+  const { terrain } = scene;
+  if (isRecord(scene.place) && terrain && (terrain.latitude !== scene.place.latitude || terrain.longitude !== scene.place.longitude)
+    && [terrain.latitude, terrain.longitude].every(Number.isFinite)) {
+    scene.place = { name: coordinatesText(terrain), latitude: terrain.latitude, longitude: terrain.longitude };
+  }
+  if (isRecord(scene.place) && typeof scene.place.name === 'string') scene.place.name = scene.place.name.slice(0, PLACE_NAME_LENGTH);
+  bringIntoRange = true;
+  try {
+    return parseScene(scene);
+  } finally {
+    bringIntoRange = false;
+  }
+}

@@ -215,12 +215,12 @@ microphone along the Mach cone.
 
 ## Terrain
 
-- **Place** — Where the scene's origin lies. The map button opens a map to
-  move under the centre mark, with the area the scene needs around it.
+- **Place** — Where the scene's origin lies, saved with the scene with or
+  without terrain. The map button opens a map to move under the centre mark,
+  with the area the scene needs around it. Loaded terrain follows the place.
 - **Resolution** — The spacing of the heights. A scene too large for the
   terrain's budget takes a spacing two or more times as coarse.
-- **Find** — Finds a place by name, or takes "latitude, longitude", and loads
-  its terrain.
+- **Find** — Finds a place by name, or takes "latitude, longitude".
 - **Load terrain** — Fetches the elevation the scene needs and saves it in the
   scene, so the scene opens the same way later without a connection. Place
   names follow on their own. The terrain is held in square patches: those under

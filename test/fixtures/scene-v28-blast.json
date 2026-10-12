@@ -1,0 +1,160 @@
+{
+  "format": "boomtect.scene",
+  "version": 28,
+  "mode": "blast",
+  "modelVersion": "33.3.0",
+  "air": {
+    "temperatureCelsius": 15,
+    "lapseRateKelvinPerMetre": 0.0065,
+    "relativeHumidityPercent": 70,
+    "pressureKpa": 101.325,
+    "refraction": true,
+    "shadowFloorDecibels": 25,
+    "absorption": true,
+    "turbulenceStrength": 0.000001,
+    "turbulenceScaleMetres": 1.1,
+    "windSpeedMetresPerSecond": 0,
+    "windFromDegrees": 270,
+    "windShearPerSecond": 0,
+    "upperWindMetresPerSecond": 30,
+    "upperWindFromDegrees": 270,
+    "humidityScaleHeightMetres": 2000,
+    "groundLayerMetres": 0,
+    "groundLayerLapseKelvinPerMetre": -0.02,
+    "tropopauseMetres": 11000
+  },
+  "ground": {
+    "enabled": true,
+    "type": "grass",
+    "forest": true,
+    "treeHeightMetres": 15,
+    "forestDensity": 1,
+    "surroundings": true
+  },
+  "terrain": null,
+  "emitters": [
+    {
+      "id": "blast-1",
+      "name": "Blast",
+      "kind": "blast",
+      "enabled": true,
+      "seed": 20261009,
+      "positionMetres": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "explosive": "tnt",
+      "secondaryShock": true,
+      "startSeconds": 0,
+      "chargeKilograms": 10,
+      "linearScaledDistance": 20,
+      "durationSecondsPerCubeRootKilogram": 0.006,
+      "decay": 1,
+      "riseTimeSeconds": 0.00004,
+      "fireballDecibels": -20,
+      "fireballSecondsPerSixthRootKilogram": 0.92
+    },
+    {
+      "id": "barrage-1",
+      "name": "Barrage",
+      "kind": "barrage",
+      "enabled": true,
+      "seed": 20261012,
+      "centreMetres": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "explosive": "compB",
+      "secondaryShock": true,
+      "startSeconds": 0,
+      "radiusMetres": 150,
+      "durationSeconds": 60,
+      "roundCount": 24,
+      "salvoSize": 6,
+      "salvoSpreadSeconds": 1.5,
+      "chargeKilograms": 7,
+      "chargeSpread": 0.2,
+      "airburstShare": 0,
+      "airburstHeightMetres": 10,
+      "linearScaledDistance": 20,
+      "durationSecondsPerCubeRootKilogram": 0.006,
+      "decay": 1,
+      "riseTimeSeconds": 0.00004,
+      "fireballDecibels": -20,
+      "fireballSecondsPerSixthRootKilogram": 0.92
+    },
+    {
+      "id": "fireworks-1",
+      "name": "Fireworks",
+      "kind": "fireworks",
+      "enabled": true,
+      "seed": 20261019,
+      "centreMetres": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "startSeconds": 0,
+      "radiusMetres": 30,
+      "durationSeconds": 60,
+      "shellCount": 30,
+      "salvoSize": 2,
+      "salvoSpreadSeconds": 0.5,
+      "shellDiameterMillimetres": 100,
+      "diameterSpread": 0.3,
+      "crackleShare": 0.3,
+      "starCount": 40,
+      "popsPerStar": 10,
+      "popMilligrams": 0.1,
+      "riseTimeSeconds": 0.00004
+    }
+  ],
+  "receivers": [
+    {
+      "id": "receiver-1",
+      "name": "Mic 1",
+      "type": "binaural",
+      "listen": true,
+      "positionMetres": {
+        "x": 400,
+        "y": 0,
+        "z": 1.7
+      },
+      "headingDegrees": 270,
+      "pitchDegrees": 0
+    },
+    {
+      "id": "receiver-2",
+      "name": "Mic 2",
+      "type": "omni",
+      "listen": true,
+      "positionMetres": {
+        "x": 2000,
+        "y": 0,
+        "z": 1.7
+      },
+      "headingDegrees": 270,
+      "pitchDegrees": 0
+    }
+  ],
+  "render": {
+    "sampleRate": 48000,
+    "levelMode": "peak",
+    "fullScalePa": 20,
+    "ambisonicOrder": 1,
+    "earReflex": false,
+    "earLoudness": false,
+    "earCapOnsets": true,
+    "quality": {
+      "cutoffDecibels": -121.6024549329105,
+      "highestFrequencyHz": 24000,
+      "sourceMerge": 1,
+      "echoCellScale": 1,
+      "scatterArrivals": 12,
+      "coarseForest": false,
+      "sharedScatter": false
+    }
+  }
+}

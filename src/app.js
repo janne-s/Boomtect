@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, receiverResult, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
@@ -51,15 +51,15 @@ const storage = {
 
 function restoredScene(mode) {
   try {
-    const scene = parseScene(storage.read(sceneStorageKey(mode)));
+    const scene = readScene(storage.read(sceneStorageKey(mode)));
     if (scene.mode === mode) return scene;
-  } catch { /* A missing or outdated scene falls back to the default. */ }
+  } catch { /* A missing or broken scene falls back to the default. */ }
   return defaultScene(mode);
 }
 
 const preferences = {
   realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, preview: false, mode: 'thunder',
-  terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, cellMetres: 30 }, cubeViews: {},
+  terrainDraft: { cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
 };
@@ -1234,55 +1234,62 @@ async function loadPlaceNames(terrain) {
   redrawViews();
 }
 
+/** Loads terrain around `place` and moves the scene there; the scene stays as it was if loading fails. */
+async function loadTerrain(trigger, place = state.scene.place) {
+  if (trigger) trigger.disabled = true;
+  try {
+    const covered = await coveredTerrain(null, place, neededPatches(state.scene, state.preferences.terrainDraft.cellMetres), 'Loading terrain');
+    const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
+    const settings = state.scene.terrain ? Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, state.scene.terrain[key]])) : TERRAIN_DEFAULTS;
+    commit(next => { next.place = place; next.terrain = { ...settings, ...covered, datumMetres }; });
+    loadPlaceNames(state.scene.terrain);
+  } catch (error) {
+    setStatus(`The terrain could not be loaded: ${error.message}`, true);
+  } finally {
+    if (trigger) trigger.disabled = false;
+    operation('terrain', null);
+  }
+}
+
+/** Moves the scene to another place; loaded terrain is loaded again there. */
+async function setPlace(change, trigger) {
+  const place = { ...state.scene.place, ...change };
+  if (state.scene.terrain) await loadTerrain(trigger, place);
+  else commit(next => { next.place = place; });
+}
+
 function terrainPanel(container) {
   const { scene } = state;
   const draft = state.preferences.terrainDraft;
-  const setDraft = change => { Object.assign(draft, change); savePreferences(); };
-  const load = async trigger => {
-    trigger.disabled = true;
-    try {
-      const anchor = { latitude: draft.latitude, longitude: draft.longitude };
-      const covered = await coveredTerrain(null, anchor, neededPatches(state.scene, draft.cellMetres), 'Loading terrain');
-      const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
-      const settings = state.scene.terrain ? Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, state.scene.terrain[key]])) : TERRAIN_DEFAULTS;
-      commit(next => { next.terrain = { ...settings, place: (draft.place ?? '').slice(0, 120), ...covered, datumMetres }; });
-      loadPlaceNames(state.scene.terrain);
-    } catch (error) {
-      setStatus(`The terrain could not be loaded: ${error.message}`, true);
-    } finally {
-      trigger.disabled = false;
-      operation('terrain', null);
-    }
-  };
-  const mapButton = button('', () => openPlaceDialog(load), { title: 'Choose on a map' });
+  const mapButton = button('', () => openPlaceDialog(), { title: 'Choose on a map' });
   mapButton.className = 'map-button';
   mapButton.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 3l4-2 4 2 4-2v10l-4 2-4-2-4 2z M5 1v10 M9 3v10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   mapButton.setAttribute('aria-label', 'Choose on a map');
   actionField(container, {
-    label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
+    label: 'Place', value: scene.place.name, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
       const found = await findPlace(text);
       if (found) {
-        setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
         setStatus(found.name);
-        await load(trigger);
+        await setPlace({ name: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) }, trigger);
       }
       trigger.disabled = false;
     }
   });
-  for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainCellMetres', 'cellMetres']]) {
-    numberField(container, { key, value: draft[field], onCommit: value => setDraft({ [field]: value }) });
+  for (const key of ['latitude', 'longitude']) {
+    numberField(container, { key, value: scene.place[key], onCommit: value => setPlace({ name: '', [key]: value }, null) });
   }
+  numberField(container, { key: 'terrainCellMetres', value: draft.cellMetres, onCommit: value => { draft.cellMetres = value; savePreferences(); } });
   const actions = element('div', 'field-actions');
-  actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', event => load(event.currentTarget)));
+  actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', event => loadTerrain(event.currentTarget)));
   if (scene.terrain) actions.append(button('Remove', () => commit(next => { next.terrain = null; })));
   container.append(actions);
   if (!scene.terrain) return;
   const { terrain } = scene;
   const surface = currentSurface();
   const area = rangeBounds(terrainRange(terrain), terrain.cellMetres);
-  container.append(element('p', 'field-note', `${terrain.place || `${terrain.latitude}, ${terrain.longitude}`} · ${formatMetres(area.east - area.west)} × ${formatMetres(area.north - area.south)} at ${formatMetres(terrain.cellMetres)}`
+  container.append(element('p', 'field-note', `${placeLabel(scene.place)} · ${formatMetres(area.east - area.west)} × ${formatMetres(area.north - area.south)} at ${formatMetres(terrain.cellMetres)}`
     + (terrain.enabled ? ` · origin ${Math.round(surface.datumMetres)} m above sea level` : '')));
   checkboxField(container, { label: 'Terrain', value: terrain.enabled, reliability: 'B', onCommit: value => commit(next => { next.terrain.enabled = value; }) });
   checkboxField(container, { label: 'Shielding', value: terrain.shielding, reliability: 'B', onCommit: value => commit(next => { next.terrain.shielding = value; }) });
@@ -1294,7 +1301,6 @@ function terrainPanel(container) {
 }
 
 const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates });
-let placeLoad = null;
 let placeShown = '';
 
 function showPlaceCoordinates({ latitude, longitude }) {
@@ -1306,16 +1312,15 @@ function placeExtentMetres() {
   return Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
 }
 
-function openPlaceDialog(load) {
-  const draft = state.preferences.terrainDraft;
-  placeLoad = load;
-  $('place-query').value = draft.place;
-  placeShown = draft.place;
+function openPlaceDialog() {
+  const { place } = state.scene;
+  $('place-query').value = place.name;
+  placeShown = place.name;
   $('place-dialog').showModal();
   // Focus the dialog itself, so its first control is not ringed when it opens.
   $('place-dialog').focus();
-  placeMap.show(draft, placeExtentMetres());
-  showPlaceCoordinates(draft);
+  placeMap.show(place, placeExtentMetres());
+  showPlaceCoordinates(place);
 }
 
 async function findPlace(text) {
@@ -1352,13 +1357,8 @@ $('place-done').addEventListener('click', async () => {
   const text = $('place-query').value.trim();
   if (text && text !== placeShown && !(await showFoundPlace(text))) return;
   const { latitude, longitude } = placeMap.centre();
-  const draft = state.preferences.terrainDraft;
-  const typed = $('place-query').value.trim();
-  Object.assign(draft, { latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5), place: typed || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` });
-  savePreferences();
   $('place-dialog').close();
-  refreshPanel();
-  placeLoad?.($('place-done'));
+  await setPlace({ name: $('place-query').value.trim(), latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5) }, $('place-done'));
 });
 
 /** Puts the focus back in the field that had it after a rebuild, so a number field's next step still lands. */
@@ -1975,7 +1975,7 @@ $('open-file').addEventListener('change', async () => {
   $('open-file').value = '';
   if (!file) return;
   try {
-    const scene = parseScene(JSON.parse(await file.text()));
+    const scene = readScene(JSON.parse(await file.text()));
     state.scene = scene;
     state.selection = { type: 'emitter', id: scene.emitters[0].id };
     storeScene();

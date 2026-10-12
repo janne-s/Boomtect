@@ -1,0 +1,226 @@
+{
+  "format": "boomtect.scene",
+  "version": 28,
+  "mode": "sonic",
+  "modelVersion": "33.3.0",
+  "air": {
+    "temperatureCelsius": 15,
+    "lapseRateKelvinPerMetre": 0.0065,
+    "relativeHumidityPercent": 70,
+    "pressureKpa": 101.325,
+    "refraction": true,
+    "shadowFloorDecibels": 25,
+    "absorption": true,
+    "turbulenceStrength": 0.000001,
+    "turbulenceScaleMetres": 1.1,
+    "windSpeedMetresPerSecond": 0,
+    "windFromDegrees": 270,
+    "windShearPerSecond": 0,
+    "upperWindMetresPerSecond": 30,
+    "upperWindFromDegrees": 270,
+    "humidityScaleHeightMetres": 2000,
+    "groundLayerMetres": 0,
+    "groundLayerLapseKelvinPerMetre": -0.02,
+    "tropopauseMetres": 11000
+  },
+  "ground": {
+    "enabled": true,
+    "type": "grass",
+    "forest": true,
+    "treeHeightMetres": 15,
+    "forestDensity": 1,
+    "surroundings": true
+  },
+  "terrain": null,
+  "emitters": [
+    {
+      "id": "flight-1",
+      "name": "Flight",
+      "kind": "flight",
+      "enabled": true,
+      "seed": 20261013,
+      "body": "reconnaissance",
+      "startMetres": {
+        "x": -8000,
+        "y": 0,
+        "z": 6000
+      },
+      "durationSeconds": 30,
+      "startSeconds": 0,
+      "headingDegrees": 90,
+      "climbDegrees": 0,
+      "mach": 1.6,
+      "accelerationMetresPerSecondSquared": 0,
+      "turnDegreesPerSecond": 0,
+      "lengthMetres": 32.7,
+      "shapeFactor": 0.087,
+      "riseTimeSeconds": 0.002
+    },
+    {
+      "id": "formation-1",
+      "name": "Formation",
+      "kind": "formation",
+      "enabled": true,
+      "seed": 20261014,
+      "body": "reconnaissance",
+      "startMetres": {
+        "x": -8000,
+        "y": 0,
+        "z": 6000
+      },
+      "durationSeconds": 30,
+      "startSeconds": 0,
+      "headingDegrees": 90,
+      "climbDegrees": 0,
+      "mach": 1.6,
+      "accelerationMetresPerSecondSquared": 0,
+      "turnDegreesPerSecond": 0,
+      "lengthMetres": 32.7,
+      "shapeFactor": 0.087,
+      "riseTimeSeconds": 0.002,
+      "memberCount": 4,
+      "lateralSpacingMetres": 1000,
+      "trailSpacingMetres": 1500
+    },
+    {
+      "id": "meteor-1",
+      "name": "Meteor",
+      "kind": "meteor",
+      "enabled": true,
+      "seed": 20261015,
+      "startMetres": {
+        "x": -218913,
+        "y": -90540,
+        "z": 100000
+      },
+      "startSeconds": 0,
+      "headingDegrees": 77,
+      "entryDegrees": 18,
+      "speedKilometresPerSecond": 19,
+      "diameterMetres": 1,
+      "endHeightMetres": 27000,
+      "dragCoefficient": 1,
+      "riseTimeSeconds": 0.001,
+      "densityKilogramsPerCubicMetre": 3300,
+      "strengthMegapascals": 1,
+      "breakupCount": 3,
+      "breakupShare": 0.1,
+      "burstShare": 0.5
+    },
+    {
+      "id": "shower-1",
+      "name": "Shower",
+      "kind": "shower",
+      "enabled": true,
+      "seed": 20261016,
+      "startMetres": {
+        "x": -40000,
+        "y": 0,
+        "z": 100000
+      },
+      "startSeconds": 0,
+      "headingDegrees": 90,
+      "entryDegrees": 35,
+      "speedKilometresPerSecond": 20,
+      "diameterMetres": 0.2,
+      "endHeightMetres": 25000,
+      "dragCoefficient": 1,
+      "riseTimeSeconds": 0.001,
+      "densityKilogramsPerCubicMetre": 3300,
+      "strengthMegapascals": 1,
+      "breakupCount": 2,
+      "breakupShare": 0.1,
+      "burstShare": 0.5,
+      "meteorCount": 30,
+      "radiusMetres": 30000,
+      "durationSeconds": 60,
+      "diameterSpread": 0.8
+    },
+    {
+      "id": "whip-1",
+      "name": "Whip",
+      "kind": "whip",
+      "enabled": true,
+      "seed": 20261017,
+      "startMetres": {
+        "x": -3,
+        "y": 0,
+        "z": 1.5
+      },
+      "mach": 2.19,
+      "startSeconds": 0,
+      "headingDegrees": 90,
+      "climbDegrees": 0,
+      "crackerLengthMetres": 0.08,
+      "crackerShapeFactor": 0.08,
+      "riseTimeSeconds": 0.00001
+    },
+    {
+      "id": "booster-1",
+      "name": "Booster",
+      "kind": "booster",
+      "enabled": true,
+      "seed": 20261018,
+      "padMetres": {
+        "x": -8000,
+        "y": 0,
+        "z": 0
+      },
+      "startSeconds": 0,
+      "headingDegrees": 90,
+      "descentDegrees": 70,
+      "startHeightMetres": 40000,
+      "mach": 2.5,
+      "ballisticKilogramsPerSquareMetre": 1500,
+      "lengthMetres": 47,
+      "shapeFactor": 0.1,
+      "riseTimeSeconds": 0.002
+    }
+  ],
+  "receivers": [
+    {
+      "id": "receiver-1",
+      "name": "Mic 1",
+      "type": "binaural",
+      "listen": true,
+      "positionMetres": {
+        "x": 0,
+        "y": 0,
+        "z": 1.7
+      },
+      "headingDegrees": 270,
+      "pitchDegrees": 0
+    },
+    {
+      "id": "receiver-2",
+      "name": "Mic 2",
+      "type": "omni",
+      "listen": true,
+      "positionMetres": {
+        "x": 2000,
+        "y": 0,
+        "z": 1.7
+      },
+      "headingDegrees": 270,
+      "pitchDegrees": 0
+    }
+  ],
+  "render": {
+    "sampleRate": 48000,
+    "levelMode": "peak",
+    "fullScalePa": 20,
+    "ambisonicOrder": 1,
+    "earReflex": false,
+    "earLoudness": false,
+    "earCapOnsets": true,
+    "quality": {
+      "cutoffDecibels": -121.6024549329105,
+      "highestFrequencyHz": 24000,
+      "sourceMerge": 1,
+      "echoCellScale": 1,
+      "scatterArrivals": 12,
+      "coarseForest": false,
+      "sharedScatter": false
+    }
+  }
+}
