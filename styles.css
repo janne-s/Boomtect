@@ -163,6 +163,14 @@ h2 {
   letter-spacing: .06em;
   text-transform: uppercase;
 }
+/* The panel's headings carry the icons the phone's tab bar opens them by. */
+.panel h2 i,
+.group summary i {
+  width: 1.4em;
+  margin-right: 4px;
+  font-size: 11px;
+  text-align: center;
+}
 figure {
   margin: 0;
 }

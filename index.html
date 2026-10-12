@@ -96,7 +96,7 @@
           <button type="button" id="sheet-close" class="primary">Done</button>
         </header>
         <section data-sheet="emitters">
-          <h2>Emitters</h2>
+          <h2><i class="fa-solid fa-bolt emitter-icon" aria-hidden="true"></i>Emitters</h2>
           <div class="row-buttons add-row">
             <button type="button" id="add-lightning" data-mode="thunder">+ Ground flash</button>
             <button type="button" id="add-cloud" data-mode="thunder">+ Cloud flash</button>
@@ -114,22 +114,22 @@
           <div class="list" id="emitter-list"></div>
         </section>
         <section data-sheet="receivers">
-          <h2>Receivers</h2>
+          <h2><i class="fa-solid fa-microphone" aria-hidden="true"></i>Receivers</h2>
           <div class="row-buttons">
             <button type="button" id="add-receiver">+ Mic</button>
           </div>
           <div class="list" id="receiver-list"></div>
         </section>
         <details class="group" data-sheet="environment">
-          <summary>Air and ground</summary>
+          <summary><i class="fa-solid fa-wind" aria-hidden="true"></i>Air and ground</summary>
           <div class="fields" id="environment-fields"></div>
         </details>
         <details class="group" data-sheet="terrain">
-          <summary>Terrain</summary>
+          <summary><i class="fa-solid fa-mountain" aria-hidden="true"></i>Terrain</summary>
           <div class="fields" id="terrain-fields"></div>
         </details>
         <details class="group" data-sheet="output">
-          <summary>Output</summary>
+          <summary><i class="fa-solid fa-sliders" aria-hidden="true"></i>Output</summary>
           <div class="fields" id="output-fields"></div>
           <div class="row-buttons sheet-files">
             <button type="button" data-proxy="open">Open</button>
@@ -151,7 +151,7 @@
         </figure>
       </section>
       <nav class="sheet-tabs" aria-label="Panels">
-        <button type="button" data-sheet="emitters" aria-label="Emitters" title="Emitters"><i class="fa-solid fa-bolt" id="sheet-emitter-icon" aria-hidden="true"></i></button>
+        <button type="button" data-sheet="emitters" aria-label="Emitters" title="Emitters"><i class="fa-solid fa-bolt emitter-icon" aria-hidden="true"></i></button>
         <button type="button" data-sheet="receivers" aria-label="Microphones" title="Microphones"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
         <button type="button" data-sheet="environment" aria-label="Air and ground" title="Air and ground"><i class="fa-solid fa-wind" aria-hidden="true"></i></button>
         <button type="button" data-sheet="terrain" aria-label="Terrain" title="Terrain"><i class="fa-solid fa-mountain" aria-hidden="true"></i></button>

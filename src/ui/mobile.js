@@ -88,8 +88,7 @@ export function createMobileLayout({ onResults }) {
     /** Follows the mode, the selection's type, and the scene's corner texts: the chip names `name`, the info sheet copies the corners. */
     update({ mode, name, selected }) {
       if (selected) body.dataset.selected = selected; else delete body.dataset.selected;
-      const icon = $('sheet-emitter-icon');
-      icon.className = `fa-solid ${EMITTER_ICONS[mode]}`;
+      document.querySelectorAll('.emitter-icon').forEach(icon => { icon.className = `fa-solid ${EMITTER_ICONS[mode]} emitter-icon`; });
       $('cube-chip-name').textContent = name;
       $('info-title').textContent = name;
       const sections = [$('cube-selected'), $('cube-listen')].filter(source => source.childElementCount).map(source => {
