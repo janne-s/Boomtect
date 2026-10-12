@@ -5,6 +5,7 @@ const DISPLAY = Object.freeze({
   energyJoulesPerMetre: { scale: 1e-3, unit: 'kJ/m' },
   terrainExtentMetres: { scale: 1e-3, unit: 'km' },
   acousticEfficiency: { scale: 100, unit: '%' },
+  forestDensity: { scale: 100, unit: '%' },
   channelSpeedMetresPerSecond: { scale: 1e-3, unit: 'km/s' },
   inCloudSpeedMetresPerSecond: { scale: 1e-3, unit: 'km/s' },
   currentDecayHeightMetres: { scale: 1e-3, unit: 'km' },

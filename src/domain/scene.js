@@ -8,7 +8,7 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 24;
+export const SCENE_VERSION = 25;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -35,6 +35,7 @@ export const PARAMETERS = Object.freeze({
   groundLayerLapseKelvinPerMetre: { minimum: -.05, maximum: .012, unit: 'K/m', label: 'Layer lapse', reliability: 'C' },
   tropopauseMetres: { minimum: 5000, maximum: 20000, unit: 'm', label: 'Tropopause', reliability: 'B' },
   treeHeightMetres: { minimum: 2, maximum: 50, unit: 'm', label: 'Tree height', reliability: 'C' },
+  forestDensity: { minimum: .05, maximum: 1, unit: '', label: 'Forest density', reliability: 'C' },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
   windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
@@ -467,7 +468,7 @@ export function defaultScene(mode = 'thunder') {
       windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, humidityScaleHeightMetres: 2000,
       groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
     },
-    ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, surroundings: true },
+    ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
     terrain: null,
     emitters: [emitter],
     receivers: [receiver],
@@ -684,7 +685,7 @@ export function parseScene(value) {
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
       ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
     },
-    ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), surroundings: ground.surroundings },
+    ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), forestDensity: number(ground.forestDensity, 'forestDensity', 'ground.forestDensity'), surroundings: ground.surroundings },
     terrain: terrain(value.terrain),
     emitters: value.emitters.map(emitter),
     receivers: value.receivers.map(receiver),

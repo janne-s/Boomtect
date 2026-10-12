@@ -53,22 +53,23 @@ export function forestSeed(id) {
  * of the omnidirectional energy (SN3D). Deterministic from the seed. Each channel is made on its own,
  * so `[first, last)` makes a share of them.
  */
-export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
-  return cachedResponses(FOREST, seed, sampleRate, first, last);
+export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels], density = 1) {
+  // A sparser forest returns less of the sound, in proportion to its density (class C); its times stay.
+  return cachedResponses(density === 1 ? FOREST : { ...FOREST, energyShare: FOREST.energyShare * density }, seed, sampleRate, first, last, 'forest');
 }
 
 /** The surroundings' tail at a receiver (see SURROUNDINGS), per channel, from its own seed. */
 export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
-  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last);
+  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last, 'surroundings');
 }
 
 // A thread renders several ranges of one receiver in turn; they share the last responses made.
 const lastResponses = new Map();
 
-function cachedResponses(profile, seed, sampleRate, first, last) {
-  const key = `${seed}:${first}:${last}:${sampleRate}`;
-  if (lastResponses.get(profile)?.key !== key) lastResponses.set(profile, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
-  return lastResponses.get(profile).responses;
+function cachedResponses(profile, seed, sampleRate, first, last, name) {
+  const key = `${seed}:${first}:${last}:${sampleRate}:${profile.energyShare}`;
+  if (lastResponses.get(name)?.key !== key) lastResponses.set(name, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
+  return lastResponses.get(name).responses;
 }
 
 function makeResponses(profile, seed, sampleRate, first, last) {

@@ -14,7 +14,7 @@
  * This module imports nothing, so every module, the views included, may import it.
  */
 
-export const MODEL_VERSION = '32.0.0';
+export const MODEL_VERSION = '32.1.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 

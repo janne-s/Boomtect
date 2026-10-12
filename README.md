@@ -178,8 +178,9 @@ microphone along the Mach cone.
 - **Shadow floor** — How far below the unbent level the shadow can go, set by
   turbulent scattering.
 - **Ground** — What the ground is made of. Water reflects like rigid ground.
-- **Forest** and **Tree height** — Trees around the scene: sound under their
-  canopy is muffled, and the forest answers every sound with a reverberant tail.
+- **Forest**, **Tree height**, and **Forest density** — Trees around the scene:
+  sound under their canopy is muffled, and the forest answers every sound with a
+  reverberant tail; a sparser forest does both less.
 - **Surroundings** — Over level ground, the long rumble the land around returns
   of a loud sound. Over terrain with echoes, the echoes take its place.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
@@ -302,6 +303,7 @@ B/C marks a part that combines the two.
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Forest, under the canopy | ISO 9613-2 foliage attenuation as `0.006·f^(1/3)` dB/m, up to 200 m, with a causal phase | B |
 | Forest reverberation | seeded diffuse tail at the microphone, octave times around 1.5 s at 1 kHz (Koli, Finland) | B/C |
+| Forest density | scales the foliage loss per metre and the tail's energy; the tail's times stay | C |
 | Surroundings | seeded diffuse tail at the microphone over level ground, falling about 9 dB/s, mostly below 250 Hz, fitted to recorded booms | C |
 | Ground reflection, partly coherent | ground roughness of 5 cm (Rayleigh) and turbulence scatter a share of the reflection over a few milliseconds | C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |

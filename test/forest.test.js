@@ -126,3 +126,18 @@ test('tail responses made in shares of channels are those made at once', () => {
   assert.equal(shares.surroundings.length, 9);
   assert.deepEqual(shares, whole);
 });
+
+test('a sparser forest returns its share of the tail and muffles less under its canopy', () => {
+  const [dense] = forestResponses(7, 1, SAMPLE_RATE);
+  const [sparse] = forestResponses(7, 1, SAMPLE_RATE, [0, 1], .25);
+  // The same noise, at half the amplitude for a quarter of the energy.
+  for (const index of [100, 5000, 40000]) assert.ok(Math.abs(sparse[index] - dense[index] / 2) < 1e-12 * Math.abs(dense[index]) + 1e-18);
+  const peak = density => {
+    const scene = plainScene('blast');
+    scene.ground = { ...scene.ground, forest: true, forestDensity: density };
+    scene.render.ambisonicOrder = 0;
+    const result = renderReceiver(prepareScene(scene), scene.receivers[0], scene);
+    return result.channels[0].reduce((most, value) => Math.max(most, Math.abs(value)), 0);
+  };
+  assert.ok(peak(.2) > peak(1) * 1.05);
+});

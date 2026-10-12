@@ -846,7 +846,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
   const { absorption, layered, foliage, smoothing, gridPosition, binHz, size } = plan;
   // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
-  const underCanopy = foliage ? Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) : 0;
+  // A sparser forest scatters in proportion to its density, as fewer trunks and leaves per metre (class C).
+  const underCanopy = foliage ? Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity : 0;
   // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
@@ -1318,7 +1319,7 @@ export function tailResponses(receiver, scene, channels = [0, channelCount(scene
   const count = channelCount(scene.render.ambisonicOrder);
   const { sampleRate } = scene.render;
   return {
-    forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels) : null,
+    forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels, scene.ground.forestDensity) : null,
     surroundings: surroundingsTail(scene) ? surroundingsResponses(forestSeed(receiver.id), count, sampleRate, channels) : null
   };
 }
