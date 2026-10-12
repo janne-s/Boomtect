@@ -14,7 +14,7 @@ import { createRandom, normalDeviate } from './random.js';
  * on the Mach cone (class A, as a flight's, `stationaryArrivals`). The trail's cylindrical blast
  * wave already integrates the line, so the boom is one N-wave from there (class B, ReVelle 1976 as
  * restated by Silber et al. 2015): at x = r/R₀ = 10, where the weak-shock regime begins,
- *   Δp/p = 2γ/(γ+1) · 0.4503 / ((1 + 4.803·x^(8/3))^(3/8) − 1),
+ *   Δp/p = 2γ/(γ+1) · 0.4503 / ((1 + 4.803·x²)^(3/8) − 1)   (Silber et al. 2015, eq. 4b; 4.803 = (8/3)^(8/5)),
  * then Δp ∝ x^(−3/4) as a weak cylindrical shock up to METEOR.limitRadii and x^(−1/2) as a linear wave
  * beyond; its period τ₀ = 2.81·R₀/c lengthens as x^¼ (`weakShockPulse`). From the air at the
  * trail to the air at the receiver the overpressure scales with √(p_trail·p_receiver), as
@@ -22,7 +22,7 @@ import { createRandom, normalDeviate } from './random.js';
  */
 
 const START_RADII = THUNDER.weakShock.startRadii;
-const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** (8 / 3)) ** (3 / 8) - 1);
+const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** 2) ** (3 / 8) - 1);
 /** Seconds between the points of a meteor's track. */
 const TRACK_STEP_SECONDS = .02;
 

@@ -19,14 +19,14 @@ test('a meteor’s blast radius is √(E₀/p) = M·d·√(γ·C_D·π/8)', () =
   assert.ok(Math.abs(radiusMetres / expected - 1) < 1e-9, `${radiusMetres} vs ${expected}`);
 });
 
-test('a meteor’s boom follows ReVelle: Δp/p = 0.0309 at 10 R₀, then x^(−3/4), and x^(−1/2) once linear', () => {
+test('a meteor’s boom follows ReVelle: Δp/p = 0.0575 at 10 R₀, then x^(−3/4), and x^(−1/2) once linear', () => {
   const air = plainScene('sonic').air;
   const meteor = defaultMeteor();
   const height = 60000;
   const { radiusMetres } = meteorBlast(meteor, air, height);
   const p = pressureAtHeightPa(air, height);
-  // At the trail's own pressure: 2γ/(γ+1)·0.4503/((1 + 4.803·10^(8/3))^(3/8) − 1).
-  assert.ok(Math.abs(meteorBoom(meteor, air, height, 10 * radiusMetres, p).overpressurePa / p - .030875) < 1e-5);
+  // At the trail's own pressure: 2γ/(γ+1)·0.4503/((1 + 4.803·10²)^(3/8) − 1) (Silber et al. 2015, eq. 4b).
+  assert.ok(Math.abs(meteorBoom(meteor, air, height, 10 * radiusMetres, p).overpressurePa / p - .0574975) < 1e-6);
   const at = radii => meteorBoom(meteor, air, height, radii * radiusMetres, p).overpressurePa;
   assert.ok(Math.abs(Math.log(at(1000) / at(100)) / Math.log(10) + .75) < 1e-9);
   assert.ok(Math.abs(Math.log(at(1e6) / at(1e5)) / Math.log(10) + .5) < 1e-9);
