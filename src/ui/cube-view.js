@@ -18,6 +18,44 @@ const TERRAIN_LIGHT = (() => { const { x, y, z } = VIEW.terrain.light; const len
 const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
 const TERRAIN_RIPPLE_ITERATIONS = 14;
 
+/** The circles of a set that no other one contains: the rest add nothing to their union. */
+function outerCircles(circles) {
+  const kept = [];
+  for (const circle of [...circles].sort((a, b) => b.radius - a.radius)) {
+    if (!kept.some(other => Math.hypot(circle.u - other.u, circle.v - other.v) + circle.radius <= other.radius)) kept.push(circle);
+  }
+  return kept;
+}
+
+/**
+ * The edge of a union of circles as arcs [circle, from, to] in radians: each circle's arcs that no
+ * other one covers. Pass circles none of which holds another (`outerCircles`).
+ */
+function unionArcs(circles) {
+  const arcs = [];
+  for (const circle of circles) {
+    const covered = [];
+    for (const other of circles) {
+      if (other === circle) continue;
+      const distance = Math.hypot(other.u - circle.u, other.v - circle.v);
+      if (distance >= circle.radius + other.radius || distance <= Math.abs(circle.radius - other.radius)) continue;
+      const toward = Math.atan2(other.v - circle.v, other.u - circle.u);
+      const half = Math.acos((circle.radius ** 2 + distance ** 2 - other.radius ** 2) / (2 * circle.radius * distance));
+      const from = ((toward - half) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      if (from + 2 * half > 2 * Math.PI) covered.push([from, 2 * Math.PI], [0, from + 2 * half - 2 * Math.PI]);
+      else covered.push([from, from + 2 * half]);
+    }
+    covered.sort((x, y) => x[0] - y[0]);
+    let at = 0;
+    for (const [from, to] of covered) {
+      if (from > at) arcs.push([circle, at, from]);
+      at = Math.max(at, to);
+    }
+    if (at < 2 * Math.PI) arcs.push([circle, at, 2 * Math.PI]);
+  }
+  return arcs;
+}
+
 const emptyBounds = () => ({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
 
 /**
@@ -874,24 +912,30 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   function drawWavefronts(context, colors, { profile, spheres, total }) {
     // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
-    // one inside it; fronts that have left the box and the terrain around it are dropped.
+    // one inside it. A flash is dropped once one of its spheres holds the box and the terrain around
+    // it even at its innermost ring: dropping a single sphere would uncover the edges it hides.
     const { box } = frame;
+    const innermost = (VIEW.wavefront.rippleAlphas.length - 1) * rippleSpacing();
     const terrain = currentSurface().bounds;
     const bounds = terrain ? { x0: Math.min(box.x0, terrain.west), x1: Math.max(box.x1, terrain.east), y0: Math.min(box.y0, terrain.south), y1: Math.max(box.y1, terrain.north) } : box;
     // Fronts over terrain are thinned by their fixed order, so the same ones are drawn in every frame.
     const terrainStride = Math.max(1, Math.ceil(total / VIEW.wavefront.terrainSpheres));
     const groups = new Map();
+    const passed = new Set();
     for (const sphere of spheres) {
       const { centre, radiusMetres } = sphere;
       const farthest = Math.hypot(Math.max(centre.x - bounds.x0, bounds.x1 - centre.x), Math.max(centre.y - bounds.y0, bounds.y1 - centre.y), Math.max(centre.z - box.z0, box.z1 - centre.z));
-      if (radiusMetres > farthest) continue;
+      if (radiusMetres - innermost > farthest) passed.add(sphere.group);
       if (!groups.has(sphere.group)) groups.set(sphere.group, []);
       groups.get(sphere.group).push(sphere);
     }
+    for (const group of passed) groups.delete(group);
     const strength = group => Math.max(0, ...group.map(sphere => sphere.strength ?? 1));
     const drawn = [...groups.values()].sort((a, b) => strength(b) - strength(a)).slice(0, VIEW.wavefront.groups);
     for (const group of drawn) drawFronts(context, colors, profile, group, terrainStride);
   }
+
+  const rippleSpacing = () => Math.max(frame.box.x1 - frame.box.x0, frame.box.y1 - frame.box.y0, frame.box.z1) * VIEW.wavefront.rippleSpacingShare;
 
   function drawFronts(context, colors, profile, spheres, terrainStride) {
     const strength = Math.max(0, ...spheres.map(sphere => sphere.strength ?? 1));
@@ -902,7 +946,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       { fixed: 'x', value: farX, axes: ['y', 'z'], corners: [[box.y0, 0], [box.y1, 0], [box.y1, box.z1], [box.y0, box.z1]] },
       { fixed: 'y', value: farY, axes: ['x', 'z'], corners: [[box.x0, 0], [box.x1, 0], [box.x1, box.z1], [box.x0, box.z1]] }
     ];
-    const spacing = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1) * VIEW.wavefront.rippleSpacingShare;
+    const spacing = rippleSpacing();
     if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing, strength);
     for (const face of faces) {
       const [u, v] = face.axes;
@@ -920,25 +964,46 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
-        // On the floor, a front past the shadow boundary goes on into the shadow, dimmer, as the
-        // sound that creeps there; held at the boundary it stood still while the front moved on.
-        const parts = [{ path: new Path2D(), bounds: emptyBounds(), any: false, share: 1 }, { path: new Path2D(), bounds: emptyBounds(), any: false, share: VIEW.wavefront.shadowShare }];
+        // On the floor, a front past the shadow boundary goes on into the shadow, dimmer, as the sound that creeps there.
+        const parts = [{ circles: [], alpha: alpha * strength }, { circles: [], alpha: alpha * strength * VIEW.wavefront.shadowShare }];
         for (const { source, centre, radiusMetres } of spheres) {
           const sphere = radiusMetres - ring * spacing;
           const offset = face.value - centre[face.fixed];
           if (!(sphere > Math.abs(offset))) continue;
           const radius = Math.sqrt(sphere ** 2 - offset ** 2);
           if (!(radius > 0)) continue;
-          const part = parts[face.fixed === 'z' && profile.gradient < 0 && radius > grazingRange(profile, source.z) ? 1 : 0];
-          part.any = true;
-          addPolygon(part.path, OUTLINE_DIRECTIONS.map(({ cos, sin }) => place(centre[u] + radius * cos, centre[v] + radius * sin)), part.bounds);
+          parts[face.fixed === 'z' && profile.gradient < 0 && radius > grazingRange(profile, source.z) ? 1 : 0].circles.push({ u: centre[u], v: centre[v], radius });
         }
-        for (const { path, bounds, any, share } of parts) {
-          if (any && alpha * strength * share >= VIEW.wavefront.visibleAlpha) unionOutline(context, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength * share, bounds });
+        for (const part of parts) {
+          if (!part.circles.length || part.alpha < VIEW.wavefront.visibleAlpha) continue;
+          // A circle that holds the whole face leaves the union's edge outside it.
+          if (part.circles.some(circle => face.corners.every(([a, b]) => Math.hypot(a - circle.u, b - circle.v) <= circle.radius))) continue;
+          strokeUnion(context, outerCircles(part.circles), [ux, uy, vx, vy, origin.x, origin.y], colors.glow, part.alpha);
         }
       });
       context.restore();
     }
+  }
+
+  /**
+   * Strokes the edge of a union of circles on a face, the circles in the face's metres and `mapping`
+   * the face's affine map to the screen: the arcs are traced in face metres and stroked on the screen.
+   */
+  function strokeUnion(context, circles, mapping, color, alpha) {
+    context.save();
+    context.transform(...mapping);
+    context.beginPath();
+    for (const [{ u, v, radius }, from, to] of unionArcs(circles)) {
+      context.moveTo(u + radius * Math.cos(from), v + radius * Math.sin(from));
+      context.arc(u, v, radius, from, to);
+    }
+    context.restore();
+    context.lineWidth = VIEW.box.outlinePixels;
+    context.lineCap = 'round';
+    context.strokeStyle = color;
+    context.globalAlpha = alpha;
+    context.stroke();
+    context.globalAlpha = 1;
   }
 
   /** Where the fronts meet the terrain: per direction, the horizontal distance at which the ground lies one radius from the centre (bisection). */
@@ -1652,7 +1717,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (!drag) return;
     const finished = drag;
     drag = null;
-    if (finished.kind === 'point') { if (finished.point) onCommit(finished); return; }
+    if (finished.kind === 'point') { if (finished.moving) onCommit(finished); return; }
     if (finished.kind === 'rotate' && event.type === 'pointerup') {
       const { x, y } = localPoint(event);
       if (Math.hypot(x - finished.x, y - finished.y) < VIEW.box.clickPixels) onSelect({ type: null, id: null });

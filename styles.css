@@ -669,6 +669,9 @@ button.macro-value:hover {
   align-items: flex-end;
   gap: 6px;
 }
+.attribution .info-button {
+  margin-right: calc((28px - 18px) / 2);
+}
 .attribution[hidden],
 .attribution-text[hidden] {
   display: none;

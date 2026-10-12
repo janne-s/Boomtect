@@ -146,7 +146,10 @@ const views = [createCubeView($('cube'), {
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
     if (handle.field === 'flightHeading') {
-      item.headingDegrees = headingToward(emitterAnchor(item), point);
+      const heading = headingToward(emitterAnchor(item), point);
+      if (heading === item.headingDegrees) return;
+      item.headingDegrees = heading;
+      handle.changed = true;
       invalidateResults();
       redrawViews();
       drawInfo();
@@ -157,6 +160,7 @@ const views = [createCubeView($('cube'), {
       orient(item.id, headingToward(item.positionMetres, point), item.pitchDegrees);
       return;
     }
+    const before = JSON.stringify(item[handle.field]);
     if (handle.field === 'cloudBaseMetres' || handle.field === 'cloudTopMetres') {
       const { cloudBaseMetres: base, cloudTopMetres: top } = PARAMETERS;
       const height = Math.round(point.z / 10) * 10;
@@ -172,13 +176,18 @@ const views = [createCubeView($('cube'), {
         live.set(item[handle.field]);
       }
     }
+    if (JSON.stringify(item[handle.field]) === before) { panelOnNextFrame.skip = false; return; }
+    handle.changed = true;
     invalidateResults();
     redrawViews();
     drawInfo();
     if (!panelOnNextFrame.skip) panelOnNextFrame();
     panelOnNextFrame.skip = false;
   },
-  onCommit: handle => (handle.field === 'headingDegrees' ? storeScene() : commit(() => {})),
+  onCommit: handle => {
+    if (handle.field === 'headingDegrees') storeScene();
+    else if (handle.changed) commit(() => {});
+  },
   focus: () => focusReceiver(),
   contours: () => state.preferences.contours,
   names: () => state.preferences.names,
@@ -1182,7 +1191,8 @@ function scheduleTerrainCoverage() {
   clearTimeout(terrainCoverageTimer);
   terrainCoverageTimer = setTimeout(async () => {
     const { terrain } = state.scene;
-    if (!terrain?.enabled) return;
+    // Without emitters the scene is being cleared for new ones in the same place, so its terrain stays.
+    if (!terrain?.enabled || !state.scene.emitters.length) return;
     if (terrainCoverageRunning) { terrainCoverageAgain = true; return; }
     const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
     if (needed.cellMetres === terrain.cellMetres && sameRange(needed.range, terrainRange(terrain))) return;
