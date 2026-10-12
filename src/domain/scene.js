@@ -344,7 +344,8 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 
 /**
  * A bright fireball on Chelyabinsk's track (15 February 2013: 19 km/s, 18° below the horizontal,
- * heading 283°, its trail ending near 27 km; Borovička et al. 2013, Popova et al. 2013, class B),
+ * its trail ending near 27 km; Borovička et al. 2013, Popova et al. 2013, class B), mirrored to
+ * head east-northeast (77° instead of 283°) as the other Sonic defaults fly east,
  * but a 1 m stony meteoroid instead of a 19 m one, so that it renders quickly; a larger diameter
  * comes nearer the event. From 100 km, its trail ends 40 km south of the origin, about where
  * Chelyabinsk lay from the airburst. Its shock rises in about a millisecond (class C). It breaks
@@ -355,9 +356,9 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
     id, name, kind: 'meteor', enabled: true, seed,
-    startMetres: { x: 218913, y: -90540, z: 100000 },
+    startMetres: { x: -218913, y: -90540, z: 100000 },
     startSeconds: 0,
-    headingDegrees: 283,
+    headingDegrees: 77,
     entryDegrees: 18,
     speedKilometresPerSecond: 19,
     diameterMetres: 1,
