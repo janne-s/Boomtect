@@ -970,6 +970,12 @@ function receiverCard(container, receiver, selected) {
     }
     const actions = element('div', 'card-actions');
     actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }));
+    // Whether the sound takes its place along, or Echotect keeps its own; shared with the export's choice.
+    const place = element('label', 'card-option');
+    const placeBox = Object.assign(document.createElement('input'), { type: 'checkbox', checked: state.preferences.exportPlace ?? true });
+    placeBox.addEventListener('change', () => { state.preferences.exportPlace = placeBox.checked; savePreferences(); });
+    place.append(placeBox, element('span', '', 'Place'));
+    actions.append(place);
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
   }

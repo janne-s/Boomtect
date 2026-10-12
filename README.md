@@ -260,7 +260,8 @@ microphone along the Mach cone.
 - **Terrain echoes** — Off, the files are rendered again without the terrain's
   echoes.
 - **Place** — Off, the Echotect handoff names no place, and Echotect keeps its
-  own around its Listener. Send to Echotect follows the same choice.
+  own around its Listener. The same choice stands beside a microphone's
+  **Send to Echotect**.
 
 All files are 32-bit float at one full scale. Files of more than two channels
 are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
