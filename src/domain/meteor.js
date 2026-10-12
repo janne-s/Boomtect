@@ -71,7 +71,7 @@ export function meteorKineticEnergy(meteor) {
  * METEOR.breakupPressureRatio), the first where the ram pressure ρv² reaches its strength (class B,
  * Popova et al. 2011: 0.1–1 MPa for most fireballs, 1–5 MPa at Chelyabinsk), seeded; a fragment
  * whose pressure is not reached before the end of the trail does not break. The terminal burst is
- * where the trail ends.
+ * where the trail ends. Along the trail each takes at most the kinetic energy still left.
  */
 export function meteorBursts(meteor, air) {
   const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
@@ -97,7 +97,14 @@ export function meteorBursts(meteor, air) {
     }
   }
   if (meteor.burstShare > 0) places.push({ along: lengthMetres, energyJoules: meteor.burstShare * energy });
-  return places.filter(place => place.energyJoules > 0).sort((a, b) => a.along - b.along).map(({ along, energyJoules }) => ({
+  // No more energy is released than the body has: along the trail each takes at most what is left.
+  let left = energy;
+  const budgeted = places.sort((a, b) => a.along - b.along).map(place => {
+    const energyJoules = Math.min(place.energyJoules, left);
+    left -= energyJoules;
+    return { along: place.along, energyJoules };
+  });
+  return budgeted.filter(place => place.energyJoules > 0).map(({ along, energyJoules }) => ({
     positionMetres: { x: start.x + direction.x * along, y: start.y + direction.y * along, z: heightAt(along) },
     emissionSeconds: meteor.startSeconds + along / speed,
     chargeKilograms: energyJoules / TNT_JOULES_PER_KILOGRAM

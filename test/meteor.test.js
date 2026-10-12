@@ -93,7 +93,10 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
   }
   const last = bursts.at(-1);
   assert.ok(Math.abs(last.positionMetres.z - meteor.endHeightMetres) < 1e-6);
-  assert.ok(Math.abs(last.chargeKilograms - .3 * energy / 4.184e6) < 1e-9);
+  assert.ok(Math.abs(last.chargeKilograms - meteor.burstShare * energy / 4.184e6) < 1e-9);
+  // No more energy is released than the body has: the burst takes what the breakups leave.
+  const greedy = meteorBursts({ ...meteor, breakupCount: 6, breakupShare: .5, burstShare: 1 }, air);
+  assert.ok(greedy.reduce((sum, burst) => sum + burst.chargeKilograms, 0) * 4.184e6 <= energy * (1 + 1e-12));
   // Each lies on the trail at the time the body passes, in order along it.
   const { start, direction } = meteorTrail(meteor);
   for (const burst of bursts) {

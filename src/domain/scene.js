@@ -348,8 +348,9 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
  * but a 1 m stony meteoroid instead of a 19 m one, so that it renders quickly; a larger diameter
  * comes nearer the event. From 100 km, its trail ends 40 km south of the origin, about where
  * Chelyabinsk lay from the airburst. Its shock rises in about a millisecond (class C). It breaks
- * up in three generations from 1 MPa, each releasing 5 % of its kinetic energy, and bursts at the
- * end with 30 % (class C).
+ * up in three generations from 1 MPa, each releasing 10 % of its kinetic energy, and bursts at the
+ * end with 50 % (class C: with five generations a 19 m body releases all of its 511 kt, as Brown et
+ * al. 2013 estimate about 500 kt for Chelyabinsk).
  */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
@@ -366,8 +367,8 @@ export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015)
     densityKilogramsPerCubicMetre: 3300,
     strengthMegapascals: 1,
     breakupCount: 3,
-    breakupShare: .05,
-    burstShare: .3
+    breakupShare: .1,
+    burstShare: .5
   };
 }
 
