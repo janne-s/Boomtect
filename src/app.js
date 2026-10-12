@@ -348,7 +348,8 @@ function startRender() {
   setStatus('');
   const scene = state.scene;
   if (!scene.emitters.some(emitter => emitter.enabled)) {
-    setStatus('No emitter is enabled.');
+    // An empty scene shows itself; switched-off emitters may not.
+    if (scene.emitters.length) setStatus('No emitter is enabled.');
     drawResults();
     return;
   }
@@ -856,7 +857,18 @@ function emitterCard(container, emitter, selected) {
   checkbox.title = 'Enabled';
   checkbox.addEventListener('click', event => event.stopPropagation());
   checkbox.addEventListener('change', () => updateEmitter(emitter.id, item => { item.enabled = checkbox.checked; }));
-  header.append(checkbox, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)));
+  // Removing an emitter is one press on its header; the last one may go too.
+  const remove = element('button', 'icon-button');
+  remove.type = 'button';
+  remove.title = 'Remove';
+  remove.setAttribute('aria-label', `Remove ${emitter.name}`);
+  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+  remove.addEventListener('click', event => {
+    event.stopPropagation();
+    commit(next => { next.emitters = next.emitters.filter(item => item.id !== emitter.id); });
+  });
+  remove.addEventListener('keydown', event => event.stopPropagation());
+  header.append(checkbox, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
   const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); };
   header.addEventListener('click', select);
   header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
@@ -878,7 +890,6 @@ function emitterCard(container, emitter, selected) {
         return { ...structuredClone(source), id: uniqueId(source.kind, next.emitters), name: `${source.name} variant`.slice(0, 64), seed: newSeed(), enabled: true };
       }), { disabled: scene.emitters.length >= RENDER.maximumEmitters, title: 'Copy with a new seed; the original is switched off' }));
     }
-    actions.append(button('Remove', () => commit(next => { next.emitters = next.emitters.filter(item => item.id !== emitter.id); }), { disabled: scene.emitters.length <= 1 }));
     card.append(actions);
   }
   container.append(card);

@@ -658,8 +658,9 @@ export function parseScene(value) {
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
   check(typeof ground.forest === 'boolean', 'ground.forest must be true or false.');
   check(typeof ground.surroundings === 'boolean', 'ground.surroundings must be true or false.');
-  check(Array.isArray(value.emitters) && value.emitters.length >= 1 && value.emitters.length <= RENDER.maximumEmitters,
-    `A scene needs 1–${RENDER.maximumEmitters} emitters.`);
+  // A scene may be empty of emitters while the next is chosen.
+  check(Array.isArray(value.emitters) && value.emitters.length <= RENDER.maximumEmitters,
+    `A scene holds at most ${RENDER.maximumEmitters} emitters.`);
   check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= RENDER.maximumReceivers,
     `A scene needs 1–${RENDER.maximumReceivers} receivers.`);
   const render = value.render ?? {};

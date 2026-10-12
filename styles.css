@@ -380,6 +380,23 @@ canvas {
 .card-header input {
   margin: 0;
 }
+/* A small action on a header row: faint until pointed at or focused. */
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: -3px -6px -3px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 12px;
+}
+.icon-button:hover,
+.icon-button:focus-visible {
+  color: var(--accent);
+}
 .card-summary {
   margin: 8px 0;
   color: var(--muted);
