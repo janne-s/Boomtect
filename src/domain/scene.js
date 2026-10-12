@@ -8,7 +8,7 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 25;
+export const SCENE_VERSION = 26;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -39,6 +39,8 @@ export const PARAMETERS = Object.freeze({
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
   windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
+  upperWindMetresPerSecond: { minimum: 0, maximum: 120, unit: 'm/s', label: 'Upper wind', reliability: 'C' },
+  upperWindFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Upper wind from', reliability: null },
   windShearPerSecond: { minimum: -.02, maximum: .02, unit: '1/s', label: 'Wind shear', reliability: 'C' },
   latitude: { minimum: -85, maximum: 85, unit: '°', label: 'Latitude', reliability: null },
   longitude: { minimum: -180, maximum: 180, unit: '°', label: 'Longitude', reliability: null },
@@ -465,7 +467,7 @@ export function defaultScene(mode = 'thunder') {
     air: {
       temperatureCelsius: 15, lapseRateKelvinPerMetre: ISA_LAPSE_RATE_KELVIN_PER_METRE, relativeHumidityPercent: 70, pressureKpa: 101.325,
       refraction: true, shadowFloorDecibels: 25, absorption: true, turbulenceStrength: 1e-6, turbulenceScaleMetres: 1.1,
-      windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, humidityScaleHeightMetres: 2000,
+      windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, upperWindMetresPerSecond: 30, upperWindFromDegrees: 270, humidityScaleHeightMetres: 2000,
       groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
     },
     ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
@@ -683,7 +685,7 @@ export function parseScene(value) {
       absorption: air.absorption,
       turbulenceStrength: number(air.turbulenceStrength, 'turbulenceStrength', 'air.turbulenceStrength'),
       turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
-      ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
+      ...numbers(air, ['windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'upperWindMetresPerSecond', 'upperWindFromDegrees', 'humidityScaleHeightMetres', 'groundLayerMetres', 'groundLayerLapseKelvinPerMetre', 'tropopauseMetres'], 'air')
     },
     ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), forestDensity: number(ground.forestDensity, 'forestDensity', 'ground.forestDensity'), surroundings: ground.surroundings },
     terrain: terrain(value.terrain),

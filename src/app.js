@@ -1504,6 +1504,7 @@ function rebuildPanel() {
   if (scene.air.refraction) {
     ['shadowFloorDecibels', 'windSpeedMetresPerSecond', 'windFromDegrees', 'windShearPerSecond', 'humidityScaleHeightMetres', 'tropopauseMetres', 'groundLayerMetres'].forEach(airField);
     if (scene.air.groundLayerMetres > 0) airField('groundLayerLapseKelvinPerMetre');
+    if (scene.mode === 'sonic') ['upperWindMetresPerSecond', 'upperWindFromDegrees'].forEach(airField);
   }
   checkboxField(environment, { label: 'Air absorption', value: scene.air.absorption, reliability: 'B', onCommit: value => commit(next => { next.air.absorption = value; }) });
   checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });

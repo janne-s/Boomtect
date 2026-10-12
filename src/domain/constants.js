@@ -14,7 +14,7 @@
  * This module imports nothing, so every module, the views included, may import it.
  */
 
-export const MODEL_VERSION = '33.0.0';
+export const MODEL_VERSION = '33.1.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 
@@ -366,6 +366,28 @@ export const FIREWORKS = Object.freeze({
   crackleDelaySeconds: .5,
   crackleSeconds: 1.5,
   starStepSeconds: .02
+});
+
+/**
+ * Secondary booms (`secondary.js`): the profile up to topMetres every stepMetres; the upper wind a
+ * jet at jetHeightMetres, falling as exp(−((z − z_j)/jetWidthMetres)²), class C after the winter
+ * polar vortex and summer easterlies around the stratopause; `rays` rays per table, one table per
+ * azimuthStepDegrees of direction and heightStepMetres of the body's height, built only where a
+ * table of coarseRays brings rays down within reachMargin of the range, cachedTables kept; a ray's absorption
+ * taken at absorptionReferenceHz to scale the render's mean over its heights (class C).
+ */
+export const UPPER_AIR = Object.freeze({
+  topMetres: 80000,
+  stepMetres: 500,
+  jetHeightMetres: 50000,
+  jetWidthMetres: 15000,
+  rays: 240,
+  coarseRays: 24,
+  reachMargin: .1,
+  cachedTables: 2000,
+  azimuthStepDegrees: 1,
+  heightStepMetres: 100,
+  absorptionReferenceHz: 20
 });
 
 export const FLIGHT = Object.freeze({

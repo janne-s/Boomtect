@@ -9,6 +9,7 @@ import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
 import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
+import { secondaryBooms } from './secondary.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
@@ -101,10 +102,11 @@ export function prepareScene(scene) {
     const sources = sourceTable(rows);
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
-    if (emitter.kind === 'booster') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: emitter, path: boosterPath(emitter, scene.air, surface), booms: flightBooms, pulse: 'triple' }] };
+    // An aircraft's or a booster's booms also come back from the stratosphere far away (`secondary.js`).
+    if (emitter.kind === 'booster') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: emitter, path: boosterPath(emitter, scene.air, surface), booms: flightBooms, pulse: 'triple', secondary: true }] };
     if (emitter.kind === 'whip') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: whipBody(emitter), path: whipPath(emitter, scene.air, surface), booms: flightBooms }] };
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
-      return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: withApproach(flightPath(flight, scene.air), scene.air), booms: flightBooms })) };
+      return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: withApproach(flightPath(flight, scene.air), scene.air), booms: flightBooms, secondary: true })) };
     }
     if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
       const flights = showerMembers(emitter).map(meteor => ({ flight: meteor, path: meteorTrack(meteor), booms: meteorBooms }));
@@ -172,8 +174,12 @@ const PATH_ARRAYS = Object.freeze({
   roar: Uint8Array,
   /** The time a scattered echo spreads over, seconds, from just before its arrival. */
   timeSpread: Float64Array,
-  /** Height of the point the path leaves from: its source's, or where a boom leaves its flight path. */
-  height: Float64Array
+  /** Height of the point the path leaves from: its source's, where a boom leaves its flight path, or where a secondary boom turns. */
+  height: Float64Array,
+  /** How much a secondary boom's absorption exceeds the mean up to its turning height over its length, as a share. */
+  absorptionExcess: Float64Array,
+  /** 1 for a secondary boom's ray, which has lost its shock in the thin air near its top (class C). */
+  aloft: Uint8Array
 });
 
 /** An empty path table with room for `capacity` paths. */
@@ -193,12 +199,15 @@ function tracingFrame(preparedEmitters, receiver, scene) {
   const profile = soundSpeedProfile(scene.air);
   const surface = terrainSurface(scene.terrain);
   const receiverPosition = onGround(surface, receiver.positionMetres);
-  const booms = preparedEmitters.map(prepared => prepared.flights?.map(({ flight, path, booms: find }) => find(path, flight, receiverPosition, profile, scene.air)) ?? null);
+  const booms = preparedEmitters.map(prepared => prepared.flights?.map(({ flight, path, booms: find, secondary }) => [
+    ...find(path, flight, receiverPosition, profile, scene.air), ...(secondary ? secondaryBooms(path, flight, receiverPosition, scene.air) : [])
+  ]) ?? null);
   const traceEchoes = echoesActive(scene) && !surface.flat;
   const cells = preparedEmitters.map((prepared, emitterIndex) => {
     if (!prepared.flights) return prepared.cells;
     if (!traceEchoes) return null;
-    const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.map(boom => boomEchoRow(boom, member, prepared.flights[member].pulse)))];
+    // A secondary boom comes down far from where it left; its echoes are not traced.
+    const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.filter(boom => !boom.secondary).map(boom => boomEchoRow(boom, member, prepared.flights[member].pulse)))];
     return rows.length ? sourceCells(sourceTable(rows), scene.terrain.echoCellMetres) : null;
   });
   return { profile, surface, receiverPosition, booms, cells, ground: scene.ground.enabled };
@@ -250,7 +259,9 @@ function pathWriter(frame, scene, paths) {
     paths.sourceHeight[index] = path.sourceHeight ?? 0;
     paths.timeSpread[index] = path.timeSpread ?? 0;
     const from = path.from ?? sourcePosition(sources, sourceIndex);
-    paths.height[index] = from.z;
+    paths.height[index] = path.topMetres ?? from.z;
+    paths.absorptionExcess[index] = path.absorptionExcess ?? 0;
+    paths.aloft[index] = path.topMetres === undefined ? 0 : 1;
     paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
       : foliageMetres(path.metres, from.z - surface.heightAt(from.x, from.y), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
@@ -353,6 +364,19 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
       if (sourceIndex < flightCount) {
         for (const boom of booms[emitterIndex][sourceIndex]) {
           const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
+          if (boom.secondary) {
+            const aloft = { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus, topMetres: boom.topMetres, absorptionExcess: boom.absorptionExcess };
+            add(emitterIndex, sourceIndex, sources, PATH_DIRECT, aloft);
+            if (!ground) continue;
+            // Its reflection from the ground under the receiver, the image's 2·h·sin ψ later (level ground there, class C).
+            const sine = -boom.ray.arrival.z;
+            const lift = 2 * Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y)) * sine;
+            add(emitterIndex, sourceIndex, sources, PATH_GROUND, {
+              ...aloft, seconds: boom.ray.seconds + lift / speedAt(profile, 0), metres: boom.ray.metres + lift, spreadMetres: boom.ray.spreadMetres + lift,
+              arrival: { ...boom.ray.arrival, z: sine }, groundSine: sine
+            });
+            continue;
+          }
           // Beyond the carpet's edge the boom creeps into the shadow along the ground, as a point source's sound does, without a reflection of its own.
           if (boom.shadow) {
             add(emitterIndex, sourceIndex, sources, PATH_SHADOW, {
@@ -865,11 +889,12 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   // A blast's roar is no shock.
   const pulseKind = sources.pulse[sourceIndex];
-  const shock = pulseKind === PULSE_NOISE ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
+  const shock = pulseKind === PULSE_NOISE || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
   const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
-  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, metres), shockLimit));
+  const absorbingMetres = metres * (1 + paths.absorptionExcess[index]);
+  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit));
   if (limit < 2) return;
   const creepNepers = paths.creepNepers[index];
   const { shadow, shadowFloor } = plan;
@@ -984,7 +1009,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * metres) - (underCanopy ? foliage.loss[bin] * underCanopy : 0));
+    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (underCanopy ? foliage.loss[bin] * underCanopy : 0));
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;

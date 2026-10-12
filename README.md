@@ -58,6 +58,8 @@ microphone along the Mach cone.
   turns as set; its booms focus where its rays converge, and the air can turn
   them away before the ground. Supersonic at its start, it has flown straight
   there, so the ground around the start hears it too.
+  Far downwind of the upper wind, 200 km or so away, its boom comes back from
+  the stratosphere a quarter of an hour later as a low rumble.
 - **Formation** — Aircraft flying in a vee behind a leader, each with its own
   booms.
 - **Meteor** — A meteoroid entering the atmosphere down to the height where its
@@ -186,6 +188,8 @@ microphone along the Mach cone.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
+- **Upper wind** and **Upper wind from** — In Sonic mode, the wind around the
+  stratopause, about 50 km up, that brings secondary booms back to the ground.
 - **Vapour height** — How quickly the water vapour thins out with height,
   which changes how much the upper air absorbs.
 - **Tropopause** — Where the temperature stops falling; above it the air keeps
@@ -285,6 +289,7 @@ B/C marks a part that combines the two.
 | Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Boom beyond its carpet | where the air turns the rays away before the ground, the boom creeps along the ground into the refraction shadow, as other sources' sound does, losing high frequencies first, down to the shadow floor | B/C |
+| Secondary boom | rays that turn back above the tropopause: standard-atmosphere warming above 20 km, the upper wind as a jet at 50 km, rays in the stratified effective sound speed, stationary in emission time; Carlson's boom over the ray's length with its ray-tube spreading and focusing, absorption along the ray, no shock left; no thermospheric returns | B/C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
 | Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
