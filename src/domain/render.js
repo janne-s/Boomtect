@@ -345,6 +345,14 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
       if (sourceIndex < flightCount) {
         for (const boom of booms[emitterIndex][sourceIndex]) {
           const shared = { emissionSeconds: boom.emissionSeconds, from: boom.point, durationSeconds: boom.durationSeconds };
+          // Beyond the carpet's edge the boom creeps into the shadow along the ground, as a point source's sound does, without a reflection of its own.
+          if (boom.shadow) {
+            add(emitterIndex, sourceIndex, sources, PATH_SHADOW, {
+              ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus,
+              creepNepers: creepingCoefficient(boom.along) * boom.ray.creepMetres, creepRadius: boom.along.groundSpeed / -boom.along.gradient
+            });
+            continue;
+          }
           add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
           if (!ground) continue;
           // Its ground reflection carries the boom's pressure over its own length (Carlson's r^(−¾)); the ground model reflects it (K_R).

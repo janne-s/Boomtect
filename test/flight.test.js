@@ -155,3 +155,30 @@ test('the default flight is heard within about half a minute, all of it within a
   const path = flightPath(parsed.emitters[0], parsed.air);
   assert.ok(Math.max(...path.x.map(Math.abs)) < 10000);
 });
+
+test('beyond the edge of its carpet a boom creeps into the shadow, weaker and darker', () => {
+  const at = offMetres => {
+    const scene = plainScene('sonic');
+    scene.emitters = [{ ...defaultFlight(), startMetres: { x: -150000, y: 0, z: 18000 }, mach: 2, durationSeconds: 300 }];
+    scene.receivers[0].positionMetres = { x: 0, y: offMetres, z: 1.7 };
+    const parsed = parseScene(scene);
+    const flight = parsed.emitters[0];
+    const booms = flightBooms(withApproach(flightPath(flight, parsed.air), parsed.air), flight, parsed.receivers[0].positionMetres, soundSpeedProfile(parsed.air), parsed.air);
+    const { samples } = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+    // The share of the signal's energy left after a 5-sample moving average takes out what lies above about 2 kHz.
+    let total = 0;
+    let smooth = 0;
+    for (let index = 4; index < samples.length; index += 1) {
+      const mean = (samples[index] + samples[index - 1] + samples[index - 2] + samples[index - 3] + samples[index - 4]) / 5;
+      total += samples[index] ** 2;
+      smooth += mean ** 2;
+    }
+    return { booms, peak: samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0), bright: 1 - smooth / total };
+  };
+  const inside = at(40000);
+  const beyond = at(50000);
+  assert.ok(inside.booms.length && inside.booms.every(boom => !boom.shadow));
+  assert.ok(beyond.booms.length && beyond.booms.every(boom => boom.shadow && boom.ray.creepMetres > 0));
+  assert.ok(beyond.peak < inside.peak / 2, `${beyond.peak} against ${inside.peak}`);
+  assert.ok(beyond.bright < inside.bright / 2, `${beyond.bright} against ${inside.bright}`);
+});

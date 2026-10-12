@@ -1,6 +1,6 @@
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
+import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from './refraction.js';
 import { onGround } from './terrain.js';
 
 /**
@@ -240,8 +240,10 @@ export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicle
 /**
  * Where the arrival at a receiver is stationary along a path sampled every `path.step` seconds
  * (`seconds`, `x`, `y`, `z`): each minimum of T(t) = t + travel(x(t) → receiver) between its ends,
- * outside the refraction shadow, with the ray from there and T″. The receiver is in the frame of
- * the path (heights above the datum).
+ * with the ray from there and T″. Beyond the edge of the boom's carpet, where the air turns the
+ * rays away before the ground, the receiver is in the refraction shadow of that point: the ray is
+ * then the creeping path into the shadow (`shadowPath`), and `shadow` is set (class B/C, as for a
+ * point source's shadow). The receiver is in the frame of the path (heights above the datum).
  */
 export function stationaryArrivals(path, receiver, profile) {
   const count = path.seconds.length;
@@ -261,8 +263,8 @@ export function stationaryArrivals(path, receiver, profile) {
     const blend = values => values[index] + (shift >= 0 ? (values[index + 1] - values[index]) * shift : (values[index] - values[index - 1]) * shift);
     const point = { x: blend(path.x), y: blend(path.y), z: blend(path.z) };
     const along = pathProfile(profile, point, receiver);
-    if (along.gradient < 0 && inShadow(along, point, receiver)) continue;
-    found.push({ point, emissionSeconds: blend(path.seconds), ray: rayBetween(along, point, receiver), along, curvature, blend });
+    const shadow = along.gradient < 0 && inShadow(along, point, receiver);
+    found.push({ point, emissionSeconds: blend(path.seconds), ray: shadow ? shadowPath(along, point, receiver) : rayBetween(along, point, receiver), along, curvature, blend, shadow });
   }
   return found;
 }
@@ -274,7 +276,7 @@ export function stationaryArrivals(path, receiver, profile) {
  */
 export function flightBooms(path, flight, receiver, profile, air) {
   const booms = [];
-  for (const { point, emissionSeconds, ray, along, curvature, blend } of stationaryArrivals(path, receiver, profile)) {
+  for (const { point, emissionSeconds, ray, along, curvature, blend, shadow } of stationaryArrivals(path, receiver, profile)) {
     const speed = blend(path.speed);
     const soundSpeed = soundSpeedAt(air, point.z);
     const mach = speed / soundSpeed;
@@ -287,7 +289,7 @@ export function flightBooms(path, flight, receiver, profile, air) {
     const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
     const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
     const focus = Math.min(FLIGHT.focusLimit, Math.sqrt(steady / Math.max(curvature, steady / FLIGHT.focusLimit ** 2)));
-    booms.push({ point, emissionSeconds, ray, along, mach, focus, ...boom });
+    booms.push({ point, emissionSeconds, ray, along, mach, focus, shadow, ...boom });
   }
   return booms;
 }
