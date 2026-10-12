@@ -1,6 +1,6 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
+import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PREVIEW, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
@@ -17,6 +17,7 @@ import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
+import { PARAMETERS } from './scene.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import {
@@ -88,6 +89,18 @@ const pathSources = (preparedEmitters, paths, index) => (isEcho(paths.kind[index
 
 /** Whether a scene traces terrain echoes. */
 export const echoesActive = scene => Boolean(scene.terrain?.enabled && scene.terrain.echoes);
+
+/**
+ * The scene as a preview renders it (PREVIEW): the same scene, marked `render.preview`, its flashes'
+ * and storms' sources merged and its echo cells larger. Views and exports keep the scene itself.
+ */
+export function previewScene(scene) {
+  const preview = structuredClone(scene);
+  preview.render.preview = true;
+  preview.emitters.forEach(emitter => { if (emitter.kind === 'lightning' || emitter.kind === 'storm') emitter.sourceMerge = PREVIEW.sourceMerge; });
+  if (preview.terrain) preview.terrain.echoCellMetres = Math.min(PARAMETERS.echoCellMetres.maximum, preview.terrain.echoCellMetres * PREVIEW.echoCellScale);
+  return preview;
+}
 
 /**
  * Expands every enabled emitter into point sources, kept as a typed table so that the flash
@@ -894,7 +907,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
   const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(NEGLIGIBLE_NEPERS / 2) / (Math.PI * shockSigma * binHz)) : 0;
   const absorbingMetres = metres * (1 + paths.absorptionExcess[index]);
-  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit));
+  const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit), scene.render.preview ? Math.ceil(PREVIEW.highestHz / binHz) : Infinity);
   if (limit < 2) return;
   const creepNepers = paths.creepNepers[index];
   const { shadow, shadowFloor } = plan;

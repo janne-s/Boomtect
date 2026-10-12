@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
+import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -57,7 +57,7 @@ function restoredScene(mode) {
 
 const preferences = {
   // Wavefronts per mode, all shown at first.
-  realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, mode: 'thunder',
+  realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, preview: false, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -302,6 +302,18 @@ function stopWorkers() {
   state.workers = [];
   clearInterval(state.watchdog);
   operation('render', null);
+  // A full render someone waits for, as an export does, has failed or been replaced.
+  state.fullRender?.reject(new Error('The full render did not finish.'));
+  state.fullRender = null;
+}
+
+/** Renders the scene in full, whatever the preview switch, and resolves once its results are in. */
+function renderFull() {
+  return new Promise((resolve, reject) => {
+    startRender({ full: true });
+    if (!operations.has('render')) { reject(new Error('Nothing to render.')); return; }
+    state.fullRender = { resolve, reject };
+  });
 }
 
 /**
@@ -342,13 +354,14 @@ function spawnWorker(revision, message, { onProgress, onResult }, transfer = [])
  * diffuse tails are added once to the sum: their responses are made meanwhile, one worker per
  * receiver. Every worker gets the scene as it was when the render started.
  */
-function startRender() {
+function startRender({ full = false } = {}) {
   state.revision += 1;
   const revision = state.revision;
   stopWorkers();
   // A message about an earlier render no longer applies.
   setStatus('');
-  const scene = state.scene;
+  // A preview renders a lighter copy of the scene (PREVIEW); the views and the panel keep the scene.
+  const scene = state.preferences.preview && !full ? previewScene(state.scene) : state.scene;
   if (!scene.emitters.some(emitter => emitter.enabled)) {
     // An empty scene shows itself; switched-off emitters may not.
     if (scene.emitters.length) setStatus('No emitter is enabled.');
@@ -527,14 +540,17 @@ function finishRender(scene, arrivals, sums, parts, info) {
     drawResults();
     return;
   }
+  state.resultsPreview = Boolean(scene.render.preview);
   state.envelopes = envelopes([...state.results.values()]);
   earCache.clear();
-  setStatus(`Rendered ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
+  setStatus(`${state.resultsPreview ? 'Preview: rendered' : 'Rendered'} ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
   operation('render', null);
   $('export').disabled = false;
   drawResults();
   drawInfo();
   prepareEar();
+  state.fullRender?.resolve();
+  state.fullRender = null;
 }
 
 /**
@@ -2182,6 +2198,15 @@ function updateExportSummary() {
 
 $('export').addEventListener('click', async () => {
   let current;
+  // An export is always rendered in full.
+  if (state.resultsPreview) {
+    try {
+      await renderFull();
+    } catch (error) {
+      setStatus(error.message, true);
+      return;
+    }
+  }
   try {
     current = await listening();
   } catch (error) {
@@ -2294,6 +2319,11 @@ const TOGGLES = Object.freeze({
     after: () => { if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender(); }
   },
   'real-delay': { read: () => state.preferences.realDelay, write: on => { state.preferences.realDelay = on; } },
+  preview: {
+    read: () => state.preferences.preview,
+    write: on => { state.preferences.preview = on; },
+    after: () => { invalidateResults(); requestRender(); }
+  },
   wavefront: {
     read: wavefrontsShown,
     write: on => { state.preferences.wavefronts = { ...state.preferences.wavefronts, [state.scene.mode]: on }; },

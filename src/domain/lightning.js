@@ -270,7 +270,8 @@ export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, li
  * τ₀ = k·R₀/c at the local ambient pressure and lengthens with distance (class B, ReVelle). Its
  * amplitude carries the acoustic share η of the segment's energy as an isotropic pulse of the
  * source period (class C): P·1 m = sqrt(3ρc·η·E·ℓ / (4π·T₀)). The segment radiates with the
- * directivity of its straight element ℓs (class C).
+ * directivity of its straight element ℓs (class C). A preview's `physics.sourceMerge` lets one source
+ * stand in for that many segments in a row (PREVIEW).
  */
 export function flashSources(flashes, physics, air, sources = []) {
   const speed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
@@ -280,15 +281,26 @@ export function flashSources(flashes, physics, air, sources = []) {
     for (const stroke of flash.strokes) {
       for (const step of stroke.route) {
         const channel = flash.channels[step.channel];
-        channel.segments.forEach((segment, segmentIndex) => {
-          if (segment.arcMetres < step.fromArc) return;
-          const energy = flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex]
-            * segmentEnergyShare(flash, channel, segment);
+        // A preview's source stands in for `merge` segments in a row: at the middle one, with their acoustic energy together.
+        const merge = physics.sourceMerge ?? 1;
+        const energyOf = (segment, segmentIndex) => flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex]
+          * segmentEnergyShare(flash, channel, segment);
+        channel.segments.forEach((first, firstIndex) => {
+          if (firstIndex % merge !== 0) return;
+          const group = [];
+          for (let index = firstIndex; index < Math.min(channel.segments.length, firstIndex + merge); index += 1) {
+            if (channel.segments[index].arcMetres >= step.fromArc) group.push(index);
+          }
+          if (!group.length) return;
+          const segmentIndex = group[group.length >> 1];
+          const segment = channel.segments[segmentIndex];
+          const energy = energyOf(segment, segmentIndex);
           const pressurePa = pressureAtHeightPa(air, segment.centreMetres.z);
           const radius = relaxationRadiusMetres(energy, pressurePa);
           const sourcePeriodSeconds = physics.periodCoefficient * radius / speed;
           const reference = weakShockPulse(radius, sourcePeriodSeconds, 0, physics.weakShockLimitRadii);
-          const acousticEnergy = physics.acousticEfficiency * energy * segment.lengthMetres;
+          const acousticEnergy = group.length === 1 ? physics.acousticEfficiency * energy * segment.lengthMetres
+            : physics.acousticEfficiency * group.reduce((sum, index) => sum + energyOf(channel.segments[index], index) * channel.segments[index].lengthMetres, 0);
           sources.push({
             flash: flashIndex,
             positionMetres: segment.centreMetres,
