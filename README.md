@@ -271,11 +271,10 @@ every file starts at the same moment.
 For echoes from buildings and streets, place a Boomtect sound in an
 [Echotect](https://github.com/janne-s/Echotect) echo field: **Send to
 Echotect** on a microphone opens Echotect with its sound, or export
-**Echotect** and load a microphone's file in Echotect as the source sound.
-Put the Listener where the microphone was and the Source in the direction
-and at the distance the handoff names. The sound already holds the air's
-absorption, so switch Echotect's air off to count it once. One direction
-stands for sound that arrives from many.
+**Echotect** and choose the package in Echotect as your own sound. Echotect
+puts its Listener where the microphone was and its Source the way the sound
+came from, and absorbs only the air beyond what the sound already holds. One
+direction stands for sound that arrives from many.
 
 ## Model
 
