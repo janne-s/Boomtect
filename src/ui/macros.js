@@ -403,6 +403,14 @@ const fireworksCrackle = {
   entry: { get: item => item.crackleShare, set: (item, value) => { item.crackleShare = value; } }
 };
 
+const fireworksPop = {
+  label: 'Pop charge',
+  read: item => clamp01(logPosition(item.popMilligrams, range('popMilligrams'))),
+  write: (item, t) => { item.popMilligrams = +logValue(t, range('popMilligrams')).toPrecision(2); },
+  show: item => `${+item.popMilligrams.toPrecision(2)} mg`,
+  entry: { unit: 'mg', get: item => item.popMilligrams, set: (item, value) => { item.popMilligrams = value; } }
+};
+
 const boosterHeight = {
   label: 'Start height',
   read: item => clamp01(logPosition(item.startHeightMetres, range('startHeightMetres'))),
@@ -449,7 +457,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'booster') return [boosterHeight, boosterMach, boosterDescent, flightHeading, boosterBallistic];
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
-  if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle]);
+  if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

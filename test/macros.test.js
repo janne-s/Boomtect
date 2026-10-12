@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { entryText, macrosFor, parseEntry } from '../src/ui/macros.js';
-import { defaultBarrage, defaultBlast, parseScene, defaultScene } from '../src/domain/scene.js';
+import { defaultBarrage, defaultBlast, defaultFireworks, parseScene, defaultScene } from '../src/domain/scene.js';
 
 const macro = (emitter, label) => macrosFor(emitter, { onset: true }).find(item => item.label === label);
 
@@ -53,4 +53,16 @@ test('the onset slider is fine near zero, takes typed seconds, and reads back wh
   assert.equal(parseEntry(onset.entry, '1,25 s', blast), 1.25);
   assert.ok(macrosFor(defaultBarrage(), { onset: true }).some(item => item.label === 'Onset'));
   assert.ok(!macrosFor(defaultBarrage()).some(item => item.label === 'Onset'));
+});
+
+test('a display’s pop charge is on its sliders, logarithmic, and typed in mg', () => {
+  const fireworks = defaultFireworks();
+  const pop = macro(fireworks, 'Pop charge');
+  for (const t of [0, .5, 1]) {
+    pop.write(fireworks, t);
+    assert.ok(Math.abs(pop.read(fireworks) - t) < .02, `${t}`);
+  }
+  assert.equal(fireworks.popMilligrams, 100);
+  assert.equal(parseEntry(pop.entry, '2,5 mg', fireworks), 2.5);
+  assert.throws(() => parseEntry(pop.entry, '2 g', fireworks), /mg/);
 });
