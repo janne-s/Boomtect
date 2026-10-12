@@ -70,6 +70,7 @@ test('terrain echoes are named as held or left out', () => {
   assert.equal(held.place.datumMetres, 100);
   assert.deepEqual(soundHandoff({ ...args, terrainEchoes: false }).content.excludes, ['terrain-echoes']);
   assert.equal(held.arrival, null);
+  assert.equal(soundHandoff({ ...args, terrainEchoes: false, withPlace: false }).place, null);
 });
 
 test('a boom from above keeps its elevation, which the field at the ground loses', () => {

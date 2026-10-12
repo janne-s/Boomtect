@@ -2019,6 +2019,7 @@ async function withoutTerrainEchoes(gain) {
 
 /** The handoff of one microphone of a plan, its field (omni first) on the plan's timeline. */
 const microphoneHandoff = (plan, results, microphone, file) => soundHandoff({
+  withPlace: state.preferences.exportPlace ?? true,
   scene: plan.scene, receiver: plan.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
   channels: microphone.channels, arrivals: results.get(microphone.receiverId).arrivals, fullScalePa: 1 / plan.gain,
   startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: crypto.randomUUID(), createdAt: new Date().toISOString()
@@ -2108,6 +2109,14 @@ $('export').addEventListener('click', async () => {
     return row;
   }));
   const options = [];
+  {
+    const row = element('label');
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'export-place', checked: state.preferences.exportPlace ?? true });
+    const text = element('span');
+    text.append(element('strong', '', 'Place'));
+    row.append(box, text, element('small', '', placeLabel(state.scene.place)));
+    options.push(row);
+  }
   if (echoesActive(state.scene)) {
     const row = element('label');
     const box = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'export-echoes', checked: state.preferences.exportEchoes ?? true });
@@ -2141,6 +2150,7 @@ $('export-form').addEventListener('submit', async event => {
   state.preferences.exportItems = [...selected];
   state.preferences.exportName = name;
   if (echoes) state.preferences.exportEchoes = echoes.checked;
+  state.preferences.exportPlace = $('export-place').checked;
   savePreferences();
   const submit = $('export-submit');
   submit.disabled = true;

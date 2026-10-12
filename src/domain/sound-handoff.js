@@ -79,9 +79,10 @@ function propagationContent(scene, terrainEchoes) {
 /**
  * The handoff of one microphone's pressure. `channels` is its field on the export's timeline (the
  * omni channel first), `arrivals` its arrival table, `fullScalePa` the pressure a sample of 1 stands
- * for, and `startSeconds` when the first sample is from the event's start.
+ * for, and `startSeconds` when the first sample is from the event's start. Without `withPlace` the
+ * handoff names no place, and the receiving tect keeps its own around its listener.
  */
-export function soundHandoff({ scene, receiver, channels, arrivals, fullScalePa, startSeconds, file, terrainEchoes, appVersion, id, createdAt }) {
+export function soundHandoff({ scene, receiver, channels, arrivals, fullScalePa, startSeconds, file, terrainEchoes, withPlace = true, appVersion, id, createdAt }) {
   const direction = fieldArrival(channels);
   return readHandoff({
     format: 'tect.handoff',
@@ -90,7 +91,7 @@ export function soundHandoff({ scene, receiver, channels, arrivals, fullScalePa,
     kind: 'sound',
     name: receiver.name,
     createdAt,
-    place: { name: scene.place.name, latitudeDegrees: scene.place.latitude, longitudeDegrees: scene.place.longitude, datumMetres: scene.terrain ? scene.terrain.datumMetres : null },
+    place: withPlace ? { name: scene.place.name, latitudeDegrees: scene.place.latitude, longitudeDegrees: scene.place.longitude, datumMetres: scene.terrain ? scene.terrain.datumMetres : null } : null,
     air: { temperatureCelsius: scene.air.temperatureCelsius, relativeHumidityPercent: scene.air.relativeHumidityPercent, pressureKpa: scene.air.pressureKpa },
     listener: {
       positionMetres: { east: receiver.positionMetres.x, north: receiver.positionMetres.y },
