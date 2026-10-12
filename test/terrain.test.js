@@ -131,7 +131,7 @@ test('a patch is fetched within the tile budget at a zoom whose pixels are no la
 
 test('a sloping ground reflects as from a mirror image across its plane', () => {
   const profile = soundSpeedProfile({ temperatureCelsius: 15, lapseRateKelvinPerMetre: .0065, refraction: false });
-  const surface = terrainSurface(terrain((x, y) => 100 + .1 * x));
+  const surface = terrainSurface(terrain(x => 100 + .1 * x));
   const source = { x: -1000, y: 0, z: surface.heightAt(-1000, 0) + 50 };
   const receiver = { x: 200, y: 100, z: surface.heightAt(200, 100) + 2 };
   const path = terrainReflection(profile, surface, source, receiver);

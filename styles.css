@@ -28,7 +28,6 @@
   --direct: #8fb6e6;
   --reflected: #6c7c8e;
   --cloud-handle: #7d95b3;
-  /* One cool color per microphone in the plots, in receiver order. */
   --mic-1: #e3e9ef;
   --mic-2: #8fb6e6;
   --mic-3: #7fcfc0;
@@ -37,7 +36,6 @@
   --mic-6: #b5d67a;
   --mic-7: #6fd3e8;
   --mic-8: #93a4b8;
-  /* A fireworks shell's color, by its seed: the classic stars. */
   --firework-1: #ff5a4f;
   --firework-2: #52e07a;
   --firework-3: #5b8cff;
@@ -99,7 +97,6 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
-/* Play keeps its width whatever it says, and spins while the render is made, as Echotect's buttons do. */
 #play {
   width: 72px;
 }
@@ -189,7 +186,6 @@ h2 {
   letter-spacing: .06em;
   text-transform: uppercase;
 }
-/* The panel's headings carry the icons the phone's tab bar opens them by. */
 .panel h2 i,
 .group summary i {
   width: 1.4em;
@@ -285,7 +281,6 @@ figcaption {
   height: 18px;
   fill: currentColor;
 }
-/* Switches shown as icons: dim while off, the accent while on, the same size either way. */
 .icon-toggles {
   display: inline-flex;
   gap: 2px;
@@ -311,7 +306,6 @@ figcaption {
   font-weight: 500;
   white-space: nowrap;
 }
-/* The last message, in the scene's corner above the operations; a note fades, an error stays. */
 .status {
   margin: 0;
   color: var(--muted);
@@ -415,7 +409,6 @@ canvas {
   flex-direction: column;
   gap: 4px;
 }
-/* An emitter or receiver opens like the panel's groups: its header a band in the gutter's colour, edge to edge. */
 .card[aria-selected="true"] {
   padding-bottom: 12px;
 }
@@ -444,7 +437,6 @@ canvas {
 .card-header input {
   margin: 0;
 }
-/* A small action on a header row: faint until pointed at or focused. */
 .icon-button {
   display: inline-grid;
   place-items: center;
@@ -558,7 +550,6 @@ input[type="range"]:hover::-moz-range-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A value that takes a typed one reads as text and becomes a field when pressed. */
 button.macro-value {
   border: 0;
   background: none;
@@ -595,7 +586,6 @@ button.macro-value:hover {
   margin-top: 18px;
 }
 .group summary {
-  /* A band across the panel in the gutter's colour, edge to edge, as if the gutter ran into it. */
   margin: 0 -12px 8px;
   padding: 6px 12px;
   background: var(--bg);
@@ -657,7 +647,6 @@ button.macro-value:hover {
   height: 120px;
   cursor: grab;
 }
-/* The view's switches down its right edge, with the data sources under them. */
 .view-side {
   position: absolute;
   top: 10px;
@@ -746,7 +735,6 @@ button.macro-value:hover {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-/* A compact bar with its text inside; the fill shows how far it has come. */
 .operation {
   padding: 2px 7px;
   overflow: hidden;
@@ -777,7 +765,6 @@ button.macro-value:hover {
   border-radius: 2px;
   background: var(--line);
 }
-/* From the first arrival on, the bar is brighter: before it, the sound is still travelling. */
 .timeline-arrival {
   position: absolute;
   top: 0;
@@ -990,7 +977,6 @@ details summary {
   }
 }
 
-
 .place-dialog {
   width: min(960px, calc(100% - 32px));
 }
@@ -1100,7 +1086,6 @@ details summary {
   padding: 12px 16px;
 }
 
-/* The Settings dialog: a row per setting, its slider, and its value, as Echotect's. */
 .settings-dialog {
   width: min(560px, calc(100% - 32px));
 }
@@ -1153,7 +1138,6 @@ details summary {
 .settings-check .settings-summary {
   color: var(--muted);
 }
-/* The computation's cost against the full one: the fill, and a tick where the full one is. */
 .settings-cost {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr) auto;
@@ -1192,7 +1176,6 @@ details summary {
   background: var(--ink);
 }
 
-/* The phone layout's parts (`mobile.js`), hidden on wider screens. */
 .sheet-header,
 .sheet-tabs,
 .cube-chip,
@@ -1244,7 +1227,6 @@ details summary {
     min-height: 0;
     padding: 0 6px 6px;
   }
-  /* The plots fold into a strip of the pressure; opened, both share half the screen. */
   .results {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 64px;
@@ -1280,7 +1262,6 @@ details summary {
     flex: .8;
     margin-left: 6px;
   }
-  /* The corners' texts open from the chip instead. */
   #cube-selected,
   #cube-listen {
     display: none;
@@ -1324,11 +1305,9 @@ details summary {
     width: 110px;
     height: 88px;
   }
-  /* A microphone's orientation is set while it is selected. */
   body:not([data-selected="receiver"]) .cube-orientation {
     display: none;
   }
-  /* A sheet: one of the panel's sections over the whole screen, edge to edge. */
   .panel {
     display: none;
   }
@@ -1381,7 +1360,6 @@ details summary {
     gap: 4px;
     margin-top: 18px;
   }
-  /* Dialogs open over the whole screen, edge to edge, as Echotect's do. */
   dialog,
   .place-dialog,
   .export-dialog,

@@ -13,13 +13,9 @@ import { createRandom, normalDeviate } from './random.js';
 /** Height of a round that bursts on the ground, as the single blast's default. */
 export const GROUND_BURST_METRES = 1;
 
-/** The blast settings every round shares with the barrage. */
 const SHARED_KEYS = Object.freeze(['explosive', 'secondaryShock', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
 
-/**
- * The rounds of a barrage as blasts, in landing order, each with its own seed, position above the
- * ground, onset, and charge. Deterministic from the barrage.
- */
+/** The rounds of a barrage as blasts in landing order, each with its own seed, position above the ground, onset, and charge. */
 export function barrageRounds(barrage) {
   const random = createRandom(barrage.seed);
   const salvos = Math.ceil(barrage.roundCount / barrage.salvoSize);

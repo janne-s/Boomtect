@@ -18,7 +18,7 @@ import { multipleReflections, rayBetween, rayHeightAt, reflectedRay, speedAt } f
 
 const SAMPLES_PER_CELL = 2;
 /** Ground samples along a path for its mean plane, ends included. */
-export const MEAN_PLANE_SAMPLES = 32;
+const MEAN_PLANE_SAMPLES = 32;
 /** A plane this close to level is treated as level. */
 const LEVEL_TOLERANCE = 1e-12;
 
@@ -32,7 +32,6 @@ function sampleBuffers(count) {
   return buffers;
 }
 
-/** The terrain edges that shield a path (`deygoutEdges`), at most three; none when clear. */
 export function shieldingEdges(profile, surface, source, receiver) {
   if (surface.flat) return [];
   const horizontal = Math.hypot(receiver.x - source.x, receiver.y - source.y);
@@ -110,7 +109,6 @@ export function terrainMultipleReflections(profile, surface, source, receiver) {
     .map(ray => ({ ...ray, groundPoint: { ...ray.groundPoint, z: height } }));
 }
 
-/** The ground-reflected path from the tangent plane under the receiver, or null. */
 export function terrainReflection(profile, surface, source, receiver) {
   const ground = { x: receiver.x, y: receiver.y, z: surface.heightAt(receiver.x, receiver.y) };
   const normal = surface.normalAt(receiver.x, receiver.y);

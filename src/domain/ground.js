@@ -5,7 +5,7 @@ import { faddeeva } from './faddeeva.js';
  * Ground that reflects without loss: rigid ground, and water, whose impedance is some 3 600 times
  * that of air (class A for a calm surface; waves are not modelled).
  */
-export const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);
+const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);
 export const isReflecting = groundType => REFLECTING_GROUNDS.includes(groundType);
 
 export const GROUND_TYPES = Object.freeze([...REFLECTING_GROUNDS, ...Object.keys(GROUND.flowResistivity)]);
@@ -31,13 +31,6 @@ export function delanyBazleyImpedance(frequencyHz, flowResistivityKpaSecondsPerS
   return [1 + 9.08 * ratio ** -.75, 11.9 * ratio ** -.73];
 }
 
-/**
- * Class B: spherical-wave reflection coefficient Q = Rp + (1 − Rp)·F(w) of a locally reacting
- * ground (Weyl–Van der Pol; see Attenborough, Li & Horoshenkov, Predicting Outdoor Sound, 2007).
- * Returned as [re, im] in the e^(+iωt) convention of `fft.js`, so it multiplies a forward spectrum.
- * `cosIncidence` is the cosine of the angle from the ground normal; `imagePathMetres` is the
- * image-source path length R2.
- */
 /**
  * Class B: plane-wave reflection coefficient Rp = (cos θ − β)/(cos θ + β) of a locally reacting
  * ground with normalized admittance β, as [re, im] in the e^(−iωt) convention, and β itself.

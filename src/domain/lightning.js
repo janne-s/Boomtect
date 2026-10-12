@@ -1,21 +1,19 @@
 import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from './air.js';
 import { THUNDER } from './constants.js';
 import { nWaveDurationForPeak } from './pulses.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate, uniform } from './random.js';
 import { add, deflected, distance, length, scaled, subtract, unit } from './vector.js';
 
 export const FLASH_TYPES = Object.freeze(['cloud-to-ground', 'intra-cloud']);
 
 /** Segments a tortuous walk may need per metre of straight reach, as a share of the step. */
 const BUDGET_MARGIN = 2;
-/** Rounding slack when dividing a straight path into steps. */
 const STEP_TOLERANCE = 1e-9;
 /** A branch that comes this close to the ground ends there. */
 const GROUND_CLEARANCE_METRES = 1;
 
 const toRadians = degrees => degrees * Math.PI / 180;
 const FLAT_GROUND = () => 0;
-const uniform = (random, [low, high]) => low + random() * (high - low);
 
 /**
  * Class C: a deterministic tortuous path. Each step leaves the direction toward the end by a
@@ -69,7 +67,6 @@ function channelPath(random, start, end, spec, budget, options = {}) {
   return points;
 }
 
-/** Segments between consecutive points, with arc length from the path start to each centre. */
 export function segmentsFromPoints(points) {
   const segments = [];
   let arcMetres = 0;
@@ -90,7 +87,6 @@ export function segmentsFromPoints(points) {
 
 const pathLength = points => points.slice(1).reduce((sum, point, index) => sum + distance(point, points[index]), 0);
 
-/** The point and local direction at a given arc length along a polyline. */
 function pointAtArc(points, arcMetres) {
   let travelled = 0;
   for (let index = 1; index < points.length; index += 1) {
@@ -143,13 +139,9 @@ function growBranches(random, spec, budget, parent, level, channels) {
 }
 
 /**
- * One flash as channels in space and strokes in time. The main channel runs from start to end
- * with recursive branches that radiate in the first stroke. A ground flash's later strokes follow
- * the previous stroke's path to ground, or with the given probability strike a new ground point
- * through a new lower channel that joins the main channel. Strokes are separated by lognormal
- * intervals around the median. Segment energies vary by a mean-preserving lognormal factor.
- * Every stroke lists its route: which channels it lights, from which arc, and with which
- * emission offset.
+ * One flash as channels in space and strokes in time. A ground flash's later strokes follow the
+ * previous path to ground or, with the given probability, strike a new ground point; intervals are
+ * lognormal around the median, and segment energies vary by a mean-preserving lognormal factor.
  */
 export function lightningFlash(input) {
   const spec = { groundAt: FLAT_GROUND, ...input };
@@ -285,7 +277,7 @@ export function flashSources(flashes, physics, air, sources = []) {
         const merge = physics.sourceMerge ?? 1;
         const energyOf = (segment, segmentIndex) => flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex]
           * segmentEnergyShare(flash, channel, segment);
-        channel.segments.forEach((first, firstIndex) => {
+        channel.segments.forEach((_, firstIndex) => {
           if (firstIndex % merge !== 0) return;
           const group = [];
           for (let index = firstIndex; index < Math.min(channel.segments.length, firstIndex + merge); index += 1) {

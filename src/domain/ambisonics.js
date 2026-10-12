@@ -46,7 +46,6 @@ export function encodeDirection(x, y, z, order, target = new Float64Array(channe
   return target;
 }
 
-/** Directions spread evenly over the sphere (Fibonacci lattice), for fitting rotations. */
 const FIT_DIRECTIONS = (() => {
   const count = 96;
   const golden = Math.PI * (3 - Math.sqrt(5));
@@ -57,7 +56,6 @@ const FIT_DIRECTIONS = (() => {
   });
 })();
 
-/** Solves the square system a·x = b in place by Gaussian elimination with partial pivoting. */
 function solve(a, b) {
   const size = b.length;
   for (let column = 0; column < size; column += 1) {
@@ -113,7 +111,6 @@ export function orientationRotation(headingDegrees, pitchDegrees, order) {
   return terms;
 }
 
-/** Every term an orientation rotation of an order can use, for building a fixed gain network. */
 export function rotationTerms(order) {
   const terms = [{ from: 0, to: 0 }];
   for (let n = 1; n <= order; n += 1) {
@@ -124,7 +121,6 @@ export function rotationTerms(order) {
   return terms;
 }
 
-/** Applies a rotation term list to one encoded gain vector. */
 export function rotateGains(gains, terms) {
   const rotated = new Float64Array(gains.length);
   for (const { from, to, gain } of terms) rotated[to] += gains[from] * gain;

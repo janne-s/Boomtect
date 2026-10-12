@@ -13,9 +13,7 @@ import { AIR, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, PROPAGATION, VIEW } f
  * from the hyperbolic sphere, (a sinh σ)² per steradian with σ = |g|·t.
  *
  * Class B: the profile is the secant of c = sqrt(γ R T(z)) between the ground and
- * AIR.profileFitHeightMetres for T(z) = T₀ − Γz. That height keeps the shadow distance within 1.5 %
- * of the exact profile's for sources up to 12 km and Γ from 6.5 to 12 K/km; with the ISA gradient
- * the speed departs by at most 1.8 m/s up to 10 km.
+ * AIR.profileFitHeightMetres for T(z) = T₀ − Γz.
  */
 
 /** Below this gradient (1/s) the air is homogeneous and rays are straight. */
@@ -23,7 +21,6 @@ const FLAT_GRADIENT = 1e-12;
 /** First zero of Ai′(−τ): the least-attenuated creeping mode over rigid ground. */
 const RIGID_CREEPING_ZERO = 1.0187929716;
 const ROOT_ITERATIONS = 100;
-/** Relative tolerance of the reflected ray's horizontal distance. */
 const ROOT_TOLERANCE_METRES = 1e-11;
 const BRANCH_SCAN_STEPS = 64;
 const HALF_PI = Math.PI / 2;
@@ -33,7 +30,6 @@ const ROUNDING = 1e-12;
 export const PATH_DIRECT = 0;
 export const PATH_GROUND = 1;
 export const PATH_SHADOW = 2;
-/** Terrain echoes: specular reflection and merged Lambertian scattering (`terrain-echoes.js`). */
 export const PATH_ECHO = 3;
 export const PATH_SCATTER = 4;
 
@@ -65,7 +61,6 @@ export function soundSpeedProfile(air) {
   };
 }
 
-/** Gauss–Legendre nodes and weights on [0, 1] for the layered slowness of a path. */
 const GAUSS_NODES = [.0198550717512319, .1016667612931866, .2372337950418355, .4082826787521751, .5917173212478249, .7627662049581645, .8983332387068134, .9801449282487681];
 const GAUSS_WEIGHTS = [.0506142681451881, .1111905172266872, .1568533229389436, .1813418916891810, .1813418916891810, .1568533229389436, .1111905172266872, .0506142681451881];
 const SLOWNESS_ITERATIONS = 30;
@@ -140,10 +135,7 @@ function arcRatio(half) {
   return half < 1e-4 ? 1 + half * half / 6 : half / Math.sin(half);
 }
 
-/**
- * Travel time and spreading distance of the ray between two points, as `rayBetween` gives them,
- * without its directions, for paths traced in large numbers.
- */
+/** Travel time and spreading distance of `rayBetween` without its directions, for paths traced in large numbers. */
 export function rayTiming(profile, a, b) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
   const speedA = speedAt(profile, a.z);
@@ -346,7 +338,6 @@ export function reflectedRay(profile, source, receiver) {
   };
 }
 
-/** Scan of the grazing angle for rays with several contacts, refined by bisection. */
 const BOUNCE_SCAN_STEPS = 48;
 const BOUNCE_BISECTIONS = 50;
 
@@ -492,14 +483,12 @@ export function inShadow(profile, source, receiver) {
   return Math.hypot(receiver.x - source.x, receiver.y - source.y) > grazingRange(profile, source.z) + grazingRange(profile, receiver.z);
 }
 
-/** Travel time of the ray between two points alone, for views that need many of them. */
 function secondsBetween(profile, a, b) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
   const mean = Math.sqrt(speedAt(profile, a.z) * speedAt(profile, b.z));
   return distance / mean * asinhRatio(Math.abs(profile.gradient) * distance / (2 * mean));
 }
 
-/** Travel time of the first sound from a point to a receiver, as `firstArrival` gives it. */
 export function travelSeconds(profile, source, receiver) {
   const horizontal = Math.hypot(receiver.x - source.x, receiver.y - source.y);
   const fromSource = grazingRange(profile, source.z);

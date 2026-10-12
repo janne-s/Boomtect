@@ -8,7 +8,6 @@ import { defaultBlast, defaultCloudFlash, defaultLightning, defaultScene, defaul
 import { stormFlashes } from '../src/domain/storm.js';
 
 const air = defaultScene().air;
-const channelLength = channel => channel.segments.reduce((sum, segment) => sum + segment.lengthMetres, 0);
 
 test('a straight path divides evenly from start to end', () => {
   const points = tortuousPath(createRandom(1), { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 100 }, 10, 0);

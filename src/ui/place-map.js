@@ -20,7 +20,6 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   const pointers = new Map();
   let pinch = null;
 
-  /** Global pixel position at a fractional zoom. */
   const pixel = (latitude, longitude, level) => ({ x: tileX(longitude, level) * TILE_SIZE, y: tileY(latitude, level) * TILE_SIZE });
 
   function unproject(x, y, level) {
@@ -61,7 +60,6 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
     drawOverlay();
   }
 
-  /** The square of terrain around the centre, and the centre itself. */
   function drawOverlay() {
     const { context, width, height } = fitCanvas(overlayCanvas);
     const colors = palette();
@@ -119,7 +117,6 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   new ResizeObserver(draw).observe(mapCanvas);
 
   return {
-    /** Shows a place, with the zoom that fits a square of `extent` metres comfortably. */
     show(next, extent) {
       centre = { latitude: next.latitude, longitude: next.longitude };
       extentMetres = extent;

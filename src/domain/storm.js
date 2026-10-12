@@ -1,9 +1,8 @@
 import { THUNDER } from './constants.js';
 import { lightningFlash } from './lightning.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate, uniform } from './random.js';
 
 const logUniform = (random, [low, high]) => low * (high / low) ** random();
-const uniform = (random, [low, high]) => low + random() * (high - low);
 const lognormal = (random, sigma) => Math.exp(sigma * normalDeviate(random) - sigma ** 2 / 2);
 
 /**

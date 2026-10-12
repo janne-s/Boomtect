@@ -21,11 +21,7 @@ async function inflate(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/**
- * Decodes an 8-bit, non-interlaced RGB, RGBA, or palette PNG to its exact RGB bytes. Elevation is
- * data, not an image: reading it back through a canvas lets colour management and the browser's
- * anti-fingerprinting noise alter the channels, and one step in the red channel is 256 m.
- */
+/** Decodes an 8-bit, non-interlaced RGB, RGBA, or palette PNG to its exact RGB bytes; one step in red is 256 m. */
 export async function decodePngRgb(buffer) {
   const bytes = new Uint8Array(buffer);
   if (!PNG_SIGNATURE.every((value, index) => bytes[index] === value)) throw new Error('Terrain tile is not a PNG.');

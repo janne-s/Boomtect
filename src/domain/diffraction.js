@@ -47,7 +47,6 @@ export function fresnelIntegrals(x) {
     s = sums;
   } else {
     const pix2 = Math.PI * ax * ax;
-    // Complex arithmetic on [re, im] pairs for Lentz's continued fraction.
     const multiply = ([a, b], [p, q]) => [a * p - b * q, a * q + b * p];
     const divide = ([a, b], [p, q]) => { const scale = p * p + q * q; return [(a * p + b * q) / scale, (b * p - a * q) / scale]; };
     let b = [1, -pix2];
@@ -141,7 +140,7 @@ const SLOPE_STEP = 1.05;
  * frequency f: h is the edge's height above the line of sight, d₁ and d₂ its distances from the
  * two ends, c the speed of sound.
  */
-export const edgeFactor = (heightMetres, fromStart, toEnd, speed) => heightMetres * Math.sqrt(2 * (fromStart + toEnd) / (speed * fromStart * toEnd));
+const edgeFactor = (heightMetres, fromStart, toEnd, speed) => heightMetres * Math.sqrt(2 * (fromStart + toEnd) / (speed * fromStart * toEnd));
 
 /**
  * An edge of height h above the line, d₁ and d₂ from the ends, over a crest of radius R (0 for a
@@ -154,14 +153,9 @@ export function ridgeEdge(heightMetres, fromStart, toEnd, radiusMetres, speed) {
 }
 
 /**
- * Deygout's edges along a profile: the edge with the largest obstruction ratio
- * h·sqrt((d₁ + d₂)/(d₁·d₂)) between the ends, then the largest one between each end and that edge,
- * measured against the straight line from the end to the edge's top; only crests of the profile
- * count. For points along the path,
- * `distances` holds the distance from the start, `terrain` the ground height, and `path` the
- * height of the path; `startHeight` and `endHeight` are the path's ends. Each crest's radius comes
- * from the ground's curvature `span` samples either side (none when it has no samples there).
- * Returns the edges (`ridgeEdge`), at most three, or none when the path is clear.
+ * Deygout's edges along a profile (`distances`, ground `terrain`, `path` heights): the crest of
+ * largest obstruction ratio h·sqrt((d₁ + d₂)/(d₁·d₂)), then the largest between each end and it.
+ * Each crest's radius comes from the ground's curvature `span` samples either side. At most three.
  */
 export function deygoutEdges({ distances, terrain, path, total, startHeight, endHeight, speed, span = 1 }) {
   // Only crests count as edges: on the flank of one rounded hill Deygout would find it twice.

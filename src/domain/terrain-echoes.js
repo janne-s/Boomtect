@@ -16,10 +16,8 @@ import { meanPlaneFrame } from './terrain-propagation.js';
  * visibility test, and the echo limit are C.
  */
 
-/** Directions and growing steps of each facet's horizon, which settles most visibility questions at once. */
 const HORIZON_AZIMUTHS = 16;
 const HORIZON_STEP_GROWTH = .15;
-/** Newton search for specular points: finite-difference step, convergence, and iterations, in echo cells. */
 const NEWTON_STEP_SPACINGS = .25;
 const NEWTON_TOLERANCE_SPACINGS = 1e-3;
 const NEWTON_ITERATIONS = 12;
@@ -34,12 +32,9 @@ const COPLANAR_SPACINGS = .035;
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
 /**
- * Pools an emitter's point sources into cells of `cellMetres` in space and PROPAGATION.echoCellSeconds in emission
- * time. A cell is one point source at the energy-weighted centre, emission time, and pulse of its
- * sources; its amplitude adds their energies, because their arrivals spread over more than a pulse
- * at any echo. Returns a table shaped like `sourceTable`, without directivity (class C), with each
- * cell's `place`: the cells of one place in space differ only in time, such as a channel's strokes,
- * and share the echo geometry traced from the place's centre in `places`.
+ * Pools an emitter's point sources into cells of `cellMetres` and PROPAGATION.echoCellSeconds, each at
+ * its sources' energy-weighted centre, time, and pulse, amplitudes added by energy (class C). Cells of
+ * one place differ only in time and share the echo geometry traced from `places`.
  */
 export function sourceCells(sources, cellMetres) {
   const placeIndex = new Map();
@@ -116,15 +111,10 @@ export function sourceCells(sources, cellMetres) {
 
 const surfaces = new WeakMap();
 
-/**
- * The echo grid of a terrain surface: facet centres, heights, slopes, areas, and each facet's
- * horizon, the steepest rise of the ground seen from it in HORIZON_AZIMUTHS directions. Cached
- * per surface.
- */
+/** The echo grid of a terrain surface, with each facet's horizon in HORIZON_AZIMUTHS directions; cached per surface. */
 export function echoSurface(surface) {
   const cached = surfaces.get(surface);
   if (cached) return cached;
-  // Square facets over the loaded rectangle, at most PROPAGATION.echoGridSide along its longer side.
   const bounds = surface.bounds;
   const longer = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
   const spacing = longer / Math.max(2, Math.min(PROPAGATION.echoGridSide, Math.round(longer / surface.cellMetres)));
@@ -204,7 +194,6 @@ export function clearBetween(echo, a, b) {
   return true;
 }
 
-/** Whether a point is visible from a facet: above its horizon in that direction, or else along a clear line. */
 function visibleFromFacet(echo, facet, facetPoint, point) {
   const dx = point.x - facetPoint.x;
   const dy = point.y - facetPoint.y;
@@ -219,10 +208,6 @@ function visibleFromFacet(echo, facet, facetPoint, point) {
   return clearBetween(echo, facetPoint, point);
 }
 
-/**
- * Everything about one receiver's echoes that does not depend on the source: the facets it sees,
- * outside the ground under it, with their distance, exit cosine, and direction sector.
- */
 export function echoField(surface, profile, receiverPosition, { scattering, limit, shadowFloor = 0 }) {
   const echo = echoSurface(surface);
   const R = receiverPosition;
@@ -256,7 +241,6 @@ export function echoField(surface, profile, receiverPosition, { scattering, limi
   return { echo, profile, surface, R, groundPlane, scattering, limit, shadowFloor, visible: Int32Array.from(visible), seen, distance, exitCosine, sector };
 }
 
-/** The horizontal gradient of the S → point → R path length for a point that follows the surface. */
 function pathGradient(S, R, x, y, z, slope) {
   const sx = x - S.x; const sy = y - S.y; const sz = z - S.z;
   const rx = x - R.x; const ry = y - R.y; const rz = z - R.z;
@@ -278,11 +262,8 @@ function jacobian(gradient, x, y, step) {
 const determinant = matrix => matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
 
 /**
- * Specular points between S and R on the echo surface: where the path gradient along the surface
- * vanishes, found by Newton from every grid square whose corners bracket zero. Each point's energy
- * relative to an image source follows stationary phase, the ratio of the path Hessians on the
- * tangent plane and on the curved surface, so a convex slope weakens its echo and a concave one
- * focuses it, up to PROPAGATION.maximumFocusing.
+ * Specular points between S and R on the echo surface, by Newton from every grid square that brackets
+ * zero. Their energy follows stationary phase, so a concave slope focuses, up to PROPAGATION.maximumFocusing.
  */
 export function specularPoints(echo, S, R, field = null) {
   const { columns, rows, spacing, bounds } = echo;
@@ -345,7 +326,6 @@ export function specularPoints(echo, S, R, field = null) {
   return [...found.values()];
 }
 
-/** Whether a surface point and its normal lie on the tangent plane under the receiver. */
 function onGroundPlane(field, point, normal) {
   const { point: ground, normal: up } = field.groundPlane;
   if (normal.x * up.x + normal.y * up.y + normal.z * up.z < COPLANAR_COSINE) return false;
@@ -377,11 +357,6 @@ function echoLeg(field, a, b, trace = rayBetween) {
   return { ...trace(profile, a, b), floor };
 }
 
-/**
- * An upper bound on the path from S over any facet to R, which bounds the clusters' arrival bins:
- * the sum of horizontal distances is largest at a corner of the terrain, and the vertical legs at
- * the lowest or highest ground.
- */
 function maximumPathMetres(echo, S, R) {
   let horizontal = 0;
   for (const x of [echo.bounds.west, echo.bounds.east]) for (const y of [echo.bounds.south, echo.bounds.north]) horizontal = Math.max(horizontal, Math.hypot(S.x - x, S.y - y) + Math.hypot(R.x - x, R.y - y));
@@ -389,7 +364,6 @@ function maximumPathMetres(echo, S, R) {
   return horizontal + vertical(S) + vertical(R);
 }
 
-/** Zeroed cluster accumulators kept with the field and grown as needed; echoPaths leaves them zeroed. */
 function clusterBuffers(field, size) {
   if (!field.clusters || field.clusters.energy.length < size) {
     const length = Math.max(size, 2 * (field.clusters?.energy.length ?? 0));
@@ -398,13 +372,7 @@ function clusterBuffers(field, size) {
   return field.clusters;
 }
 
-/**
- * The echo paths from a source point, a place of source cells, at the field's receiver: specular
- * echoes (PATH_ECHO) and merged Lambertian patches (PATH_SCATTER), the strongest `limit` of them.
- * Each path has the shape of a ray from `refraction.js` plus `groundSine`, the cosine of incidence
- * on the reflecting surface, and `kind`. Spreading follows the image source over the two legs,
- * scaled by the echo's energy.
- */
+/** The strongest `limit` echo paths from a place of source cells at the field's receiver, specular and scattered. */
 export function echoPaths(field, S) {
   const { echo, R, scattering, limit } = field;
   const exclusion = PROPAGATION.exclusionSpacings * echo.spacing;
@@ -539,7 +507,6 @@ export function* strongestFirst(candidates) {
   }
 }
 
-/** The direction sector of a propagation direction arriving at a receiver, as the clusters use. */
 export function arrivalSector(arrival) {
   const azimuth = Math.floor(((Math.atan2(-arrival.y, -arrival.x) / (2 * Math.PI) + 1) % 1) * PROPAGATION.azimuthSectors) % PROPAGATION.azimuthSectors;
   const elevation = Math.min(PROPAGATION.elevationSectors - 1, Math.floor((Math.asin(clamp(-arrival.z, -1, 1)) / Math.PI + .5) * PROPAGATION.elevationSectors));

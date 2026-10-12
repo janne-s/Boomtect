@@ -10,6 +10,8 @@ export function createRandom(seed) {
   };
 }
 
+export const uniform = (random, [low, high]) => low + random() * (high - low);
+
 /** Standard normal deviate by Box–Muller from a uniform generator. */
 export function normalDeviate(random) {
   const radius = Math.sqrt(-2 * Math.log(1 - random()));

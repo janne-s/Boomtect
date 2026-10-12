@@ -19,10 +19,9 @@ export function airDensityKilogramsPerCubicMetre(pressurePa, temperatureCelsius)
 
 /**
  * The layers of the scene's temperature profile from the datum up, each with a constant lapse rate Γ
- * (K/m, positive when the temperature falls with height): an optional ground layer of its own lapse
- * rate, such as a low inversion (class C), the troposphere at the scene's lapse rate up to the
- * tropopause, and above it air of constant temperature (ISO 2533, class B; 11 km in the standard
- * atmosphere). An air without these fields has one layer at its lapse rate, as before.
+ * (K/m, positive when the temperature falls with height): an optional ground layer such as a low
+ * inversion (class C), the troposphere up to the tropopause, and above it air of constant temperature
+ * (ISO 2533, class B). An air without these fields has one layer at its lapse rate.
  */
 export function temperatureLayers(air) {
   const ground = air.groundLayerMetres > 0 ? air.groundLayerMetres : 0;
@@ -34,7 +33,6 @@ export function temperatureLayers(air) {
   return layers;
 }
 
-/** Temperature at a height above the datum for the scene's layered profile, in kelvin. */
 export function temperatureAtHeightKelvin(air, heightMetres) {
   let kelvin = air.temperatureCelsius + KELVIN_OFFSET;
   for (const { base, top, lapse } of temperatureLayers(air)) {

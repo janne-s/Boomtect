@@ -73,7 +73,6 @@ export function createMapLayer(onLoad) {
   }
 
   return {
-    /** The loaded tiles of a terrain, starting their requests when the terrain is new. */
     tiles(terrain) {
       if (!terrain?.patches?.length) return [];
       if (key !== terrainKey(terrain)) load(terrain);

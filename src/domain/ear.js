@@ -1,25 +1,9 @@
 import { EAR } from './constants.js';
 
 /**
- * An optional listener model applied to what plays: the middle-ear acoustic reflex and loudness
- * compression. Both read the model's pressure in pascals, which is not calibrated, so their
- * response to level is only as good as the model's level (class C overall).
- *
- * Acoustic reflex (class B; Wikipedia "Acoustic reflex" and the sources it cites, verify against
- * Borg 1976 or Margolis & Popelka): threshold about 70–100 dB SPL; contraction latency about
- * 150 ms near threshold and 25–35 ms at high levels; about 15 dB less transmission 20 dB above
- * threshold, mostly at low frequencies; maximum tension after about 100 ms; tension halves after a
- * few seconds of sustained sound.
- *
- * Loudness (class B for the exponent, Stevens' power law: loudness ∝ intensity^0.3, that is
- * pressure^0.6, the sone scale of ISO 532 above about 40 phon; class C as a playback mapping): the
- * level is compressed so that level differences shrink to 0.6 of their size in decibels, the same at
- * every frequency (the equal-loudness contours of ISO 226 are not applied). The level follows the
- * ear's temporal integration of loudness, of the order of 100 ms (class B, Zwicker & Fastl,
- * Psychoacoustics; class C for the two stages): a mean square over 25 ms, smoothed in decibels over
- * 50 ms, so a sharp onset passes before it is turned down and a quiet tail is raised as soon after
- * a loud sound however much quieter it is. With `capOnsets` no sample comes out louder than the loudest
- * going in (`capGains`). The values are in EAR (`constants.js`).
+ * The optional listener model of what plays: middle-ear reflex and loudness compression, with
+ * classes and sources at EAR (`constants.js`). Both read the uncalibrated model pressure, so the
+ * whole is class C.
  */
 
 const toDb = value => 20 * Math.log10(Math.max(value, 1e-30));

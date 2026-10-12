@@ -23,13 +23,11 @@ import { createRandom, normalDeviate } from './random.js';
 
 const START_RADII = THUNDER.weakShock.startRadii;
 const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** 2) ** (3 / 8) - 1);
-/** Seconds between the points of a meteor's track. */
 const TRACK_STEP_SECONDS = .02;
 
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 const densityAt = (air, heightMetres) => pressureAtHeightPa(air, heightMetres) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, heightMetres));
 
-/** The straight trail of a meteor: its start, unit direction of flight, speed, and length to its end height. */
 export function meteorTrail(meteor) {
   const heading = meteor.headingDegrees * Math.PI / 180;
   const entry = meteor.entryDegrees * Math.PI / 180;
@@ -111,7 +109,6 @@ export function meteorBursts(meteor, air) {
   }));
 }
 
-/** The booms of a meteor's track at a receiver, in the frame of the track (heights above the datum). */
 export function meteorBooms(track, meteor, receiver, profile, air) {
   const receiverPressurePa = pressureAtHeightPa(air, Math.max(0, receiver.z));
   return stationaryArrivals(track, receiver, profile).map(arrival => ({
@@ -142,7 +139,6 @@ export function showerMembers(shower) {
   });
 }
 
-/** A meteor's trail as a track for views: times and positions every `step` seconds. */
 export function meteorTrack(meteor) {
   const { start, direction, speed, lengthMetres } = meteorTrail(meteor);
   const duration = lengthMetres / speed;

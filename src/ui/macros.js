@@ -2,10 +2,8 @@ import { VIEW } from '../domain/constants.js';
 import { PARAMETERS } from '../domain/scene.js';
 
 /**
- * Macro controls: one slider that sets several detailed parameters at once to change an emitter's
- * character quickly. A macro is a user-interface shortcut, not a model value: it writes ordinary
- * parameters, which keep their own reliability classes and stay editable in the details.
- * Every macro maps a position t in [0, 1] to parameter values, and reads t back from them.
+ * Macro controls: a user-interface shortcut, not a model value. Each maps a slider position t in
+ * [0, 1] to ordinary parameters, which keep their reliability classes, and reads t back from them.
  */
 
 const logPosition = (value, [low, high]) => Math.log(value / low) / Math.log(high / low);
@@ -28,7 +26,6 @@ const UNITS = Object.freeze({
   charge: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6 })
 });
 
-/** The entry's current value as text to edit, in the unit it is shown in. */
 export function entryText(entry, item) {
   const value = entry.get(item);
   if (entry.units === 'metres') return metres(value);
@@ -100,7 +97,6 @@ const strokes = {
   entry: { integer: true, get: item => item.strokeCount, set: (item, value) => { item.strokeCount = value; } }
 };
 
-/** The height of a ground flash's cloud end, or the mean altitude of a cloud flash. */
 const height = {
   label: 'Height',
   read: item => clamp01(logPosition(item.flashType === 'cloud-to-ground' ? item.topMetres.z : (item.baseMetres.z + item.topMetres.z) / 2, [300, 15000])),
@@ -162,7 +158,6 @@ const stormCloud = {
   show: item => `${metres(item.cloudBaseMetres)}–${metres(item.cloudTopMetres)}`
 };
 
-/** A TNT equivalent in g, kg, t, or kt. */
 export function formatCharge(kilograms) {
   if (kilograms < 1) return `${+(kilograms * 1000).toPrecision(3)} g TNT`;
   if (kilograms < 1000) return `${+kilograms.toPrecision(3)} kg TNT`;

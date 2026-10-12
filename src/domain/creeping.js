@@ -16,15 +16,11 @@ import { delanyBazleyImpedance } from './ground.js';
  * grazing sound reflects from it as from a pressure-release surface, t moves to the first zero of
  * Ai, −2.33811, and the loss grows SOFT_RATIO times.
  *
- * Scaling the rigid loss and lag by the mode's ratios frequency by frequency breaks the link between
- * loss and phase that causality demands: measured, sound arrived 30–50 dB below the peak before the
- * path's arrival time. Multiplying the rigid exponent by a causal M(s) = 1 + (ρ − 1)·s/(s + ω_t)
- * kept it causal but turned part of the loss below ω_t into gain (measured +9.6 dB at 5–20 Hz over
- * snow at 20 km). The render therefore adds to the rigid exponent E₀(s) = s·(s + ω_c)^(−2/3) a second
- * term of the same causal form, (SOFT_RATIO − 1)·s·(s + ω_t)^(−2/3): its real part is never negative,
- * so soft ground never attenuates less than rigid; it is a pure delay well below the transition
- * frequency ω_t/2π and makes the whole SOFT_RATIO·s^(1/3) well above it. The transition is where the
- * mode's loss ratio lies halfway between the two (class C for the shape between them).
+ * The render adds to the rigid exponent E₀(s) = s·(s + ω_c)^(−2/3) a term of the same causal form,
+ * (SOFT_RATIO − 1)·s·(s + ω_t)^(−2/3): never negative in loss, so soft ground never attenuates less
+ * than rigid, a pure delay well below ω_t/2π and the whole SOFT_RATIO·s^(1/3) well above it. Scaling
+ * the rigid loss per frequency instead broke causality. The transition is where the mode's loss ratio
+ * lies halfway between the two (class C for the shape between them).
  */
 
 const RIGID_ROOT = -1.018792971647471;
@@ -36,7 +32,6 @@ const Q_ROTATION = [Math.cos(5 * Math.PI / 6), Math.sin(5 * Math.PI / 6)];
 const CONTINUATION_STEPS = 12;
 const NEWTON_ITERATIONS = 30;
 const ROOT_TOLERANCE = 1e-12;
-/** Frequencies searched for the transition, spaced evenly in log. */
 const SWEEP_LOWEST_HZ = 1;
 const SWEEP_HIGHEST_HZ = 20000;
 const SWEEP_POINTS = 80;
@@ -61,7 +56,7 @@ export function modeRoot(q, start) {
 }
 
 /** q for a ground of the given flow resistivity at a frequency, a ground speed, and a refraction radius R. */
-export function impedanceParameter(frequencyHz, flowResistivity, speed, radiusMetres) {
+function impedanceParameter(frequencyHz, flowResistivity, speed, radiusMetres) {
   const [zRe, zIm] = delanyBazleyImpedance(frequencyHz, flowResistivity);
   const scale = zRe * zRe + zIm * zIm;
   const beta = [zRe / scale, -zIm / scale];

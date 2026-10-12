@@ -35,8 +35,7 @@ const US76 = Object.freeze([
 ]);
 const TROPOPAUSE_KELVIN = 216.65;
 
-/** How much warmer than the tropopause's air the standard atmosphere is at a height, in kelvin. */
-export function upperWarmingKelvin(heightMetres) {
+function upperWarmingKelvin(heightMetres) {
   let warming = 0;
   for (const [base, kelvin, rise] of US76) {
     if (heightMetres <= base) break;
@@ -45,11 +44,10 @@ export function upperWarmingKelvin(heightMetres) {
   return warming;
 }
 
-/** Temperature of the scene's air with the upper atmosphere's warming, in kelvin. */
 export const upperTemperatureKelvin = (air, heightMetres) => temperatureAtHeightKelvin(air, heightMetres) + upperWarmingKelvin(heightMetres);
 
 /** The wind at a height as [east, north] m/s: the scene's below the tropopause and the upper jet. */
-export function upperWind(air, heightMetres) {
+function upperWind(air, heightMetres) {
   const toward = degrees => [-Math.sin(degrees * Math.PI / 180), -Math.cos(degrees * Math.PI / 180)];
   const [gx, gy] = toward(air.windFromDegrees);
   const lower = air.windSpeedMetresPerSecond + air.windShearPerSecond * Math.min(heightMetres, air.tropopauseMetres);
@@ -60,7 +58,6 @@ export function upperWind(air, heightMetres) {
 
 const LEVELS = Math.round(UPPER_AIR.topMetres / UPPER_AIR.stepMetres) + 1;
 
-/** The effective sound speed at every UPPER_AIR.stepMetres for sound heading along (nx, ny). */
 function effectiveSpeeds(air, nx, ny) {
   return Float64Array.from({ length: LEVELS }, (_, level) => {
     const height = level * UPPER_AIR.stepMetres;
@@ -69,7 +66,6 @@ function effectiveSpeeds(air, nx, ny) {
   });
 }
 
-/** The speed on the profile at a height, linear between its levels. */
 function speedOn(speeds, heightMetres) {
   const at = Math.min(LEVELS - 1.000001, Math.max(0, heightMetres / UPPER_AIR.stepMetres));
   const level = Math.floor(at);
@@ -118,7 +114,7 @@ function leg(speeds, alphaAt, q, low, top) {
  * sound heading along (nx, ny): rows of slowness q, turning height, range X, time, length,
  * absorption, and the sines of the ray's elevation where it leaves and arrives, in order of q.
  */
-export function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
+function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
   const speeds = effectiveSpeeds(air, nx, ny);
   const low = Math.min(zs, zr);
   const high = Math.max(zs, zr);
@@ -213,7 +209,6 @@ function cached(key, make) {
   return value;
 }
 
-/** Rays mixed by weights, key by key; null if any is missing. */
 function mixRays(rays, weights) {
   if (rays.some(ray => !ray)) return null;
   const mixed = {};
@@ -222,13 +217,10 @@ function mixRays(rays, weights) {
 }
 
 /**
- * The secondary booms of a flight path at a receiver (heights above the datum), as `flightBooms`
- * gives the primary ones, each marked `secondary` and with its turning height and the share by
- * which its absorption exceeds the mean between the receiver and that height times its length
- * (`absorptionExcess`), since the ray runs longest near its top, where the air absorbs most.
- * The rays come from tables every UPPER_AIR.azimuthStepDegrees and heightStepMetres, mixed between
- * the nearest; on each branch the arrival t + T is stationary where 1 + q·ṙ − ż·sin θ/c = 0 (dT/dX = q
- * along a ray). None in homogeneous air.
+ * The secondary booms of a flight path at a receiver (heights above the datum), as `flightBooms` gives
+ * the primary ones, each `secondary`, with its turning height and `absorptionExcess`, the share by which
+ * its absorption exceeds the mean up to that height. On each branch the arrival t + T is stationary where
+ * 1 + q·ṙ − ż·sin θ/c = 0 (dT/dX = q along a ray). None in homogeneous air.
  */
 export function secondaryBooms(path, flight, receiver, air) {
   const count = path.seconds.length;
@@ -299,7 +291,6 @@ export function secondaryBooms(path, flight, receiver, air) {
   return booms.filter(Boolean);
 }
 
-/** One secondary boom from its stationary ray (see `secondaryBooms`), or null where the body is not supersonic. */
 function secondaryBoom(path, flight, receiver, air, ray, blend, curvature, alphaAt) {
   const point = { x: blend(path.x), y: blend(path.y), z: blend(path.z) };
   const speed = blend(path.speed);

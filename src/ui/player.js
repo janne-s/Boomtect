@@ -19,7 +19,6 @@ function declarePlayback() {
   silence.play().catch(() => { /* Without a gesture or support, Web Audio plays as it would. */ });
 }
 
-/** A looping HTML audio element of half a second of silence, as an 8-bit mono WAV. */
 function silentLoop() {
   const rate = 8000;
   const samples = rate / 2;
@@ -49,10 +48,6 @@ function omnitoneSign(acn, order) {
   return acn - degree * degree - degree < 0 ? -1 : 1;
 }
 
-/**
- * A listener's orientation as a rotation of the ambisonic field: a channel splitter, one gain per
- * possible term, and a channel merger. Changing the orientation only changes the gains.
- */
 function rotationNetwork(context, order) {
   const count = channelCount(order);
   const splitter = context.createChannelSplitter(count);
@@ -107,12 +102,7 @@ function bufferSource(context, channels, gain, sampleRate) {
   return source;
 }
 
-/**
- * Connects a listening composition to a destination. Surround plays one channel per speaker when
- * the output has enough channels, and otherwise as a stereo preview panned by each microphone's
- * bearing from their centre. Heads reach the shared binaural decoder through `fieldInput` when it is
- * given. Returns the sources and the orientation controls per head.
- */
+/** Connects a composition to a destination: surround per speaker when the output has the channels, otherwise a panned stereo preview. */
 async function connectComposition(context, composition, gain, destination, { live, input = destination, fieldInput = null }) {
   const { kind, sampleRate, order } = composition;
   const sources = [];
@@ -161,7 +151,6 @@ async function connectComposition(context, composition, gain, destination, { liv
   return { sources, rotations, nodes };
 }
 
-/** Renders a binaural or mixed composition offline into stereo, as playback would sound. */
 export async function renderComposition(composition, gain) {
   const context = new OfflineAudioContext(2, composition.length, composition.sampleRate);
   const { sources } = await connectComposition(context, composition, gain, context.destination, { live: false });
@@ -189,7 +178,6 @@ export function createPlayer() {
     faders.forEach(fader => fader.disconnect());
   }
 
-  /** Fades the current playback out from `at` and releases its nodes once it is silent. */
   function release(at = context?.currentTime) {
     if (current) {
       const playback = current;
@@ -208,7 +196,6 @@ export function createPlayer() {
     clock = null;
   }
 
-  /** Stops playback, including a play request that is still connecting. */
   function stop() {
     request += 1;
     release();
@@ -234,11 +221,8 @@ export function createPlayer() {
   window.addEventListener('pageshow', wake);
 
   /**
-   * Plays a composition. `atSceneSeconds` starts it from that point of the scene timeline, keeping
-   * `skippedSeconds` of lead-in. With `continuing`, it takes over from the current playback on its
-   * own timeline, so a listening change does not interrupt the sound: the new one is prepared while
-   * the old one plays, and they cross-fade at one moment. The two are near copies of one sound, so the
-   * fade is linear in amplitude.
+   * Plays a composition from `atSceneSeconds`, keeping `skippedSeconds` of lead-in. With `continuing` it
+   * cross-fades from the current playback at one moment; the two are near copies, so the fade is linear.
    */
   async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null, continuing = false }) {
     const ticket = request += 1;

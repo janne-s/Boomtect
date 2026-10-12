@@ -17,7 +17,7 @@ export const TERRAIN_PROVIDER = Object.freeze({
   attributionUrl: 'https://github.com/tilezen/joerd/blob/master/docs/attribution.md'
 });
 
-export const EARTH_RADIUS_METRES = 6371008.8;
+const EARTH_RADIUS_METRES = 6371008.8;
 const EARTH_CIRCUMFERENCE_METRES = 40075016.686;
 export const TILE_SIZE = 256;
 const MAXIMUM_TILE_ZOOM = 15;
@@ -53,7 +53,6 @@ function tileRange(bounds, zoom) {
   return { west, east, north, south, count: (east - west + 1) * (south - north + 1) };
 }
 
-/** Latitude of a tile row's edge at a zoom, the inverse of `tileY`. */
 const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zoom))) * 180 / Math.PI;
 
 /**
@@ -84,7 +83,6 @@ export function mapTiles({ latitude, longitude, bounds }) {
  */
 export const patchMetres = cellMetres => GROUND.terrain.patchCells * cellMetres;
 
-/** The patches that cover a rectangle of the scene frame, as inclusive column and row ranges. */
 export function patchRange({ west, east, south, north }, cellMetres) {
   const side = patchMetres(cellMetres);
   const first = value => Math.floor(value / side);
@@ -93,7 +91,6 @@ export function patchRange({ west, east, south, north }, cellMetres) {
   return { column0: first(west), column1: Math.max(first(west), last(east)), row0: first(south), row1: Math.max(first(south), last(north)) };
 }
 
-/** The patches of a range, in rows from the south. */
 export function rangePatches(range) {
   const list = [];
   for (let row = range.row0; row <= range.row1; row += 1) for (let column = range.column0; column <= range.column1; column += 1) list.push({ column, row });
@@ -102,7 +99,6 @@ export function rangePatches(range) {
 
 export const patchCount = range => (range.column1 - range.column0 + 1) * (range.row1 - range.row0 + 1);
 
-/** The rectangle of the scene frame that a range of patches covers. */
 export function rangeBounds(range, cellMetres) {
   const side = patchMetres(cellMetres);
   return { west: range.column0 * side, east: (range.column1 + 1) * side, south: range.row0 * side, north: (range.row1 + 1) * side };
@@ -121,10 +117,6 @@ export function tilePlan({ latitude, longitude }, bounds, cellMetres) {
   return { zoom, tiles: tileRange(degrees, zoom) };
 }
 
-/**
- * Where a point of the scene frame lies on the tile mosaic at a zoom, in global pixels whose centres
- * are at whole numbers.
- */
 export function tilePixel({ latitude, longitude }, x, y, zoom) {
   const { north, east } = metresPerDegree(latitude);
   return { x: tileX(longitude + x / east, zoom) * TILE_SIZE - .5, y: tileY(latitude + y / north, zoom) * TILE_SIZE - .5 };
@@ -167,7 +159,6 @@ export function decodePatch(patch) {
   return Float32Array.from(steps, value => patch.baseMetres + value * patch.stepMetres);
 }
 
-/** The rectangle of patches a terrain holds; null when it holds none. */
 export function terrainRange(terrain) {
   if (!terrain?.patches?.length) return null;
   const columns = terrain.patches.map(patch => patch.column);
@@ -181,7 +172,6 @@ const MAXIMUM_CACHED_SURFACES = 4;
 /** Each patch list's key, so that a terrain drawn every frame is hashed once (scenes replace their patches, never change them). */
 const patchKeys = new WeakMap();
 
-/** A 32-bit FNV-1a hash of a terrain's patches, so that surfaces are cached by their content. */
 function terrainKey(terrain) {
   const known = patchKeys.get(terrain.patches);
   if (known?.cellMetres === terrain.cellMetres && known.datumMetres === terrain.datumMetres) return known.key;
@@ -198,12 +188,7 @@ function hashTerrain(terrain) {
   return `${hash >>> 0}:${terrain.patches.length}`;
 }
 
-/**
- * The terrain surface of a scene: its patches put together, heights in the scene frame relative to
- * the datum (z = 0, the ground under the origin when the terrain was loaded), and above sea level.
- * Outside the patches the edge heights continue. Without terrain, or with it switched off, the
- * ground is the plane z = 0.
- */
+/** The terrain surface of a scene, heights relative to the datum (z = 0) with edge heights continued; the plane z = 0 without terrain. */
 export function terrainSurface(terrain) {
   if (!terrain?.enabled || !terrain.patches?.length) return FLAT_SURFACE;
   const key = terrainKey(terrain);
@@ -238,11 +223,9 @@ export function terrainSurface(terrain) {
     flat: false,
     datumMetres,
     cellMetres,
-    /** Height of the ground above the datum. */
     heightAt: (x, y) => sample(x, y) - datumMetres,
     /** The highest ground above the datum, m: nothing above it can be under the ground. */
     highestMetres: highest - datumMetres,
-    /** Unit upward normal of the ground, from central differences one cell wide. */
     normalAt: (x, y) => {
       const gx = (sample(x + cellMetres, y) - sample(x - cellMetres, y)) / (2 * cellMetres);
       const gy = (sample(x, y + cellMetres) - sample(x, y - cellMetres)) / (2 * cellMetres);
@@ -270,5 +253,4 @@ export const FLAT_SURFACE = Object.freeze({
   bounds: null
 });
 
-/** A point stored above the ground under it, placed in the scene frame. */
 export const onGround = (surface, point) => ({ x: point.x, y: point.y, z: surface.heightAt(point.x, point.y) + point.z });

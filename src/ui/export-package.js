@@ -1,4 +1,3 @@
-/** How AmbiX files are laid out, as written into the scene document. */
 export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
 import { zipStore } from '../domain/zip.js';
@@ -15,7 +14,7 @@ import { renderComposition } from './player.js';
  * Every file shares one full scale, the playback gain, so their levels compare; with per-microphone
  * files all start at one time, so they line up.
  */
-export const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
+const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
 
 const slug = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'boomtect';
 export const fileStem = slug;
@@ -32,7 +31,6 @@ export function exportPlan(scene, results, gain) {
   const types = new Map(scene.receivers.map(receiver => [receiver.id, receiver.type]));
   const order = scene.render.ambisonicOrder;
   // Every microphone in the scene's order with its channels on the shared timeline: the whole field
-  // when the render is spatial, otherwise its pressure alone.
   const fields = new Map([...everyone.heads.map(head => [head.receiverId, head]), ...everyone.omnis.map(omni => [omni.receiverId, { ...omni, channels: [omni.channel] }])]);
   const microphones = scene.receivers.map(receiver => fields.get(receiver.id)).filter(Boolean);
   return { scene, listening, everyone, microphones, types, gain, order };
@@ -50,12 +48,10 @@ export function exportSizes(plan, selected) {
   };
 }
 
-/** A binaural microphone whose head the spatial render can decode. */
 const isHead = (plan, microphone) => plan.order > 0 && plan.types.get(microphone.receiverId) === 'binaural';
 
 export const availableItems = plan => EXPORT_ITEMS.filter(item => item !== 'ambix' || plan.order > 0);
 
-/** Channels placed at a sample offset in a longer silence. */
 function placed(channels, offset, length) {
   return channels.map(channel => {
     const out = new Float32Array(length);
@@ -105,7 +101,6 @@ export async function exportFiles(plan, selected, stem, describe) {
   return files;
 }
 
-/** One file as it is, several in a stored ZIP: { name, blob }. */
 export function exportDownload(files, stem) {
   if (files.length === 1) {
     const [file] = files;

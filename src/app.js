@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
+import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, receiverResult, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -33,7 +33,6 @@ import { attachSplitters } from './ui/splitters.js';
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
-/** The threads a render may use: the device's setting, all of them by default. */
 const workerLimit = () => Math.max(1, Math.min(WORKER_COUNT, state.preferences.threads || WORKER_COUNT));
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks' });
@@ -59,7 +58,6 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  // Wavefronts per mode, all shown at first.
   realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, preview: false, mode: 'thunder',
   terrainDraft: { place: 'Koli', latitude: 63.0964, longitude: 29.8061, cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
@@ -71,9 +69,7 @@ const state = {
   scene: restoredScene(preferences.mode),
   selection: null,
   results: null,
-  /** The peak of what played last, after the ear model (`playedPeakPa`). */
   playedPeak: null,
-  /** Where paused or scrubbed playback stands: scene seconds and the lead-in it skips, or null. */
   pause: null,
   envelopes: new Map(),
   revision: 0,
@@ -81,7 +77,6 @@ const state = {
   renderTimer: null,
   watchdog: null,
   detailsId: null,
-  /** The microphone the plots and scene facts follow; null follows the first listening one. */
   soloId: null,
   preferences
 };
@@ -113,7 +108,6 @@ createSettings({
   }
 });
 
-/** The scattered echoes' share of the last render's paths, or the cost model's own without one; none without terrain echoes. */
 function scatterShare() {
   if (!echoesActive(state.scene)) return 0;
   if (!state.results) return RENDER_COST.scatterShare;
@@ -127,7 +121,6 @@ function scatterShare() {
 }
 const liveFields = { receiver: null, orientation: null };
 
-/** Rebuilds the panel at the next frame, at most once a frame. */
 function panelOnNextFrame() {
   if (panelOnNextFrame.pending) return;
   panelOnNextFrame.pending = true;
@@ -144,19 +137,16 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
 document.addEventListener('keydown', event => { if (event.key === 'Tab') document.documentElement.dataset.keyboard = ''; }, true);
 document.addEventListener('pointerdown', () => { delete document.documentElement.dataset.keyboard; }, true);
 
-/** The topographic map on the floor, requested only once it is switched on. */
 const mapLayer = createMapLayer(() => redrawViews());
 
 const views = [createCubeView($('cube'), {
-  // Each mode keeps its own view: a blast's box is far smaller than a storm's.
   onView: next => { state.preferences.cubeViews = { ...state.preferences.cubeViews, [state.scene.mode]: next }; savePreferences(); },
   onViewChange: () => orientationBall?.draw(),
   onSelect: selection => { select(selection); refreshPanel(); },
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
     if (handle.field === 'flightHeading') {
-      const from = emitterAnchor(item);
-      item.headingDegrees = Math.round((Math.atan2(point.x - from.x, point.y - from.y) * 180 / Math.PI + 360) % 360);
+      item.headingDegrees = headingToward(emitterAnchor(item), point);
       invalidateResults();
       redrawViews();
       drawInfo();
@@ -164,7 +154,7 @@ const views = [createCubeView($('cube'), {
       return;
     }
     if (handle.field === 'headingDegrees') {
-      orient(item.id, Math.round((Math.atan2(point.x - item.positionMetres.x, point.y - item.positionMetres.y) * 180 / Math.PI + 360) % 360), item.pitchDegrees);
+      orient(item.id, headingToward(item.positionMetres, point), item.pitchDegrees);
       return;
     }
     if (handle.field === 'cloudBaseMetres' || handle.field === 'cloudTopMetres') {
@@ -176,7 +166,6 @@ const views = [createCubeView($('cube'), {
       item.radiusMetres = Math.round(Math.min(PARAMETERS.radiusMetres.maximum, Math.hypot(point.x - item.centreMetres.x, point.y - item.centreMetres.y)));
     } else {
       item[handle.field] = storedPoint(handle, item, point);
-      // A receiver's fields follow directly; the panel of any other item is rebuilt once a frame.
       const live = liveFields[handle.type]?.[handle.field];
       if (live) {
         panelOnNextFrame.skip = true;
@@ -186,7 +175,6 @@ const views = [createCubeView($('cube'), {
     invalidateResults();
     redrawViews();
     drawInfo();
-    // The panel follows the handles, once a frame.
     if (!panelOnNextFrame.skip) panelOnNextFrame();
     panelOnNextFrame.skip = false;
   },
@@ -198,7 +186,6 @@ const views = [createCubeView($('cube'), {
   clouds: () => state.preferences.clouds
 })];
 
-/** Whether a point is stored as a height above the ground under it rather than above the datum. */
 function groundAnchored(handle, item) {
   if (handle.field === 'centreMetres' || handle.field === 'padMetres') return true;
   if (handle.field === 'startMetres') return item.kind === 'whip';
@@ -206,11 +193,7 @@ function groundAnchored(handle, item) {
   return handle.field === 'positionMetres';
 }
 
-/**
- * The stored form of a dragged point. The view moves points in the scene frame; a point anchored
- * to the ground keeps its height above the ground while it moves sideways, and on a wall its new
- * height is measured from the ground under it.
- */
+/** A ground-anchored point keeps its height above the ground; on a wall its height is measured from the ground under it. */
 function storedPoint(handle, item, point) {
   if (!groundAnchored(handle, item)) return point;
   if (handle.onGround) return { ...point, z: 0 };
@@ -230,13 +213,11 @@ function findItem(type, id) {
   return (type === 'emitter' ? state.scene.emitters : state.scene.receivers).find(item => item.id === id);
 }
 
-/** Selecting a microphone also makes the plots follow it. */
 function select(selection) {
   state.selection = selection;
   if (selection.type === 'receiver') state.soloId = selection.id;
 }
 
-/** The last message in the scene's corner: a note fades after VIEW.statusSeconds, an error stays until the next message. */
 function setStatus(text, error = false) {
   const status = $('status');
   clearTimeout(setStatus.timer);
@@ -246,8 +227,7 @@ function setStatus(text, error = false) {
   if (text && !error) setStatus.timer = setTimeout(() => status.classList.add('faded'), VIEW.statusSeconds * 1000);
 }
 
-/** Applies a change to a copy of the scene and keeps it only if the result validates. */
-function commit(change) {
+function applyScene(change) {
   const next = structuredClone(state.scene);
   change(next);
   try {
@@ -255,9 +235,14 @@ function commit(change) {
   } catch (error) {
     setStatus(error.message, true);
     refreshPanel();
-    return;
+    return false;
   }
-  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  storeScene();
+  return true;
+}
+
+function commit(change) {
+  if (!applyScene(change)) return;
   scheduleTerrainCoverage();
   if (state.selection.type && !findItem(state.selection.type, state.selection.id)) state.selection = { type: null, id: null };
   if (state.soloId && !findItem('receiver', state.soloId)) state.soloId = null;
@@ -274,11 +259,6 @@ function invalidateResults() {
   syncPlayButton();
 }
 
-/**
- * Operations in progress, listed in the corner of the scene as compact bars: their text, how far they
- * have come where that is known, how long they have run, and for network requests the time at which
- * they give up. Each key holds one; a null text removes it.
- */
 const operations = new Map();
 let operationsTimer = null;
 
@@ -301,15 +281,12 @@ function drawOperations() {
     bar.style.setProperty('--share', share === null ? '0%' : `${Math.min(100, share * 100)}%`);
     return bar;
   }));
-  // The clock in each bar keeps running while anything is in progress.
   if (operations.size && !operationsTimer) operationsTimer = setInterval(drawOperations, 500);
   if (!operations.size && operationsTimer) { clearInterval(operationsTimer); operationsTimer = null; }
 }
 
-/** An abort signal that fires after a limit, for a network request listed with that limit. */
 const timeLimit = seconds => AbortSignal.timeout(seconds * 1000);
 
-/** One button for the result: Render when there is none, a spinner while it is made, then Play and Stop. */
 function syncPlayButton() {
   const button = $('play');
   const playing = player.playing();
@@ -327,7 +304,6 @@ function syncPlayButton() {
   $('results').classList.toggle('playable', Boolean(state.results));
 }
 
-/** Renders after a change: soon when Auto is on, otherwise when the button is pressed. */
 function requestRender() {
   clearTimeout(state.renderTimer);
   if (state.preferences.autoRender) scheduleRender();
@@ -339,17 +315,21 @@ function scheduleRender() {
   state.renderTimer = setTimeout(startRender, RENDER.autoDelayMilliseconds);
 }
 
+function failRender(message) {
+  stopWorkers();
+  setStatus(message, true);
+  drawResults();
+}
+
 function stopWorkers() {
   state.workers.forEach(worker => worker.terminate());
   state.workers = [];
   clearInterval(state.watchdog);
   operation('render', null);
-  // A full render someone waits for, as an export does, has failed or been replaced.
   state.fullRender?.reject(new Error('The full render did not finish.'));
   state.fullRender = null;
 }
 
-/** Renders the scene in full, whatever the preview switch, and resolves once its results are in. */
 function renderFull() {
   return new Promise((resolve, reject) => {
     startRender({ full: true });
@@ -358,10 +338,6 @@ function renderFull() {
   });
 }
 
-/**
- * Starts a worker for the current revision. `onResult` gets its result message; errors, stalls, and
- * a newer revision end the whole render.
- */
 function spawnWorker(revision, message, { onProgress, onResult }, transfer = []) {
   const worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
   state.workers.push(worker);
@@ -369,43 +345,29 @@ function spawnWorker(revision, message, { onProgress, onResult }, transfer = [])
     if (data.revision !== state.revision) return;
     state.heard = performance.now();
     if (data.type === 'progress') { onProgress?.(data.fraction); return; }
-    if (data.type === 'error') {
-      stopWorkers();
-      setStatus(data.message, true);
-      drawResults();
-      return;
-    }
+    if (data.type === 'error') { failRender(data.message); return; }
     worker.terminate();
     onResult(data);
   });
   worker.addEventListener('error', event => {
     if (revision !== state.revision) return;
-    stopWorkers();
-    setStatus(event.message || 'The renderer failed to start.', true);
+    failRender(event.message || 'The renderer failed to start.');
   });
   worker.postMessage({ revision, ...message }, transfer);
 }
 
 /**
- * Renders on a pool of workers in two steps. First the paths are traced: each receiver's sources
- * and echo places are split into contiguous parts across the workers, and the parts are put
- * together here into its paths and arrival table. Then each receiver's arrivals are split into
- * equal time ranges, with workers shared out by the number of paths; each worker receives its
- * receiver's traced paths rather than tracing them again. With more receivers than workers, each
- * worker traces and renders whole receivers. The segments are summed in range order, and the
- * diffuse tails are added once to the sum: their responses are made meanwhile, one worker per
- * receiver. Every worker gets the scene as it was when the render started.
+ * Renders on a pool of workers: each receiver's tracing is split across workers and assembled here,
+ * then its arrivals are split into time ranges that reuse the traced paths, and the diffuse tails
+ * are added once to the sum. Every worker gets the scene as it was when the render started.
  */
 function startRender({ full = false } = {}) {
   state.revision += 1;
   const revision = state.revision;
   stopWorkers();
-  // A message about an earlier render no longer applies.
   setStatus('');
-  // A preview renders a lighter copy of the scene (PREVIEW); the views and the panel keep the scene.
   const scene = state.preferences.preview && !full ? previewScene(state.scene) : state.scene;
   if (!scene.emitters.some(emitter => emitter.enabled)) {
-    // An empty scene shows itself; switched-off emitters may not.
     if (scene.emitters.length) setStatus('No emitter is enabled.');
     drawResults();
     return;
@@ -425,7 +387,6 @@ function startRender({ full = false } = {}) {
   const started = performance.now();
   state.heard = performance.now();
   operation('render', 'Tracing paths', { share: 0 });
-  // Each receiver's channels are shared out over as many workers as there are for it.
   const channels = (scene.render.ambisonicOrder + 1) ** 2;
   const shares = Math.max(1, Math.min(channels, Math.floor(workerCount / scene.receivers.length)));
   const responses = hasTails(scene)
@@ -437,12 +398,8 @@ function startRender({ full = false } = {}) {
   // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
   state.watchdog = setInterval(() => {
     if (revision !== state.revision || performance.now() - state.heard < RENDER.stallSeconds * 1000) return;
-    stopWorkers();
-    setStatus(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`, true);
-    drawResults();
+    failRender(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`);
   }, 5000);
-  // Each receiver's tracing is split into parts, so that its paths are traced on every worker; with
-  // more receivers than workers each is traced whole. The parts come together here, in their order.
   const parts = Math.max(1, Math.floor(workerCount / scene.receivers.length));
   const jobs = scene.receivers.flatMap((_, receiver) => Array.from({ length: parts }, (_, part) => ({ receiver, part, parts })));
   const tracers = Math.min(workerCount, jobs.length);
@@ -463,13 +420,10 @@ function startRender({ full = false } = {}) {
         let arrivals;
         let tracedPaths;
         try {
-          // Each receiver's paths go on to the workers that render it, so none traces them again.
           tracedPaths = scene.receivers.map((receiver, receiverIndex) => assemblePaths(prepared, receiver, scene, traced[receiverIndex]));
           arrivals = scene.receivers.map((receiver, receiverIndex) => arrivalTable(prepared, receiver, scene, { paths: tracedPaths[receiverIndex] }));
         } catch (error) {
-          stopWorkers();
-          setStatus(error.message, true);
-          drawResults();
+          failRender(error.message);
           return;
         }
         renderRanges(revision, scene, arrivals, tracedPaths, responses, { sources, workerCount, started });
@@ -478,7 +432,6 @@ function startRender({ full = false } = {}) {
   }
 }
 
-/** The render jobs: receivers and a time range for each worker. */
 function renderJobs(scene, arrivals, workerCount) {
   const receivers = scene.receivers.map((_, index) => index);
   if (receivers.length >= workerCount) {
@@ -486,7 +439,6 @@ function renderJobs(scene, arrivals, workerCount) {
   }
   const total = arrivals.reduce((sum, table) => sum + table.count, 0) || 1;
   const shares = arrivals.map(table => Math.max(1, Math.floor(workerCount * table.count / total)));
-  // Workers left over by rounding down go to the receivers with the most paths per worker.
   for (let spare = workerCount - shares.reduce((a, b) => a + b, 0); spare > 0; spare -= 1) {
     let busiest = 0;
     arrivals.forEach((table, index) => { if (table.count / shares[index] > arrivals[busiest].count / shares[busiest]) busiest = index; });
@@ -521,18 +473,12 @@ function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
 
 const receiverSegments = (parts, receiver) => parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);
 
-/**
- * Sums each receiver's segments and adds its diffuse tails. Its pressure is cut into stretches,
- * shared out over the workers by length; the tails of each come back and are added to the sum.
- */
 function addRenderTails(revision, scene, arrivals, parts, responses, info) {
   let sums;
   try {
     sums = scene.receivers.map((receiver, index) => sumSegments(receiverSegments(parts, receiver), scene.render.sampleRate, tailSamples(responses[index])));
   } catch (error) {
-    stopWorkers();
-    setStatus(error.message, true);
-    drawResults();
+    failRender(error.message);
     return;
   }
   const lengths = sums.map((sum, index) => (responses[index] ? sum.channels[0].length - tailSamples(responses[index]) : 0));
@@ -561,21 +507,10 @@ function addRenderTails(revision, scene, arrivals, parts, responses, info) {
 function finishRender(scene, arrivals, sums, parts, info) {
   state.workers = [];
   clearInterval(state.watchdog);
-  const speedOfSound = soundSpeedProfile(scene.air).groundSpeed;
   try {
-    state.results = new Map(scene.receivers.map((receiver, receiverIndex) => {
-      const segments = receiverSegments(parts, receiver);
-      const combined = finishSum(sums[receiverIndex], scene.render.sampleRate);
-      return [receiver.id, {
-        receiverId: receiver.id,
-        sampleRate: scene.render.sampleRate,
-        ...combined,
-        samples: combined.channels[0],
-        speedOfSound,
-        arrivals: arrivals[receiverIndex],
-        nonlinearPaths: segments.reduce((sum, segment) => sum + segment.nonlinearPaths, 0),
-        modelVersion: MODEL_VERSION
-      }];
+    state.results = new Map(scene.receivers.map((receiver, index) => {
+      const nonlinearPaths = receiverSegments(parts, receiver).reduce((sum, segment) => sum + segment.nonlinearPaths, 0);
+      return [receiver.id, receiverResult(receiver, scene, finishSum(sums[index], scene.render.sampleRate), arrivals[index], nonlinearPaths)];
     }));
   } catch (error) {
     setStatus(error.message, true);
@@ -596,10 +531,6 @@ function finishRender(scene, arrivals, sums, parts, info) {
   state.fullRender = null;
 }
 
-/**
- * RMS envelopes in VIEW.envelopeSeconds windows for every microphone, on one decibel scale from the
- * loudest window of any microphone (1) down VIEW.envelopeRangeDb (0), so their rings compare.
- */
 function envelopes(results) {
   const raw = results.map(result => {
     const window = Math.max(1, Math.round(result.sampleRate * VIEW.envelopeSeconds));
@@ -621,7 +552,6 @@ function envelopes(results) {
   return new Map(raw.map(({ result, values }) => [result.receiverId, { window: VIEW.envelopeSeconds, startSeconds: result.startSeconds, values }]));
 }
 
-/** The receiver the plots and scene facts follow: the solo one, or the first listening one, heads first. */
 function focusReceiver() {
   const solo = state.soloId && findItem('receiver', state.soloId);
   if (solo) return solo;
@@ -637,7 +567,6 @@ function outputGainForPeak(peakPa) {
 
 const earCache = new Map();
 
-/** The ear model on a worker: each part's channels (transferred) processed with one setting. */
 function earOnWorker(parts, sampleRate, setting) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./ear-worker.js', import.meta.url), { type: 'module' });
@@ -656,12 +585,7 @@ function earOnWorker(parts, sampleRate, setting) {
 
 let earPending = 0;
 
-/**
- * The composition as the optional ear model hears it: each listener's channels processed by the
- * reflex and loudness model, driven by its own pressure. It runs on a worker, started after each
- * render and listening change, so Play finds it ready. Cached per render and setting; a request for
- * parts on their way waits for them.
- */
+/** The composition through the ear model, on a worker; cached per render and setting, so Play finds it ready. */
 async function earApplied(composition) {
   const { earReflex: reflex, earLoudness: loudness, earCapOnsets: capOnsets } = state.scene.render;
   if (!composition || (!reflex && !loudness)) return composition;
@@ -693,7 +617,6 @@ async function earApplied(composition) {
   for (const channel of [...heads.map(head => head.channels[0]), ...omnis.map(omni => omni.channel)]) {
     for (const value of channel) peakPa = Math.max(peakPa, Math.abs(value));
   }
-  // The info's level warning follows what plays.
   const playedKey = `${reflex}:${loudness}:${capOnsets}|${[...heads, ...omnis].map(part => part.receiverId).join(',')}`;
   if (results === state.results && (state.playedPeak?.results !== results || state.playedPeak.key !== playedKey || state.playedPeak.peakPa !== peakPa)) {
     state.playedPeak = { results, key: playedKey, peakPa };
@@ -702,10 +625,6 @@ async function earApplied(composition) {
   return { ...composition, heads, omnis, peakPa };
 }
 
-/**
- * The peak pressure of what plays, Pa: the listening microphones' after the ear model once it has
- * run for this render and setting, and before it until then.
- */
 function playedPeakPa() {
   const { heads, omnis } = listeningKind(state.scene.receivers, state.scene.render.ambisonicOrder);
   const ids = [...heads, ...omnis].map(receiver => receiver.id);
@@ -716,17 +635,13 @@ function playedPeakPa() {
   return state.playedPeak?.results === state.results && state.playedPeak.key === key ? state.playedPeak.peakPa : raw;
 }
 
-/** Starts the ear model for the current listening, if it is on, so that Play need not wait for it. */
 function prepareEar() {
   const { earReflex, earLoudness } = state.scene.render;
   if (!state.results || (!earReflex && !earLoudness)) return;
   listening().catch(error => setStatus(`Ear model failed: ${error.message}`, true));
 }
 
-/**
- * What Play and Export use: the composition of the listening microphones and its gain. Binaural
- * decoding gets 3 dB more room; a mix of several parts is scaled by 1/sqrt of their number.
- */
+/** The composition and its gain: binaural decoding gets RENDER.binauralHeadroom, a mix is scaled by 1/√parts. */
 async function listening() {
   const composition = await earApplied(composeListening(state.scene, state.results));
   if (!composition) return null;
@@ -740,7 +655,7 @@ function savePreferences() {
   storage.write(PREFERENCES_STORAGE_KEY, state.preferences);
 }
 
-/* Panel */
+const hasSeed = emitter => !['blast', 'meteor', 'whip', 'booster'].includes(emitter.kind) && !isFlightKind(emitter);
 
 function emitterKindLabel(emitter) {
   return emitter.kind === 'lightning' ? FLASH_TYPE_LABELS[emitter.flashType] : KIND_LABELS[emitter.kind];
@@ -749,7 +664,6 @@ function emitterKindLabel(emitter) {
 const updateEmitter = (id, change) => commit(scene => change(scene.emitters.find(emitter => emitter.id === id)));
 const updateReceiver = (id, change) => commit(scene => change(scene.receivers.find(receiver => receiver.id === id)));
 
-/** A change shown at once while a slider moves; `commit` validates and renders when it ends. */
 function preview(change) {
   change(state.scene);
   invalidateResults();
@@ -773,7 +687,6 @@ function button(text, onClick, { disabled = false, title = '' } = {}) {
   return node;
 }
 
-/** One line describing what an emitter currently is. */
 function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
@@ -799,22 +712,16 @@ function emitterSummary(emitter) {
     + (terminations ? ` · ${terminations} new ground point${terminations > 1 ? 's' : ''}` : '');
 }
 
-/** Sets a slider's filled track from `from` to `to`, positions in [0, 1] of its range. */
 function paintTrack(element, from, to) {
   const at = t => `calc(${VIEW.panels.thumbHalfPixels}px + (100% - ${2 * VIEW.panels.thumbHalfPixels}px) * ${t})`;
   element.style.setProperty('--from', from === 0 ? '0%' : at(from));
   element.style.setProperty('--to', at(to));
 }
 
-/** Keeps the scene box still while a slider moves, and lets it fit the scene again when it ends. */
 function holdViews(on) {
   views.forEach(view => view.hold(on));
 }
 
-/**
- * Turns a macro's value into a text field for a typed value: Enter or leaving the field applies it
- * through the scene's validation, Escape keeps the value as it was.
- */
 function typeEntry(value, emitter, macro) {
   const field = element('input', 'macro-entry');
   field.type = 'text';
@@ -884,7 +791,6 @@ function macroRow(container, emitter, macro) {
       const b = Number(upper.value);
       return [Math.min(a, b) / steps, Math.max(a, b) / steps];
     };
-    // The lower input's track shows the fill between the handles; the upper one's is transparent.
     // Safari does not pass custom properties from a parent on to a slider's track, so both inputs carry them.
     const paint = () => { const [from, to] = read(); paintTrack(lower, from, to); paintTrack(upper, from, to); };
     paint();
@@ -904,21 +810,28 @@ function macroRow(container, emitter, macro) {
   container.append(label, input, value);
 }
 
-function emitterCard(container, emitter, selected) {
-  const { scene } = state;
-  const card = element('div', 'card');
-  card.setAttribute('aria-selected', String(selected));
+function cardNode(selected, { checked, title, onCheck, onToggle }, ...parts) {
+  const node = element('div', 'card');
+  node.setAttribute('aria-selected', String(selected));
   const header = element('div', 'card-header');
   header.tabIndex = 0;
   header.setAttribute('role', 'button');
   header.setAttribute('aria-expanded', String(selected));
   const checkbox = element('input');
   checkbox.type = 'checkbox';
-  checkbox.checked = emitter.enabled;
-  checkbox.title = 'Enabled';
+  checkbox.checked = checked;
+  checkbox.title = title;
   checkbox.addEventListener('click', event => event.stopPropagation());
-  checkbox.addEventListener('change', () => updateEmitter(emitter.id, item => { item.enabled = checkbox.checked; }));
-  // Removing an emitter is one press on its header; the last one may go too.
+  checkbox.addEventListener('change', () => onCheck(checkbox.checked));
+  header.append(checkbox, ...parts);
+  header.addEventListener('click', onToggle);
+  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); } });
+  node.append(header);
+  return node;
+}
+
+function emitterCard(container, emitter, selected) {
+  const { scene } = state;
   const remove = element('button', 'icon-button');
   remove.type = 'button';
   remove.title = 'Remove';
@@ -929,21 +842,19 @@ function emitterCard(container, emitter, selected) {
     commit(next => { next.emitters = next.emitters.filter(item => item.id !== emitter.id); });
   });
   remove.addEventListener('keydown', event => event.stopPropagation());
-  header.append(checkbox, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
-  const select = () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); };
-  header.addEventListener('click', select);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
-  card.append(header);
+  const card = cardNode(selected, {
+    checked: emitter.enabled, title: 'Enabled',
+    onCheck: on => updateEmitter(emitter.id, item => { item.enabled = on; }),
+    onToggle: () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); }
+  }, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
   if (selected) {
     card.append(element('p', 'card-summary', emitterSummary(emitter)));
     const macros = element('div', 'macros');
-    // The onset matters once the emitter sounds with others, or once it is set.
     macrosFor(emitter, { onset: scene.emitters.length > 1 || emitter.startSeconds > 0 }).forEach(macro => macroRow(macros, emitter, macro));
     card.append(macros);
     const actions = element('div', 'card-actions');
     actions.append(button('Details…', () => openDetails(emitter.id)));
-    // A flight or a whip has no seed to draw anew.
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && emitter.kind !== 'booster' && !isFlightKind(emitter)) {
+    if (hasSeed(emitter)) {
       actions.append(button('New shape', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
       actions.append(button('Variant', () => addEmitter(next => {
         const source = next.emitters.find(item => item.id === emitter.id);
@@ -956,28 +867,14 @@ function emitterCard(container, emitter, selected) {
   container.append(card);
 }
 
-/**
- * Applies a listening change — which microphones listen, their type, or their orientation — and
- * keeps the render, since every microphone is rendered as a full field.
- */
 function commitListening(change) {
-  const next = structuredClone(state.scene);
-  change(next);
-  try {
-    state.scene = parseScene(next);
-  } catch (error) {
-    setStatus(error.message, true);
-    refreshPanel();
-    return;
-  }
-  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  if (!applyScene(change)) return;
   refreshPanel();
   drawInfo();
   if (player.playing()) resumePlayback();
   else prepareEar();
 }
 
-/** Live orientation while a control moves; stored when it ends. */
 function orient(receiverId, headingDegrees, pitchDegrees) {
   const item = state.scene.receivers.find(candidate => candidate.id === receiverId);
   item.headingDegrees = headingDegrees;
@@ -985,23 +882,24 @@ function orient(receiverId, headingDegrees, pitchDegrees) {
   player.setOrientation(receiverId, headingDegrees, pitchDegrees);
   if (liveFields.orientation?.receiverId === receiverId) liveFields.orientation.set(item);
   if (orientationTarget()?.id === receiverId) orientationBall.set(item);
-  $('cube-orientation-value').textContent = `${compassLabel(headingDegrees)} · ${pitchDegrees > 0 ? '+' : ''}${pitchDegrees}°`;
+  $('cube-orientation-value').textContent = orientationText(item);
   redrawViews();
 }
 
-/** The binaural receiver whose orientation the sphere shows: the selected one, or the first listening head. */
 function orientationTarget() {
   const selected = state.selection.type === 'receiver' ? findItem('receiver', state.selection.id) : null;
   if (selected?.type === 'binaural') return selected;
   return state.scene.receivers.find(receiver => receiver.listen && receiver.type === 'binaural') ?? null;
 }
 
+const orientationText = receiver => `${compassLabel(receiver.headingDegrees)} · ${receiver.pitchDegrees > 0 ? '+' : ''}${receiver.pitchDegrees}°`;
+
 function drawOrientation() {
   const target = orientationTarget();
   $('cube-orientation').hidden = !target;
   if (!target) return;
   $('cube-orientation-name').textContent = target.name;
-  $('cube-orientation-value').textContent = `${compassLabel(target.headingDegrees)} · ${target.pitchDegrees > 0 ? '+' : ''}${target.pitchDegrees}°`;
+  $('cube-orientation-value').textContent = orientationText(target);
   orientationBall.set(target);
 }
 
@@ -1012,23 +910,11 @@ function storeScene() {
 const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
 
 function receiverCard(container, receiver, selected) {
-  const card = element('div', 'card');
-  card.setAttribute('aria-selected', String(selected));
-  const header = element('div', 'card-header');
-  header.tabIndex = 0;
-  header.setAttribute('role', 'button');
-  header.setAttribute('aria-expanded', String(selected));
-  const checkbox = element('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = receiver.listen;
-  checkbox.title = 'Listen';
-  checkbox.addEventListener('click', event => event.stopPropagation());
-  checkbox.addEventListener('change', () => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = checkbox.checked; }));
-  header.append(checkbox, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`));
-  const choose = () => { select(selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }); refreshPanel(); };
-  header.addEventListener('click', choose);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } });
-  card.append(header);
+  const card = cardNode(selected, {
+    checked: receiver.listen, title: 'Listen',
+    onCheck: on => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = on; }),
+    onToggle: () => { select(selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }); refreshPanel(); }
+  }, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`));
   if (selected) {
     const fields = element('div', 'fields');
     textField(fields, { label: 'Name', value: receiver.name, onCommit: value => updateReceiver(receiver.id, item => { item.name = value; }) });
@@ -1051,7 +937,7 @@ function receiverCard(container, receiver, selected) {
     if (receiver.type === 'binaural') {
       const orientation = element('div', 'fields');
       const facing = numberField(orientation, {
-        key: 'headingDegrees', value: receiver.headingDegrees,
+        key: 'facingDegrees', value: receiver.headingDegrees,
         onCommit: heading => commitListening(next => { next.receivers.find(item => item.id === receiver.id).headingDegrees = heading; })
       });
       const elevation = numberField(orientation, {
@@ -1068,16 +954,30 @@ function receiverCard(container, receiver, selected) {
   container.append(card);
 }
 
-/** Every detailed parameter of an emitter, grouped, in a modal dialog. */
 function detailSections(emitter) {
   const set = key => value => updateEmitter(emitter.id, item => { item[key] = value; });
   const section = (title, build) => ({ title, build });
   const numbers = keys => container => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const placement = container => {
     textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && emitter.kind !== 'booster' && !isFlightKind(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+    if (hasSeed(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
     numberField(container, { key: 'startSeconds', value: emitter.startSeconds, onCommit: set('startSeconds') });
   };
+  const centrePlacement = section('Placement', container => {
+    placement(container);
+    pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
+  });
+  const blastSections = [
+    section('Source', container => {
+      selectField(container, {
+        label: 'Explosive', value: emitter.explosive, reliability: 'B',
+        options: EXPLOSIVE_TYPES.map(type => [type, BLAST.explosives[type].label]), onCommit: set('explosive')
+      });
+      numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
+      checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
+    }),
+    section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram']))
+  ];
   if (emitter.kind === 'lightning') {
     const ground = emitter.flashType === 'cloud-to-ground';
     return [
@@ -1157,7 +1057,6 @@ function detailSections(emitter) {
             if (FLIGHT.bodies[body].lengthMetres) Object.assign(item, { lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor });
           })
         });
-        // Editing the length or shape makes the body custom.
         for (const key of ['lengthMetres', 'shapeFactor']) {
           numberField(container, { key, value: emitter[key], onCommit: value => updateEmitter(emitter.id, item => { item[key] = value; item.body = 'custom'; }) });
         }
@@ -1167,10 +1066,7 @@ function detailSections(emitter) {
   }
   if (emitter.kind === 'fireworks') {
     return [
-      section('Placement', container => {
-        placement(container);
-        pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
-      }),
+      centrePlacement,
       section('Shells', numbers(['radiusMetres', 'durationSeconds', 'shellCount', 'salvoSize', 'salvoSpreadSeconds', 'shellDiameterMillimetres', 'diameterSpread'])),
       section('Crackle', numbers(['crackleShare', 'starCount', 'popsPerStar', 'popMilligrams'])),
       section('Source', numbers(['riseTimeSeconds']))
@@ -1178,28 +1074,14 @@ function detailSections(emitter) {
   }
   if (emitter.kind === 'barrage') {
     return [
-      section('Placement', container => {
-        placement(container);
-        pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
-      }),
+      centrePlacement,
       section('Rounds', numbers(['radiusMetres', 'durationSeconds', 'roundCount', 'salvoSize', 'salvoSpreadSeconds', 'chargeSpread', 'airburstShare', 'airburstHeightMetres'])),
-      section('Source', container => {
-        selectField(container, {
-          label: 'Explosive', value: emitter.explosive, reliability: 'B',
-          options: EXPLOSIVE_TYPES.map(type => [type, BLAST.explosives[type].label]), onCommit: set('explosive')
-        });
-        numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
-        checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
-      }),
-      section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram']))
+      ...blastSections
     ];
   }
   if (emitter.kind === 'storm') {
     return [
-      section('Placement', container => {
-        placement(container);
-        pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
-      }),
+      centrePlacement,
       section('Extent', numbers(['radiusMetres', 'durationSeconds', 'flashCount', 'groundFlashShare', 'cloudBaseMetres', 'cloudTopMetres', 'newTerminationProbability'])),
       section('Source', numbers(['energyJoulesPerMetre', 'energySpread', 'energyVariation', 'acousticEfficiency', 'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds', 'currentDecayHeightMetres'])),
       section('Ground flashes in cloud', numbers(['inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond'])),
@@ -1211,15 +1093,7 @@ function detailSections(emitter) {
       placement(container);
       pointFields(container, { label: 'Position', point: emitter.positionMetres, onCommit: set('positionMetres') });
     }),
-    section('Source', container => {
-      selectField(container, {
-        label: 'Explosive', value: emitter.explosive, reliability: 'B',
-        options: EXPLOSIVE_TYPES.map(type => [type, BLAST.explosives[type].label]), onCommit: set('explosive')
-      });
-      numbers(['chargeKilograms', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds'])(container);
-      checkboxField(container, { label: 'Secondary shock', value: emitter.secondaryShock, reliability: 'B', onCommit: set('secondaryShock') });
-    }),
-    section('Fireball', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram']))
+    ...blastSections
   ];
 }
 
@@ -1228,7 +1102,7 @@ function openDetails(id) {
   renderDetails();
   if ($('details').open) return;
   $('details').showModal();
-  // The dialog itself takes focus, so its first button is not ringed when it opens; Tab enters it.
+  // Focus the dialog itself, so its first control is not ringed when it opens.
   $('details').focus();
 }
 
@@ -1258,7 +1132,6 @@ function rebuildDetails() {
 let terrainCoverageTimer = null;
 let terrainCoverageRunning = false;
 
-/** The rectangle of the scene frame that holds every emitter and microphone. */
 function sceneBounds(scene) {
   const bounds = { west: Infinity, east: -Infinity, south: Infinity, north: -Infinity };
   const include = point => {
@@ -1278,11 +1151,6 @@ function sceneBounds(scene) {
   return bounds;
 }
 
-/**
- * The patches of terrain a scene needs: those under its emitters and microphones and, around them,
- * the margin whose slopes can echo (GROUND.terrain), at the chosen resolution or a cell as many
- * times twice as coarse as keeps them within GROUND.terrain.maximumPatches.
- */
 function neededPatches(scene, resolutionMetres) {
   const bounds = sceneBounds(scene);
   const size = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
@@ -1294,13 +1162,8 @@ function neededPatches(scene, resolutionMetres) {
 }
 
 const sameRange = (a, b) => a && b && a.column0 === b.column0 && a.column1 === b.column1 && a.row0 === b.row0 && a.row1 === b.row1;
-/** What a terrain covers, for telling whether its place names still belong to it. */
 const terrainCoverageKey = terrain => (terrain ? `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${Object.values(terrainRange(terrain)).join(',')}` : '');
 
-/**
- * Terrain with the patches `needed` at a place: those of `terrain` it can keep, the rest fetched;
- * patches beyond the need are dropped, and names outside the new area with them.
- */
 async function coveredTerrain(terrain, anchor, needed, label) {
   const { cellMetres, range } = needed;
   const keep = terrain && terrain.cellMetres === cellMetres && terrain.latitude === anchor.latitude && terrain.longitude === anchor.longitude
@@ -1315,11 +1178,6 @@ async function coveredTerrain(terrain, anchor, needed, label) {
 
 let terrainCoverageAgain = false;
 
-/**
- * Once terrain is in use, its patches follow the scene a moment after each change: the ground a
- * moved emitter or microphone now needs is fetched, and the ground no longer needed is dropped, so
- * the terrain holds what the sound can meet and the stored scene stays small. The datum stays.
- */
 function scheduleTerrainCoverage() {
   clearTimeout(terrainCoverageTimer);
   terrainCoverageTimer = setTimeout(async () => {
@@ -1346,11 +1204,6 @@ function scheduleTerrainCoverage() {
 
 let placeNamesLoading = false;
 
-/**
- * Place names for a terrain, fetched last and on their own: the terrain and the render do not wait for
- * them, they change nothing that is heard, so they join the scene without a new render, and names
- * already shown stay when the service cannot be reached.
- */
 async function loadPlaceNames(terrain) {
   if (placeNamesLoading) return;
   placeNamesLoading = true;
@@ -1360,7 +1213,6 @@ async function loadPlaceNames(terrain) {
   try {
     names = await fetchPlaceNames(terrain, timeLimit(GROUND.terrain.placeNamesLimitSeconds));
   } catch {
-    // Given up at its time limit: the names already shown stay.
   } finally {
     operation('names', null);
     placeNamesLoading = false;
@@ -1368,22 +1220,19 @@ async function loadPlaceNames(terrain) {
   }
   if (!names || terrainCoverageKey(state.scene.terrain) !== terrainCoverageKey(terrain)) return;
   state.scene.terrain.names = names;
-  storage.write(sceneStorageKey(state.scene.mode), state.scene);
+  storeScene();
   redrawViews();
 }
 
-/** Where and how finely terrain is captured next; editing it does not change the loaded terrain. */
 function terrainPanel(container) {
   const { scene } = state;
   const draft = state.preferences.terrainDraft;
   const setDraft = change => { Object.assign(draft, change); savePreferences(); };
   const load = async trigger => {
     trigger.disabled = true;
-    // The place is the scene's origin; the patches are those the scene needs around its emitters and microphones.
     try {
       const anchor = { latitude: draft.latitude, longitude: draft.longitude };
       const covered = await coveredTerrain(null, anchor, neededPatches(state.scene, draft.cellMetres), 'Loading terrain');
-      // The datum is the ground under the origin, or at the nearest edge of the patches.
       const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
       const settings = state.scene.terrain ? Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, state.scene.terrain[key]])) : TERRAIN_DEFAULTS;
       commit(next => { next.terrain = { ...settings, place: (draft.place ?? '').slice(0, 120), ...covered, datumMetres }; });
@@ -1403,20 +1252,13 @@ function terrainPanel(container) {
     label: 'Place', value: draft.place, action: 'Find', extra: mapButton,
     onAction: async (text, trigger) => {
       trigger.disabled = true;
-      operation('place', `Finding ${text}`, { limitSeconds: GROUND.terrain.placeSearchLimitSeconds });
-      try {
-        const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
-        operation('place', null);
-        if (!found) { setStatus(`No place found for ${text}`, true); return; }
+      const found = await findPlace(text);
+      if (found) {
         setDraft({ place: text, latitude: +found.latitude.toFixed(5), longitude: +found.longitude.toFixed(5) });
         setStatus(found.name);
         await load(trigger);
-      } catch (error) {
-        setStatus(`The place search failed: ${error.message}`, true);
-      } finally {
-        trigger.disabled = false;
-        operation('place', null);
       }
+      trigger.disabled = false;
     }
   });
   for (const [key, field] of [['latitude', 'latitude'], ['longitude', 'longitude'], ['terrainCellMetres', 'cellMetres']]) {
@@ -1443,48 +1285,50 @@ function terrainPanel(container) {
 
 const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates });
 let placeLoad = null;
-/** The text whose place the map shows, so that Load can tell a name typed but not yet found. */
 let placeShown = '';
 
 function showPlaceCoordinates({ latitude, longitude }) {
   $('place-coordinates').textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 }
 
-/** The side of the square the place map frames: the area the scene's terrain would cover. */
 function placeExtentMetres() {
   const bounds = rangeBounds(neededPatches(state.scene, state.preferences.terrainDraft.cellMetres).range, state.preferences.terrainDraft.cellMetres);
   return Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
 }
 
-/** Opens the map at the draft place; Load takes the map's centre as the origin and loads its terrain. */
 function openPlaceDialog(load) {
   const draft = state.preferences.terrainDraft;
   placeLoad = load;
   $('place-query').value = draft.place;
   placeShown = draft.place;
   $('place-dialog').showModal();
-  // The dialog itself takes focus, so its first control is not ringed when it opens.
+  // Focus the dialog itself, so its first control is not ringed when it opens.
   $('place-dialog').focus();
   placeMap.show(draft, placeExtentMetres());
   showPlaceCoordinates(draft);
 }
 
-/** Moves the map to a place found by name; false when none is found. */
-async function showFoundPlace(text) {
+async function findPlace(text) {
   operation('place', `Finding ${text}`, { limitSeconds: GROUND.terrain.placeSearchLimitSeconds });
   try {
     const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
-    if (!found) { setStatus(`No place found for ${text}`, true); return false; }
-    placeMap.show(found, placeExtentMetres());
-    showPlaceCoordinates(found);
-    placeShown = text;
-    return true;
+    if (!found) setStatus(`No place found for ${text}`, true);
+    return found;
   } catch (error) {
     setStatus(`The place search failed: ${error.message}`, true);
-    return false;
+    return null;
   } finally {
     operation('place', null);
   }
+}
+
+async function showFoundPlace(text) {
+  const found = await findPlace(text);
+  if (!found) return false;
+  placeMap.show(found, placeExtentMetres());
+  showPlaceCoordinates(found);
+  placeShown = text;
+  return true;
 }
 
 $('place-search').addEventListener('submit', event => {
@@ -1492,7 +1336,6 @@ $('place-search').addEventListener('submit', event => {
   const text = $('place-query').value.trim();
   if (text) showFoundPlace(text);
 });
-// Moving the map makes its centre the place, whatever name the field holds.
 $('place-overlay').addEventListener('pointerdown', () => { placeShown = $('place-query').value.trim(); });
 $('place-cancel').addEventListener('click', () => $('place-dialog').close());
 $('place-done').addEventListener('click', async () => {
@@ -1508,11 +1351,7 @@ $('place-done').addEventListener('click', async () => {
   placeLoad?.($('place-done'));
 });
 
-/**
- * Runs a rebuild of form fields and puts the focus back in the field that had it, found by its place
- * among the fields and its parameter: a step from a number field's arrows or keys rebuilds the panel,
- * and without this the next step would go nowhere.
- */
+/** Puts the focus back in the field that had it after a rebuild, so a number field's next step still lands. */
 function keepingFocus(root, rebuild) {
   const focused = document.activeElement;
   const fields = () => [...root.querySelectorAll('input, select')];
@@ -1523,11 +1362,7 @@ function keepingFocus(root, rebuild) {
   if (again && again.dataset.key === focused.dataset.key && again.type === focused.type) again.focus({ preventScroll: true });
 }
 
-/**
- * Rebuilds the panel, but not under a number field that has the focus: replacing it would end its
- * arrows' and keys' steps (in Safari even with the focus put back). The rebuild waits until the focus
- * leaves the field, a frame later, so a field clicked next is found again.
- */
+/** Waits for a focused number field to lose focus before rebuilding: replacing it ends its steps, in Safari even with the focus put back. */
 function refreshPanel() {
   const panel = document.querySelector('aside.panel');
   if (deferWhileEditing(panel, refreshPanel)) return;
@@ -1596,7 +1431,6 @@ function rebuildPanel() {
   selectField(output, {
     label: 'Level', value: scene.render.levelMode,
     options: [['peak', 'Peak −3 dBFS'], ['fixed', 'Fixed full scale']],
-    // The level sets the gain of playback and export only, so the result stays.
     onCommit: value => commitListening(next => { next.render.levelMode = value; })
   });
   if (scene.render.levelMode === 'fixed') {
@@ -1627,12 +1461,10 @@ function rebuildPanel() {
 
 const COMPASS = Object.freeze(['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']);
 
-/** A heading as degrees and the nearest compass direction. */
 function compassLabel(degrees) {
   return `${Math.round(degrees)}° ${COMPASS[Math.round(degrees / 45) % 8]}`;
 }
 
-/** Distance and compass direction from one point to another, along the ground. */
 function bearing(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -1640,7 +1472,6 @@ function bearing(from, to) {
   return { metres: Math.hypot(dx, dy), direction: COMPASS[Math.round(angle / 45) % 8] };
 }
 
-/** Short facts around the scene box: the selection, the listening position, and warnings. */
 function drawInfo() {
   useTerrain(state.scene.terrain);
   drawOrientation();
@@ -1725,12 +1556,6 @@ function addEmitter(create) {
   });
 }
 
-/* Results */
-
-/**
- * Both plots show every microphone on one time axis: the listening ones in ink and the others
- * muted, or one soloed microphone over the dimmed rest.
- */
 function drawResults(playheadSeconds = state.pause?.seconds ?? null, { frame = false } = {}) {
   const { receivers } = state.scene;
   const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
@@ -1747,7 +1572,6 @@ function drawResults(playheadSeconds = state.pause?.seconds ?? null, { frame = f
   }
 }
 
-/** One tab per microphone when there are several; a tab solos its microphone, again to release. */
 function drawPlotTabs(soloId) {
   const tabs = $('plot-tabs');
   const { receivers } = state.scene;
@@ -1766,9 +1590,6 @@ function drawPlotTabs(soloId) {
   }));
 }
 
-/* Playback */
-
-/** Travel time of a blast's first sound from where it burst, in the scene frame, to the receiver the view follows. */
 function arrivalDelay(from) {
   if (!from || !state.results) return 0;
   const to = placedPoint(focusReceiver().positionMetres);
@@ -1778,11 +1599,6 @@ function arrivalDelay(from) {
 const isBlastKind = emitter => emitter.kind === 'blast' || isFieldKind(emitter);
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
-/**
- * Every stroke of an emitter as its flash, scene time, and route; a blast's, a round's, and a
- * meteor's breakups and bursts also where they burst, as stored (`position`) and in the scene frame
- * over the terrain (`from`).
- */
 function strokeTimeline(emitter) {
   if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres, from: placedPoint(emitter.positionMetres) }];
   if (isMeteorKind(emitter)) {
@@ -1790,7 +1606,6 @@ function strokeTimeline(emitter) {
   }
   if (isTrackKind(emitter)) return [];
   if (isFieldKind(emitter)) {
-    // A fireworks shell's burst carries its seed for its color and stars.
     return cachedRounds(emitter, state.scene.air).map((round, index) => ({
       flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres),
       shell: round.id.endsWith(':burst') ? round.seed : null
@@ -1799,11 +1614,7 @@ function strokeTimeline(emitter) {
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 
-/**
- * What the scene view shows at the playback clock: every stroke that has started and not yet
- * faded, and the listening receiver's level. A stroke's light runs its route
- * figuratively in VIEW.flash.traverseSeconds; physically a return stroke takes microseconds.
- */
+/** What the scene view shows at the playback clock. A stroke's light runs figuratively in VIEW.flash.traverseSeconds; physically it takes microseconds. */
 function animationState() {
   const clock = playbackClock();
   if (!clock) return null;
@@ -1828,7 +1639,6 @@ function animationState() {
     receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
   }
   const wavefronts = wavefrontsShown() ? { profile, spheres: wavefrontSpheres(now, profile), total: wavefrontCandidates(state.scene).length } : null;
-  // Where each flight's body is at the clock, and its Mach cone.
   const flights = new Map();
   let cones = [];
   for (const emitter of state.scene.emitters) {
@@ -1839,7 +1649,6 @@ function animationState() {
       return index >= 0 && index < path.seconds.length ? [{ x: path.x[index], y: path.y[index], z: path.z[index] }] : [];
     }));
     if (!state.preferences.cone) continue;
-    // Each ring fades as the boom does with the distance it has spread, as the fronts do.
     const amplitudes = coneAmplitudes(emitter);
     paths.forEach((path, member) => {
       const cone = machCone(path, now, profile);
@@ -1850,14 +1659,12 @@ function animationState() {
       if (strength > 0) cones.push({ ...cone, strengths, strength });
     });
   }
-  // Only the strongest cones, so that a shower costs what a few bodies do.
   cones = cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies);
   return { strokes, receivers, sound, wavefronts, flights, cones };
 }
 
 const coneCache = new WeakMap();
 
-/** The bodies' amplitudes for their cones, cached per emitter as it stands (a change replaces it). */
 function coneAmplitudes(emitter) {
   const key = JSON.stringify([emitter, state.scene.air]);
   const cached = coneCache.get(emitter);
@@ -1867,40 +1674,33 @@ function coneAmplitudes(emitter) {
   return amplitudes;
 }
 
-/** Whether the scene's mode shows wavefronts. */
 function wavefrontsShown() {
   return Boolean(state.preferences.wavefronts?.[state.scene.mode]);
 }
 
 const wavefrontSources = new WeakMap();
 
-/**
- * Each flash's, blast's, and body's amplitude at 1 m, Pa·m, and the frequency that carries most of
- * its sound, the inverse of its pulse's duration, at which the air absorbs its fronts: a flash's
- * from the energy of all its sources.
- */
 function wavefrontAmplitudes(emitter) {
   const air = state.scene.air;
   const front = (amplitude, durationSeconds) => ({ amplitude, frequencyHz: 1 / Math.max(durationSeconds, 1e-6) });
   const blastFront = blast => { const [shock] = blastSources(blast, air); return front(shock.amplitudePaMetres, shock.durationSeconds); };
+  const boomFront = (mach, lengthMetres, shapeFactor, distanceMetres) => {
+    const boom = carlsonBoom({ mach, vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres, shapeFactor, distanceMetres });
+    return front(boom.overpressurePa * distanceMetres, boom.durationSeconds);
+  };
   if (emitter.kind === 'blast') return new Map([[emitter.id, blastFront(emitter)]]);
   if (isFlightKind(emitter)) {
-    // A boom's pressure 1 km away times 1 km, so that the fronts fade roughly with it.
-    const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
-    return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, front(boom.overpressurePa * 1000, boom.durationSeconds)]));
+    const boom = boomFront(Math.max(1.01, emitter.mach), emitter.lengthMetres, emitter.shapeFactor, 1000);
+    return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom]));
   }
   if (emitter.kind === 'booster') {
-    // A boom's pressure 1 km away times 1 km at Mach 1.5, about where it leaves the path.
-    const boom = carlsonBoom({ mach: 1.5, vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
-    return new Map([[`${emitter.id}:0`, front(boom.overpressurePa * 1000, boom.durationSeconds)]]);
+    // At Mach 1.5, about where the booster's boom leaves its path.
+    return new Map([[`${emitter.id}:0`, boomFront(1.5, emitter.lengthMetres, emitter.shapeFactor, 1000)]]);
   }
   if (emitter.kind === 'whip') {
-    // The crack's pressure 1 m away times 1 m, without the turn's spreading.
-    const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.crackerLengthMetres, shapeFactor: emitter.crackerShapeFactor, distanceMetres: 1 });
-    return new Map([[`${emitter.id}:0`, front(boom.overpressurePa, boom.durationSeconds)]]);
+    return new Map([[`${emitter.id}:0`, boomFront(Math.max(1.01, emitter.mach), emitter.crackerLengthMetres, emitter.crackerShapeFactor, 1)]]);
   }
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') {
-    // Each meteor's boom straight below the end of its trail times that distance.
     return new Map(showerMembers(emitter).map((meteor, index) => {
       const height = meteor.endHeightMetres;
       const boom = meteorBoom(meteor, air, height, height, air.pressureKpa * 1000);
@@ -1908,7 +1708,6 @@ function wavefrontAmplitudes(emitter) {
     }));
   }
   if (isFieldKind(emitter)) return new Map(cachedRounds(emitter, air).map(round => [round.id, blastFront(round)]));
-  // A flash's sources: their energy, and their frequencies weighted by it.
   const energy = new Map();
   for (const source of emitterSources(emitter, air, currentSurface()).sources) {
     const group = `${emitter.id}:${source.flash}`;
@@ -1919,10 +1718,6 @@ function wavefrontAmplitudes(emitter) {
   return new Map([...energy].map(([group, { energy: total, frequency }]) => [group, { amplitude: Math.sqrt(total), frequencyHz: total > 0 ? frequency / total : 1000 }]));
 }
 
-/**
- * Every enabled emitter's sampled source points with their emission times: a blast's point, and
- * the channel points of each flash's first stroke, which lead the later strokes' nested fronts.
- */
 function wavefrontCandidates(scene) {
   if (wavefrontSources.has(scene)) return wavefrontSources.get(scene);
   const candidates = [];
@@ -1932,7 +1727,6 @@ function wavefrontCandidates(scene) {
     for (const [group, amplitude] of wavefrontAmplitudes(emitter)) amplitudes.set(group, amplitude);
     if (emitter.kind === 'blast') { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); continue; }
     if (isTrackKind(emitter)) {
-      // Points along each body's path: their spheres together draw its Mach cone.
       cachedTracks(emitter, scene.air).forEach((path, member) => {
         const every = Math.max(1, Math.ceil(path.seconds.length / VIEW.wavefront.flightFronts));
         for (let index = 0; index < path.seconds.length; index += every) candidates.push({ point: { x: path.x[index], y: path.y[index], z: path.z[index] }, emitted: path.seconds[index], group: `${emitter.id}:${member}` });
@@ -1955,7 +1749,6 @@ function wavefrontCandidates(scene) {
     }
   }
   const stride = Math.max(1, Math.ceil(candidates.length / VIEW.wavefront.spheres));
-  // Each keeps its place in the list, so that views can thin the fronts the same way in every frame.
   const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, ...(amplitudes.get(candidate.group) ?? { amplitude: 0, frequencyHz: 1000 }) }));
   wavefrontSources.set(scene, sampled);
   return sampled;
@@ -1965,7 +1758,6 @@ const placedPoint = point => ({ ...point, z: currentSurface().heightAt(point.x, 
 
 const absorptionCache = { air: null, decibels: new Map() };
 
-/** Air absorption in dB/m at a frequency, rounded to a twelfth of an octave and cached per air. */
 function absorptionDecibels(frequencyHz) {
   if (!state.scene.air.absorption) return 0;
   if (absorptionCache.air !== state.scene.air) Object.assign(absorptionCache, { air: state.scene.air, decibels: new Map() });
@@ -1974,11 +1766,6 @@ function absorptionDecibels(frequencyHz) {
   return absorptionCache.decibels.get(step);
 }
 
-/**
- * How strongly a front or a Mach cone's ring is drawn once it has spread `radius` metres from a
- * source of `amplitude` Pa·m: its level after 1/r and the air's absorption at the frequency that
- * carries most of its sound, on the scale from floorDb (gone) to topDb (full).
- */
 function frontStrength(amplitude, radius, frequencyHz) {
   const absorption = absorptionDecibels(frequencyHz);
   const level = 20 * Math.log10(Math.max(amplitude, 1e-30) / Math.max(radius, 1) / REFERENCE_SOUND_PRESSURE_PA) - absorption * radius;
@@ -1986,12 +1773,11 @@ function frontStrength(amplitude, radius, frequencyHz) {
 }
 
 function wavefrontSpheres(now, profile) {
-  const strengthAt = frontStrength;
   return wavefrontCandidates(state.scene)
     .filter(candidate => now > candidate.emitted)
     .map(({ point, emitted, group, order, amplitude, frequencyHz }) => {
       const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
-      front.strength = strengthAt(amplitude, front.radiusMetres, frequencyHz);
+      front.strength = frontStrength(amplitude, front.radiusMetres, frequencyHz);
       if (!profile.wind) return { source: point, group, order, ...front };
       // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
       const seconds = now - emitted;
@@ -2019,23 +1805,17 @@ function animate() {
   else { animating = false; drawStill(); }
 }
 
-/** The scene, the plots, and the clock at rest: stopped, or held where playback paused. */
 function drawStill() {
   redrawViews();
   drawResults();
   drawTimeline(state.pause?.seconds ?? null);
 }
 
-/** The playback clock, or while paused one held where it paused. */
 function playbackClock() {
   const pause = state.pause;
   return player.clock() ?? (pause ? { skippedSeconds: pause.skippedSeconds ?? 0, sceneSeconds: () => pause.seconds } : null);
 }
 
-/**
- * The scene clock while the sound plays: seconds since the flash, and a bar from the flash to the
- * end of what plays, dim until the first sound arrives at the followed microphone.
- */
 function drawTimeline(seconds) {
   const holder = $('cube-timeline');
   const result = state.results?.get(focusReceiver().id);
@@ -2049,10 +1829,6 @@ function drawTimeline(seconds) {
   $('cube-timeline-progress').style.width = share(seconds);
 }
 
-function showStopped() {
-  syncPlayButton();
-}
-
 function showPlaying() {
   syncPlayButton();
   startAnimation();
@@ -2060,10 +1836,6 @@ function showPlaying() {
 
 let resuming = null;
 
-/**
- * After a listening change during playback, plays the new composition on from the same moment.
- * A change made while the previous one is still connecting is applied once that one has started.
- */
 async function resumePlayback() {
   if (resuming) { resuming.again = true; return; }
   if (!player.playing() || !player.clock()) return;
@@ -2074,13 +1846,13 @@ async function resumePlayback() {
     // Playback may have stopped while the ear model ran.
     const clock = player.clock();
     if (!player.playing() || !clock) return;
-    if (!current) { player.stop(); showStopped(); return; }
+    if (!current) { player.stop(); syncPlayButton(); return; }
     started = await player.play(current.composition, current.gain, {
-      realDelay: state.preferences.realDelay, onEnded: showStopped, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
+      realDelay: state.preferences.realDelay, onEnded: syncPlayButton, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
     });
   } catch (error) {
     player.stop();
-    showStopped();
+    syncPlayButton();
     setStatus(`Playback failed: ${error.message}`, true);
   } finally {
     const { again } = resuming;
@@ -2090,15 +1862,11 @@ async function resumePlayback() {
   }
 }
 
-/**
- * Plays from where playback paused or was scrubbed to, or from the start. Call it first thing in a
- * user gesture, which the audio context needs to start.
- */
+/** Plays from where playback paused or was scrubbed to; call it first thing in a user gesture, which the audio context needs. */
 async function startPlayback() {
   const unlocked = player.unlock(state.scene.render.sampleRate);
   const { results } = state;
   try {
-    // A listening change made while the ear model ran asks for the composition again.
     let current;
     let scene;
     do {
@@ -2111,30 +1879,29 @@ async function startPlayback() {
     await unlocked;
     const from = state.pause;
     state.pause = null;
-    const options = { realDelay: state.preferences.realDelay, onEnded: showStopped };
+    const options = { realDelay: state.preferences.realDelay, onEnded: syncPlayButton };
     if (from) Object.assign(options, { atSceneSeconds: from.seconds, skippedSeconds: from.skippedSeconds });
     if (await player.play(current.composition, current.gain, options)) showPlaying();
   } catch (error) {
     player.stop();
-    showStopped();
+    syncPlayButton();
     setStatus(`Playback failed: ${error.message}`, true);
   }
 }
 
-/** Holds playback where it is; Play goes on from there. */
 function pausePlayback() {
   const clock = player.clock();
   if (!clock || !player.playing()) return;
   state.pause = { seconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds };
   player.stop();
-  showStopped();
+  syncPlayButton();
 }
 
 $('play').addEventListener('click', () => {
   if (player.playing()) {
     state.pause = null;
     player.stop();
-    showStopped();
+    syncPlayButton();
     return;
   }
   if (!state.results) {
@@ -2152,7 +1919,6 @@ $('plot-play').addEventListener('click', () => {
   else if (state.results) startPlayback();
 });
 
-/** Pressing a plot holds playback at that moment, dragging moves it, and letting go plays on from there. */
 for (const canvas of [$('waveform'), $('arrivals')]) {
   canvas.addEventListener('pointerdown', event => {
     if (!state.results || event.button !== 0) return;
@@ -2180,8 +1946,6 @@ for (const canvas of [$('waveform'), $('arrivals')]) {
   });
 }
 
-/* Files */
-
 function download(name, blob) {
   const url = URL.createObjectURL(blob);
   const link = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -2204,7 +1968,7 @@ $('open-file').addEventListener('change', async () => {
     const scene = parseScene(JSON.parse(await file.text()));
     state.scene = scene;
     state.selection = { type: 'emitter', id: scene.emitters[0].id };
-    storage.write(sceneStorageKey(scene.mode), scene);
+    storeScene();
     state.preferences.mode = scene.mode;
     savePreferences();
     invalidateResults();
@@ -2224,7 +1988,6 @@ function exportSelection() {
   return new Set([...document.querySelectorAll('#export-list input:checked')].map(input => input.value));
 }
 
-/** Sizes, the file count, and the format line for the current selection. */
 function updateExportSummary() {
   const { plan } = exportState;
   const selected = exportSelection();
@@ -2241,7 +2004,6 @@ function updateExportSummary() {
 
 $('export').addEventListener('click', async () => {
   let current;
-  // An export is always rendered in full.
   if (state.resultsPreview) {
     try {
       await renderFull();
@@ -2276,7 +2038,7 @@ $('export').addEventListener('click', async () => {
   $('export-error').hidden = true;
   updateExportSummary();
   $('export-dialog').showModal();
-  // The dialog itself takes focus, so its first control is not ringed when it opens.
+  // Focus the dialog itself, so its first control is not ringed when it opens.
   $('export-dialog').focus();
 });
 
@@ -2333,8 +2095,6 @@ $('export-form').addEventListener('submit', async event => {
   }
 });
 
-/* Controls */
-
 $('details-close').addEventListener('click', () => $('details').close());
 $('details').addEventListener('close', () => { state.detailsId = null; });
 
@@ -2351,10 +2111,6 @@ document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEven
   if (state.preferences.autoRender) startRender();
 }));
 
-/**
- * The icon switches: each button is pressed while its preference is on, and a press turns it over.
- * `after` runs once the preference has changed.
- */
 const TOGGLES = Object.freeze({
   'auto-render': {
     read: () => state.preferences.autoRender,
@@ -2404,23 +2160,17 @@ $('attribution-button').addEventListener('click', () => {
   $('attribution-text').hidden = !open;
   $('attribution-button').setAttribute('aria-expanded', String(open));
 });
-const nextName = (scene, base) => `${base} ${scene.emitters.length + 1}`;
-$('add-lightning').addEventListener('click', () => addEmitter(scene => defaultLightning(uniqueId('lightning', scene.emitters), nextName(scene, 'Ground flash'), newSeed())));
-$('add-cloud').addEventListener('click', () => addEmitter(scene => defaultCloudFlash(uniqueId('cloud', scene.emitters), nextName(scene, 'Cloud flash'), newSeed())));
-$('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(uniqueId('storm', scene.emitters), nextName(scene, 'Storm'), newSeed())));
-$('add-meteor').addEventListener('click', () => addEmitter(scene => defaultMeteor(uniqueId('meteor', scene.emitters), nextName(scene, 'Meteor'), newSeed())));
-$('add-shower').addEventListener('click', () => addEmitter(scene => defaultShower(uniqueId('shower', scene.emitters), nextName(scene, 'Shower'), newSeed())));
-$('add-formation').addEventListener('click', () => addEmitter(scene => defaultFormation(uniqueId('formation', scene.emitters), nextName(scene, 'Formation'), newSeed())));
-$('add-booster').addEventListener('click', () => addEmitter(scene => defaultBooster(uniqueId('booster', scene.emitters), nextName(scene, 'Booster'), newSeed())));
-$('add-whip').addEventListener('click', () => addEmitter(scene => defaultWhip(uniqueId('whip', scene.emitters), nextName(scene, 'Whip'), newSeed())));
-$('add-flight').addEventListener('click', () => addEmitter(scene => defaultFlight(uniqueId('flight', scene.emitters), nextName(scene, 'Flight'), newSeed())));
-$('add-fireworks').addEventListener('click', () => addEmitter(scene => defaultFireworks(uniqueId('fireworks', scene.emitters), nextName(scene, 'Fireworks'), newSeed())));
-$('add-barrage').addEventListener('click', () => addEmitter(scene => defaultBarrage(uniqueId('barrage', scene.emitters), nextName(scene, 'Barrage'), newSeed())));
-$('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
+const ADD_EMITTERS = Object.freeze({
+  lightning: [defaultLightning, 'Ground flash'], cloud: [defaultCloudFlash, 'Cloud flash'], storm: [defaultStorm, 'Storm'],
+  meteor: [defaultMeteor, 'Meteor'], shower: [defaultShower, 'Shower'], formation: [defaultFormation, 'Formation'], booster: [defaultBooster, 'Booster'],
+  whip: [defaultWhip, 'Whip'], flight: [defaultFlight, 'Flight'], fireworks: [defaultFireworks, 'Fireworks'], barrage: [defaultBarrage, 'Barrage'], blast: [defaultBlast, 'Blast']
+});
+for (const [prefix, [create, base]] of Object.entries(ADD_EMITTERS)) {
+  $(`add-${prefix}`).addEventListener('click', () => addEmitter(scene => create(uniqueId(prefix, scene.emitters), `${base} ${scene.emitters.length + 1}`, newSeed())));
+}
 $('add-receiver').addEventListener('click', () => commit(scene => {
   const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`);
   receiver.positionMetres = { ...receiver.positionMetres, x: receiver.positionMetres.x + 1000 * scene.receivers.length };
-  // It faces the first emitter that sounds.
   const source = scene.emitters.find(emitter => emitter.enabled) ?? scene.emitters[0];
   if (source) receiver.headingDegrees = headingToward(receiver.positionMetres, emitterAnchor(source));
   scene.receivers.push(receiver);

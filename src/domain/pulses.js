@@ -74,7 +74,7 @@ export const friedlanderSpanSeconds = (positiveDurationSeconds, decay) =>
   positiveDurationSeconds * (1 + Math.log(1e6) / decay);
 
 /** The dimensionless ωT at which the N-wave amplitude spectrum peaks, by golden-section search. */
-export const N_WAVE_PEAK_OMEGA_DURATION = (() => {
+const N_WAVE_PEAK_OMEGA_DURATION = (() => {
   const magnitude = x => Math.hypot(...nWaveSpectrum(x / (2 * Math.PI), 1));
   let low = 1;
   let high = 8;
@@ -87,5 +87,4 @@ export const N_WAVE_PEAK_OMEGA_DURATION = (() => {
   return (low + high) / 2;
 })();
 
-/** N-wave duration whose amplitude spectrum peaks at the given frequency. */
 export const nWaveDurationForPeak = peakFrequencyHz => N_WAVE_PEAK_OMEGA_DURATION / (2 * Math.PI * peakFrequencyHz);

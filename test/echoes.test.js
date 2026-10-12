@@ -3,7 +3,7 @@ import test from 'node:test';
 import { PROPAGATION } from '../src/domain/constants.js';
 import { assemblePaths, prepareScene, receiverPaths, renderReceiver, tracePart } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
-import { defaultBlast, defaultFlight, defaultLightning, parseScene, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
+import { defaultBlast, defaultFlight, defaultLightning, parseScene } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
 import { terrainSurface } from '../src/domain/terrain.js';
 import { syntheticTerrain } from './terrain-fixture.js';

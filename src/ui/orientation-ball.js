@@ -5,7 +5,7 @@ const CIRCLE_POINTS = 72;
 const toRadians = degrees => degrees * Math.PI / 180;
 
 /** A unit look direction (east, north, up) from compass heading and elevation in degrees. */
-export function lookDirection(headingDegrees, pitchDegrees) {
+function lookDirection(headingDegrees, pitchDegrees) {
   const heading = toRadians(headingDegrees);
   const pitch = toRadians(pitchDegrees);
   return { x: Math.sin(heading) * Math.cos(pitch), y: Math.cos(heading) * Math.cos(pitch), z: Math.sin(pitch) };
@@ -93,13 +93,11 @@ export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
     context.lineWidth = 2;
     context.beginPath(); context.moveTo(cx, cy); context.lineTo(tip.x, tip.y); context.stroke();
     context.globalAlpha = 1;
-    // The facing handle sits on the horizon; the look line rises from it to the tilted tip.
     const facing = project(lookDirection(orientation.headingDegrees, 0));
     context.lineWidth = 1;
     context.globalAlpha = facing.depth > 0 ? .5 : 1;
     handle(context, facing.x, facing.y, colors.accent, drag?.mode === 'heading');
     context.globalAlpha = 1;
-    // Elevation scale: +90° at the top, the horizon marked, the handle at the elevation.
     const { scaleX, top, bottom } = geometry;
     context.strokeStyle = colors.line;
     context.lineWidth = 2;

@@ -59,9 +59,7 @@ export const GROUND = Object.freeze({
    * (Rayleigh, σ² = (2k·h·sin ψ)², h = roughnessMetres on natural ground) and the turbulence between
    * the paths scatter a share 1 − e^(−σ²) of its energy, which returns as `scatterArrivals` seeded
    * sub-arrivals of random sign over a few milliseconds (mean `scatterSeconds`) rather than as one
-   * sharp copy (class C for the height and the spread). Without it every sharp pulse and its
-   * reflection sounded as a pitch at the inverse of their delay (measured: 160–270 Hz, correlation
-   * 0.29–0.46 at a microphone 1.7 m up).
+   * sharp copy, which sounded as a pitch at the inverse of the delay (class C for the height and the spread).
    */
   roughnessMetres: .05,
   scatterArrivals: 12,
@@ -420,16 +418,11 @@ export const FLIGHT = Object.freeze({
   approachHeights: 2,
   approachMetres: 20000,
   /**
-   * A boom crosses the turbulent air near the ground, which bends its front into spikes and rounds
-   * (peaked and rounded booms). Its front is rendered as the direct front plus a scattered part of
-   * `arrivals` seeded sub-arrivals of zero sum, delayed exponentially by the rise time on average, so
-   * the N-wave keeps its shape and area while its front gains spikes (class C). The scattered part's
-   * RMS against the front is `frontShare` at `referenceTurbulence` and grows with the square root of
-   * the turbulence (class C, not fitted: it adds the spikes and 1–3 dB at 250–1000 Hz). Each part
-   * rises in the rise time divided by `riseRatio`, about a steady shock's rise at tens of pascals; the
-   * 1–4 kHz band follows from it: 18 dB under 80–250 Hz, against 14–27 dB in recorded booms
-   * (Doc/reference/audio/sonic1–3). The latest sub-arrival, of this front and of a ground
-   * reflection's scattered part, comes `longestRises` of their mean delays late.
+   * Turbulence near the ground bends a boom's front into spikes and rounds: the front is the direct
+   * front plus `arrivals` seeded sub-arrivals of zero sum, delayed exponentially by the rise time on
+   * average, of RMS `frontShare` at `referenceTurbulence`, growing with its square root (class C, not
+   * fitted). Each part rises in the rise time over `riseRatio`, which puts the 1–4 kHz band 18 dB under
+   * 80–250 Hz against 14–27 dB in recorded booms. The latest sub-arrival comes `longestRises` mean delays late.
    */
   turbulentFront: Object.freeze({
     arrivals: 24,
@@ -511,9 +504,11 @@ export const METEOR = Object.freeze({
  * few seconds of sustained sound.
  *
  * Loudness (class B for the exponent, Stevens' power law: loudness ∝ intensity^0.3, that is
- * pressure^0.6; class C as a playback mapping). The level follows the ear's temporal integration
+ * pressure^0.6; class C as a playback mapping): level differences shrink to 0.6 in decibels at
+ * every frequency, without the ISO 226 contours. The level follows the ear's temporal integration
  * of loudness, of the order of 100 ms (class B, Zwicker & Fastl, Psychoacoustics; class C for the
- * two stages): a mean square over 25 ms, smoothed in decibels over 50 ms.
+ * two stages): a mean square over 25 ms, smoothed in decibels over 50 ms. With `capOnsets` no
+ * sample comes out louder than the loudest going in.
  */
 export const EAR = Object.freeze({
   referencePressurePa: REFERENCE_SOUND_PRESSURE_PA,
@@ -533,12 +528,7 @@ export const EAR = Object.freeze({
   loudnessLevelSeconds: .05,
   loudnessFloorDb: -60,
   loudnessMaximumBoostDb: 40,
-  /**
-   * With its onsets capped, Loudness raises no sample above the loudest before it: the level it
-   * follows lags a sharp onset after quiet (a boom's front) by tens of milliseconds, so the quiet's
-   * boost of up to 20 dB went on into the onset. The capped gain changes by at most this many
-   * decibels per second either way, so the cap does not click (class C).
-   */
+  /** The onset cap's gain changes by at most this many decibels per second, so it does not click (class C). */
   onsetCapSlewDbPerSecond: 2000
 });
 
@@ -620,13 +610,9 @@ export const RENDER = Object.freeze({
 
 export const VIEW = Object.freeze({
   /**
-   * The box: its margin on screen in pixels; the smallest span it shows and its padding as a share of
-   * the scene; turning and zooming per pixel of drag, pinch, or wheel (a mouse wheel notch is about
-   * 100 pixels, a wheel that scrolls by lines wheelLinePixels a line) and their ranges; the view it starts from (turn, zoom over the fit, and pan in units
-   * of the box's half-extent on screen); a press that moves less than clickPixels is a click; below
-   * degenerateArea of screen a plane is seen edge-on and offers no handles. Then the sizes of handles,
-   * microphones, and arrows in pixels, and the facing arrow's length as a share of the box; outlines
-   * reach outlinePixels outside their shape, and a seam of seamPixels is cut along every edge.
+   * The box, sizes in screen pixels: padding as a share of the scene; turning and zooming per pixel of
+   * drag, pinch, or wheel; pan in units of the box's half-extent; below degenerateArea a plane is seen
+   * edge-on and offers no handles.
    */
   box: Object.freeze({
     marginPixels: 36,
@@ -745,18 +731,10 @@ export const VIEW = Object.freeze({
     levels: 12
   }),
   /**
-   * Wavefronts: source points drawn at most, and points along a flight path. A front is drawn as
-   * strong as its sound where it has spread to: the pressure after spreading as 1/r and air
-   * absorption at the frequency that carries most of its sound (the inverse of its pulse's
-   * duration), fully at topDb and gone at floorDb (display only; model pascals, not calibrated). A
-   * Mach cone's rings fade the same way. Up high in layered air a front is drawn in homogeneous air at the speed there once
-   * the linear profile strays more than localProfileTolerance from it. A front crossing a face is a
-   * ripple: the front and fading rings behind it, spaced by a share of the box. Over terrain, where a
-   * front meets the ground is solved per direction, so fewer fronts are drawn. Each flash, blast, or
-   * round is drawn as one group, and at most `groups` of the strongest at once: every group costs
-   * its own composited outlines, and a barrage of hundreds of rounds froze the view. On the floor a
-   * front past the refraction shadow boundary is drawn at shadowShare of its strength. A ripple
-   * fainter than visibleAlpha is not drawn.
+   * Wavefronts: a front is drawn as strong as its sound where it has spread to, fully at topDb and gone
+   * at floorDb (display only; model pascals, not calibrated). High in layered air a front is drawn in
+   * homogeneous air once the linear profile strays more than localProfileTolerance. At most `groups` of
+   * the strongest flashes, blasts, or rounds are drawn, since each costs its own composited outlines.
    */
   wavefront: Object.freeze({
     spheres: 360,

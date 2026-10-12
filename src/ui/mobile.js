@@ -5,7 +5,7 @@
  * microphone opens from a chip. The desktop layout is untouched by it.
  */
 
-export const MOBILE_QUERY = '(max-width: 700px)';
+const MOBILE_QUERY = '(max-width: 700px)';
 
 const SHEET_TITLES = Object.freeze({
   emitters: 'Emitters',
@@ -19,7 +19,6 @@ const EMITTER_ICONS = Object.freeze({ thunder: 'fa-bolt', blast: 'fa-explosion',
 
 const $ = id => document.getElementById(id);
 
-/** `onResults` redraws the plots after the strip opens or closes. */
 export function createMobileLayout({ onResults }) {
   const media = window.matchMedia(MOBILE_QUERY);
   const body = document.body;
@@ -85,7 +84,6 @@ export function createMobileLayout({ onResults }) {
   $('info-close').addEventListener('click', () => info.close());
 
   return {
-    /** Follows the mode, the selection's type, and the scene's corner texts: the chip names `name`, the info sheet copies the corners. */
     update({ mode, name, selected }) {
       if (selected) body.dataset.selected = selected; else delete body.dataset.selected;
       document.querySelectorAll('.emitter-icon').forEach(icon => { icon.className = `fa-solid ${EMITTER_ICONS[mode]} emitter-icon`; });

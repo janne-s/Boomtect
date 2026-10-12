@@ -54,22 +54,16 @@ export function flightMembers(emitter) {
 /** Time step of the flight path, seconds, and the most steps kept. */
 const STEP_SECONDS = .05;
 const MAXIMUM_STEPS = 12000;
-/** Below this speed the body has stopped. */
 const STOPPED_METRES_PER_SECOND = 1;
 
-/** The speed of sound the body flies against: the layered air's, or the ground's in homogeneous air, as the sound travels. */
-/** Directions around a Mach cone's ring, as computed once for every ring. */
 const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
   const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
   return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
 }));
+/** The speed of sound the body flies against: the layered air's, or the ground's in homogeneous air, as the sound travels. */
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
 
-/**
- * The flight path: positions, times, and velocities every STEP_SECONDS from the onset. The speed
- * starts at the Mach number in the air at the start height and changes at the acceleration; the
- * heading turns at the turn rate; the path climbs at its angle. It ends at its duration or the ground.
- */
+/** The flight path every STEP_SECONDS from the onset, until its duration ends or it meets the ground. */
 export function flightPath(flight, air) {
   const steps = Math.min(MAXIMUM_STEPS, Math.max(2, Math.ceil(flight.durationSeconds / STEP_SECONDS)));
   const step = flight.durationSeconds / steps;
@@ -93,11 +87,9 @@ export function flightPath(flight, air) {
 }
 
 /**
- * A whip's tip (WHIP): it speeds up along its heading and climb, reaching the speed of sound at its
- * start and its top Mach number after, turns around over the top on a half circle, and slows down
- * going back, at even rates along each straight part. A whip whose top speed is not supersonic
- * turns at that speed and does not crack. Its start is above the ground of `surface`.
- * Positions, times, and velocities every WHIP.stepSeconds, as `flightPath`.
+ * A whip's tip (WHIP): it speeds up to its top Mach number, turns around over the top on a half
+ * circle, and slows down going back, at even rates along each straight part; a subsonic top speed
+ * does not crack. Sampled every WHIP.stepSeconds, as `flightPath`.
  */
 export function whipPath(whip, air, surface = null) {
   const climb = whip.climbDegrees * Math.PI / 180;
@@ -111,7 +103,6 @@ export function whipPath(whip, air, surface = null) {
   const start = surface ? onGround(surface, whip.startMetres) : whip.startMetres;
   const radius = WHIP.turnRadiusMetres;
   const slow = WHIP.subsonicMach * sound;
-  // Up to its top speed the tip only speeds up: from the subsonic lead to sound, then on to the top.
   const top = Math.max(whip.mach * sound, slow * 1.001);
   const knee = Math.min(sound, top);
   // Straight parts at an even rate from one speed to another over a distance, as [seconds, rate].
@@ -162,12 +153,7 @@ export function whipPath(whip, air, surface = null) {
   return path;
 }
 
-/**
- * A booster's fall to its pad (BOOSTER): from its start height at its Mach number and descent angle
- * below the horizontal, along its heading, under gravity and drag in the layered air, until it
- * reaches the ground under its pad. The path is set sideways so that it ends at the pad, on the
- * ground of `surface`. Positions, times, and velocities every BOOSTER.stepSeconds, as `flightPath`.
- */
+/** A booster's fall to its pad under gravity and drag in the layered air (BOOSTER), set sideways so it ends at the pad. */
 export function boosterPath(booster, air, surface = null) {
   const pad = surface ? onGround(surface, booster.padMetres) : booster.padMetres;
   const heading = booster.headingDegrees * Math.PI / 180;
@@ -208,7 +194,6 @@ export function boosterPath(booster, air, surface = null) {
   return path;
 }
 
-/** A whip's cracker as the body whose boom `flightBooms` finds. */
 export const whipBody = whip => ({ lengthMetres: whip.crackerLengthMetres, shapeFactor: whip.crackerShapeFactor });
 
 /**
@@ -274,11 +259,7 @@ export function stationaryArrivals(path, receiver, profile) {
   return found;
 }
 
-/**
- * The booms of a flight path at a receiver: where each leaves the path, when, along which ray, with
- * its free-field overpressure and duration there and its focusing. The receiver is in the frame of
- * the path (heights above the datum).
- */
+/** The booms of a flight path at a receiver in the path's frame, with their free-field overpressure, duration, and focusing. */
 export function flightBooms(path, flight, receiver, profile, air) {
   const booms = [];
   for (const { point, emissionSeconds, ray, along, curvature, blend, shadow } of stationaryArrivals(path, receiver, profile)) {
@@ -300,20 +281,14 @@ export function flightBooms(path, flight, receiver, profile, air) {
 }
 
 /**
- * A body's Mach cone at the clock, as the envelope of the fronts it has left (for views): on the
- * front from each of VIEW.cone.rings past points of its path, the circle that the rays leaving at
- * cos α = c/v to its flight reach, with the fronts' refraction. Where it flew no faster than sound
- * it leaves no ring. While the body flies faster than sound it is the apex; once it has slowed
- * below, the rings come from where it was last supersonic, and the newest of them, the front from
- * there, leads the cone on to the ground without the body. `radii` gives how far each ring's front
- * has spread from where it left.
+ * A body's Mach cone at the clock, for views: the envelope of the fronts it has left, with their
+ * refraction. Once it slows below sound, the rings come from where it was last supersonic.
  */
 export function machCone(path, now, profile) {
   const count = path.seconds.length;
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
   if (last < 1) return null;
   const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
-  // Its speed over the steps around a point, as the cone's angle takes it.
   const speedAround = index => {
     const from = Math.max(0, index - 1);
     const to = Math.min(count - 1, index + 1);
@@ -341,7 +316,6 @@ export function machCone(path, now, profile) {
     const cosine = speedAt(local, point.z) / (length / span);
     if (!(length > 0 && cosine < 1)) continue;
     const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
-    // Two directions across the flight.
     const across = Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
     const norm = Math.hypot(across.x, across.y, across.z);
     const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };

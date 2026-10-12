@@ -12,7 +12,7 @@ function twiddleTable(length) {
   return table;
 }
 
-export const isPowerOfTwo = value => Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
+const isPowerOfTwo = value => Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
 
 export function nextPowerOfTwo(value) {
   let length = 1;
@@ -62,7 +62,6 @@ export function fft(real, imaginary, inverse = false) {
 /** Overlap-add transforms this many kernel lengths at a time (numerical, not a model value). */
 const BLOCK_KERNELS = 4;
 
-/** Whether a block of samples is all zero, so that its convolution adds nothing. */
 export function silent(samples, from, to) {
   for (let index = from, end = Math.min(to, samples.length); index < end; index += 1) if (samples[index] !== 0) return false;
   return true;

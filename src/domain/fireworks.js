@@ -77,7 +77,6 @@ export function shellPops(shell, fireworks, density) {
   const steps = Math.ceil((FIREWORKS.crackleDelaySeconds + FIREWORKS.crackleSeconds) / step);
   const pops = [];
   for (let star = 0; star < fireworks.starCount; star += 1) {
-    // A direction uniform over the sphere.
     const up = 2 * random() - 1;
     const around = 2 * Math.PI * random();
     const across = Math.sqrt(1 - up * up);

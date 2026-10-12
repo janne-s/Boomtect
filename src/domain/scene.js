@@ -1,4 +1,5 @@
 import { FLIGHT, GROUND, ISA_LAPSE_RATE_KELVIN_PER_METRE, MODEL_VERSION, PROPAGATION, RENDER, SAMPLE_RATE_HZ, THUNDER } from './constants.js';
+import { MAXIMUM_AMBISONIC_ORDER } from './ambisonics.js';
 import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
@@ -7,17 +8,10 @@ import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
-export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 28;
+const SCENE_FORMAT = 'boomtect.scene';
+const SCENE_VERSION = 28;
 
-/**
- * The render's computation at its fullest, the default (`render.quality`): a path is summed until the
- * air has taken 14 nepers (−121.6 dB) from it, at every frequency up to the Nyquist limit, every flash
- * segment its own source, the terrain's echo cells as set, a scattered echo in
- * PROPAGATION.scatterArrivals sub-arrivals of its own, and the forest at every frequency. A coarse
- * forest is computed on a coarse frequency grid and interpolated; shared scatter spreads a frame's
- * scattered echoes in a few shared groups (`renderReceiverRange`).
- */
+/** The render's computation at its fullest, the default (`render.quality`); lighter settings trade accuracy for time. */
 export const DEFAULT_QUALITY = Object.freeze({
   cutoffDecibels: -14 * 20 / Math.LN10,
   highestFrequencyHz: SAMPLE_RATE_HZ / 2,
@@ -27,16 +21,13 @@ export const DEFAULT_QUALITY = Object.freeze({
   coarseForest: false,
   sharedScatter: false
 });
-/** The quality's settings by kind: numbers within PARAMETERS, and switches. */
 export const QUALITY_NUMBERS = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'number'));
 export const QUALITY_SWITCHES = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'boolean'));
-export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
+const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
-/** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage', 'fireworks']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
-export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
+const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage', 'fireworks']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
+const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
-/** Kinds of the place names kept with a terrain, from OpenStreetMap, in drawing priority. */
 export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak', 'water', 'hamlet', 'locality']);
 
 /**
@@ -152,14 +143,14 @@ export const PARAMETERS = Object.freeze({
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
-  ambisonicOrder: { minimum: 0, maximum: 3, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
+  ambisonicOrder: { minimum: 0, maximum: MAXIMUM_AMBISONIC_ORDER, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
   // The render's computation (`render.quality`): how much of the sound it computes, not what the sound is.
   cutoffDecibels: { minimum: -140, maximum: -60, unit: 'dB', label: 'Cutoff level', reliability: null },
   highestFrequencyHz: { minimum: 1000, maximum: SAMPLE_RATE_HZ / 2, unit: 'Hz', label: 'Highest frequency', reliability: null },
   sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Flash detail', reliability: null, integer: true },
   echoCellScale: { minimum: 1, maximum: 4, unit: '×', label: 'Echo detail', reliability: null },
   scatterArrivals: { minimum: 4, maximum: 24, unit: '', label: 'Scatter arrivals', reliability: null, integer: true },
-  headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
+  facingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
   pitchDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Elevation', reliability: null }
 });
 
@@ -168,7 +159,6 @@ const CHANNEL_NUMBERS = Object.freeze([
   'branchCount', 'branchDepth', 'branchEnergyRatio', 'energyJoulesPerMetre', 'energyVariation', 'acousticEfficiency',
   'periodCoefficient', 'weakShockLimitRadii', 'riseTimeSeconds'
 ]);
-/** A ground flash's return-stroke current decay and in-cloud channels; storms share them. */
 const GROUND_FLASH_NUMBERS = Object.freeze(['currentDecayHeightMetres', 'inCloudLengthMetres', 'inCloudEnergyRatio', 'inCloudSpeedMetresPerSecond']);
 const LIGHTNING_NUMBERS = Object.freeze([
   'startSeconds', ...CHANNEL_NUMBERS, 'branchLengthRatio', 'channelSpeedMetresPerSecond', 'strokeCount', 'strokeIntervalSeconds',
@@ -295,7 +285,6 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
   };
 }
 
-/** The terrain switches and echo settings a new capture starts with. */
 export const TERRAIN_DEFAULTS = Object.freeze({ enabled: true, shielding: true, echoes: true, scattering: .5, echoCellMetres: 100, echoLimit: 500 });
 
 /**
@@ -373,15 +362,9 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 }
 
 /**
- * A bright fireball on Chelyabinsk's track (15 February 2013: 19 km/s, 18° below the horizontal,
- * its trail ending near 27 km; Borovička et al. 2013, Popova et al. 2013, class B), mirrored to
- * head east-northeast (77° instead of 283°) as the other Sonic defaults fly east,
- * but a 1 m stony meteoroid instead of a 19 m one, so that it renders quickly; a larger diameter
- * comes nearer the event. From 100 km, its trail ends 40 km south of the origin, about where
- * Chelyabinsk lay from the airburst. Its shock rises in about a millisecond (class C). It breaks
- * up in three generations from 1 MPa, each releasing 10 % of its kinetic energy, and bursts at the
- * end with 50 % (class C: with five generations a 19 m body releases all of its 511 kt, as Brown et
- * al. 2013 estimate about 500 kt for Chelyabinsk).
+ * A bright fireball on Chelyabinsk's track (19 km/s, 18° below the horizontal, trail ending near 27 km;
+ * Borovička et al. 2013, Popova et al. 2013, class B), mirrored to head east-northeast, but a 1 m stony
+ * meteoroid instead of a 19 m one so that it renders quickly. Its rise time and breakup are class C.
  */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
@@ -403,10 +386,6 @@ export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015)
   };
 }
 
-/**
- * Thirty meteoroids of about 0.2 m from one radiant over a minute, entering at 20 km/s and 35° from
- * 100 km, 40 km west of the origin, within 30 km.
- */
 export function defaultShower(id = 'shower-1', name = 'Shower', seed = 20261016) {
   return {
     ...defaultMeteor(id, name, seed), kind: 'shower', startMetres: { x: -40000, y: 0, z: 100000 }, headingDegrees: 90, entryDegrees: 35, speedKilometresPerSecond: 20,
@@ -455,17 +434,14 @@ export function defaultBooster(id = 'booster-1', name = 'Booster', seed = 202610
   };
 }
 
-/** Four reconnaissance aircraft in a vee, 1 km apart sideways and 1.5 km back per rank. */
 export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 20261014) {
   return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
 }
 
-/** A microphone listening at head height, facing west: an omni one unless asked otherwise. */
 export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omni', listen = true } = {}) {
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
 
-/** Where an emitter stands on the plan: a blast's point, a storm's or barrage's centre, a booster's pad, a body's start, a flash's ground end. */
 export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.padMetres ?? emitter.startMetres ?? emitter.baseMetres;
 
 /** The heading, whole degrees clockwise from north, from one point of the plan toward another (north when they coincide). */
@@ -479,12 +455,10 @@ export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
   // A scene starts with a binaural microphone; microphones added later are omni.
   const receiver = defaultReceiver('receiver-1', 'Mic 1', { type: 'binaural' });
-  // The default flash's thunder first arrives three seconds after it (3.0 s; its channel leans toward the microphone).
   if (mode === 'thunder') receiver.positionMetres = { x: 1400, y: 0, z: 1.7 };
   if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
   if (mode === 'sonic') receiver.positionMetres = { x: 0, y: 0, z: 1.7 };
   const emitter = blast ? defaultBlast() : mode === 'sonic' ? defaultFlight() : defaultLightning();
-  // The microphone faces where the sound comes from.
   receiver.headingDegrees = headingToward(receiver.positionMetres, emitterAnchor(emitter));
   return {
     format: SCENE_FORMAT,
@@ -665,7 +639,7 @@ function receiver(value, index) {
     type: value.type,
     listen: value.listen,
     positionMetres: point(value.positionMetres, `${path}.positionMetres`),
-    headingDegrees: number(value.headingDegrees, 'headingDegrees', `${path}.headingDegrees`),
+    headingDegrees: number(value.headingDegrees, 'facingDegrees', `${path}.headingDegrees`),
     pitchDegrees: number(value.pitchDegrees, 'pitchDegrees', `${path}.pitchDegrees`)
   };
 }

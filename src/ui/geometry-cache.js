@@ -4,11 +4,9 @@ import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flig
 import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
 
-/** Flashes per terrain surface, each keyed by emitter id. */
 const caches = new WeakMap();
 let surface = FLAT_SURFACE;
 
-/** Sets the terrain that drawn channels follow: the current scene's. */
 export function useTerrain(terrain) {
   surface = terrainSurface(terrain);
   return surface;
@@ -27,75 +25,48 @@ function arcs(points) {
   return values;
 }
 
-/**
- * Channels and strokes of an emitter for drawing over the current terrain, cached by everything
- * except its name and switch. Every channel carries the arc length of its points.
- */
-export function cachedFlashes(emitter) {
-  if (!caches.has(surface)) caches.set(surface, new Map());
-  const cache = caches.get(surface);
-  const { name, enabled, ...shape } = emitter;
-  const key = JSON.stringify(shape);
-  const cached = cache.get(emitter.id);
-  if (cached?.key === key) return cached.flashes;
-  let flashes;
-  try { flashes = emitterFlashes(emitter, surface); } catch { flashes = []; }
-  for (const flash of flashes) for (const channel of flash.channels) channel.arcs = arcs(channel.points);
-  cache.set(emitter.id, { key, flashes });
-  return flashes;
+/** A value per emitter id, kept while the emitter's shape (all but its name and switch) and `extra` stay the same. */
+function cached(cache, emitter, extra, compute) {
+  const { name: _name, enabled: _enabled, ...shape } = emitter;
+  const key = JSON.stringify([shape, extra]);
+  const entry = cache.get(emitter.id);
+  if (entry?.key === key) return entry.value;
+  const value = compute();
+  cache.set(emitter.id, { key, value });
+  return value;
 }
 
-const paths = new Map();
+/** Channels and strokes of an emitter over the current terrain; every channel carries the arc length of its points. */
+export function cachedFlashes(emitter) {
+  if (!caches.has(surface)) caches.set(surface, new Map());
+  return cached(caches.get(surface), emitter, null, () => {
+    let flashes;
+    try { flashes = emitterFlashes(emitter, surface); } catch { flashes = []; }
+    for (const flash of flashes) for (const channel of flash.channels) channel.arcs = arcs(channel.points);
+    return flashes;
+  });
+}
 
-/**
- * The tracks of a flight's, formation's, whip's, booster's, meteor's, or shower's bodies in the given air: times
- * and positions every `step` seconds, cached by everything except the name and switch. A whip's
- * stands, and a booster lands, on the current terrain.
- */
+const tracks = new Map();
+const trackSurfaces = new Map();
+
+/** The bodies' tracks of a track emitter in the given air; a whip stands, and a booster lands, on the current terrain. */
 export function cachedTracks(emitter, air) {
-  const { name, enabled, ...shape } = emitter;
-  const key = JSON.stringify([shape, air]);
-  const cached = paths.get(emitter.id);
-  if (cached?.key === key && cached.surface === surface) return cached.paths;
-  const value = emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]
-    : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack);
-  paths.set(emitter.id, { key, surface, paths: value });
-  return value;
+  if (trackSurfaces.get(emitter.id) !== surface) tracks.delete(emitter.id);
+  trackSurfaces.set(emitter.id, surface);
+  return cached(tracks, emitter, air, () => (emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]
+    : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack)));
 }
 
 const bursts = new Map();
 
-/**
- * Where a meteor's or each of a shower's meteors breaks up and bursts in the given air, cached by
- * everything except the name and switch.
- */
-export function cachedBursts(emitter, air) {
-  const { name, enabled, ...shape } = emitter;
-  const key = JSON.stringify([shape, air]);
-  const cached = bursts.get(emitter.id);
-  if (cached?.key === key) return cached.bursts;
-  const value = showerMembers(emitter).map(meteor => meteorBursts(meteor, air));
-  bursts.set(emitter.id, { key, bursts: value });
-  return value;
-}
+export const cachedBursts = (emitter, air) => cached(bursts, emitter, air, () => showerMembers(emitter).map(meteor => meteorBursts(meteor, air)));
 
-/** A barrage or a fireworks display: blasts over an area around a centre on the ground. */
 export const isFieldKind = emitter => emitter.kind === 'barrage' || emitter.kind === 'fireworks';
 export const isFlightKind = emitter => emitter.kind === 'flight' || emitter.kind === 'formation';
 export const isTrackKind = emitter => isFlightKind(emitter) || emitter.kind === 'whip' || emitter.kind === 'booster' || emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 const rounds = new Map();
 
-/**
- * A barrage's rounds, or a fireworks display's thumps and bursts in the given air, as blasts,
- * cached by everything except the name and switch.
- */
-export function cachedRounds(emitter, air) {
-  const { name, enabled, ...shape } = emitter;
-  const key = JSON.stringify(emitter.kind === 'fireworks' ? [shape, air] : shape);
-  const cached = rounds.get(emitter.id);
-  if (cached?.key === key) return cached.rounds;
-  const value = emitter.kind === 'fireworks' ? fireworksRounds(emitter, air) : barrageRounds(emitter);
-  rounds.set(emitter.id, { key, rounds: value });
-  return value;
-}
+export const cachedRounds = (emitter, air) => cached(rounds, emitter, emitter.kind === 'fireworks' ? air : null,
+  () => (emitter.kind === 'fireworks' ? fireworksRounds(emitter, air) : barrageRounds(emitter)));

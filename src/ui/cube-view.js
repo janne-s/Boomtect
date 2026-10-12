@@ -14,14 +14,10 @@ const OUTLINE_DIRECTIONS = Object.freeze(Array.from({ length: OUTLINE_STEPS }, (
   const angle = 2 * Math.PI * step / OUTLINE_STEPS;
   return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
 }));
-/** Unit direction the terrain is lit from. */
 const TERRAIN_LIGHT = (() => { const { x, y, z } = VIEW.terrain.light; const length = Math.hypot(x, y, z); return { x: x / length, y: y / length, z: z / length }; })();
-/** Place names are drawn in this order of their kinds, without overlapping. */
 const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
-/** Iterations that find where a front meets the terrain. */
 const TERRAIN_RIPPLE_ITERATIONS = 14;
 
-/** Screen bounds that grow with every polygon added with them, so a composite can stay within them. */
 const emptyBounds = () => ({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
 
 /**
@@ -45,16 +41,12 @@ function addPolygon(path, points, bounds) {
 }
 
 const flashPoints = new WeakMap();
-/** Each emitter's channels projected for the current view, per generated geometry. */
 const channelPaths = new WeakMap();
-/** The horizontal extent and top of a cached geometry's points. */
 const extents = new WeakMap();
-/** Travel times from channel points to the followed receiver, per channel. */
 const soundTravel = new WeakMap();
 const listIds = new WeakMap();
 let nextListId = 0;
 
-/** A key that changes when any emitter's points do: a cached list of channel points by identity, a blast's point by value. */
 function pointsKey(lists) {
   return lists.map(list => {
     if (list.length === 1) return `${list[0].x},${list[0].y},${list[0].z}`;
@@ -63,7 +55,6 @@ function pointsKey(lists) {
   }).join(';');
 }
 
-/** Every channel point of an emitter, or its blast point, for outlines on the floor; kept per generated geometry. */
 function emitterPoints(emitter) {
   if (emitter.kind === 'blast') return [placed(emitter.positionMetres)];
   const flashes = cachedFlashes(emitter);
@@ -71,14 +62,11 @@ function emitterPoints(emitter) {
   return flashPoints.get(flashes);
 }
 
-/** Height of the ground under a point, above the datum. */
 const ground = (x, y) => currentSurface().heightAt(x, y);
-/** A point stored above the ground under it, placed in the scene frame. */
 const placed = point => ({ ...point, z: ground(point.x, point.y) + point.z });
 /** A ground flash's ground point is stored above the ground; other channel ends above the datum. */
 const channelBase = emitter => (emitter.flashType === 'cloud-to-ground' ? placed(emitter.baseMetres) : emitter.baseMetres);
 
-/** The tip of a binaural receiver's look arrow, at a length relative to the box. */
 function facingTip(receiver, box) {
   const length = Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare;
   const heading = receiver.headingDegrees * Math.PI / 180;
@@ -86,11 +74,9 @@ function facingTip(receiver, box) {
   const base = placed(receiver.positionMetres);
   const x = base.x + Math.sin(heading) * Math.cos(pitch) * length;
   const y = base.y + Math.cos(heading) * Math.cos(pitch) * length;
-  // A downward look stops at the ground under the tip.
   return { x, y, z: Math.max(ground(x, y), base.z + Math.sin(pitch) * length) };
 }
 
-/** Draggable points: blast positions, channel ends, storm edges, receivers, and look arrows. */
 function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
@@ -99,7 +85,6 @@ function handles(scene, box) {
       const start = emitter.kind === 'booster' ? placed(emitter.padMetres) : emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
       if (emitter.kind === 'booster') list.push({ type: 'emitter', id: emitter.id, field: 'padMetres', point: start, onGround: true, role: 'start' });
       else list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
-      // A handle ahead of the start along the first heading turns it.
       const reach = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare : 1000;
       const heading = emitter.headingDegrees * Math.PI / 180;
       list.push({ type: 'emitter', id: emitter.id, field: 'flightHeading', point: { x: start.x + reach * Math.sin(heading), y: start.y + reach * Math.cos(heading), z: start.z }, role: 'end', ownPlaneOnly: true });
@@ -112,7 +97,6 @@ function handles(scene, box) {
     } else if (emitter.kind === 'storm') {
       list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
-      // The cloud layer's base and top, on the far side of the storm from its edge handle; they move only up and down.
       for (const field of ['cloudBaseMetres', 'cloudTopMetres']) {
         list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true, ownPlaneOnly: true });
       }
@@ -131,11 +115,6 @@ function handles(scene, box) {
   return list;
 }
 
-/** The point where a stroke's figurative front has reached on one channel, as an arc length. */
-/**
- * A flash's flicker at a time after it starts: seeded levels between 0.35 and 1 every VIEW.flash.flickerSeconds,
- * eased between, the first one full. Deterministic, so a replay looks the same.
- */
 function flicker(seed, elapsed) {
   const level = knot => {
     if (knot <= 0) return 1;
@@ -154,12 +133,6 @@ function frontArc(step, elapsed, routeLength) {
   return step.fromArc + elapsed / VIEW.flash.traverseSeconds * routeLength - step.offsetMetres;
 }
 
-/**
- * The scene in an orthographic, rotatable box with equal metres on every axis. The floor is the
- * ground and carries the plan; the two far walls carry the elevations. Every point can be dragged
- * in 3D (horizontally) or on its shadow on a wall or the floor (in that plane). A drag moves the
- * point by the pointer's displacement in that plane, so grabbing never makes it jump.
- */
 export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false, map = () => null }) {
   let scene = null;
   let selection = null;
@@ -168,7 +141,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let drag = null;
   let animation = null;
   let scratch = null;
-  /** While a control changes the scene continuously, the box keeps its size so the view stays still. */
   let held = false;
   let lastBox = null;
   let terrainLayer = null;
@@ -176,7 +148,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let rippleLayer = null;
   let terrainBoundary = null;
   let relief = null;
-  /** The flat ground's shadow boundary in the scene frame: one ring of points around each sampled source. */
   let shadowOutline = null;
   let shadowLayer = null;
   const cloudLayers = new Map();
@@ -189,7 +160,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
       maxZ = Math.max(maxZ, point.z);
     };
-    // The extent of a cached geometry's points, kept with it.
     const includeExtent = (geometry, points) => {
       if (!extents.has(geometry)) {
         const extent = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, maxZ: -Infinity };
@@ -236,8 +206,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       includeExtent(flashes, () => flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
     }
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
-    // The box measures the scene, not the terrain: the loaded terrain goes on beyond it and fades
-    // toward its own edge (drawTerrain), and a point dragged out there gets a box around it again.
+    // The box measures the scene, not the terrain, which goes on beyond it and fades toward its own edge.
     const surface = currentSurface();
     const enabled = scene.emitters.filter(emitter => emitter.enabled);
     const span = enabled.length && enabled.every(emitter => emitter.kind === 'whip') ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
@@ -257,7 +226,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return { x0, x1, y0, y1, z0: minZ, z1: Math.max(minZ + span, maxZ) + pad };
   }
 
-  /** The lowest and highest ground within a horizontal area, kept for the last area and terrain asked. */
   function groundRange(surface, x0, x1, y0, y1) {
     const key = [x0, x1, y0, y1].join('|');
     if (relief?.surface === surface && relief.key === key) return relief;
@@ -308,15 +276,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     };
     const farX = sinYaw > 0 ? box.x1 : box.x0;
     const farY = cosYaw > 0 ? box.y1 : box.y0;
-    // World directions of the screen's right and up, for outlines of spheres.
     const right = { x: cosYaw, y: -sinYaw, z: 0 };
     const up = { x: sinPitch * sinYaw, y: sinPitch * cosYaw, z: cosPitch };
-    // Changes whenever a point lands elsewhere on the screen, for layers kept between frames.
     const key = [yaw, pitch, zoom, view.panU, view.panV, width, height, box.x0, box.x1, box.y0, box.y1, box.z0, box.z1].join('|');
     return { box, scale, unit, project, farX, farY, width, height, right, up, key };
   }
 
-  /** The planes a point can be dragged in: its own height, the floor, and the two far walls. */
   function planes() {
     const { farX, farY } = frame;
     return [
@@ -326,7 +291,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     ];
   }
 
-  /** A point's shadow on a plane; on the floor it lies on the ground under the point. */
   function onPlane(point, plane) {
     if (plane.name === 'floor') return { ...point, z: ground(point.x, point.y) };
     return { ...point, [plane.fixed]: plane.value };
@@ -348,7 +312,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return { [plane.free[0]]: (dx * by - dy * bx) / determinant, [plane.free[1]]: (ax * dy - ay * dx) / determinant };
   }
 
-  /** The vertical plane through a point that faces the viewer most, for dragging a height alone. */
   function verticalPlane(point) {
     const facesX = Math.abs(frame.right.x) >= Math.abs(frame.right.y);
     return facesX ? { name: 'vertical', fixed: 'y', value: point.y, free: ['x', 'z'] } : { name: 'vertical', fixed: 'x', value: point.x, free: ['y', 'z'] };
@@ -369,11 +332,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
 
-  /**
-   * The height lines above the floor, skipping the floor itself: at round heights above sea level
-   * over loaded terrain, whose datum (z = 0, the ground at the origin) lies `datumMetres` above it,
-   * and above the ground otherwise. Each gives its height in the scene frame and its label in metres.
-   */
+  /** Height lines above the floor: at round heights above sea level over terrain, above the ground otherwise. */
   function heightLevels(bounds, spacing) {
     const surface = currentSurface();
     const datum = surface.flat ? 0 : surface.datumMetres;
@@ -386,8 +345,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   function drawBox(context, colors) {
     const { box, farX, farY } = frame;
-    const nearX = farX === box.x1 ? box.x0 : box.x1;
-    const nearY = farY === box.y1 ? box.y0 : box.y1;
     context.fillStyle = colors.wall;
     polygon(context, [{ x: farX, y: box.y0, z: box.z0 }, { x: farX, y: box.y1, z: box.z0 }, { x: farX, y: box.y1, z: box.z1 }, { x: farX, y: box.y0, z: box.z1 }]);
     context.fill();
@@ -417,7 +374,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     line({ x: farX, y: farY, z: box.z0 }, { x: farX, y: farY, z: box.z1 });
   }
 
-  /** The scale, compass, and origin, drawn over the terrain. */
   function drawBoxLabels(context, colors) {
     const { box, farX, farY } = frame;
     const nearX = farX === box.x1 ? box.x0 : box.x1;
@@ -442,7 +398,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     label('N', { x: nearX, y: box.y1, z: box.z0 }, 6, 24);
   }
 
-  /** Strokes a polyline through points, each placed on the screen by `toScreen` (by default the projection). */
   function strokePoints(context, points, toScreen = frame.project) {
     context.beginPath();
     for (let index = 0; index < points.length; index += 1) {
@@ -452,10 +407,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.stroke();
   }
 
-  /**
-   * A point's shadow on the screen: on the floor on the ground under it, on a far wall by the
-   * projection's affine map of that wall, without building a point for every shadow.
-   */
+  /** A point's shadow on the screen: on the ground under it, or on a far wall by that wall's affine map. */
   function shadowProjectors() {
     const onWall = (fixed, value, [u, v]) => {
       const at = (a, b) => frame.project({ [fixed]: value, [u]: a, [v]: b });
@@ -471,7 +423,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     ];
   }
 
-  /** Points of a channel from its start up to a given arc, ending exactly at that arc. */
   function pointsUpTo(channel, fromArc, toArc) {
     const result = [];
     const { points, arcs } = channel;
@@ -494,7 +445,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const shadows = shadowProjectors();
     const flashes = cachedFlashes(emitter);
     context.lineJoin = 'round';
-    // The channels and their shadows as paths on the screen, one per line style, kept while the view stays.
     let paths = channelPaths.get(flashes);
     if (paths?.key !== frame.key) {
       const shadowPath = new Path2D();
@@ -551,14 +501,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /**
-   * Lights every channel point whose direct sound is arriving at the listening receiver now: the
-   * flash drawn where the sound comes from instead of when the light left.
-   */
+  /** Lights every channel point whose direct sound is arriving at the followed receiver now. */
   function drawSoundGlow(context, emitter, colors, sound) {
     const levels = [[], [], [], []];
     const { seconds, travelSeconds, key } = sound;
-    /** Each channel point's travel time to the receiver, kept per channel until the receiver or the air changes. */
     const travel = channel => {
       const kept = soundTravel.get(channel);
       if (kept?.key === key) return kept.seconds;
@@ -608,11 +554,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   /**
-   * Fills the union of the shapes in `path` faintly and draws only its outer edge: the shapes are
-   * stroked on a scratch canvas, their insides are cut away, and what is left is the outline. The
-   * cut also takes a thin stroke along every edge, because where two shapes' edges nearly coincide
-   * inside the union the rasterizer's coverage stays below one and would leave a seam. Only the
-   * shapes' screen `bounds` are cleared and composited, so small fronts cost little.
+   * Fills the union of the shapes in `path` faintly and draws only its outer edge. The cut also takes a
+   * thin stroke along every edge: where two edges nearly coincide the coverage stays below one and leaves a seam.
    */
   function unionOutline(context, path, color, { fillAlpha, edgeAlpha, bounds }) {
     scratch ??= document.createElement('canvas');
@@ -661,22 +604,13 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return path;
   }
 
-  /**
-   * Where refraction lifts the sound off the ground: around each source point, the distance at
-   * which the ray to the followed microphone's height grazes the ground. Drawn for the selected
-   * emitter, or for every enabled one.
-   */
-  /** Two colors as [r, g, b] mixed by t. */
+  /** Where refraction lifts the sound off the ground: around each source, where the ray to the followed microphone's height grazes the ground. */
   function mixColors(a, b, t) {
     return a.map((value, index) => Math.round(value + (b[index] - value) * t));
   }
 
   const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
 
-  /**
-   * How far a ground point has faded into the panel, 0–1: outside the box over VIEW.terrain.fogShare of
-   * its width, and toward the edge of the captured terrain over VIEW.terrain.edgeShare of its width.
-   */
   function terrainFog(surface, x, y) {
     const { box } = frame;
     const smooth = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
@@ -686,21 +620,9 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return Math.max(smooth(outside / (VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (VIEW.terrain.edgeShare * Math.max(east - west, north - south))));
   }
 
-  /**
-   * The terrain as a shaded surface: quads drawn far to near, lit from the north-west, with optional
-   * contour stripes, fading into the panel beyond the box and at its own edge. Ground behind the far
-   * walls goes into a back layer drawn before them, the rest into a front layer drawn after the
-   * floor. Both are reused until the view, the size, or the terrain changes, so playback does not
-   * redraw them every frame.
-   */
-  /**
-   * The terrain's quads for the box, with their colors and fog, which do not depend on the view: kept
-   * until the terrain, the box, the stripes, or the colors change, so turning only projects them.
-   */
   function terrainMesh(surface, box, striped, colors) {
     const key = [box.x0, box.x1, box.y0, box.y1, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
     if (terrainMeshCache?.key === key && terrainMeshCache.surface === surface) return terrainMeshCache;
-    // The grid covers what can be seen: the box and its fog, within the captured terrain.
     const { bounds } = surface;
     const fogMetres = VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0);
     const west = Math.max(bounds.west, box.x0 - fogMetres);
@@ -735,7 +657,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         if (!(corners[2].x > corners[0].x && corners[2].y > corners[0].y)) continue;
         const fog = terrainFog(surface, centreX, centreY);
         if (fog > .995) continue;
-        // Normal from the quad's diagonals.
         const u = { x: corners[2].x - corners[0].x, y: corners[2].y - corners[0].y, z: corners[2].z - corners[0].z };
         const v = { x: corners[3].x - corners[1].x, y: corners[3].y - corners[1].y, z: corners[3].z - corners[1].z };
         const n = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };
@@ -752,13 +673,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return terrainMeshCache;
   }
 
-  /**
-   * The terrain as a shaded surface: quads drawn far to near, lit from the north-west, with optional
-   * contour stripes, fading into the panel beyond the box and at its own edge. Ground behind the far
-   * walls goes into a back layer drawn before them, the rest into a front layer drawn after the
-   * floor. Both are reused until the view, the size, or the terrain changes, so playback does not
-   * redraw them every frame.
-   */
+  /** The terrain as shaded quads far to near, in a back layer behind the walls and a front layer, reused until the view or the terrain changes. */
   function terrainLayers(colors) {
     const surface = currentSurface();
     const { box, farX, farY } = frame;
@@ -766,7 +681,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const striped = contours();
     const key = [frame.key, canvas.width, canvas.height, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
     if (terrainLayer?.key === key && terrainLayer.surface === surface) return terrainLayer;
-    // Back, front, and the fog mask: white with the opacity the ground keeps through the fog.
     const layers = (terrainLayer?.layers ?? [null, null, null]).map(layer => {
       layer = sized(layer);
       const paint = layer.getContext('2d');
@@ -804,10 +718,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /**
-   * Map tiles flat on the floor, within it: each tile's square is laid by the affine map of its
-   * corners, which the box's parallel projection keeps exact.
-   */
   function drawMap(context, tiles) {
     const { box } = frame;
     const z = box.z0;
@@ -829,7 +739,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /** Place names on the terrain, most important first, each skipped where it would overlap another. */
   function drawNames(context, colors) {
     const list = scene.terrain?.enabled ? scene.terrain.names : [];
     if (!names() || !list?.length) return;
@@ -860,7 +769,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.textBaseline = 'alphabetic';
   }
 
-  /** The selected item's points: a microphone, a blast, or a channel's ends, also those on the ground. */
   function selectedPoints() {
     if (selection?.type === 'receiver') {
       const receiver = scene.receivers.find(item => item.id === selection.id);
@@ -876,14 +784,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   function drawShadowBoundary(context, colors) {
     const profile = soundSpeedProfile(scene.air);
     const receiver = focus?.();
-    // In wind the air casts a shadow in the directions where its effective speed falls with height.
     const leastGradient = profile.gradient - (profile.shear ? Math.hypot(profile.shear.x, profile.shear.y) : 0);
     if (!(leastGradient < 0) || !receiver) return;
     const chosen = selection?.type === 'emitter' ? scene.emitters.filter(emitter => emitter.id === selection.id) : scene.emitters.filter(emitter => emitter.enabled);
     const pointSets = chosen.map(emitterPoints);
     const points = pointSets.flat();
     if (!points.length) return;
-    // The outline depends on the sources, the air, and the height, not on the view; it is kept until they change.
     const key = `${pointsKey(pointSets)}|${JSON.stringify(scene.air)}|${receiver.positionMetres.z}`;
     if (!currentSurface().flat) {
       drawTerrainShadowBoundary(context, colors, profile, points, receiver.positionMetres.z, key);
@@ -904,7 +810,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       shadowOutline = { key, rings };
     }
-    // Drawn into a layer of its own, kept while the view and the colors stay.
     const layerKey = `${frame.key}|${canvas.width}|${canvas.height}|${colors.muted}`;
     if (shadowOutline.layerKey !== layerKey) {
       const origin = frame.project({ x: 0, y: 0, z: 0 });
@@ -929,12 +834,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /**
-   * The shadow boundary over terrain: the cells of a grid over the box where a microphone at the
-   * given height above the ground hears at least one source point outside the refraction shadow,
-   * judged from the mean ground plane as the render does, and outlined. The cells are kept until
-   * the sources, the air, the height, the box, or the terrain change.
-   */
   function drawTerrainShadowBoundary(context, colors, profile, points, heightAboveGround, sourcesKey) {
     const { box } = frame;
     const surface = currentSurface();
@@ -973,13 +872,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: VIEW.shadowBoundary.edgeAlpha, bounds });
   }
 
-  /**
-   * The wavefronts where they cross the floor and the two far walls, as ripples: each sampled
-   * source's sphere meets a plane in a circle, and the outline of their union is drawn with fading
-   * rings behind it, only within the face, so a front leaves no trace once it has passed. On the
-   * floor a circle past the shadow boundary is dimmer. At most VIEW.wavefront.groups of the strongest
-   * groups are drawn.
-   */
   function drawWavefronts(context, colors, { profile, spheres, total }) {
     // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
     // one inside it; fronts that have left the box and the terrain around it are dropped.
@@ -996,13 +888,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       if (!groups.has(sphere.group)) groups.set(sphere.group, []);
       groups.get(sphere.group).push(sphere);
     }
-    // Only the strongest groups, so the drawing costs the same however many fronts are under way.
     const strength = group => Math.max(0, ...group.map(sphere => sphere.strength ?? 1));
     const drawn = [...groups.values()].sort((a, b) => strength(b) - strength(a)).slice(0, VIEW.wavefront.groups);
     for (const group of drawn) drawFronts(context, colors, profile, group, terrainStride);
   }
 
-  /** One flash's or blast's fronts, as strong as their sound where they have spread to (`strength`). */
   function drawFronts(context, colors, profile, spheres, terrainStride) {
     const strength = Math.max(0, ...spheres.map(sphere => sphere.strength ?? 1));
     if (!(strength > 0)) return;
@@ -1051,11 +941,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /**
-   * Where the fronts meet the terrain: for every direction from a sphere's centre, the horizontal
-   * distance at which the ground lies exactly one radius from the centre, by bisection. Drawn as
-   * ripples like on the walls into a layer of their own, which then fades with the terrain's fog.
-   */
+  /** Where the fronts meet the terrain: per direction, the horizontal distance at which the ground lies one radius from the centre (bisection). */
   function drawTerrainRipples(context, colors, spheres, spacing, strength = 1) {
     const rings = VIEW.wavefront.rippleAlphas.map((alpha, ring) => {
       if (alpha * strength < VIEW.wavefront.visibleAlpha) return null;
@@ -1087,7 +973,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return any ? { path, bounds, alpha } : null;
     }).filter(Boolean);
     if (!rings.length) return;
-    // The layer is cleared, masked, and composited only where the ripples lie.
     const ratio = window.devicePixelRatio || 1;
     const area = rings.reduce((all, { bounds }) => ({ x0: Math.min(all.x0, bounds.x0), y0: Math.min(all.y0, bounds.y0), x1: Math.max(all.x1, bounds.x1), y1: Math.max(all.y1, bounds.y1) }), emptyBounds());
     const reach = (VIEW.box.outlinePixels * 2 + VIEW.box.seamPixels) * ratio + 2;
@@ -1116,7 +1001,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /** Dashed lines from a selected point down to the floor and across to the walls, to its shadows there. */
   function drawProjectionLines(context, colors, point) {
     const { farX, farY } = frame;
     const floor = { ...point, z: ground(point.x, point.y) };
@@ -1142,26 +1026,22 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const angle = 2 * Math.PI * index / DISC_POINTS;
       return { x: x + emitter.radiusMetres * Math.cos(angle), y: y + emitter.radiusMetres * Math.sin(angle), z };
     });
-    // The flat layer marks the cloud when its fog is off.
     if (!clouds()) {
       context.fillStyle = colors.cloud;
       polygon(context, ring(emitter.cloudBaseMetres)); context.fill();
       polygon(context, ring(emitter.cloudTopMetres)); context.fill();
     }
-    // The storm's reach on the ground, clear over terrain too.
     context.strokeStyle = selected ? colors.accent : colors.lightning;
     context.lineWidth = selected ? 1.4 : 1.2;
     polygon(context, ring(0).map(point => ({ ...point, z: ground(point.x, point.y) }))); context.stroke();
   }
 
-  /** The puffs of a storm's cloud, from its seed, in the scene frame: centre, radius, and height share. */
   function cloudPuffs(emitter) {
     const random = createRandom(emitter.seed ^ 0x5c10d);
     const { x, y } = emitter.centreMetres;
     const base = emitter.cloudBaseMetres;
     const depth = emitter.cloudTopMetres - base;
     return Array.from({ length: VIEW.cloud.puffs }, () => {
-      // More of the cloud low down, where it is broad and dark; the top spreads into an anvil.
       const share = random() ** 1.4;
       const reach = emitter.radiusMetres * (.75 + VIEW.cloud.anvilSpread * share ** 4);
       const angle = 2 * Math.PI * random();
@@ -1174,10 +1054,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     });
   }
 
-  /**
-   * A storm's cloud as fog: its puffs far to near, each a soft disc darker at the base, drawn into a
-   * layer kept until the view, the size, or the storm changes.
-   */
   function drawCloud(context, emitter, colors) {
     const key = [view.yaw, view.pitch, view.zoom, view.panU, view.panV, canvas.width, canvas.height, emitter.seed, emitter.centreMetres.x, emitter.centreMetres.y, emitter.radiusMetres, emitter.cloudBaseMetres, emitter.cloudTopMetres, colors['storm-base'], colors['storm-top'], frame.box.x0, frame.box.x1, frame.box.z1].join('|');
     let layer = cloudLayers.get(emitter.id);
@@ -1213,12 +1089,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /**
-   * The light of a storm's flashes in its cloud: a loose blob that follows each flash's lit channel
-   * inside the cloud without tracing it, made of a few large soft glows at seeded offsets along it,
-   * flickering as the stroke's current does, kept to the cloud's fog by its layer as a mask, and added
-   * to the scene. Representational, not a model of scattering.
-   */
+  /** The light of a storm's flashes in its cloud: representational, not a model of scattering. */
   function drawCloudLight(context, emitter, colors, strokes) {
     const layer = cloudLayers.get(emitter.id);
     if (!layer || !strokes?.length) return;
@@ -1238,7 +1109,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const fade = stroke.elapsed > VIEW.flash.traverseSeconds ? Math.exp(-(stroke.elapsed - VIEW.flash.traverseSeconds) / VIEW.flash.fadeSeconds) : 1;
       const intensity = VIEW.cloud.flashAlpha * fade * flicker(emitter.seed + stroke.flash * 7919, stroke.elapsed);
       if (intensity < .01) continue;
-      // The lit channel inside the cloud, or the flash's top when none of it is there yet.
       const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
       const inCloud = stroke.route.flatMap(step => {
         const reached = frontArc(step, stroke.elapsed, routeLength);
@@ -1282,10 +1152,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (stroke) drawBurst(context, frame.project(placed(emitter.positionMetres)), stroke, colors);
   }
 
-  /**
-   * A barrage's or fireworks display's reach on the ground, its rounds as small marks, and each
-   * round's flash as it lands; a display's shells rise from their mortars to where they burst.
-   */
   function drawBarrage(context, emitter, colors, selected, state) {
     const { x, y } = emitter.centreMetres;
     context.strokeStyle = selected ? colors.accent : colors.end;
@@ -1330,10 +1196,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /**
-   * A shell's stars in its color, spread evenly over a sphere turned by its seed: each flies out as
-   * FIREWORKS' stars do, slowed by drag, sags under gravity, and burns out over VIEW.fireworks.burnSeconds.
-   */
   function drawStars(context, centre, stroke, color) {
     const { stars, burnSeconds } = VIEW.fireworks;
     const t = stroke.elapsed;
@@ -1359,7 +1221,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.globalAlpha = alpha;
   }
 
-  /** A flight's or meteor's paths, its bodies where the clock has them, and a meteor's breakups and bursts as they flash. */
   function drawFlight(context, emitter, colors, selected, state) {
     context.strokeStyle = selected ? colors.accent : colors.end;
     context.lineWidth = selected ? 1.4 : 1.2;
@@ -1382,11 +1243,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
   }
 
-  /**
-   * The bodies' Mach cones: their rings and lines from the body through them, within the box and
-   * above the ground, each ring as strong as its boom where it has spread to (`strengths`). Rings of
-   * about the same strength share one stroke, in VIEW.cone.levels steps.
-   */
   function drawCones(context, cones, colors) {
     const { box } = frame;
     const terrain = currentSurface().bounds;
@@ -1430,7 +1286,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const { apex, rings, strengths } of cones) {
       const screen = rings.map(ring => ring.map(frame.project));
       const apexScreen = apex && frame.project(apex);
-      // Each ring, with the lines that reach it from the newer one, in the step of its strength.
       rings.forEach((ring, index) => {
         const strength = strengths?.[index] ?? 1;
         if (!(strength > 0)) return;
@@ -1455,7 +1310,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.globalAlpha = alpha;
   }
 
-  /** A burst's flash, fading after it starts, glowing in a shell's color; the emitter's dimming is restored after it. */
   function drawBurst(context, centre, stroke, colors, glow = colors.glow) {
     const alpha = context.globalAlpha;
     const level = Math.exp(-stroke.elapsed / VIEW.flash.fadeSeconds);
@@ -1495,7 +1349,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     if (handle.role === 'facing') {
       const owner = scene.receivers.find(receiver => receiver.id === handle.id);
-      // Along the drawn arrow, which starts at the microphone where it stands on the terrain.
       const base = frame.project(placed(owner.positionMetres));
       const angle = Math.atan2(p.y - base.y, p.x - base.x);
       const size = VIEW.box.arrowheadPixels;
@@ -1535,10 +1388,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /**
-   * A layer canvas the size of the view, cleared: resized only when the view's size changes, since
-   * setting a canvas's size allocates its pixels again.
-   */
+  // Resized only when the view's size changes: setting a canvas's size allocates its pixels again.
   function sized(layer) {
     layer ??= document.createElement('canvas');
     if (layer.width !== canvas.width || layer.height !== canvas.height) {
@@ -1554,14 +1404,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return layer;
   }
 
-  /** Full draws so far, so that a requested draw is skipped when another has come first. */
   let draws = 0;
   let drawRequested = false;
 
-  /**
-   * Draws on the next frame unless a draw comes first: a pointer can move more often than frames
-   * are shown, and during playback every frame is drawn anyway.
-   */
+  /** Draws on the next frame unless a draw comes first: a pointer can move more often than frames are shown. */
   function requestDraw() {
     if (drawRequested) return;
     drawRequested = true;
@@ -1581,7 +1427,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const state = animation?.() ?? null;
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
-    // The map lies flat on the floor in place of the terrain's relief.
     const mapTiles = currentSurface().flat ? null : map();
     if (!mapTiles) drawTerrain(context, colors, true);
     drawBox(context, colors);
@@ -1604,7 +1449,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       }
       context.globalAlpha = 1;
     }
-    // The storm clouds over their channels, lit by the flashes inside them.
     if (clouds()) {
       for (const emitter of scene.emitters) {
         if (emitter.kind !== 'storm' || !emitter.enabled) continue;
@@ -1658,7 +1502,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /** The nearest handle or handle shadow under the pointer, with the plane it moves in. */
   function hit(x, y) {
     let best = null;
     const usable = planes().filter(planeUsable);
@@ -1688,7 +1531,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
-  /** Turns, pans, or zooms the view; the frame follows at once, so the next pointer event uses it, and the drawing on the next frame. */
   function changeView(next) {
     view = next;
     if (frame && scene) {
@@ -1701,7 +1543,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     onViewChange?.(view);
   }
 
-  /** Zooms by a factor about a screen point, keeping the scene under that point in place. */
   function zoomAt(factor, x, y) {
     if (!frame) return;
     const [low, high] = VIEW.box.zoomRange;
@@ -1772,7 +1613,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       const [low, high] = VIEW.box.pitchRange;
       changeView({
         ...view,
-        // A finger turns the scene as if dragging the ground along with it.
         yaw: drag.view.yaw - (drag.touch ? -1 : 1) * (x - drag.x) * VIEW.box.rotateRadiansPerPixel,
         pitch: Math.min(high, Math.max(low, drag.view.pitch + (y - drag.y) * VIEW.box.rotateRadiansPerPixel))
       });
@@ -1813,7 +1653,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const finished = drag;
     drag = null;
     if (finished.kind === 'point') { if (finished.point) onCommit(finished); return; }
-    // A click on empty space, without turning the view, clears the selection.
     if (finished.kind === 'rotate' && event.type === 'pointerup') {
       const { x, y } = localPoint(event);
       if (Math.hypot(x - finished.x, y - finished.y) < VIEW.box.clickPixels) onSelect({ type: null, id: null });

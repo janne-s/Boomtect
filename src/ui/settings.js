@@ -2,13 +2,7 @@ import { PREVIEW } from '../domain/constants.js';
 import { previewQuality, relativeCost } from '../domain/render-cost.js';
 import { DEFAULT_QUALITY, PARAMETERS, QUALITY_NUMBERS, QUALITY_SWITCHES } from '../domain/scene.js';
 
-/**
- * The Settings dialog, as Echotect's: one row per setting, built from the table below and the
- * scene's PARAMETERS, applied only by Save. The computation's settings belong to the scene
- * (`render.quality`), so that a scene renders alike everywhere; the preview and the threads belong
- * to the device. A bar shows what the computation costs against the full one (`render-cost.js`),
- * with the time that would take from the last render's.
- */
+/** The Settings dialog: the computation belongs to the scene (`render.quality`) so it renders alike everywhere; the preview and threads to the device. */
 
 const plural = (value, one, many) => `${value} ${value === 1 ? one : many}`;
 
@@ -26,7 +20,6 @@ const SETTINGS = Object.freeze({
   threads: { step: 1, format: (value, context) => `${value} of ${context.maximumThreads}` }
 });
 
-/** The quality's switches: their labels, and what reads beside them where they do nothing. */
 const SWITCHES = Object.freeze({
   coarseForest: { label: 'Coarse forest', idle: context => (context.forest ? null : 'no forest') },
   sharedScatter: { label: 'Shared scatter', idle: context => (context.echoCellMetres ? null : 'no terrain echoes') }

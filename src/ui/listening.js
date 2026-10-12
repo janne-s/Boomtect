@@ -27,7 +27,6 @@ function firstSoundSeconds(results, peakPa) {
   }));
 }
 
-/** Places every listening receiver's channels on one shared timeline; a receiver that hears nothing is silent on it. */
 function aligned(results, channelCount) {
   const heard = results.filter(result => result.samples.length);
   const startSeconds = Math.min(...heard.map(result => result.startSeconds));
@@ -50,12 +49,7 @@ export function listeningKind(receivers, ambisonicOrder) {
   return { kind: heads.length === 1 && !omnis.length ? 'binaural' : 'mix', heads, omnis };
 }
 
-/**
- * The listening composition from rendered results: aligned head fields and omni channels, the
- * peak pressure they reach, and the label shown beside Play. A listening receiver that hears nothing
- * plays silence. Returns null when nothing listens, a listening receiver has no result yet, or none
- * of them hears anything.
- */
+/** The listening composition from rendered results; null when nothing listens, a result is missing, or none of them hears anything. */
 export function composeListening(scene, results) {
   const { kind, heads, omnis } = listeningKind(scene.receivers, scene.render.ambisonicOrder);
   const listening = [...heads, ...omnis];

@@ -44,5 +44,4 @@ export function formatSeconds(value) {
   return Math.abs(value) >= 1 ? `${+value.toFixed(2)} s` : `${+(value * 1000).toFixed(1)} ms`;
 }
 
-/** A receiver's plot color by its position in the scene. */
 export const microphoneColor = index => `var(--mic-${index % MICROPHONE_COLORS + 1})`;

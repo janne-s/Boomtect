@@ -3,11 +3,6 @@ import { cubeRootExponent } from './creeping.js';
 import { fft, nextPowerOfTwo, overlapSize, silent } from './fft.js';
 import { createRandom, normalDeviate } from './random.js';
 
-/**
- * A forest around the scene, at most tree height above the ground: it attenuates the sound that
- * passes under its canopy and leaves a reverberant tail at the receiver.
- */
-
 const FOLIAGE_SCALE = GROUND.foliageDecibelsPerCubeRootHertz * Math.LN10 / 20 / (Math.cbrt(2 * Math.PI) * Math.cos(Math.PI / 6));
 
 /** Foliage loss and phase lag per metre of path at a frequency, nepers and radians. */
@@ -28,15 +23,9 @@ export function foliageMetres(metres, a, b, treeHeightMetres) {
   return metres * (treeHeightMetres - low) / (high - low);
 }
 
-/** Length of the impulse response: the longest band has fallen 70 dB. */
-export const REVERB_LENGTH_SECONDS = 70 / 60 * Math.max(...GROUND.forest.seconds);
-
 const FOREST = Object.freeze({ ...GROUND.forest, salt: 0 });
 
-/** The rumble of the surroundings over level ground, which over loaded terrain its echoes trace instead (GROUND.surroundings). */
 const SURROUNDINGS = Object.freeze({ ...GROUND.surroundings, salt: 0x5bd1e995 });
-/** Length of the surroundings' response: its longest band has fallen 70 dB. */
-export const SURROUNDINGS_LENGTH_SECONDS = 70 / 60 * Math.max(...SURROUNDINGS.seconds);
 
 /** A 32-bit seed from a receiver's id, so that each receiver hears its own forest. */
 export function forestSeed(id) {
@@ -46,19 +35,15 @@ export function forestSeed(id) {
 }
 
 /**
- * Impulse responses of the forest's tail for each Ambisonic channel, without the direct sound. Each
- * channel is its own seeded Gaussian noise, split into octave bands by raised-cosine crossovers in
- * log frequency, each band decaying with its time and scaled so that its energy is its share of a
- * unit impulse's energy in that band. The tail is diffuse: a channel of order n carries 1/(2n + 1)
- * of the omnidirectional energy (SN3D). Deterministic from the seed. Each channel is made on its own,
- * so `[first, last)` makes a share of them.
+ * Impulse responses of the forest's tail per Ambisonic channel, without the direct sound: seeded
+ * Gaussian noise in octave bands, each decaying with its time at its share of a unit impulse's energy.
+ * Diffuse: order n carries 1/(2n + 1) of the omnidirectional energy (SN3D). `[first, last)` makes a share.
  */
 export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels], density = 1) {
   // A sparser forest returns less of the sound, in proportion to its density (class C); its times stay.
   return cachedResponses(density === 1 ? FOREST : { ...FOREST, energyShare: FOREST.energyShare * density }, seed, sampleRate, first, last, 'forest');
 }
 
-/** The surroundings' tail at a receiver (see SURROUNDINGS), per channel, from its own seed. */
 export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
   return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last, 'surroundings');
 }
@@ -143,14 +128,9 @@ function makeResponses(profile, seed, sampleRate, first, last) {
 }
 
 /**
- * Adds a diffuse tail (the forest's or the surroundings') to rendered channels in place: every channel gains the omnidirectional
- * pressure convolved with its own response. The pressure is channel 0 as it was, unless `source` gives it.
- * The channels must already hold room for the tail.
- *
- * The convolution is overlap-add in blocks a few responses long, rather than one transform of the
- * whole render, which for minutes of sound took seconds and hundreds of megabytes. Two channels share
- * each inverse transform: their responses enter as the real and imaginary parts of one signal, so the
- * product's real and imaginary parts are the two real convolutions.
+ * Adds a diffuse tail to rendered channels in place: each channel gains the omnidirectional pressure
+ * (`source`, or channel 0) convolved with its response, by overlap-add in blocks a few responses long;
+ * one transform of the whole render took seconds and hundreds of megabytes. The channels must hold room.
  */
 export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   const length = outputs[0].length;
@@ -193,12 +173,7 @@ export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   }
 }
 
-/**
- * The diffuse tails that a stretch of omnidirectional pressure leaves in every channel, from the
- * stretch's first sample to the end of its tails: the forest's tail of the pressure, then the
- * surroundings' tail of the pressure with the forest's tail, as the sound reaches them in turn.
- * Linear in the pressure, so the tails of consecutive stretches sum to the tails of the whole.
- */
+/** The forest's and then the surroundings' tails of a stretch of pressure; linear, so consecutive stretches sum to the whole. */
 export function diffuseTails(pressure, { forest = null, surroundings = null }, channels) {
   const length = pressure.length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
   const tails = Array.from({ length: channels }, () => new Float64Array(length));

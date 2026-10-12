@@ -2,12 +2,10 @@ import { VIEW } from '../domain/constants.js';
 import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
 import { fitCanvas, formatSeconds, niceStep, palette } from './canvas.js';
 
-/** Scene-time window of a result: from its first rendered sample to its last. */
 function resultWindow(result) {
   return { start: result.startSeconds, end: result.startSeconds + result.samples.length / result.sampleRate };
 }
 
-/** The window covering every result, so all microphones share one time axis. */
 function sharedWindow(traces) {
   const windows = traces.map(trace => resultWindow(trace.result));
   return { start: Math.min(...windows.map(window => window.start)), end: Math.max(...windows.map(window => window.end)) };
@@ -74,7 +72,6 @@ function cachedPlot(canvas, key, drawStatic, playheadSeconds) {
   if (entry.window) playhead(context, width, height, entry.window, playheadSeconds, palette());
 }
 
-/** The scene time under a horizontal position on a drawn plot, or null outside its window unless clamped to it. */
 export function plotSeconds(canvas, clientX, clamp = false) {
   const entry = cache.get(canvas);
   if (!entry?.window) return null;
