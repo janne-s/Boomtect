@@ -5,6 +5,8 @@ a flash or a whole storm in 3D above the ground, place microphones, and hear
 how distance, height, layered air, terrain, and ground shape what arrives. Listen in mono, as a
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
 
+![Boomtect interface](assets/screenshot.jpg)
+
 ## How it works
 
 Every source is a set of points, each with a position, an emission time, and a
