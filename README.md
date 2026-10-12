@@ -4,6 +4,9 @@ Boomtect simulates the sound of lightning, blasts, and sonic booms from their ph
 a flash or a whole storm in 3D above the ground, place microphones, and hear
 how distance, height, layered air, terrain, and ground shape what arrives. Listen in mono, as a
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
+Made for sound design, built on physics.
+
+See it live: [**https://janne-s.github.io/Boomtect/**](https://janne-s.github.io/Boomtect/)
 
 ![Boomtect interface](assets/screenshot.jpg)
 
@@ -237,8 +240,9 @@ every file starts at the same moment.
 
 ## Echotect
 
-To place a Boomtect sound in an [Echotect](https://github.com/janne-s/Echotect)
-echo field, export a microphone's file and load it in Echotect as the source sound.
+For echoes from buildings and streets, place a Boomtect sound in an
+[Echotect](https://github.com/janne-s/Echotect) echo field: export a
+microphone's file and load it in Echotect as the source sound.
 
 ## Model
 
@@ -312,20 +316,9 @@ B/C marks a part that combines the two.
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
 | Loudness | Stevens' power law on the level envelope | B/C |
 
-Not modelled: echoes from buildings and clouds, repeated echoes, echoes over
-ridges, rounded ridges (they shield more than thin edges), terrain finer than
-the heightfield, gusts, more than six ground contacts, repeated contacts over
-sloping ground, rays bending through several layers in turn, nonlinear
-propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
-the source, a forest that covers only part of the terrain, terrain echoes of
-sonic booms, booms bent back down from the upper atmosphere, engine noise (a booster's
-entry and landing burns), a booster's booms above its start, a firework's
-muzzle flash and the hiss of its rising shell, a
-nuclear blast beyond its TNT equivalent (about half of a nuclear yield goes into
-the blast; charges up to 350 kt). The fireball roar of charges far beyond the
-recorded ones is scaled from them.
-Levels are model values in pascals and are not calibrated, so the ear model's
-response to level is only as reliable as the model's level.
+Boomtect is a creative tool. Where published models exist it follows them,
+but a result is a plausible event, not a reconstruction or a measurement.
+Levels are model values in pascals and are not calibrated.
 
 ## Running locally
 
