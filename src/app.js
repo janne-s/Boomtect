@@ -10,7 +10,8 @@ import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTail
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
-import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
+import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './ui/export-package.js';
+import { soundHandoff } from './domain/sound-handoff.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
@@ -339,9 +340,10 @@ function stopWorkers() {
   state.fullRender = null;
 }
 
-function renderFull() {
+/** Renders the scene in full; with `variant`, renders that scene instead and resolves with its results, leaving the scene's own. */
+function renderFull(variant = null) {
   return new Promise((resolve, reject) => {
-    startRender({ full: true });
+    startRender({ full: true, variant });
     if (!operations.has('render')) { reject(new Error('Nothing to render.')); return; }
     state.fullRender = { resolve, reject };
   });
@@ -370,12 +372,12 @@ function spawnWorker(revision, message, { onProgress, onResult }, transfer = [])
  * then its arrivals are split into time ranges that reuse the traced paths, and the diffuse tails
  * are added once to the sum. Every worker gets the scene as it was when the render started.
  */
-function startRender({ full = false } = {}) {
+function startRender({ full = false, variant = null } = {}) {
   state.revision += 1;
   const revision = state.revision;
   stopWorkers();
   setStatus('');
-  const scene = state.preferences.preview && !full ? previewScene(state.scene) : state.scene;
+  const scene = variant ?? (state.preferences.preview && !full ? previewScene(state.scene) : state.scene);
   if (!scene.emitters.some(emitter => emitter.enabled)) {
     if (scene.emitters.length) setStatus('No emitter is enabled.');
     drawResults();
@@ -435,7 +437,7 @@ function startRender({ full = false } = {}) {
           failRender(error.message);
           return;
         }
-        renderRanges(revision, scene, arrivals, tracedPaths, responses, { sources, workerCount, started });
+        renderRanges(revision, scene, arrivals, tracedPaths, responses, { sources, workerCount, started, variant: Boolean(variant) });
       }
     });
   }
@@ -495,7 +497,7 @@ function addRenderTails(revision, scene, arrivals, parts, responses, info) {
   const jobs = lengths.flatMap((length, index) => (length > 0
     ? tailStretches(length, Math.max(1, Math.round(info.workerCount * length / total)), tailSamples(responses[index])).map(([from, to]) => ({ index, from, to }))
     : []));
-  const finish = () => finishRender(scene, arrivals, sums, parts, { sources: info.sources, workers: info.workerCount, milliseconds: performance.now() - info.started });
+  const finish = () => finishRender(scene, arrivals, sums, parts, { sources: info.sources, workers: info.workerCount, milliseconds: performance.now() - info.started, variant: info.variant });
   if (!jobs.length) { finish(); return; }
   let remaining = jobs.length;
   operation('render', 'Adding tails', { share: 0 });
@@ -516,16 +518,24 @@ function addRenderTails(revision, scene, arrivals, parts, responses, info) {
 function finishRender(scene, arrivals, sums, parts, info) {
   state.workers = [];
   clearInterval(state.watchdog);
+  let results;
   try {
-    state.results = new Map(scene.receivers.map((receiver, index) => {
+    results = new Map(scene.receivers.map((receiver, index) => {
       const nonlinearPaths = receiverSegments(parts, receiver).reduce((sum, segment) => sum + segment.nonlinearPaths, 0);
       return [receiver.id, receiverResult(receiver, scene, finishSum(sums[index], scene.render.sampleRate), arrivals[index], nonlinearPaths)];
     }));
   } catch (error) {
     setStatus(error.message, true);
-    drawResults();
+    if (info.variant) failRender(error.message); else drawResults();
     return;
   }
+  if (info.variant) {
+    operation('render', null);
+    state.fullRender?.resolve(results);
+    state.fullRender = null;
+    return;
+  }
+  state.results = results;
   state.resultsPreview = Boolean(scene.render.preview);
   state.lastRender = { milliseconds: info.milliseconds, workers: info.workers, quality: scene.render.quality };
   state.envelopes = envelopes([...state.results.values()]);
@@ -1990,7 +2000,7 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
-const EXPORT_LABELS = Object.freeze({ scene: 'Scene (JSON)', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics' });
+const EXPORT_LABELS = Object.freeze({ scene: 'Scene (JSON)', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics', echotect: 'Echotect' });
 const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
 let exportState = null;
 
@@ -2003,7 +2013,7 @@ function updateExportSummary() {
   const selected = exportSelection();
   const sizes = exportSizes(plan, selected);
   for (const item of availableItems(plan)) $(`export-size-${item}`).textContent = formatBytes(sizes[item]);
-  const count = [...selected].reduce((sum, item) => sum + (item === 'microphones' || item === 'ambix' ? plan.microphones.length : 1), 0);
+  const count = [...selected].reduce((sum, item) => sum + itemFiles(plan, item), 0);
   const bytes = [...selected].reduce((sum, item) => sum + sizes[item], 0);
   $('export-summary').textContent = selected.size ? `${count} file${count === 1 ? '' : 's'} · ≈ ${formatBytes(bytes)}${count > 1 ? ' · ZIP' : ''}` : '';
   const aligned = selected.has('microphones') || selected.has('ambix');
@@ -2044,6 +2054,16 @@ $('export').addEventListener('click', async () => {
     row.append(box, text, size);
     return row;
   }));
+  const options = [];
+  if (echoesActive(state.scene)) {
+    const row = element('label');
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'export-echoes', checked: state.preferences.exportEchoes ?? true });
+    const text = element('span');
+    text.append(element('strong', '', 'Terrain echoes'));
+    row.append(box, text, element('small'));
+    options.push(row);
+  }
+  $('export-options').replaceChildren(...options);
   $('export-name').value = state.preferences.exportName ?? `boomtect-${state.scene.mode}`;
   $('export-error').hidden = true;
   updateExportSummary();
@@ -2064,16 +2084,38 @@ $('export-form').addEventListener('submit', async event => {
   if (!name) { $('export-name').reportValidity(); return; }
   const selected = exportSelection();
   if (!selected.size) return;
+  const echoes = $('export-echoes');
   state.preferences.exportItems = [...selected];
   state.preferences.exportName = name;
+  if (echoes) state.preferences.exportEchoes = echoes.checked;
   savePreferences();
   const submit = $('export-submit');
   submit.disabled = true;
   $('export-error').hidden = true;
   operation('export', 'Exporting');
   try {
-    const { plan, composition } = exportState;
+    const { plan: full, composition } = exportState;
     const stem = fileStem(name);
+    // Without terrain echoes, the scene is rendered again with them switched off.
+    const terrainEchoes = Boolean(echoes?.checked);
+    let dry = full;
+    let dryResults = state.results;
+    if (echoes && (!terrainEchoes || selected.has('echotect'))) {
+      const scene = structuredClone(state.scene);
+      scene.terrain.echoes = false;
+      dryResults = await renderFull(scene);
+      dry = exportPlan(scene, dryResults, full.gain);
+      if (!dry) throw new Error('Nothing is heard without the terrain echoes.');
+    }
+    const plan = terrainEchoes || !echoes ? full : dry;
+    const echotect = {
+      plan: dry,
+      handoff: (microphone, { file, startSeconds }) => soundHandoff({
+        scene: dry.scene, receiver: dry.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
+        channels: microphone.channels, arrivals: dryResults.get(microphone.receiverId).arrivals, fullScalePa: 1 / full.gain, startSeconds, file,
+        terrainEchoes: false, appVersion: '', id: crypto.randomUUID(), createdAt: new Date().toISOString()
+      })
+    };
     const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
       ...parseScene(state.scene),
       export: {
@@ -2086,13 +2128,14 @@ $('export-form').addEventListener('submit', async event => {
         sampleFormat: 'ieee-float32',
         startSeconds,
         fullScalePa: 1 / plan.gain,
-        peakPa: composition.peakPa,
+        peakPa: plan === full ? composition.peakPa : plan.listening.peakPa,
+        terrainEchoes: plan === full && echoesActive(state.scene),
         speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
         soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
         modelVersion: MODEL_VERSION,
         exportedAt: new Date().toISOString()
       }
-    }));
+    }), echotect);
     const { name: fileName, blob } = exportDownload(files, stem);
     download(fileName, blob);
     $('export-dialog').close();

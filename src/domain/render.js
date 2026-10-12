@@ -580,14 +580,15 @@ function edgeDecibels(paths, index, frequencyHz) {
 }
 
 /**
- * Arrival time, source height, and geometric level of every path, for the arrival diagram; a
- * shadow path's level includes its creeping loss at VIEW.arrivalDiagramHz.
+ * Arrival time, source height, length, elevation, and geometric level of every path, for the arrival
+ * diagram and a handoff's distance and elevation; a shadow path's level includes its creeping loss at VIEW.arrivalDiagramHz.
  */
 export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const paths = options.paths ?? receiverPaths(preparedEmitters, receiver, scene, options);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
   const bearings = new Float32Array(paths.count);
+  const elevations = new Float32Array(paths.count);
   const floor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
   const speed = soundSpeedProfile(scene.air).groundSpeed;
@@ -603,11 +604,12 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
     heights[index] = paths.height[index];
     // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
+    elevations[index] = Math.asin(Math.max(-1, Math.min(1, paths.direction[3 * index + 2]))) * 180 / Math.PI;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
       + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(VIEW.arrivalDiagramHz, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
       + edgeDecibels(paths, index, VIEW.arrivalDiagramHz);
   }
-  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), heights, levels, bearings, kinds: paths.kind.slice(0, paths.count) };
+  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), metres: paths.metres.slice(0, paths.count), heights, levels, bearings, elevations, kinds: paths.kind.slice(0, paths.count) };
 }
 
 /**

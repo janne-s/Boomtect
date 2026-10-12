@@ -1,5 +1,6 @@
 export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
+import { serializeHandoff } from '../domain/handoff.js';
 import { zipStore } from '../domain/zip.js';
 import { composeListening } from './listening.js';
 import { renderComposition } from './player.js';
@@ -10,11 +11,14 @@ import { renderComposition } from './player.js';
  * - stereo: what plays, rendered offline into two channels as playback sounds;
  * - microphones: one file per microphone, an omni's pressure in mono and a binaural one's head in
  *   stereo;
- * - ambix: one AmbiX file per microphone, when the render is spatial.
+ * - ambix: one AmbiX file per microphone, when the render is spatial;
+ * - echotect: per microphone, its pressure in mono without terrain echoes and its handoff
+ *   (`sound-handoff.js`), for Echotect to add its own.
  * Every file shares one full scale, the playback gain, so their levels compare; with per-microphone
  * files all start at one time, so they line up.
  */
-const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
+const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix', 'echotect']);
+const HANDOFF_BYTES = 2048;
 
 const slug = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'boomtect';
 export const fileStem = slug;
@@ -36,6 +40,9 @@ export function exportPlan(scene, results, gain) {
   return { scene, listening, everyone, microphones, types, gain, order };
 }
 
+/** How many files an item gives. */
+export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 * plan.microphones.length : 1);
+
 /** Which items the plan can give, and their sizes in bytes for a selection (their timeline depends on it). */
 export function exportSizes(plan, selected) {
   const aligned = selected.has('microphones') || selected.has('ambix');
@@ -44,7 +51,8 @@ export function exportSizes(plan, selected) {
     scene: 4096,
     stereo: wavByteLength(length, 2),
     microphones: plan.microphones.reduce((sum, microphone) => sum + wavByteLength(plan.everyone.length, isHead(plan, microphone) ? 2 : 1), 0),
-    ambix: plan.order > 0 ? plan.microphones.reduce((sum, microphone) => sum + wavByteLength(plan.everyone.length, microphone.channels.length), 0) : 0
+    ambix: plan.order > 0 ? plan.microphones.reduce((sum, microphone) => sum + wavByteLength(plan.everyone.length, microphone.channels.length), 0) : 0,
+    echotect: plan.microphones.length * (wavByteLength(plan.everyone.length, 1) + HANDOFF_BYTES)
   };
 }
 
@@ -62,9 +70,10 @@ function placed(channels, offset, length) {
 
 /**
  * The files of a selection: [{ name, data }]. `describe` gets the export block for the scene document
- * once the audio files are known.
+ * once the audio files are known. `echotect` gives the plan rendered without terrain echoes and the
+ * handoff of one of its microphones.
  */
-export async function exportFiles(plan, selected, stem, describe) {
+export async function exportFiles(plan, selected, stem, describe, echotect) {
   const { listening, everyone, microphones, gain, order } = plan;
   const aligned = selected.has('microphones') || selected.has('ambix');
   const timeline = aligned ? everyone : listening;
@@ -93,6 +102,16 @@ export async function exportFiles(plan, selected, stem, describe) {
   }
   if (selected.has('ambix') && order > 0) {
     for (const microphone of microphones) add(`-${slug(microphone.name)}-ambix`, microphone.channels.map(scaled), `${microphone.name}: ${AMBISONIC_CONVENTION}, order ${order}`);
+  }
+  if (selected.has('echotect')) {
+    const { everyone } = echotect.plan;
+    for (const microphone of echotect.plan.microphones) {
+      const name = `${stem}-${slug(microphone.name)}-echotect`;
+      files.push({ name: `${name}.wav`, data: new Uint8Array(encodeFloat32Wav([scaled(microphone.channels[0])], everyone.sampleRate)) });
+      const handoff = echotect.handoff(microphone, { file: `${name}.wav`, startSeconds: everyone.startSeconds });
+      files.push({ name: `${name}.json`, data: new TextEncoder().encode(serializeHandoff(handoff)) });
+      manifest.push({ file: `${name}.wav`, channels: 1, description: `${microphone.name}: pressure without terrain echoes, with its handoff for Echotect` });
+    }
   }
   if (selected.has('scene')) {
     const document = describe({ files: manifest, startSeconds: timeline.startSeconds, sampleRate: timeline.sampleRate });

@@ -254,6 +254,11 @@ microphone along the Mach cone.
   binaural microphone in stereo.
 - **Ambisonics** — One AmbiX file per microphone (ACN, SN3D; front is north,
   left is west), when the render is spatial.
+- **Echotect** — Per microphone, its pressure in mono without terrain echoes,
+  and a handoff (JSON) with the place, the air, the microphone, and the
+  direction and distance the sound comes from.
+- **Terrain echoes** — Off, the files are rendered again without the terrain's
+  echoes.
 
 All files are 32-bit float at one full scale. Files of more than two channels
 are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
@@ -262,8 +267,12 @@ every file starts at the same moment.
 ## Echotect
 
 For echoes from buildings and streets, place a Boomtect sound in an
-[Echotect](https://github.com/janne-s/Echotect) echo field: export a
-microphone's file and load it in Echotect as the source sound.
+[Echotect](https://github.com/janne-s/Echotect) echo field: export
+**Echotect** and load a microphone's file in Echotect as the source sound.
+Put the Listener where the microphone was and the Source in the direction
+and at the distance the handoff names. The sound already holds the air's
+absorption, so switch Echotect's air off to count it once. One direction
+stands for sound that arrives from many.
 
 ## Model
 
