@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
@@ -18,7 +18,7 @@ import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrai
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
-import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
+import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, meteorBursts, showerMembers } from './domain/meteor.js';
 import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
@@ -32,7 +32,7 @@ const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
@@ -719,6 +719,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
   if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
+  if (emitter.kind === 'fireworks') return `${emitter.shellCount} shells of about ${Math.round(emitter.shellDiameterMillimetres)} mm over ${emitter.durationSeconds} s, ${Math.round(emitter.crackleShare * 100)} % crackling`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
     return `${emitter.roundCount} rounds of ${formatCharge(emitter.chargeKilograms)} in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
@@ -1092,6 +1093,17 @@ function detailSections(emitter) {
       })
     ];
   }
+  if (emitter.kind === 'fireworks') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Centre', point: emitter.centreMetres, axes: ['x', 'y'], onCommit: set('centreMetres') });
+      }),
+      section('Shells', numbers(['radiusMetres', 'durationSeconds', 'shellCount', 'salvoSize', 'salvoSpreadSeconds', 'shellDiameterMillimetres', 'diameterSpread'])),
+      section('Crackle', numbers(['crackleShare', 'starCount', 'popsPerStar', 'popMilligrams'])),
+      section('Source', numbers(['riseTimeSeconds']))
+    ];
+  }
   if (emitter.kind === 'barrage') {
     return [
       section('Placement', container => {
@@ -1184,7 +1196,7 @@ function sceneBounds(scene) {
   for (const emitter of scene.emitters) {
     if (emitter.kind === 'blast') include(emitter.positionMetres);
     else if (isTrackKind(emitter)) { for (const path of cachedTracks(emitter, scene.air)) path.x.forEach((x, index) => include({ x, y: path.y[index] })); }
-    else if (emitter.kind === 'storm' || emitter.kind === 'barrage') {
+    else if (emitter.kind === 'storm' || isFieldKind(emitter)) {
       const { x, y } = emitter.centreMetres;
       include({ x: x - emitter.radiusMetres, y: y - emitter.radiusMetres });
       include({ x: x + emitter.radiusMetres, y: y + emitter.radiusMetres });
@@ -1567,7 +1579,7 @@ function drawInfo() {
     if (kind !== selected.name || !selected.enabled) selectedInfo.append(element('span', '', kind + (selected.enabled ? '' : ' · off')));
     selectedInfo.append(element('span', '', emitterSummary(selected)));
     const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
-    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || selected.kind === 'barrage' ? 'centre' : selected.kind === 'booster' ? 'pad' : isTrackKind(selected) ? 'start' : 'blast';
+    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : isTrackKind(selected) ? 'start' : 'blast';
     selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
     if (selected.kind === 'storm') selectedInfo.append(element('span', '', `Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`));
     if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
@@ -1585,7 +1597,7 @@ function drawInfo() {
   for (const item of scene.emitters) {
     if (!item.enabled) continue;
     if (item.kind === 'blast') measure(item.positionMetres);
-    else if (item.kind === 'barrage') cachedRounds(item).forEach(round => measure(round.positionMetres));
+    else if (isFieldKind(item)) cachedRounds(item, scene.air).forEach(round => measure(round.positionMetres));
     else if (isTrackKind(item)) { for (const path of cachedTracks(item, scene.air)) path.x.forEach((x, index) => measure({ x, y: path.y[index], z: path.z[index] })); }
     else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(measure);
   }
@@ -1686,7 +1698,7 @@ function arrivalDelay(from) {
   return travelSeconds(pathProfile(soundSpeedProfile(state.scene.air), from, to), from, to);
 }
 
-const isBlastKind = emitter => emitter.kind === 'blast' || emitter.kind === 'barrage';
+const isBlastKind = emitter => emitter.kind === 'blast' || isFieldKind(emitter);
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 /**
@@ -1700,7 +1712,7 @@ function strokeTimeline(emitter) {
     return showerMembers(emitter).flatMap((meteor, index) => meteorBursts(meteor, state.scene.air).map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
   }
   if (isTrackKind(emitter)) return [];
-  if (emitter.kind === 'barrage') return cachedRounds(emitter).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres) }));
+  if (isFieldKind(emitter)) return cachedRounds(emitter, state.scene.air).map((round, index) => ({ flash: index, time: round.startSeconds, route: [], position: round.positionMetres, from: placedPoint(round.positionMetres) }));
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 
@@ -1808,7 +1820,7 @@ function wavefrontAmplitudes(emitter) {
       return [`${emitter.id}:${index}`, front(boom.overpressurePa * height, boom.durationSeconds)];
     }));
   }
-  if (emitter.kind === 'barrage') return new Map(cachedRounds(emitter).map(round => [round.id, blastFront(round)]));
+  if (isFieldKind(emitter)) return new Map(cachedRounds(emitter, air).map(round => [round.id, blastFront(round)]));
   // A flash's sources: their energy, and their frequencies weighted by it.
   const energy = new Map();
   for (const source of emitterSources(emitter, air, currentSurface()).sources) {
@@ -1840,8 +1852,8 @@ function wavefrontCandidates(scene) {
       });
       continue;
     }
-    if (emitter.kind === 'barrage') {
-      cachedRounds(emitter).forEach(round => candidates.push({ point: placedPoint(round.positionMetres), emitted: round.startSeconds, group: round.id }));
+    if (isFieldKind(emitter)) {
+      cachedRounds(emitter, scene.air).forEach(round => candidates.push({ point: placedPoint(round.positionMetres), emitted: round.startSeconds, group: round.id }));
       continue;
     }
     for (const [flashIndex, flash] of cachedFlashes(emitter).entries()) {
@@ -2301,6 +2313,7 @@ $('add-formation').addEventListener('click', () => addEmitter(scene => defaultFo
 $('add-booster').addEventListener('click', () => addEmitter(scene => defaultBooster(uniqueId('booster', scene.emitters), nextName(scene, 'Booster'), newSeed())));
 $('add-whip').addEventListener('click', () => addEmitter(scene => defaultWhip(uniqueId('whip', scene.emitters), nextName(scene, 'Whip'), newSeed())));
 $('add-flight').addEventListener('click', () => addEmitter(scene => defaultFlight(uniqueId('flight', scene.emitters), nextName(scene, 'Flight'), newSeed())));
+$('add-fireworks').addEventListener('click', () => addEmitter(scene => defaultFireworks(uniqueId('fireworks', scene.emitters), nextName(scene, 'Fireworks'), newSeed())));
 $('add-barrage').addEventListener('click', () => addEmitter(scene => defaultBarrage(uniqueId('barrage', scene.emitters), nextName(scene, 'Barrage'), newSeed())));
 $('add-blast').addEventListener('click', () => addEmitter(scene => defaultBlast(uniqueId('blast', scene.emitters), nextName(scene, 'Blast'), newSeed())));
 $('add-receiver').addEventListener('click', () => commit(scene => {

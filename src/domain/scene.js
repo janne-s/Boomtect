@@ -12,7 +12,7 @@ export const SCENE_VERSION = 24;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage', 'fireworks']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Kinds of the place names kept with a terrain, from OpenStreetMap, in drawing priority. */
@@ -89,6 +89,12 @@ export const PARAMETERS = Object.freeze({
   chargeSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Charge spread σ', reliability: 'C' },
   airburstShare: { minimum: 0, maximum: 1, unit: '', label: 'Airbursts', reliability: null },
   airburstHeightMetres: { minimum: 2, maximum: 1000, unit: 'm', label: 'Airburst height', reliability: null },
+  shellCount: { minimum: 1, maximum: 500, unit: '', label: 'Shells', reliability: null, integer: true },
+  shellDiameterMillimetres: { minimum: 30, maximum: 400, unit: 'mm', label: 'Shell diameter', reliability: null },
+  crackleShare: { minimum: 0, maximum: 1, unit: '', label: 'Crackling shells', reliability: null },
+  starCount: { minimum: 1, maximum: 300, unit: '', label: 'Crackling stars', reliability: 'C', integer: true },
+  popsPerStar: { minimum: 1, maximum: 50, unit: '', label: 'Pops per star', reliability: 'C', integer: true },
+  popMilligrams: { minimum: .001, maximum: 100, unit: 'mg TNT', label: 'Pop charge', reliability: 'C' },
   headingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Heading', reliability: null },
   climbDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Climb', reliability: null },
   mach: { minimum: .3, maximum: 30, unit: '', label: 'Mach', reliability: null },
@@ -148,6 +154,11 @@ const BLAST_SOURCE_NUMBERS = Object.freeze(['linearScaledDistance', 'durationSec
 const BARRAGE_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'roundCount', 'salvoSize', 'salvoSpreadSeconds', 'chargeKilograms', 'chargeSpread',
   'airburstShare', 'airburstHeightMetres', ...BLAST_SOURCE_NUMBERS
+]);
+
+const FIREWORKS_NUMBERS = Object.freeze([
+  'startSeconds', 'radiusMetres', 'durationSeconds', 'shellCount', 'salvoSize', 'salvoSpreadSeconds', 'shellDiameterMillimetres', 'diameterSpread',
+  'crackleShare', 'starCount', 'popsPerStar', 'popMilligrams', 'riseTimeSeconds'
 ]);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
@@ -279,6 +290,31 @@ export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 202610
     explosive: 'compB',
     secondaryShock: true,
     ...Object.fromEntries(BLAST_SOURCE_NUMBERS.map(key => [key, blast[key]]))
+  };
+}
+
+/**
+ * A fireworks display: 30 shells of about 100 mm in pairs over a minute from mortars within 30 m,
+ * bursting at about 140 m; a third of them crackle, each with 40 stars of 10 pops of 0.1 mg TNT
+ * (class C, see FIREWORKS).
+ */
+export function defaultFireworks(id = 'fireworks-1', name = 'Fireworks', seed = 20261019) {
+  return {
+    id, name, kind: 'fireworks', enabled: true, seed,
+    startSeconds: 0,
+    centreMetres: { x: 0, y: 0, z: 0 },
+    radiusMetres: 30,
+    durationSeconds: 60,
+    shellCount: 30,
+    salvoSize: 2,
+    salvoSpreadSeconds: .5,
+    shellDiameterMillimetres: 100,
+    diameterSpread: .3,
+    crackleShare: .3,
+    starCount: 40,
+    popsPerStar: 10,
+    popMilligrams: .1,
+    riseTimeSeconds: 4e-5
   };
 }
 
@@ -476,6 +512,11 @@ function emitter(value, index) {
     };
     check(meteor.endHeightMetres < meteor.startMetres.z, `${path} must end below its start.`);
     return meteor;
+  }
+  if (value.kind === 'fireworks') {
+    const fireworks = { ...common, centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) };
+    check(fireworks.centreMetres.z === 0, `${path}.centreMetres must lie on the ground.`);
+    return fireworks;
   }
   if (value.kind === 'booster') {
     const booster = { ...common, padMetres: point(value.padMetres, `${path}.padMetres`), ...numbers(value, BOOSTER_NUMBERS, path) };

@@ -1,5 +1,5 @@
 import { barrageRounds } from '../domain/barrage.js';
-import { emitterFlashes } from '../domain/emitters.js';
+import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
 import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flight.js';
 import { meteorTrack, showerMembers } from '../domain/meteor.js';
 import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
@@ -63,18 +63,23 @@ export function cachedTracks(emitter, air) {
   return value;
 }
 
+/** A barrage or a fireworks display: blasts over an area around a centre on the ground. */
+export const isFieldKind = emitter => emitter.kind === 'barrage' || emitter.kind === 'fireworks';
 export const isFlightKind = emitter => emitter.kind === 'flight' || emitter.kind === 'formation';
 export const isTrackKind = emitter => isFlightKind(emitter) || emitter.kind === 'whip' || emitter.kind === 'booster' || emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 const rounds = new Map();
 
-/** A barrage's rounds, cached by everything except its name and switch. */
-export function cachedRounds(emitter) {
+/**
+ * A barrage's rounds, or a fireworks display's thumps and bursts in the given air, as blasts,
+ * cached by everything except the name and switch.
+ */
+export function cachedRounds(emitter, air) {
   const { name, enabled, ...shape } = emitter;
-  const key = JSON.stringify(shape);
+  const key = JSON.stringify(emitter.kind === 'fireworks' ? [shape, air] : shape);
   const cached = rounds.get(emitter.id);
   if (cached?.key === key) return cached.rounds;
-  const value = barrageRounds(emitter);
+  const value = emitter.kind === 'fireworks' ? fireworksRounds(emitter, air) : barrageRounds(emitter);
   rounds.set(emitter.id, { key, rounds: value });
   return value;
 }

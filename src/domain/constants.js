@@ -315,6 +315,47 @@ export const BLAST = Object.freeze({
   salvoJitter: .15
 });
 
+/**
+ * A fireworks display (`fireworks.js`): spherical shells fired from mortars, each bursting high in
+ * the air, some throwing out crackling stars.
+ * - Burst height 1.4 m per millimetre of shell diameter (Wharton 1995, J. Pyrotechnics 1, a fit to
+ *   Shimizu's and others' data, class B; 255 mm shells burst at 206–422 m), spread lognormally by
+ *   heightSpread (class C). The shell bursts at the top of its flight (class C: its time fuse is
+ *   set for it), fired straight up with a seeded tilt of tiltDegrees (class C).
+ * - Gross shell mass massKilogramsPerCubicMetre·d³, 0.4 kg at 100 mm (class B, Wharton's table of
+ *   75–125 mm shells, 177–768 g); a sphere of drag coefficient dragCoefficient (Ooki et al. 2006,
+ *   Sci. Tech. Energetic Materials 67, 0.7–0.8 in free fall, class B) in the ground's air.
+ * - The mortar's thump is a ground blast at the mortar's mouth, mouthMetres up, of thumpShare of
+ *   the lift charge, liftShare of the shell's mass (Wharton: 6–20 %), as TNT, with a positive phase
+ *   of thumpSeconds, about the time the shell takes to leave the tube (all class C: no measurement
+ *   found).
+ * - The burst is a TNT blast of burstShare of the shell's mass (class C, fitted to Maglieri &
+ *   Henderson 1973, JASA 54, 342: 4–6 inch shells bursting at about 91 m gave up to 718 Pa below
+ *   them; a 150 mm shell gives 720 Pa at the ground under it. Its pulse is TNT's, whose signature
+ *   comes out longer than their about 12 ms).
+ * - A crackling star leaves the burst at starMetresPerSecond in a seeded direction and slows by
+ *   drag at the ballistic coefficient starKilogramsPerSquareMetre, under gravity; its pops come at
+ *   seeded times from crackleDelaySeconds after the burst over crackleSeconds, each a tiny blast of
+ *   the pop charge as TNT (all class C: no measurement found; stepped every starStepSeconds).
+ */
+export const FIREWORKS = Object.freeze({
+  burstHeightMetresPerMetre: 1400,
+  heightSpread: .2,
+  tiltDegrees: 2,
+  massKilogramsPerCubicMetre: 400,
+  dragCoefficient: .75,
+  mouthMetres: .7,
+  liftShare: .1,
+  thumpShare: .01,
+  thumpSeconds: .005,
+  burstShare: .15,
+  starMetresPerSecond: 40,
+  starKilogramsPerSquareMetre: 50,
+  crackleDelaySeconds: .5,
+  crackleSeconds: 1.5,
+  starStepSeconds: .02
+});
+
 export const FLIGHT = Object.freeze({
   /**
    * Bodies from Carlson's sample problems (NASA TP-1122): length l and shape factor K_S (which

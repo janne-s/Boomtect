@@ -4,7 +4,7 @@ import { createRandom } from '../domain/random.js';
 import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
-import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isTrackKind, useTerrain } from './geometry-cache.js';
+import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isTrackKind, useTerrain } from './geometry-cache.js';
 
 const DISC_POINTS = 64;
 
@@ -105,7 +105,7 @@ function handles(scene, box) {
       continue;
     }
     if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' });
-    else if (emitter.kind === 'barrage') {
+    else if (isFieldKind(emitter)) {
       list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
       list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
     } else if (emitter.kind === 'storm') {
@@ -218,11 +218,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         });
         continue;
       }
-      if (emitter.kind === 'barrage') {
+      if (isFieldKind(emitter)) {
         const { x, y } = emitter.centreMetres;
         include({ x: x - emitter.radiusMetres, y: y - emitter.radiusMetres, z: 0 });
         include({ x: x + emitter.radiusMetres, y: y + emitter.radiusMetres, z: 0 });
-        cachedRounds(emitter).forEach(round => include(placed(round.positionMetres)));
+        cachedRounds(emitter, scene.air).forEach(round => include(placed(round.positionMetres)));
         continue;
       }
       if (emitter.kind === 'storm') {
@@ -866,7 +866,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return receiver ? [placed(receiver.positionMetres)] : [];
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
-    if (!emitter || emitter.kind === 'storm' || emitter.kind === 'barrage') return [];
+    if (!emitter || emitter.kind === 'storm' || isFieldKind(emitter)) return [];
     if (emitter.kind === 'booster') return [placed(emitter.padMetres)];
     if (isTrackKind(emitter)) return [emitter.startMetres];
     return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
@@ -1279,7 +1279,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (stroke) drawBurst(context, frame.project(placed(emitter.positionMetres)), stroke, colors);
   }
 
-  /** A barrage's reach on the ground, its rounds as small marks, and each round's flash as it lands. */
+  /**
+   * A barrage's or fireworks display's reach on the ground, its rounds as small marks, and each
+   * round's flash as it lands; a display's shells rise from their mortars to where they burst.
+   */
   function drawBarrage(context, emitter, colors, selected, state) {
     const { x, y } = emitter.centreMetres;
     context.strokeStyle = selected ? colors.accent : colors.end;
@@ -1294,9 +1297,23 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.fillStyle = colors.end;
     const alpha = context.globalAlpha;
     context.globalAlpha = alpha * .5;
-    for (const round of cachedRounds(emitter)) {
+    const rounds = cachedRounds(emitter, scene.air);
+    for (const round of rounds) {
       const p = frame.project(placed(round.positionMetres));
       context.beginPath(); context.arc(p.x, p.y, 1.5, 0, 2 * Math.PI); context.fill();
+    }
+    if (emitter.kind === 'fireworks') {
+      context.lineWidth = .8;
+      const mortars = new Map(rounds.filter(round => round.id.endsWith(':thump')).map(round => [round.id.slice(0, -':thump'.length), round]));
+      context.beginPath();
+      for (const round of rounds) {
+        const mortar = round.id.endsWith(':burst') ? mortars.get(round.id.slice(0, -':burst'.length)) : null;
+        if (!mortar) continue;
+        const from = frame.project(placed(mortar.positionMetres));
+        const to = frame.project(placed(round.positionMetres));
+        context.moveTo(from.x, from.y); context.lineTo(to.x, to.y);
+      }
+      context.stroke();
     }
     context.globalAlpha = alpha;
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
@@ -1523,7 +1540,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.globalAlpha = emitter.enabled ? 1 : .35;
       if (emitter.kind === 'storm') drawStorm(context, emitter, colors, selected);
       if (emitter.kind === 'blast') drawBlast(context, emitter, colors, state);
-      else if (emitter.kind === 'barrage') drawBarrage(context, emitter, colors, selected, state);
+      else if (isFieldKind(emitter)) drawBarrage(context, emitter, colors, selected, state);
       else if (isTrackKind(emitter)) drawFlight(context, emitter, colors, selected, state);
       else {
         drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
@@ -1574,7 +1591,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.font = '11px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
-      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || emitter.kind === 'barrage' ? placed(emitter.centreMetres)
+      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || isFieldKind(emitter) ? placed(emitter.centreMetres)
         : emitter.kind === 'booster' ? placed(emitter.padMetres) : isTrackKind(emitter) ? emitter.startMetres : emitter.topMetres;
       const p = frame.project(anchor);
       context.fillText(emitter.name, p.x + 9, p.y - 8);

@@ -44,6 +44,10 @@ microphone along the Mach cone.
   that follows it, and the roar of its fireball and debris.
 - **Barrage** — Rounds landing over an area in salvos, as artillery fires,
   each a blast; some may burst in the air.
+- **Fireworks** — Shells fired from mortars over an area in salvos: each
+  mortar's thump on the ground, the shell's burst high in the air a flight time
+  later, and, for a share of the shells, crackling stars as a swarm of tiny
+  pops around the burst.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -68,7 +72,8 @@ microphone along the Mach cone.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
-  salvo, charge, and fireball for a barrage, each with its onset when the scene
+  salvo, charge, and fireball for a barrage; size, duration, shells, shells per
+  salvo, shell size, and crackle for a fireworks display, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -273,6 +278,10 @@ B/C marks a part that combines the two.
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
+| Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
+| Fireworks burst | TNT blast of 15 % of the shell's mass, fitted to 718 Pa below 4–6 inch shells bursting at 91 m (Maglieri & Henderson 1973); TNT's pulse, longer than their 12 ms signature | C |
+| Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
+| Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
 | Booster boom | Carlson's boom, 47 m and `K_S` 0.1 fitted to 130 Pa and 0.29 s measured 8 km from the pad (Durrant et al. 2022); a triple boom whose middle shock comes at 68 % and jumps 108 % of the front shock, fitted to their waveform; the cause after Anderson & Gee 2025 | B/C |
 | Whip crack | Carlson's boom of the cracker, whose `K_S = 2^¼·γ·d/l` gives Whitham's projectile overpressure; a frayed cracker's size and shape | C |
@@ -306,7 +315,8 @@ sloping ground, rays bending through several layers in turn, nonlinear
 propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
 the source, a forest that covers only part of the terrain, terrain echoes of
 sonic booms, booms bent back down from the upper atmosphere, engine noise (a booster's
-entry and landing burns), a booster's booms above its start, a
+entry and landing burns), a booster's booms above its start, a firework's
+muzzle flash and the hiss of its rising shell, a
 nuclear blast beyond its TNT equivalent (about half of a nuclear yield goes into
 the blast; charges up to 350 kt). The fireball roar of charges far beyond the
 recorded ones is scaled from them.

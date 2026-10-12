@@ -379,6 +379,30 @@ const onset = {
   entry: { unit: 's', get: item => item.startSeconds, set: (item, value) => { item.startSeconds = value; } }
 };
 
+const fireworksShells = {
+  label: 'Shells',
+  read: item => clamp01(logPosition(item.shellCount, [1, 500])),
+  write: (item, t) => { item.shellCount = Math.max(1, Math.round(logValue(t, [1, 500]))); },
+  show: item => String(item.shellCount),
+  entry: { integer: true, get: item => item.shellCount, set: (item, value) => { item.shellCount = value; } }
+};
+
+const fireworksDiameter = {
+  label: 'Shell size',
+  read: item => clamp01(logPosition(item.shellDiameterMillimetres, range('shellDiameterMillimetres'))),
+  write: (item, t) => { item.shellDiameterMillimetres = Math.round(logValue(t, range('shellDiameterMillimetres'))); },
+  show: item => `${Math.round(item.shellDiameterMillimetres)} mm`,
+  entry: { unit: 'mm', get: item => item.shellDiameterMillimetres, set: (item, value) => { item.shellDiameterMillimetres = value; } }
+};
+
+const fireworksCrackle = {
+  label: 'Crackle',
+  read: item => item.crackleShare,
+  write: (item, t) => { item.crackleShare = Math.round(t * 100) / 100; },
+  show: item => percent(item.crackleShare),
+  entry: { get: item => item.crackleShare, set: (item, value) => { item.crackleShare = value; } }
+};
+
 const boosterHeight = {
   label: 'Start height',
   read: item => clamp01(logPosition(item.startHeightMetres, range('startHeightMetres'))),
@@ -412,7 +436,7 @@ const boosterBallistic = {
 };
 
 /**
- * Macro sliders for an emitter, in display order. Flashes, storms, blasts, and barrages also take
+ * Macro sliders for an emitter, in display order. Flashes, storms, blasts, barrages, and fireworks take
  * their onset when `onset` is set, as when they sound with others.
  */
 export function macrosFor(emitter, { onset: withOnset = false } = {}) {
@@ -425,6 +449,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'booster') return [boosterHeight, boosterMach, boosterDescent, flightHeading, boosterBallistic];
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
+  if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

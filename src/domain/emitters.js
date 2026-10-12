@@ -1,6 +1,7 @@
 import { BLAST } from './constants.js';
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
+import { fireworksBlasts } from './fireworks.js';
 import { secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
 import { meteorBursts, showerMembers } from './meteor.js';
@@ -10,7 +11,7 @@ import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
 
-export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
+export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster', 'fireworks']);
 
 /** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
 const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
@@ -118,6 +119,20 @@ function meteorSources(emitter, air) {
   return [...members.map(flightSource), ...members.flatMap((meteor, index) => meteorBursts(meteor, air).map(burst => highBlastSource(burst, air, index)))];
 }
 
+/** A fireworks display's thump, burst, or pop (`fireworks.js`) as a TNT blast without a secondary shock or roar; a thump keeps its own positive phase. */
+const fireworksBlast = blast => ({
+  durationSecondsPerCubeRootKilogram: BLAST_PULSE.durationSecondsPerCubeRootKilogram, ...blast, kind: 'blast', explosive: 'tnt', secondaryShock: false,
+  fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0, linearScaledDistance: BLAST_PULSE.linearScaledDistance, decay: BLAST_PULSE.decay
+});
+
+/** A fireworks display's thumps and bursts as blasts, in time order, as a barrage's rounds (for views). */
+export const fireworksRounds = (emitter, air) => fireworksBlasts(emitter, air).events.map(fireworksBlast);
+
+function fireworksSources(emitter, air, surface) {
+  const { events, pops } = fireworksBlasts(emitter, air);
+  return [...events, ...pops].flatMap(blast => blastSources(fireworksBlast(blast), air, surface));
+}
+
 export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
@@ -125,6 +140,7 @@ export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'whip') return { flashes: [], sources: [flightSource(emitter)] };
   if (emitter.kind === 'booster') return { flashes: [], sources: [{ ...flightSource(emitter, 0, 'triple'), positionMetres: emitter.padMetres }] };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
+  if (emitter.kind === 'fireworks') return { flashes: [], sources: fireworksSources(emitter, air, surface) };
   const flashes = emitterFlashes(emitter, surface);
   return { flashes, sources: flashSources(flashes, emitter, air) };
 }
