@@ -12,13 +12,17 @@ import { DEFAULT_QUALITY, PARAMETERS, QUALITY_KEYS } from '../domain/scene.js';
 
 const plural = (value, one, many) => `${value} ${value === 1 ? one : many}`;
 
-/** Each setting's slider step and how its value reads; `context` carries the terrain's echo cells. */
+/**
+ * Each setting's slider step, how its value reads, and, for one that acts on only some scenes, what
+ * reads in its place where it does nothing; `context` carries the terrain's echo cells and what the
+ * scene holds.
+ */
 const SETTINGS = Object.freeze({
   cutoffDecibels: { step: 1, format: value => `−${Math.abs(Math.round(value))} dB` },
   highestFrequencyHz: { step: 500, format: value => `${+(value / 1000).toFixed(1)} kHz` },
-  sourceMerge: { step: 1, format: value => (value === 1 ? 'every segment' : `1 per ${value} segments`) },
-  echoCellScale: { step: .5, format: (value, context) => (context.echoCellMetres ? `${Math.round(context.echoCellMetres * value)} m cells` : `${value} ×`) },
-  scatterArrivals: { step: 1, format: value => plural(value, 'arrival', 'arrivals') },
+  sourceMerge: { step: 1, format: value => (value === 1 ? 'every segment' : `1 per ${value} segments`), idle: context => (context.flashes ? null : 'no flashes') },
+  echoCellScale: { step: .5, format: (value, context) => `${Math.round(context.echoCellMetres * value)} m cells`, idle: context => (context.echoCellMetres ? null : 'no terrain echoes') },
+  scatterArrivals: { step: 1, format: value => plural(value, 'arrival', 'arrivals'), idle: context => (context.echoCellMetres ? null : 'no terrain echoes') },
   threads: { step: 1, format: (value, context) => `${value} of ${context.maximumThreads}` }
 });
 
@@ -28,7 +32,8 @@ const $ = id => document.getElementById(id);
 
 /**
  * `read()` gives the scene's quality, whether the preview is on, the device's threads and the most
- * there are, the terrain's echo cells (or null), the scattered paths' share in the last render, and
+ * there are, the terrain's echo cells (or null without terrain echoes), whether the scene has flashes
+ * or storms, the scattered paths' share in the last render, and
  * the last render (`{ milliseconds, workers, quality }`, or null); `save({ quality, preview, threads })`
  * gets them back after Save.
  */
@@ -38,7 +43,9 @@ export function createSettings({ read, save }) {
   let context = null;
 
   function slider(grid, key, label, value, { minimum, maximum }) {
-    const { step, format } = SETTINGS[key];
+    const { step, format, idle } = SETTINGS[key];
+    // A setting that does nothing in this scene is dimmed and keeps its value for when it would.
+    const idleText = idle?.(context) ?? null;
     const id = `setting-${key}`;
     const name = document.createElement('label');
     name.htmlFor = id;
@@ -52,8 +59,13 @@ export function createSettings({ read, save }) {
     const current = () => (touched ? Number(input.value) : value);
     const fill = () => {
       input.style.setProperty('--to', `${(Number(input.value) - minimum) / (maximum - minimum) * 100}%`);
-      output.textContent = format(current(), context);
+      output.textContent = idleText ?? format(current(), context);
     };
+    if (idleText) {
+      input.disabled = true;
+      name.classList.add('idle');
+      output.classList.add('idle');
+    }
     input.addEventListener('input', () => { touched = true; fill(); updateCost(); });
     fill();
     grid.append(name, input, output);
@@ -84,7 +96,8 @@ export function createSettings({ read, save }) {
 
   function updateCost() {
     const { preview, threads, ...chosen } = values();
-    const quality = preview ? previewQuality(chosen) : chosen;
+    // A scene without flashes costs the same at any flash detail.
+    const quality = { ...(preview ? previewQuality(chosen) : chosen), ...(context.flashes ? {} : { sourceMerge: 1 }) };
     const share = relativeCost(quality, context.scatterShare);
     const most = relativeCost({ ...DEFAULT_QUALITY, cutoffDecibels: PARAMETERS.cutoffDecibels.minimum, scatterArrivals: PARAMETERS.scatterArrivals.maximum }, context.scatterShare);
     $('cost-fill').style.width = `${Math.min(100, share / most * 100)}%`;
@@ -93,7 +106,8 @@ export function createSettings({ read, save }) {
     const { last } = context;
     if (last) {
       // Time scales with the cost and, roughly, inversely with the threads.
-      const seconds = last.milliseconds / 1000 * share / relativeCost(last.quality, context.scatterShare) * last.workers / threads;
+      const lastQuality = context.flashes ? last.quality : { ...last.quality, sourceMerge: 1 };
+      const seconds = last.milliseconds / 1000 * share / relativeCost(lastQuality, context.scatterShare) * last.workers / threads;
       text += ` · ≈ ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
     }
     $('cost-value').textContent = text;

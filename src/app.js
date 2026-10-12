@@ -96,6 +96,7 @@ createSettings({
     threads: workerLimit(),
     maximumThreads: WORKER_COUNT,
     echoCellMetres: echoesActive(state.scene) ? state.scene.terrain.echoCellMetres : null,
+    flashes: state.scene.emitters.some(emitter => emitter.kind === 'lightning' || emitter.kind === 'storm'),
     scatterShare: scatterShare(),
     last: state.lastRender
   }),

@@ -1137,6 +1137,13 @@ details summary {
 .settings-cost + h3 {
   margin-top: 22px;
 }
+.settings-grid .idle,
+.settings-grid input:disabled {
+  opacity: .45;
+}
+.settings-grid input:disabled {
+  cursor: not-allowed;
+}
 .settings-check {
   display: flex;
   grid-column: 2 / -1;
