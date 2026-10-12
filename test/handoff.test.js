@@ -64,3 +64,23 @@ test('only what is not a handoff, or is broken, is refused', () => {
   ];
   for (const value of broken) assert.throws(() => readHandoff(value), HandoffError);
 });
+
+test('a handoff message carries the handoff and whole frames of its sound', async () => {
+  const { handoffMessage, readHandoffMessage, TECT_MESSAGES } = await import('../src/domain/handoff.js');
+  const samples = Float32Array.from([0, .5, -.25]);
+  const message = handoffMessage(complete(), samples);
+  assert.equal(message.type, TECT_MESSAGES.handoff);
+  const read = readHandoffMessage(structuredClone(message));
+  assert.deepEqual(read.handoff, complete());
+  assert.deepEqual([...read.samples], [0, .5, -.25]);
+  const stereo = { ...complete(), audio: { ...complete().audio, channels: 2 } };
+  for (const data of [null, { ...message, type: 'tect.ready' }, { ...message, samples: [0, 1] }, { ...message, samples: new Float32Array(0) }, { ...message, handoff: stereo }]) {
+    assert.throws(() => readHandoffMessage(data), HandoffError);
+  }
+});
+
+test('the application version is the one in package.json', async () => {
+  const { APP_VERSION } = await import('../src/domain/constants.js');
+  const { readFileSync } = await import('node:fs');
+  assert.equal(APP_VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+});

@@ -108,7 +108,7 @@ export async function exportFiles(plan, selected, stem, describe, echotect) {
     for (const microphone of echotect.plan.microphones) {
       const name = `${stem}-${slug(microphone.name)}-echotect`;
       files.push({ name: `${name}.wav`, data: new Uint8Array(encodeFloat32Wav([scaled(microphone.channels[0])], everyone.sampleRate)) });
-      const handoff = echotect.handoff(microphone, { file: `${name}.wav`, startSeconds: everyone.startSeconds });
+      const handoff = echotect.handoff(microphone, { file: `${name}.wav` });
       files.push({ name: `${name}.json`, data: new TextEncoder().encode(serializeHandoff(handoff)) });
       manifest.push({ file: `${name}.wav`, channels: 1, description: `${microphone.name}: pressure without terrain echoes, with its handoff for Echotect` });
     }

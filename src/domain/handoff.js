@@ -152,3 +152,23 @@ export function readHandoff(value) {
 }
 
 export const serializeHandoff = handoff => `${JSON.stringify(readHandoff(handoff), null, 2)}\n`;
+
+/**
+ * Window messages between two open tects (Doc/design/architecture-decision-5-tect-handoff.md, part 5).
+ * The receiver says it is ready when it loads with an opener and whenever it is greeted; the sender
+ * then posts the handoff with its samples, and the receiver answers that it took or refused it.
+ * Each side checks the other's origin against its own list before reading anything.
+ */
+export const TECT_MESSAGES = Object.freeze({ hello: 'tect.hello', ready: 'tect.ready', handoff: 'tect.handoff', received: 'tect.received', refused: 'tect.refused' });
+
+/** A handoff with its sound, one Float32Array of interleaved samples at the handoff's full scale. */
+export const handoffMessage = (handoff, samples) => ({ type: TECT_MESSAGES.handoff, handoff: readHandoff(handoff), samples });
+
+/** Reads a handoff message: its handoff and its samples, which must fill whole frames; or throws HandoffError. */
+export function readHandoffMessage(data) {
+  check(isRecord(data) && data.type === TECT_MESSAGES.handoff, 'This is not a tect handoff message.');
+  const handoff = readHandoff(data.handoff);
+  const { samples } = data;
+  check(samples instanceof Float32Array && samples.length > 0 && samples.length % handoff.audio.channels === 0, 'The handoff message must carry whole frames of 32-bit float samples.');
+  return { handoff, samples };
+}

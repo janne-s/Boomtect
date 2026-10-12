@@ -1,5 +1,5 @@
 import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
-import { BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, RENDER_COST, THUNDER, VIEW } from './domain/constants.js';
+import { APP_VERSION, BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, RENDER_COST, THUNDER, VIEW } from './domain/constants.js';
 import { blastSources, emitterSources } from './domain/emitters.js';
 import { EXPLOSIVE_TYPES } from './domain/explosives.js';
 import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
@@ -12,6 +12,8 @@ import {
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './ui/export-package.js';
 import { soundHandoff } from './domain/sound-handoff.js';
+import { handoffMessage } from './domain/handoff.js';
+import { ECHOTECT_URL, openTect } from './ui/tect-link.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
@@ -967,6 +969,7 @@ function receiverCard(container, receiver, selected) {
       card.append(orientation);
     }
     const actions = element('div', 'card-actions');
+    actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }));
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
   }
@@ -2000,6 +2003,56 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
+/**
+ * The export plan and results of the scene without its terrain echoes, at the playback gain: the
+ * scene rendered again with them switched off, or its own when it has none.
+ */
+async function withoutTerrainEchoes(gain) {
+  if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results };
+  const scene = structuredClone(state.scene);
+  scene.terrain.echoes = false;
+  const results = await renderFull(scene);
+  const plan = exportPlan(scene, results, gain);
+  if (!plan) throw new Error('Nothing is heard without the terrain echoes.');
+  return { plan, results };
+}
+
+/** The handoff of one microphone of a plan, its field (omni first) on the plan's timeline. */
+const microphoneHandoff = (plan, results, microphone, file) => soundHandoff({
+  scene: plan.scene, receiver: plan.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
+  channels: microphone.channels, arrivals: results.get(microphone.receiverId).arrivals, fullScalePa: 1 / plan.gain,
+  startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: crypto.randomUUID(), createdAt: new Date().toISOString()
+});
+
+/** Sends a microphone's sound without terrain echoes to Echotect, opening it in another window. */
+async function sendToEchotect(receiverId, trigger) {
+  let link;
+  try {
+    link = openTect(ECHOTECT_URL, 'Echotect');
+  } catch (error) {
+    setStatus(error.message, true);
+    return;
+  }
+  trigger.disabled = true;
+  operation('send', 'Sending to Echotect');
+  try {
+    if (state.resultsPreview) await renderFull();
+    const current = await listening();
+    if (!current) throw new Error('A microphone must listen to set the level.');
+    const { plan, results } = await withoutTerrainEchoes(current.gain);
+    const microphone = plan.microphones.find(item => item.receiverId === receiverId);
+    if (!microphone) throw new Error('The microphone has no sound.');
+    const samples = microphone.channels[0].map(value => value * plan.gain);
+    await link.send(handoffMessage(microphoneHandoff(plan, results, microphone, null), samples), [samples.buffer]);
+    setStatus(`Sent ${microphone.name} to Echotect`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : String(error), true);
+  } finally {
+    trigger.disabled = false;
+    operation('send', null);
+  }
+}
+
 const EXPORT_LABELS = Object.freeze({ scene: 'Scene (JSON)', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics', echotect: 'Echotect' });
 const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
 let exportState = null;
@@ -2098,24 +2151,9 @@ $('export-form').addEventListener('submit', async event => {
     const stem = fileStem(name);
     // Without terrain echoes, the scene is rendered again with them switched off.
     const terrainEchoes = Boolean(echoes?.checked);
-    let dry = full;
-    let dryResults = state.results;
-    if (echoes && (!terrainEchoes || selected.has('echotect'))) {
-      const scene = structuredClone(state.scene);
-      scene.terrain.echoes = false;
-      dryResults = await renderFull(scene);
-      dry = exportPlan(scene, dryResults, full.gain);
-      if (!dry) throw new Error('Nothing is heard without the terrain echoes.');
-    }
-    const plan = terrainEchoes || !echoes ? full : dry;
-    const echotect = {
-      plan: dry,
-      handoff: (microphone, { file, startSeconds }) => soundHandoff({
-        scene: dry.scene, receiver: dry.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
-        channels: microphone.channels, arrivals: dryResults.get(microphone.receiverId).arrivals, fullScalePa: 1 / full.gain, startSeconds, file,
-        terrainEchoes: false, appVersion: '', id: crypto.randomUUID(), createdAt: new Date().toISOString()
-      })
-    };
+    const dry = echoes && (!terrainEchoes || selected.has('echotect')) ? await withoutTerrainEchoes(full.gain) : { plan: full, results: state.results };
+    const plan = terrainEchoes || !echoes ? full : dry.plan;
+    const echotect = { plan: dry.plan, handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file) };
     const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
       ...parseScene(state.scene),
       export: {
