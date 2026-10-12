@@ -507,7 +507,7 @@ export const RENDER = Object.freeze({
   maximumEmitters: 8,
   maximumReceivers: 8,
   /** Flights cover tens of kilometres, and meteors come from the upper atmosphere. */
-  sceneExtentMetres: 150000,
+  sceneExtentMetres: 300000,
   maximumHeightMetres: 120000,
   /**
    * Every worker holds the whole scene, so very large scenes use fewer of them to bound memory: a

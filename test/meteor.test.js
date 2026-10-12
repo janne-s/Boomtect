@@ -40,7 +40,7 @@ function plainMeteor(diameterMetres) {
   const scene = plainScene('sonic');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
   scene.ground = { ...scene.ground, enabled: false };
-  scene.emitters = [{ ...defaultMeteor(), startMetres: { x: -20000, y: 0, z: 60000 }, endHeightMetres: 20000, diameterMetres, breakupCount: 0, burstShare: 0 }];
+  scene.emitters = [{ ...defaultMeteor(), startMetres: { x: -20000, y: 0, z: 60000 }, headingDegrees: 90, entryDegrees: 35, speedKilometresPerSecond: 20, endHeightMetres: 20000, diameterMetres, breakupCount: 0, burstShare: 0 }];
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   const { start, direction, speed, lengthMetres } = meteorTrail(parsed.emitters[0]);
@@ -81,7 +81,7 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
   const speed = meteor.speedKilometresPerSecond * 1000;
   const ram = z => pressureAtHeightPa(air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, z)) * speed * speed;
   const energy = meteorKineticEnergy(meteor);
-  assert.ok(Math.abs(energy / (3300 * Math.PI / 6 * .5 ** 3 * speed * speed / 2) - 1) < 1e-12);
+  assert.ok(Math.abs(energy / (3300 * Math.PI / 6 * meteor.diameterMetres ** 3 * speed * speed / 2) - 1) < 1e-12);
   const breakups = bursts.slice(0, -1);
   for (const burst of breakups) {
     // Within the pressure spread of one of the generations: S·2^k·e^(±4σ).

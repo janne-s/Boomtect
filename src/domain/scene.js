@@ -343,33 +343,43 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
 }
 
 /**
- * A bright fireball: a 0.5 m stony meteoroid entering at 20 km/s and 35° from 100 km, its trail
- * ending at 25 km. Its shock rises in about a millisecond (class C). It breaks up in two generations
- * from 1 MPa, each releasing 5 % of its kinetic energy, and bursts at the end with 30 % (class C).
+ * A bright fireball on Chelyabinsk's track (15 February 2013: 19 km/s, 18° below the horizontal,
+ * heading 283°, its trail ending near 27 km; Borovička et al. 2013, Popova et al. 2013, class B),
+ * but a 1 m stony meteoroid instead of a 19 m one, so that it renders quickly; a larger diameter
+ * comes nearer the event. From 100 km, its trail ends 40 km south of the origin, about where
+ * Chelyabinsk lay from the airburst. Its shock rises in about a millisecond (class C). It breaks
+ * up in three generations from 1 MPa, each releasing 5 % of its kinetic energy, and bursts at the
+ * end with 30 % (class C).
  */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
     id, name, kind: 'meteor', enabled: true, seed,
+    startMetres: { x: 218913, y: -90540, z: 100000 },
     startSeconds: 0,
-    startMetres: { x: -40000, y: 0, z: 100000 },
-    headingDegrees: 90,
-    entryDegrees: 35,
-    speedKilometresPerSecond: 20,
-    diameterMetres: .5,
-    endHeightMetres: 25000,
+    headingDegrees: 283,
+    entryDegrees: 18,
+    speedKilometresPerSecond: 19,
+    diameterMetres: 1,
+    endHeightMetres: 27000,
     dragCoefficient: 1,
     riseTimeSeconds: .001,
     densityKilogramsPerCubicMetre: 3300,
     strengthMegapascals: 1,
-    breakupCount: 2,
+    breakupCount: 3,
     breakupShare: .05,
     burstShare: .3
   };
 }
 
-/** Thirty meteoroids of about 0.2 m from one radiant over a minute, entering within 30 km. */
+/**
+ * Thirty meteoroids of about 0.2 m from one radiant over a minute, entering at 20 km/s and 35° from
+ * 100 km, 40 km west of the origin, within 30 km.
+ */
 export function defaultShower(id = 'shower-1', name = 'Shower', seed = 20261016) {
-  return { ...defaultMeteor(id, name, seed), kind: 'shower', diameterMetres: .2, meteorCount: 30, radiusMetres: 30000, durationSeconds: 60, diameterSpread: .8 };
+  return {
+    ...defaultMeteor(id, name, seed), kind: 'shower', startMetres: { x: -40000, y: 0, z: 100000 }, headingDegrees: 90, entryDegrees: 35, speedKilometresPerSecond: 20,
+    diameterMetres: .2, endHeightMetres: 25000, breakupCount: 2, meteorCount: 30, radiusMetres: 30000, durationSeconds: 60, diameterSpread: .8
+  };
 }
 
 /**

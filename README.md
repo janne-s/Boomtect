@@ -59,7 +59,8 @@ microphone along the Mach cone.
   trail ends; its boom leaves the trail where its Mach cone reaches the
   microphone. Its fragments break up in generations where the air's pressure on
   them exceeds their strength, and it bursts where the trail ends, each a blast
-  high in the air.
+  high in the air. A new meteor follows the Chelyabinsk fireball's track of
+  2013 as a 1 m body; its diameter takes it toward the 19 m original.
 - **Shower** — Meteoroids from one radiant over an area and a time span.
 - **Whip** — A bullwhip's crack: the boom of its tip, which passes the speed of
   sound, speeds up, turns over as the lash rolls out, and slows down again,
