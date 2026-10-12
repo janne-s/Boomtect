@@ -24,6 +24,7 @@ import { meteorBoom, showerMembers } from './domain/meteor.js';
 import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
 import { createOrientationBall } from './ui/orientation-ball.js';
+import { createMobileLayout } from './ui/mobile.js';
 import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
@@ -84,6 +85,7 @@ const state = {
 state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
 
 const player = createPlayer();
+const mobile = createMobileLayout({ onResults: () => drawResults() });
 const liveFields = { receiver: null, orientation: null };
 
 /** Rebuilds the panel at the next frame, at most once a frame. */
@@ -1643,6 +1645,7 @@ function drawInfo() {
     }
   }
   if (scene.emitters.filter(item => item.enabled).length > 1) listenInfo.append(element('span', 'warning', 'Several emitters sound together'));
+  mobile.update({ mode: scene.mode, name: selected?.name ?? receiver.name, selected: selected ? selection.type : null });
 }
 
 function redrawViews() {

@@ -1065,3 +1065,255 @@ details summary {
   border-top: 1px solid var(--line);
   padding: 12px 16px;
 }
+
+/* The phone layout's parts (`mobile.js`), hidden on wider screens. */
+.sheet-header,
+.sheet-tabs,
+.cube-chip,
+.sheet-files {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  /* The scene fills the screen; nothing scrolls under a finger that turns or drags it. */
+  html,
+  body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  .bar {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px;
+  }
+  .brand {
+    margin-right: 2px;
+  }
+  .modes button {
+    padding: 5px 8px;
+  }
+  .bar #open,
+  .bar #save,
+  .bar #export,
+  .bar .github-link,
+  .listen-label,
+  .spacer {
+    display: none;
+  }
+  .layout {
+    flex: 1;
+    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "view"
+      "results"
+      "tabs";
+    height: auto;
+    min-height: 0;
+    padding: 0 6px 6px;
+  }
+  /* The plots fold into a strip of the pressure; opened, both share half the screen. */
+  .results {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 64px;
+  }
+  .plot-arrivals {
+    display: none;
+  }
+  .results-open .results {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    height: 50dvh;
+  }
+  .results-open .plot-arrivals {
+    display: block;
+  }
+  .sheet-tabs {
+    display: flex;
+    grid-area: tabs;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .sheet-tabs button {
+    flex: 1;
+    height: 40px;
+    padding: 0;
+    background: var(--panel-dim);
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .sheet-tabs button[aria-pressed="true"] {
+    color: var(--accent);
+  }
+  .sheet-tabs .results-toggle {
+    flex: .8;
+    margin-left: 6px;
+  }
+  /* The corners' texts open from the chip instead. */
+  #cube-selected,
+  #cube-listen {
+    display: none;
+  }
+  .cube-chip {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 60%;
+    padding: 5px 9px;
+    background: color-mix(in srgb, var(--raised) 85%, transparent);
+    color: var(--ink);
+    font-size: 12px;
+  }
+  .cube-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cube-chip i {
+    color: var(--muted);
+  }
+  .view-side {
+    top: 8px;
+    right: 8px;
+  }
+  .overlay-corner {
+    right: 10px;
+    bottom: 8px;
+    width: 180px;
+    max-width: 55%;
+  }
+  .overlay-bottom {
+    bottom: 8px;
+    left: 10px;
+  }
+  .cube-orientation canvas {
+    width: 110px;
+    height: 88px;
+  }
+  /* A microphone's orientation is set while it is selected. */
+  body:not([data-selected="receiver"]) .cube-orientation {
+    display: none;
+  }
+  /* A sheet: one of the panel's sections over the whole screen, edge to edge. */
+  .panel {
+    display: none;
+  }
+  body[data-sheet] .panel {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: block;
+    border-radius: 0;
+    padding: 0 12px 32px;
+    overscroll-behavior: contain;
+  }
+  .panel > [data-sheet] {
+    display: none;
+    margin-top: 0;
+  }
+  body[data-sheet="emitters"] .panel > [data-sheet="emitters"],
+  body[data-sheet="receivers"] .panel > [data-sheet="receivers"],
+  body[data-sheet="environment"] .panel > [data-sheet="environment"],
+  body[data-sheet="terrain"] .panel > [data-sheet="terrain"],
+  body[data-sheet="output"] .panel > [data-sheet="output"] {
+    display: block;
+  }
+  .panel > section > h2,
+  .panel > .group > summary {
+    display: none;
+  }
+  .sheet-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 -12px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-dim);
+    padding: 12px;
+  }
+  .sheet-header h2 {
+    flex: 1;
+    margin: 0;
+    color: var(--ink);
+    font-size: 14px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .sheet-files {
+    display: flex;
+    gap: 4px;
+    margin-top: 18px;
+  }
+  /* Dialogs open over the whole screen, edge to edge, as Echotect's do. */
+  dialog,
+  .place-dialog,
+  .export-dialog {
+    inset: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+  }
+  dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  dialog > form {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .details-header {
+    flex-wrap: wrap;
+  }
+  .details-header .legend {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .details-body {
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+  .place-map {
+    flex: 1;
+    height: auto;
+  }
+  .export-body {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .info-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+    padding: 16px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .info-section strong {
+    color: var(--ink);
+  }
+  .info-section .warning {
+    color: var(--accent);
+  }
+}

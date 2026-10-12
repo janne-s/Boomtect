@@ -134,6 +134,10 @@ microphone along the Mach cone.
   in the scene's colours.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
 - **i** — The sources of the terrain and map data.
+- **Phone** — The scene fills the screen. The parameters open one group at a
+  time from the icons along the bottom, the plots fold into a strip that opens
+  over the scene, and the selection's and the listening microphone's facts open
+  from the name at the top.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
