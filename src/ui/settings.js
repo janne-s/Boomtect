@@ -1,6 +1,6 @@
 import { PREVIEW } from '../domain/constants.js';
 import { previewQuality, relativeCost } from '../domain/render-cost.js';
-import { DEFAULT_QUALITY, PARAMETERS, QUALITY_KEYS } from '../domain/scene.js';
+import { DEFAULT_QUALITY, PARAMETERS, QUALITY_NUMBERS, QUALITY_SWITCHES } from '../domain/scene.js';
 
 /**
  * The Settings dialog, as Echotect's: one row per setting, built from the table below and the
@@ -26,6 +26,12 @@ const SETTINGS = Object.freeze({
   threads: { step: 1, format: (value, context) => `${value} of ${context.maximumThreads}` }
 });
 
+/** The quality's switches: their labels, and what reads beside them where they do nothing. */
+const SWITCHES = Object.freeze({
+  coarseForest: { label: 'Coarse forest', idle: context => (context.forest ? null : 'no forest') },
+  sharedScatter: { label: 'Shared scatter', idle: context => (context.echoCellMetres ? null : 'no terrain echoes') }
+});
+
 const PREVIEW_SUMMARY = `${PREVIEW.sourceMerge} segments · ${PREVIEW.echoCellScale} × cells · ≤ ${PREVIEW.highestHz / 1000} kHz`;
 
 const $ = id => document.getElementById(id);
@@ -33,7 +39,7 @@ const $ = id => document.getElementById(id);
 /**
  * `read()` gives the scene's quality, whether the preview is on, the device's threads and the most
  * there are, the terrain's echo cells (or null without terrain echoes), whether the scene has flashes
- * or storms, the scattered paths' share in the last render, and
+ * or storms and a forest, the scattered paths' share in the last render, and
  * the last render (`{ milliseconds, workers, quality }`, or null); `save({ quality, preview, threads })`
  * gets them back after Save.
  */
@@ -72,7 +78,7 @@ export function createSettings({ read, save }) {
     return { key, value: current };
   }
 
-  function checkbox(grid, key, label, checked, summary) {
+  function checkbox(grid, key, label, checked, summary, idleText = null) {
     const id = `setting-${key}`;
     const name = document.createElement('label');
     name.htmlFor = id;
@@ -82,7 +88,12 @@ export function createSettings({ read, save }) {
     const output = document.createElement('output');
     output.htmlFor = id;
     output.className = 'settings-summary';
-    output.textContent = summary;
+    output.textContent = idleText ?? summary;
+    if (idleText) {
+      input.disabled = true;
+      name.classList.add('idle');
+      output.classList.add('idle');
+    }
     const cell = document.createElement('div');
     cell.className = 'settings-check';
     cell.append(input, output);
@@ -98,8 +109,8 @@ export function createSettings({ read, save }) {
     const { preview, threads, ...chosen } = values();
     // A scene without flashes costs the same at any flash detail.
     const quality = { ...(preview ? previewQuality(chosen) : chosen), ...(context.flashes ? {} : { sourceMerge: 1 }) };
-    const share = relativeCost(quality, context.scatterShare);
-    const most = relativeCost({ ...DEFAULT_QUALITY, cutoffDecibels: PARAMETERS.cutoffDecibels.minimum, scatterArrivals: PARAMETERS.scatterArrivals.maximum }, context.scatterShare);
+    const share = relativeCost(quality, context.scatterShare, context.forest);
+    const most = relativeCost({ ...DEFAULT_QUALITY, cutoffDecibels: PARAMETERS.cutoffDecibels.minimum, scatterArrivals: PARAMETERS.scatterArrivals.maximum }, context.scatterShare, context.forest);
     $('cost-fill').style.width = `${Math.min(100, share / most * 100)}%`;
     $('cost-full').style.left = `${100 / most}%`;
     let text = `≈ ${Math.round(share * 100)} % of full`;
@@ -107,7 +118,7 @@ export function createSettings({ read, save }) {
     if (last) {
       // Time scales with the cost and, roughly, inversely with the threads.
       const lastQuality = context.flashes ? last.quality : { ...last.quality, sourceMerge: 1 };
-      const seconds = last.milliseconds / 1000 * share / relativeCost(lastQuality, context.scatterShare) * last.workers / threads;
+      const seconds = last.milliseconds / 1000 * share / relativeCost(lastQuality, context.scatterShare, context.forest) * last.workers / threads;
       text += ` · ≈ ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
     }
     $('cost-value').textContent = text;
@@ -120,7 +131,8 @@ export function createSettings({ read, save }) {
     $('settings-grid').replaceChildren();
     $('device-grid').replaceChildren();
     rows = [
-      ...QUALITY_KEYS.map(key => slider($('settings-grid'), key, PARAMETERS[key].label, quality[key], PARAMETERS[key])),
+      ...QUALITY_NUMBERS.map(key => slider($('settings-grid'), key, PARAMETERS[key].label, quality[key], PARAMETERS[key])),
+      ...QUALITY_SWITCHES.map(key => checkbox($('settings-grid'), key, SWITCHES[key].label, quality[key], '', SWITCHES[key].idle(context))),
       checkbox($('settings-grid'), 'preview', 'Preview', preview, PREVIEW_SUMMARY),
       slider($('device-grid'), 'threads', 'Threads', threads, { minimum: 1, maximum: settings.maximumThreads })
     ];

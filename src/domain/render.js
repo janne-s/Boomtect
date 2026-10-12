@@ -56,6 +56,9 @@ const AIR_NONLINEARITY = (GAMMA_AIR + 1) / 2;
 const CREEPING_RADII = 8;
 /** The scattered share of a reflection on the ground grid, per path. */
 const groundScatter = new Float64Array(GROUND_GRID_POINTS);
+// A coarse forest's transfer along one path on the ground's frequency grid.
+const forestRe = new Float64Array(GROUND_GRID_POINTS);
+const forestIm = new Float64Array(GROUND_GRID_POINTS);
 const SMALL_ARGUMENT = 1e-4;
 
 /**
@@ -742,6 +745,7 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
   const foliage = scene.ground.forest ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
   if (foliage) for (let bin = 1; bin < bins; bin += 1) [foliage.loss[bin], foliage.lag[bin]] = foliageExponent(bin * sampleRate / size);
   const groundFrequencies = Float64Array.from({ length: GROUND_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (GROUND_GRID_POINTS - 1)));
+  if (foliage) foliage.grid = Array.from(groundFrequencies, foliageExponent);
   const layered = scene.air.absorption && scene.air.refraction ? layeredAbsorption(scene.air, lowest, sampleRate / 2, bins, sampleRate / size, highest) : null;
   const shadowFloor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   const shadow = largestCreep > 0 ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
@@ -889,7 +893,7 @@ function shadowFromExponent(loss, lag, beta, floor) {
  * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
  * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
  */
-function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ) {
+function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ, shared = null) {
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
@@ -897,6 +901,17 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
   // A sparser forest scatters in proportion to its density, as fewer trunks and leaves per metre (class C).
   const underCanopy = foliage ? Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity : 0;
+  // A coarse forest: its loss and lag on the ground's grid, interpolated per bin (the quality's).
+  const coarseForest = underCanopy > 0 && scene.render.quality.coarseForest;
+  if (coarseForest) {
+    for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
+      const [loss, lag] = foliage.grid[point];
+      const magnitude = Math.exp(-loss * underCanopy);
+      forestRe[point] = magnitude * Math.cos(-lag * underCanopy);
+      forestIm[point] = magnitude * Math.sin(-lag * underCanopy);
+    }
+  }
+  const finestForest = underCanopy > 0 && !coarseForest;
   // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
@@ -952,7 +967,10 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
   // An echo's ground images at its ends: the reflection coefficient on the grid, the delay rotated per bin.
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
-  const spreadArrivals = paths.timeSpread[index] > 0 ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz, scene.render.quality.scatterArrivals) : null;
+  // With shared scatter, a scattered echo goes into its group of the frame unspread; the group is spread once.
+  const group = paths.timeSpread[index] > 0 && shared ? shared.group(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), plan, limit) : null;
+  if (group) spectra = group.spectra;
+  const spreadArrivals = paths.timeSpread[index] > 0 && !group ? scatterArrivals(paths.timeSpread[index], seed ^ Math.imul(index + 1, 0x85ebca6b), binHz, scene.render.quality.scatterArrivals) : null;
   // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
   const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
@@ -1027,7 +1045,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (underCanopy ? foliage.loss[bin] * underCanopy : 0));
+    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (finestForest ? foliage.loss[bin] * underCanopy : 0));
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
@@ -1036,7 +1054,16 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
     re *= factor;
     im *= factor;
-    if (underCanopy) {
+    if (coarseForest) {
+      const position = gridPosition[bin];
+      const lower = Math.floor(position);
+      const mix = position - lower;
+      const fRe = forestRe[lower] + (forestRe[lower + 1] - forestRe[lower]) * mix;
+      const fIm = forestIm[lower] + (forestIm[lower + 1] - forestIm[lower]) * mix;
+      const nextRe = re * fRe - im * fIm;
+      im = re * fIm + im * fRe;
+      re = nextRe;
+    } else if (underCanopy) {
       const phase = -foliage.lag[bin] * underCanopy;
       const cos = Math.cos(phase);
       const sin = Math.sin(phase);
@@ -1126,6 +1153,67 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     phaseIm = phaseRe * phaseStepIm + phaseIm * phaseStepRe;
     phaseRe = nextPhaseRe;
   }
+}
+
+/**
+ * Shared scatter (PROPAGATION.sharedClassesPerOctave): each frame's scattered echoes are summed by
+ * group, a group being a class of time spread and a seeded variant, and at the frame's end each
+ * group is spread once by `count` sub-arrivals over its class's spread and added to the frame.
+ * Linear, so the sum is the same as spreading each echo by its group's arrivals. Groups keep their
+ * buffers from frame to frame.
+ */
+function sharedScatter(channels, count, salt) {
+  const pool = new Map();
+  let frameSeed = 0;
+  const used = new Set();
+  return {
+    start(plan, group, frame) {
+      frameSeed = (Math.imul(group + 1, 0x9e3779b9) ^ Math.imul(frame + 1, 0x85ebca6b) ^ salt) >>> 0;
+      used.clear();
+    },
+    group(spread, seed, plan, limit) {
+      const perOctave = PROPAGATION.sharedClassesPerOctave;
+      const spreadClass = Math.max(0, Math.round(Math.log2(spread / PROPAGATION.scatterBinSeconds) * perOctave));
+      const key = `${plan.size}:${spreadClass}:${(seed >>> 0) % PROPAGATION.sharedVariants}`;
+      let entry = pool.get(key);
+      if (!entry) {
+        entry = {
+          spectra: Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) })),
+          spread: PROPAGATION.scatterBinSeconds * 2 ** (spreadClass / perOctave), variant: (seed >>> 0) % PROPAGATION.sharedVariants, plan, limit: 0
+        };
+        pool.set(key, entry);
+      }
+      entry.limit = Math.max(entry.limit, limit);
+      used.add(entry);
+      return entry;
+    },
+    finish(spectra) {
+      for (const entry of used) {
+        const { gain, re, im, stepRe, stepIm } = scatterArrivals(entry.spread, (frameSeed ^ Math.imul(entry.variant + 1, 0x27d4eb2f) ^ Math.imul(Math.round(entry.spread * 1e4), 0x165667b1)) >>> 0, entry.plan.binHz, count);
+        for (let bin = 1; bin < entry.limit; bin += 1) {
+          let sumRe = 0;
+          let sumIm = 0;
+          for (let k = 0; k < gain.length; k += 1) {
+            sumRe += gain[k] * re[k];
+            sumIm += gain[k] * im[k];
+            const nextRe = re[k] * stepRe[k] - im[k] * stepIm[k];
+            im[k] = re[k] * stepIm[k] + im[k] * stepRe[k];
+            re[k] = nextRe;
+          }
+          for (let channel = 0; channel < channels; channel += 1) {
+            const source = entry.spectra[channel];
+            const aRe = source.real[bin];
+            const aIm = source.imaginary[bin];
+            spectra[channel].real[bin] += aRe * sumRe - aIm * sumIm;
+            spectra[channel].imaginary[bin] += aRe * sumIm + aIm * sumRe;
+            source.real[bin] = 0;
+            source.imaginary[bin] = 0;
+          }
+        }
+        entry.limit = 0;
+      }
+    }
+  };
 }
 
 /**
@@ -1312,6 +1400,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
+  const shared = scene.render.quality.sharedScatter ? sharedScatter(channels, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
   let cursor = 0;
   while (cursor < selected.length) {
     const group = frameGroup(paths, selected[cursor]);
@@ -1319,14 +1408,16 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const frame = frameOf[selected[cursor]];
     const plan = plans[group];
     const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
+    shared?.start(plan, group, frame);
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
       const sources = pathSources(preparedEmitters, paths, index);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
-      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ);
+      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared);
       cursor += 1;
     }
+    shared?.finish(spectra);
     const at = frame * plan.hop - first;
     const part = group % FRAME_GROUPS - ROAR_GROUP;
     let target = outputs;

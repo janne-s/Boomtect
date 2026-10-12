@@ -14,7 +14,7 @@
  * This module imports nothing, so every module, the views included, may import it.
  */
 
-export const MODEL_VERSION = '33.2.0';
+export const MODEL_VERSION = '33.3.0';
 
 export const SAMPLE_RATE_HZ = 48000;
 
@@ -207,6 +207,14 @@ export const PROPAGATION = Object.freeze({
   azimuthSectors: 8,
   elevationSectors: 3,
   scatterArrivals: 12,
+  /**
+   * Shared scatter (the render's quality): a frame's scattered echoes are summed in groups by their
+   * time spread, sharedClassesPerOctave of them per octave from scatterBinSeconds, and in
+   * sharedVariants seeded variants of each, and every group is spread once by sub-arrivals over its
+   * class's spread (class C).
+   */
+  sharedClassesPerOctave: 1,
+  sharedVariants: 2,
   /** Ground within this many echo cells of a receiver, or of a source near the ground, is the ground reflection's. */
   exclusionSpacings: 1.5,
   /** Energy gain of a focusing concave reflection at most, where the caustic would diverge: 10 dB. */
@@ -554,9 +562,13 @@ export const PREVIEW = Object.freeze({
  * counts. Their bins reach as far as the cutoff lets the air's absorption, which grows as f², about
  * referenceHz at the full cutoff, or the highest frequency where lower, and cost as their share to
  * binExponent. A flash's paths fall with its merging; scattered ones with echo cell scale to
- * cellExponent; arrivalShare of a scattered path's work is its sub-arrivals.
+ * cellExponent; arrivalShare of a scattered path's work is its sub-arrivals. A forest takes
+ * forestShare of the bins' work at every frequency, which a coarse one saves; shared scatter saves
+ * sharedSaving of the scattered paths' work (both measured on the same scene).
  */
 export const RENDER_COST = Object.freeze({
+  forestShare: .1,
+  sharedSaving: .32,
   fixedShare: .3,
   referenceHz: 4000,
   binExponent: .8,

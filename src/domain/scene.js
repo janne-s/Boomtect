@@ -8,22 +8,28 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 27;
+export const SCENE_VERSION = 28;
 
 /**
  * The render's computation at its fullest, the default (`render.quality`): a path is summed until the
  * air has taken 14 nepers (−121.6 dB) from it, at every frequency up to the Nyquist limit, every flash
- * segment its own source, the terrain's echo cells as set, and a scattered echo in
- * PROPAGATION.scatterArrivals sub-arrivals.
+ * segment its own source, the terrain's echo cells as set, a scattered echo in
+ * PROPAGATION.scatterArrivals sub-arrivals of its own, and the forest at every frequency. A coarse
+ * forest is computed on a coarse frequency grid and interpolated; shared scatter spreads a frame's
+ * scattered echoes in a few shared groups (`renderReceiverRange`).
  */
 export const DEFAULT_QUALITY = Object.freeze({
   cutoffDecibels: -14 * 20 / Math.LN10,
   highestFrequencyHz: SAMPLE_RATE_HZ / 2,
   sourceMerge: 1,
   echoCellScale: 1,
-  scatterArrivals: PROPAGATION.scatterArrivals
+  scatterArrivals: PROPAGATION.scatterArrivals,
+  coarseForest: false,
+  sharedScatter: false
 });
-export const QUALITY_KEYS = Object.freeze(Object.keys(DEFAULT_QUALITY));
+/** The quality's settings by kind: numbers within PARAMETERS, and switches. */
+export const QUALITY_NUMBERS = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'number'));
+export const QUALITY_SWITCHES = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'boolean'));
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
@@ -720,7 +726,13 @@ export function parseScene(value) {
       earReflex: render.earReflex,
       earLoudness: render.earLoudness,
       earCapOnsets: render.earCapOnsets,
-      quality: Object.fromEntries(QUALITY_KEYS.map(key => [key, number(render.quality?.[key], key, `render.quality.${key}`)]))
+      quality: {
+        ...Object.fromEntries(QUALITY_NUMBERS.map(key => [key, number(render.quality?.[key], key, `render.quality.${key}`)])),
+        ...Object.fromEntries(QUALITY_SWITCHES.map(key => {
+          check(typeof render.quality?.[key] === 'boolean', `render.quality.${key} must be true or false.`);
+          return [key, render.quality[key]];
+        }))
+      }
     }
   };
   scene.emitters.forEach((item, index) => check(MODE_KINDS[scene.mode].includes(item.kind), `emitters[${index}] does not belong in ${scene.mode} mode.`));
