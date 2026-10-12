@@ -8,11 +8,11 @@ import { isSeed } from './random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 export const SCENE_FORMAT = 'boomtect.scene';
-export const SCENE_VERSION = 23;
+export const SCENE_VERSION = 24;
 export const RECEIVER_TYPES = Object.freeze(['omni', 'binaural']);
 export const MODES = Object.freeze(['thunder', 'blast', 'sonic']);
 /** Emitter kinds each mode works with. */
-export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip']) });
+export const MODE_KINDS = Object.freeze({ thunder: Object.freeze(['lightning', 'storm']), blast: Object.freeze(['blast', 'barrage']), sonic: Object.freeze(['flight', 'formation', 'meteor', 'shower', 'whip', 'booster']) });
 export const LEVEL_MODES = Object.freeze(['peak', 'fixed']);
 
 /** Kinds of the place names kept with a terrain, from OpenStreetMap, in drawing priority. */
@@ -100,6 +100,9 @@ export const PARAMETERS = Object.freeze({
   whipMach: { minimum: .5, maximum: 3, unit: '', label: 'Top Mach', reliability: 'B' },
   crackerLengthMetres: { minimum: .01, maximum: .5, unit: 'm', label: 'Cracker length', reliability: 'C' },
   crackerShapeFactor: { minimum: .01, maximum: 1, unit: '', label: 'Cracker shape factor K_S', reliability: 'C' },
+  startHeightMetres: { minimum: 1000, maximum: 100000, unit: 'm', label: 'Start height', reliability: null },
+  descentDegrees: { minimum: 0, maximum: 90, unit: '°', label: 'Descent angle', reliability: null },
+  ballisticKilogramsPerSquareMetre: { minimum: 100, maximum: 50000, unit: 'kg/m²', label: 'Ballistic coefficient', reliability: 'C' },
   entryDegrees: { minimum: 5, maximum: 90, unit: '°', label: 'Entry angle', reliability: null },
   speedKilometresPerSecond: { minimum: 11, maximum: 72, unit: 'km/s', label: 'Speed', reliability: 'B' },
   diameterMetres: { minimum: .001, maximum: 50, unit: 'm', label: 'Diameter', reliability: null },
@@ -150,6 +153,8 @@ const BARRAGE_NUMBERS = Object.freeze([
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
 const WHIP_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'crackerLengthMetres', 'crackerShapeFactor', 'riseTimeSeconds']);
+
+const BOOSTER_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'descentDegrees', 'startHeightMetres', 'mach', 'ballisticKilogramsPerSquareMetre', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
 const METEOR_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'entryDegrees', 'speedKilometresPerSecond', 'diameterMetres', 'endHeightMetres', 'dragCoefficient', 'riseTimeSeconds',
   'densityKilogramsPerCubicMetre', 'strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']);
@@ -350,6 +355,28 @@ export function defaultWhip(id = 'whip-1', name = 'Whip', seed = 20261017) {
   };
 }
 
+/**
+ * A Falcon 9 first stage returning to a pad 8 km west of the origin, as at Vandenberg in Durrant et
+ * al. 2022: from 40 km at Mach 2.5, 70° below the horizontal, heading east (class C, a typical
+ * descent after the entry burn; the boom is found low on the path, where the speed follows the
+ * drag). A 47 m body with K_S fitted to their 130 Pa and 0.29 s at 8 km (class C).
+ */
+export function defaultBooster(id = 'booster-1', name = 'Booster', seed = 20261018) {
+  return {
+    id, name, kind: 'booster', enabled: true, seed,
+    startSeconds: 0,
+    padMetres: { x: -8000, y: 0, z: 0 },
+    headingDegrees: 90,
+    descentDegrees: 70,
+    startHeightMetres: 40000,
+    mach: 2.5,
+    ballisticKilogramsPerSquareMetre: 1500,
+    lengthMetres: 47,
+    shapeFactor: .1,
+    riseTimeSeconds: .002
+  };
+}
+
 /** Four reconnaissance aircraft in a vee, 1 km apart sideways and 1.5 km back per rank. */
 export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 20261014) {
   return { ...defaultFlight(id, name, seed), kind: 'formation', memberCount: 4, lateralSpacingMetres: 1000, trailSpacingMetres: 1500 };
@@ -360,8 +387,8 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omn
   return { id, name, type, listen, positionMetres: { x: 2000, y: 0, z: 1.7 }, headingDegrees: 270, pitchDegrees: 0 };
 }
 
-/** Where an emitter stands on the plan: a blast's point, a storm's or barrage's centre, a body's start, a flash's ground end. */
-export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.startMetres ?? emitter.baseMetres;
+/** Where an emitter stands on the plan: a blast's point, a storm's or barrage's centre, a booster's pad, a body's start, a flash's ground end. */
+export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.padMetres ?? emitter.startMetres ?? emitter.baseMetres;
 
 /** The heading, whole degrees clockwise from north, from one point of the plan toward another (north when they coincide). */
 export function headingToward(from, to) {
@@ -449,6 +476,11 @@ function emitter(value, index) {
     };
     check(meteor.endHeightMetres < meteor.startMetres.z, `${path} must end below its start.`);
     return meteor;
+  }
+  if (value.kind === 'booster') {
+    const booster = { ...common, padMetres: point(value.padMetres, `${path}.padMetres`), ...numbers(value, BOOSTER_NUMBERS, path) };
+    check(booster.padMetres.z === 0, `${path}.padMetres must lie on the ground.`);
+    return booster;
   }
   if (value.kind === 'whip') {
     return { ...common, startMetres: point(value.startMetres, `${path}.startMetres`), mach: number(value.mach, 'whipMach', `${path}.mach`), ...numbers(value, WHIP_NUMBERS, path) };

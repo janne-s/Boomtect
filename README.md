@@ -61,6 +61,10 @@ microphone along the Mach cone.
   sound, speeds up, turns over as the lash rolls out, and slows down again,
   all within about a millisecond and a metre. The crack is loudest ahead of
   and above the turn and weak behind it.
+- **Booster** — A rocket's first stage falling back to its landing pad, tail
+  first, slowed by the air as it thickens. Its boom is a triple boom: a front
+  shock, a middle shock from the grid fins and the folded landing legs, and a
+  rear shock.
 - **Macros** — Energy, height, branching, zigzag, crack, and strokes for a
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
@@ -69,7 +73,9 @@ microphone along the Mach cone.
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
   for a meteor; meteors, size, duration, speed, diameter, and entry angle for a
-  shower; tip speed, height, heading, climb, and cracker length for a whip.
+  shower; tip speed, height, heading, climb, and cracker length for a whip;
+  start height, start Mach, descent angle, heading, and ballistic coefficient
+  for a booster.
   Each sets several parameters at once. A macro that sets one parameter takes a
   typed value when its value is pressed, beyond the slider's span within the
   parameter's range; metres and charges take their units (m, km; g, kg, t, kt).
@@ -267,6 +273,8 @@ B/C marks a part that combines the two.
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
+| Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
+| Booster boom | Carlson's boom, 47 m and `K_S` 0.1 fitted to 130 Pa and 0.29 s measured 8 km from the pad (Durrant et al. 2022); a triple boom whose middle shock comes at 68 % and jumps 108 % of the front shock, fitted to their waveform; the cause after Anderson & Gee 2025 | B/C |
 | Whip crack | Carlson's boom of the cracker, whose `K_S = 2^¼·γ·d/l` gives Whitham's projectile overpressure; a frayed cracker's size and shape | C |
 | Meteor | one N-wave from where a microphone's arrival time along the trail is stationary; ReVelle's cylindrical blast wave of the drag energy, blast radius √(E₀/p), weak shock as x^(−3/4); constant speed | B/C |
 | Meteor breakup | fragments break in generations, each splitting in two: generation k where ρv² reaches the strength times 2^k, spread lognormally per fragment and seeded; a burst at the end of the trail; each generation and the burst a share of the kinetic energy | B/C |
@@ -297,7 +305,8 @@ the heightfield, gusts, more than six ground contacts, repeated contacts over
 sloping ground, rays bending through several layers in turn, nonlinear
 propagation beyond the linearization radius other than the weak shock's aging, the forest's reverberation around
 the source, a forest that covers only part of the terrain, terrain echoes of
-sonic booms, booms bent back down from the upper atmosphere, engine noise, a
+sonic booms, booms bent back down from the upper atmosphere, engine noise (a booster's
+entry and landing burns), a booster's booms above its start, a
 nuclear blast beyond its TNT equivalent (about half of a nuclear yield goes into
 the blast; charges up to 350 kt). The fireball roar of charges far beyond the
 recorded ones is scaled from them.

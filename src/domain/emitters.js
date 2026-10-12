@@ -10,7 +10,7 @@ import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { stormFlashes } from './storm.js';
 import { onGround } from './terrain.js';
 
-export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip']);
+export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 /** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
 const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
@@ -31,14 +31,15 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
  * burst at a level against the shock's amplitude at the same distance (`fireball.js`).
  */
 /**
- * A flight, a whip, or a meteor as one row: the renderer finds its booms per receiver from its path
- * (`flight.js`, `meteor.js`), which set where and when each leaves, its overpressure, and its
- * duration. The row keeps the N-wave pulse; `flash` is the body's index in a formation or shower.
+ * A flight, a whip, a booster, or a meteor as one row: the renderer finds its booms per receiver from
+ * its path (`flight.js`, `meteor.js`), which set where and when each leaves, its overpressure, and
+ * its duration. The row keeps the pulse, an N-wave or a booster's triple boom; `flash` is the body's
+ * index in a formation or shower.
  */
-function flightSource(flight, flash = 0) {
+function flightSource(flight, flash = 0, pulse = 'n-wave') {
   return {
     flash, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
-    amplitudePaMetres: 1, pulse: 'n-wave', durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, flight: true
+    amplitudePaMetres: 1, pulse, durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, flight: true
   };
 }
 
@@ -122,6 +123,7 @@ export function emitterSources(emitter, air, surface = null) {
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'whip') return { flashes: [], sources: [flightSource(emitter)] };
+  if (emitter.kind === 'booster') return { flashes: [], sources: [{ ...flightSource(emitter, 0, 'triple'), positionMetres: emitter.padMetres }] };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   const flashes = emitterFlashes(emitter, surface);
   return { flashes, sources: flashSources(flashes, emitter, air) };

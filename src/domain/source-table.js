@@ -19,7 +19,7 @@ export function sourceTable(sources) {
     elementMetres: new Float64Array(length),
     emissionSeconds: new Float64Array(length),
     amplitudePaMetres: new Float64Array(length),
-    /** PULSE_NWAVE, PULSE_FRIEDLANDER, or PULSE_NOISE (a blast's roar, from its seed). */
+    /** PULSE_NWAVE, PULSE_TRIPLE (a booster's triple boom), PULSE_FRIEDLANDER, or PULSE_NOISE (a blast's roar, from its seed). */
     pulse: new Uint8Array(length),
     noiseSeed: new Uint32Array(length),
     /** A secondary shock's delay factors (`explosives.js`); 0 for any other source. */
@@ -73,6 +73,7 @@ export function sourceTable(sources) {
 export const PULSE_NWAVE = 0;
 export const PULSE_FRIEDLANDER = 1;
 export const PULSE_NOISE = 2;
-const PULSE_CODES = Object.freeze({ 'n-wave': PULSE_NWAVE, friedlander: PULSE_FRIEDLANDER, noise: PULSE_NOISE });
+export const PULSE_TRIPLE = 3;
+const PULSE_CODES = Object.freeze({ 'n-wave': PULSE_NWAVE, friedlander: PULSE_FRIEDLANDER, noise: PULSE_NOISE, triple: PULSE_TRIPLE });
 
 export const sourcePosition = (table, index) => ({ x: table.x[index], y: table.y[index], z: table.z[index] });

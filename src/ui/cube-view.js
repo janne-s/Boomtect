@@ -94,9 +94,10 @@ function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (isTrackKind(emitter)) {
-      // A whip stands on the ground, as a blast does; a flight's start is above the datum.
-      const start = emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
-      list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
+      // A whip stands on the ground, as a blast does, and a booster lands on its pad; a flight's start is above the datum.
+      const start = emitter.kind === 'booster' ? placed(emitter.padMetres) : emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
+      if (emitter.kind === 'booster') list.push({ type: 'emitter', id: emitter.id, field: 'padMetres', point: start, onGround: true, role: 'start' });
+      else list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
       // A handle ahead of the start along the first heading turns it.
       const reach = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare : 1000;
       const heading = emitter.headingDegrees * Math.PI / 180;
@@ -866,6 +867,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
     if (!emitter || emitter.kind === 'storm' || emitter.kind === 'barrage') return [];
+    if (emitter.kind === 'booster') return [placed(emitter.padMetres)];
     if (isTrackKind(emitter)) return [emitter.startMetres];
     return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
   }
@@ -1573,7 +1575,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
       const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || emitter.kind === 'barrage' ? placed(emitter.centreMetres)
-        : isTrackKind(emitter) ? emitter.startMetres : emitter.topMetres;
+        : emitter.kind === 'booster' ? placed(emitter.padMetres) : isTrackKind(emitter) ? emitter.startMetres : emitter.topMetres;
       const p = frame.project(anchor);
       context.fillText(emitter.name, p.x + 9, p.y - 8);
     }

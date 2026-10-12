@@ -1,4 +1,4 @@
-import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, VIEW, WHIP } from './constants.js';
+import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { inShadow, localProfile, pathProfile, rayBetween, speedAt, travelSeconds, wavefront } from './refraction.js';
 import { onGround } from './terrain.js';
@@ -154,6 +154,52 @@ export function whipPath(whip, air, surface = null) {
     path.vz.push(va * along.z + vb * over.z);
     path.speed.push(speed);
   }
+  return path;
+}
+
+/**
+ * A booster's fall to its pad (BOOSTER): from its start height at its Mach number and descent angle
+ * below the horizontal, along its heading, under gravity and drag in the layered air, until it
+ * reaches the ground under its pad. The path is set sideways so that it ends at the pad, on the
+ * ground of `surface`. Positions, times, and velocities every BOOSTER.stepSeconds, as `flightPath`.
+ */
+export function boosterPath(booster, air, surface = null) {
+  const pad = surface ? onGround(surface, booster.padMetres) : booster.padMetres;
+  const heading = booster.headingDegrees * Math.PI / 180;
+  const descent = booster.descentDegrees * Math.PI / 180;
+  const density = z => pressureAtHeightPa(air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, Math.max(0, z)));
+  const drag = .5 / booster.ballisticKilogramsPerSquareMetre;
+  // The state along the heading and up: [a, z, va, vz], stepped by the classical Runge–Kutta method.
+  const rate = ([, z, va, vz]) => {
+    const pull = drag * density(z) * Math.hypot(va, vz);
+    return [va, vz, -pull * va, -pull * vz - STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED];
+  };
+  const add = (state, slope, scale) => state.map((value, index) => value + slope[index] * scale);
+  const h = BOOSTER.stepSeconds;
+  const speed0 = booster.mach * soundSpeedAt(air, booster.startHeightMetres);
+  let state = [0, booster.startHeightMetres, speed0 * Math.cos(descent), -speed0 * Math.sin(descent)];
+  const states = [state];
+  for (let step = 0; step * h < BOOSTER.maximumSeconds && state[1] > pad.z; step += 1) {
+    const k1 = rate(state);
+    const k2 = rate(add(state, k1, h / 2));
+    const k3 = rate(add(state, k2, h / 2));
+    const k4 = rate(add(state, k3, h));
+    state = state.map((value, index) => value + h / 6 * (k1[index] + 2 * k2[index] + 2 * k3[index] + k4[index]));
+    states.push(state);
+  }
+  // The last step ends where it reaches the pad's height, between the last two steps (its time is rounded to the step).
+  const last = states.at(-1);
+  const before = states.at(-2) ?? last;
+  const share = last[1] < pad.z && before[1] > last[1] ? (before[1] - pad.z) / (before[1] - last[1]) : 1;
+  states[states.length - 1] = before.map((value, index) => value + (last[index] - value) * share);
+  const end = states.at(-1)[0];
+  const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step: h };
+  states.forEach(([a, z, va, vz], index) => {
+    const along = a - end;
+    path.seconds.push(booster.startSeconds + index * h);
+    path.x.push(pad.x + along * Math.sin(heading)); path.y.push(pad.y + along * Math.cos(heading)); path.z.push(z);
+    path.vx.push(va * Math.sin(heading)); path.vy.push(va * Math.cos(heading)); path.vz.push(vz); path.speed.push(Math.hypot(va, vz));
+  });
   return path;
 }
 

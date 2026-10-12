@@ -378,6 +378,29 @@ export const WHIP = Object.freeze({
   stepSeconds: 2e-6
 });
 
+/**
+ * A first stage falling back to its landing pad after its entry burn, tail first. Its speed follows
+ * drag and gravity, dv/dt = g − ρv²/(2β), with its ballistic coefficient β = m/(C_D·A) (class A
+ * given β; β of about 2 800 kg/m² brings a Falcon 9 below Mach 1 at 6–8 km, which Durrant et al.
+ * 2022 report as about 6 km). The path is integrated every stepSeconds for at most maximumSeconds.
+ *
+ * Its boom is a triple boom (Durrant, Anderson, Gee, Mathews & Hart 2022, "Initial comparison of a
+ * Falcon-9 reentry sonic boom with other launch-related noise", POMA 46, 045002; Anderson & Gee
+ * 2025, JASA Express Letters 5, 023601): a front shock, a middle shock where the grid fins'
+ * compression meets the lower body's expansion, and a rear shock. The expansions between the shocks
+ * share one slope and the signature has no net area, as an aged far-field signature. The middle
+ * shock comes at middleShare of the duration and jumps middleRatio of the front shock (class C,
+ * fitted to their figure 5 at 8 km: front 130 Pa, the jump about 140 Pa at 0.198 of 0.290 s, the
+ * expansions about 1 100–1 200 Pa/s; this signature gives −108, 32, and −79 Pa where they show
+ * −105, 35, and −65 Pa).
+ */
+export const BOOSTER = Object.freeze({
+  stepSeconds: .05,
+  maximumSeconds: 600,
+  middleShare: .68,
+  middleRatio: 1.08
+});
+
 export const METEOR = Object.freeze({
   /** ReVelle's period coefficient k in τ₀ = k·R₀/c (class B). */
   periodCoefficient: 2.81,

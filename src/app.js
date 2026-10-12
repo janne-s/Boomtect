@@ -8,7 +8,7 @@ import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem } from './ui/export-package.js';
 import { formatMetres, formatSeconds, microphoneColor } from './ui/canvas.js';
@@ -32,7 +32,7 @@ const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
@@ -114,7 +114,8 @@ const views = [createCubeView($('cube'), {
   onMove: (handle, point) => {
     const item = findItem(handle.type, handle.id);
     if (handle.field === 'flightHeading') {
-      item.headingDegrees = Math.round((Math.atan2(point.x - item.startMetres.x, point.y - item.startMetres.y) * 180 / Math.PI + 360) % 360);
+      const from = emitterAnchor(item);
+      item.headingDegrees = Math.round((Math.atan2(point.x - from.x, point.y - from.y) * 180 / Math.PI + 360) % 360);
       invalidateResults();
       redrawViews();
       drawInfo();
@@ -158,7 +159,7 @@ const views = [createCubeView($('cube'), {
 
 /** Whether a point is stored as a height above the ground under it rather than above the datum. */
 function groundAnchored(handle, item) {
-  if (handle.field === 'centreMetres') return true;
+  if (handle.field === 'centreMetres' || handle.field === 'padMetres') return true;
   if (handle.field === 'startMetres') return item.kind === 'whip';
   if (handle.field === 'baseMetres') return item.flashType === 'cloud-to-ground';
   return handle.field === 'positionMetres';
@@ -715,6 +716,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
+  if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
   if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'barrage') {
@@ -867,7 +869,7 @@ function emitterCard(container, emitter, selected) {
     const actions = element('div', 'card-actions');
     actions.append(button('Details…', () => openDetails(emitter.id)));
     // A flight or a whip has no seed to draw anew.
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && !isFlightKind(emitter)) {
+    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && emitter.kind !== 'booster' && !isFlightKind(emitter)) {
       actions.append(button('New shape', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
       actions.append(button('Variant', () => addEmitter(next => {
         const source = next.emitters.find(item => item.id === emitter.id);
@@ -1000,7 +1002,7 @@ function detailSections(emitter) {
   const numbers = keys => container => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const placement = container => {
     textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
-    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && !isFlightKind(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+    if (emitter.kind !== 'blast' && emitter.kind !== 'meteor' && emitter.kind !== 'whip' && emitter.kind !== 'booster' && !isFlightKind(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
     numberField(container, { key: 'startSeconds', value: emitter.startSeconds, onCommit: set('startSeconds') });
   };
   if (emitter.kind === 'lightning') {
@@ -1038,6 +1040,16 @@ function detailSections(emitter) {
       }),
       section('Meteoroid', numbers(['speedKilometresPerSecond', 'diameterMetres', 'densityKilogramsPerCubicMetre', 'dragCoefficient', 'riseTimeSeconds'])),
       section('Breakup', numbers(['strengthMegapascals', 'breakupCount', 'breakupShare', 'burstShare']))
+    ];
+  }
+  if (emitter.kind === 'booster') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Pad', point: emitter.padMetres, axes: ['x', 'y'], onCommit: set('padMetres') });
+      }),
+      section('Descent', numbers(['startHeightMetres', 'mach', 'descentDegrees', 'headingDegrees', 'ballisticKilogramsPerSquareMetre'])),
+      section('Body', numbers(['lengthMetres', 'shapeFactor', 'riseTimeSeconds']))
     ];
   }
   if (emitter.kind === 'whip') {
@@ -1555,7 +1567,7 @@ function drawInfo() {
     if (kind !== selected.name || !selected.enabled) selectedInfo.append(element('span', '', kind + (selected.enabled ? '' : ' · off')));
     selectedInfo.append(element('span', '', emitterSummary(selected)));
     const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
-    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || selected.kind === 'barrage' ? 'centre' : isTrackKind(selected) ? 'start' : 'blast';
+    const anchorName = selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || selected.kind === 'barrage' ? 'centre' : selected.kind === 'booster' ? 'pad' : isTrackKind(selected) ? 'start' : 'blast';
     selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
     if (selected.kind === 'storm') selectedInfo.append(element('span', '', `Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`));
     if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
@@ -1777,6 +1789,11 @@ function wavefrontAmplitudes(emitter) {
     // A boom's pressure 1 km away times 1 km, so that the fronts fade roughly with it.
     const boom = carlsonBoom({ mach: Math.max(1.01, emitter.mach), vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, front(boom.overpressurePa * 1000, boom.durationSeconds)]));
+  }
+  if (emitter.kind === 'booster') {
+    // A boom's pressure 1 km away times 1 km at Mach 1.5, about where it leaves the path.
+    const boom = carlsonBoom({ mach: 1.5, vehiclePressurePa: air.pressureKpa * 1000, groundPressurePa: air.pressureKpa * 1000, vehicleSoundSpeed: 340, lengthMetres: emitter.lengthMetres, shapeFactor: emitter.shapeFactor, distanceMetres: 1000 });
+    return new Map([[`${emitter.id}:0`, front(boom.overpressurePa * 1000, boom.durationSeconds)]]);
   }
   if (emitter.kind === 'whip') {
     // The crack's pressure 1 m away times 1 m, without the turn's spreading.
@@ -2281,6 +2298,7 @@ $('add-storm').addEventListener('click', () => addEmitter(scene => defaultStorm(
 $('add-meteor').addEventListener('click', () => addEmitter(scene => defaultMeteor(uniqueId('meteor', scene.emitters), nextName(scene, 'Meteor'), newSeed())));
 $('add-shower').addEventListener('click', () => addEmitter(scene => defaultShower(uniqueId('shower', scene.emitters), nextName(scene, 'Shower'), newSeed())));
 $('add-formation').addEventListener('click', () => addEmitter(scene => defaultFormation(uniqueId('formation', scene.emitters), nextName(scene, 'Formation'), newSeed())));
+$('add-booster').addEventListener('click', () => addEmitter(scene => defaultBooster(uniqueId('booster', scene.emitters), nextName(scene, 'Booster'), newSeed())));
 $('add-whip').addEventListener('click', () => addEmitter(scene => defaultWhip(uniqueId('whip', scene.emitters), nextName(scene, 'Whip'), newSeed())));
 $('add-flight').addEventListener('click', () => addEmitter(scene => defaultFlight(uniqueId('flight', scene.emitters), nextName(scene, 'Flight'), newSeed())));
 $('add-barrage').addEventListener('click', () => addEmitter(scene => defaultBarrage(uniqueId('barrage', scene.emitters), nextName(scene, 'Barrage'), newSeed())));

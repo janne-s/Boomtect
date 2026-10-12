@@ -379,6 +379,38 @@ const onset = {
   entry: { unit: 's', get: item => item.startSeconds, set: (item, value) => { item.startSeconds = value; } }
 };
 
+const boosterHeight = {
+  label: 'Start height',
+  read: item => clamp01(logPosition(item.startHeightMetres, range('startHeightMetres'))),
+  write: (item, t) => { item.startHeightMetres = Math.round(logValue(t, range('startHeightMetres')) / 100) * 100; },
+  show: item => metres(item.startHeightMetres),
+  entry: { units: 'metres', get: item => item.startHeightMetres, set: (item, value) => { item.startHeightMetres = value; } }
+};
+
+const boosterMach = {
+  label: 'Start Mach',
+  read: item => clamp01((item.mach - .5) / 5.5),
+  write: (item, t) => { item.mach = +(.5 + t * 5.5).toFixed(2); },
+  show: item => item.mach.toFixed(2),
+  entry: { get: item => item.mach, set: (item, value) => { item.mach = value; } }
+};
+
+const boosterDescent = {
+  label: 'Descent',
+  read: item => item.descentDegrees / 90,
+  write: (item, t) => { item.descentDegrees = Math.round(t * 90); },
+  show: item => `${item.descentDegrees}°`,
+  entry: { unit: '°', get: item => item.descentDegrees, set: (item, value) => { item.descentDegrees = value; } }
+};
+
+const boosterBallistic = {
+  label: 'Ballistic coeff.',
+  read: item => clamp01(logPosition(item.ballisticKilogramsPerSquareMetre, [300, 10000])),
+  write: (item, t) => { item.ballisticKilogramsPerSquareMetre = Math.round(logValue(t, [300, 10000]) / 10) * 10; },
+  show: item => `${Math.round(item.ballisticKilogramsPerSquareMetre)} kg/m²`,
+  entry: { unit: 'kg/m²', get: item => item.ballisticKilogramsPerSquareMetre, set: (item, value) => { item.ballisticKilogramsPerSquareMetre = value; } }
+};
+
 /**
  * Macro sliders for an emitter, in display order. Flashes, storms, blasts, and barrages also take
  * their onset when `onset` is set, as when they sound with others.
@@ -390,6 +422,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'meteor') return [meteorSpeed, meteorDiameter, meteorEntry, flightHeight, flightHeading, meteorEnd];
   if (emitter.kind === 'shower') return [showerCount, showerSize, stormDuration, meteorSpeed, meteorDiameter, meteorEntry];
   if (emitter.kind === 'formation') return [formationCount, machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
+  if (emitter.kind === 'booster') return [boosterHeight, boosterMach, boosterDescent, flightHeading, boosterBallistic];
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);

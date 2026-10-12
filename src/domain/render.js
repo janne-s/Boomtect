@@ -1,13 +1,13 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
-import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
+import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSources } from './emitters.js';
 import { knifeEdge } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
-import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, sourcePosition, sourceTable } from './source-table.js';
+import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
-import { flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
+import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
@@ -16,7 +16,7 @@ import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
-import { riseSmoothing } from './pulses.js';
+import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
@@ -93,6 +93,7 @@ export function prepareScene(scene) {
     const sources = sourceTable(rows);
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
+    if (emitter.kind === 'booster') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: emitter, path: boosterPath(emitter, scene.air, surface), booms: flightBooms, pulse: 'triple' }] };
     if (emitter.kind === 'whip') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: whipBody(emitter), path: whipPath(emitter, scene.air, surface), booms: flightBooms }] };
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
       return { emitter, sources, cells: null, echoRows: [], flights: flightMembers(emitter).map(flight => ({ flight, path: withApproach(flightPath(flight, scene.air), scene.air), booms: flightBooms })) };
@@ -189,7 +190,7 @@ function tracingFrame(preparedEmitters, receiver, scene) {
   const cells = preparedEmitters.map((prepared, emitterIndex) => {
     if (!prepared.flights) return prepared.cells;
     if (!traceEchoes) return null;
-    const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.map(boom => boomEchoRow(boom, member)))];
+    const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.map(boom => boomEchoRow(boom, member, prepared.flights[member].pulse)))];
     return rows.length ? sourceCells(sourceTable(rows), scene.terrain.echoCellMetres) : null;
   });
   return { profile, surface, receiverPosition, booms, cells, ground: scene.ground.enabled };
@@ -488,11 +489,11 @@ export function blastStretch(sources, index, metres, shockImpedance, heightMetre
   return Math.sqrt(1 + sigma * Math.log(Math.min(metres, oldAge) / r0));
 }
 
-/** A boom as the source row of its echoes: an N-wave from where it leaves the path, at its pressure along its ray. */
-function boomEchoRow(boom, member) {
+/** A boom as the source row of its echoes: its pulse (an N-wave unless given) from where it leaves the path, at its pressure along its ray. */
+function boomEchoRow(boom, member, pulse = 'n-wave') {
   return {
     flash: member, positionMetres: boom.point, direction: null, elementMetres: 0, emissionSeconds: boom.emissionSeconds,
-    amplitudePaMetres: boom.overpressurePa * boom.focus * boom.ray.metres, pulse: 'n-wave',
+    amplitudePaMetres: boom.overpressurePa * boom.focus * boom.ray.metres, pulse,
     durationSeconds: boom.durationSeconds, decay: 0, spanSeconds: boom.durationSeconds, linearRadiusMetres: 0, flight: true
   };
 }
@@ -908,7 +909,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let directivityIm = directivityStepIm;
 
   const omegaStep = 2 * Math.PI * binHz;
-  const nWave = pulseKind === PULSE_NWAVE;
+  // A triple boom is the N-wave plus its middle shock (`tripleSpectrum`).
+  const triple = pulseKind === PULSE_TRIPLE;
+  const nWave = pulseKind === PULSE_NWAVE || triple;
   // The roar is framed as a unit impulse and convolved with its noise later (see FRAME_GROUPS).
   const noise = pulseKind === PULSE_NOISE;
   const duration = paths.duration[index];
@@ -917,6 +920,11 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const pulseStepIm = Math.sin(pulseStep);
   let pulseCos = pulseStepRe;
   let pulseSin = pulseStepIm;
+  const middleStep = pulseStep * BOOSTER.middleShare;
+  const middleStepRe = Math.cos(middleStep);
+  const middleStepIm = Math.sin(middleStep);
+  let middleCos = middleStepRe;
+  let middleSin = middleStepIm;
   const friedlanderRe = sources.decay[sourceIndex] / duration;
   const subArrivalSets = [spreadArrivals, turbulence].filter(Boolean);
   const reals = spectra.map(spectrum => spectrum.real);
@@ -939,6 +947,14 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
         const scale = 2 / (duration * omega * omega);
         re = pulseSin / omega + scale * (1 - pulseCos - x * pulseSin);
         im = (pulseCos - 1) / omega + scale * (pulseSin - x * pulseCos);
+      }
+      if (triple) {
+        const { middleShare, middleRatio } = BOOSTER;
+        if (x < SMALL_ARGUMENT) im -= omega * middleRatio * duration * duration * (1 - middleShare) * (3 * middleShare - 1) / 6;
+        else [re, im] = tripleTerm(omega, pulseCos, pulseSin, middleCos, middleSin, re, im, middleShare, middleRatio);
+        const nextMiddle = middleCos * middleStepRe - middleSin * middleStepIm;
+        middleSin = middleCos * middleStepIm + middleSin * middleStepRe;
+        middleCos = nextMiddle;
       }
       const nextCos = pulseCos * pulseStepRe - pulseSin * pulseStepIm;
       pulseSin = pulseCos * pulseStepIm + pulseSin * pulseStepRe;
