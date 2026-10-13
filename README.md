@@ -143,7 +143,8 @@ microphone along the Mach cone.
 - **Names** — Place names, peaks, and lakes on the terrain. Switched on over
   terrain without names, it asks for them again.
 - **Map** — A topographic map flat on the floor in place of the terrain's relief,
-  in the scene's colours.
+  in the scene's colours. It reaches as far as the view shows, coarser the
+  farther out, and **+** and **−** zoom the view to look over a wider area.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
 - **i** — The sources of the terrain and map data.
 - **Phone** — The scene fills the screen. The parameters open one group at a

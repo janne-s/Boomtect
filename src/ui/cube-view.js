@@ -756,11 +756,28 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  function drawMap(context, tiles) {
+  /**
+   * The floor the map covers: a square a power of two metres a side that holds what the view shows
+   * of the floor, centred on a grid of a quarter side near the floor under the view's centre, so that
+   * it changes only in steps as the view zooms and pans. Zoomed out, it is larger and its tiles coarser.
+   */
+  function mapArea() {
+    const { box, width, height, scale } = frame;
+    const z = box.z0;
+    const centre = fromScreen({ fixed: 'z', free: ['x', 'y'] }, { x: 0, y: 0, z }, width / 2, height / 2) ?? { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
+    const seen = Math.max(width, height) / scale / Math.max(VIEW.map.minimumSine, Math.abs(Math.sin(view.pitch))) * VIEW.map.viewMargin;
+    const side = 2 ** Math.ceil(Math.log2(Math.max(seen, box.x1 - box.x0, box.y1 - box.y0)));
+    const step = side / 4;
+    const x = Math.round(centre.x / step) * step;
+    const y = Math.round(centre.y / step) * step;
+    return { west: x - side / 2, east: x + side / 2, south: y - side / 2, north: y + side / 2 };
+  }
+
+  function drawMap(context, tiles, area) {
     const { box } = frame;
     const z = box.z0;
     context.save();
-    polygon(context, [{ x: box.x0, y: box.y0, z }, { x: box.x1, y: box.y0, z }, { x: box.x1, y: box.y1, z }, { x: box.x0, y: box.y1, z }]);
+    polygon(context, [{ x: area.west, y: area.south, z }, { x: area.east, y: area.south, z }, { x: area.east, y: area.north, z }, { x: area.west, y: area.north, z }]);
     context.clip();
     context.globalAlpha *= VIEW.map.alpha;
     for (const { image, northWest, northEast, southWest } of tiles) {
@@ -1492,10 +1509,14 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const state = animation?.() ?? null;
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
-    const mapTiles = currentSurface().flat ? null : map();
+    const area = currentSurface().flat ? null : mapArea();
+    const mapTiles = area ? map(area) : null;
     if (!mapTiles) drawTerrain(context, colors, true);
+    // The map reaches past the box under its walls, and is laid again on the box's own floor.
+    if (mapTiles) drawMap(context, mapTiles, area);
     drawBox(context, colors);
-    if (mapTiles) drawMap(context, mapTiles); else drawTerrain(context, colors, false);
+    if (mapTiles) drawMap(context, mapTiles, { west: frame.box.x0, east: frame.box.x1, south: frame.box.y0, north: frame.box.y1 });
+    else drawTerrain(context, colors, false);
     drawBoxLabels(context, colors);
     drawNames(context, colors);
     drawShadowBoundary(context, colors);
@@ -1766,6 +1787,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       changeView({ yaw, pitch, zoom, panU, panV });
     },
     getView: () => view,
+    /** Zooms about the view's centre, as the wheel does about the pointer. */
+    zoomBy(factor) { if (frame) zoomAt(factor, frame.width / 2, frame.height / 2); },
     draw,
     setAnimation(source) { animation = source; },
     hold(on) { held = on; if (!on) draw(); }

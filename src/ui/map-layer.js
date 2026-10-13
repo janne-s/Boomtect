@@ -40,21 +40,19 @@ function styledTile(image) {
 }
 
 /**
- * The map laid on the floor of a terrain: its tiles, loaded on first use and again when its patches change.
- * `onLoad` runs as each tile arrives, so the view can draw it. A tile that fails stays empty.
+ * The map laid on the floor around a terrain: the tiles of an area of the scene frame (the terrain's
+ * own when none is given), loaded on first use and again when the area changes. Until the new tiles
+ * have all arrived, those of the area before stay under them, so that zooming does not blank the
+ * floor. `onLoad` runs as each tile arrives, so the view can draw it. A tile that fails stays empty.
  */
 export function createMapLayer(onLoad) {
   let key = null;
   let tiles = [];
+  let previous = [];
 
-  const terrainKey = terrain => {
-    const range = terrainRange(terrain);
-    return `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${range.column0},${range.column1},${range.row0},${range.row1}`;
-  };
-
-  function load(terrain) {
-    key = terrainKey(terrain);
-    const bounds = rangeBounds(terrainRange(terrain), terrain.cellMetres);
+  function load(terrain, bounds) {
+    const ready = tiles.filter(tile => tile.ready);
+    if (ready.length) previous = ready;
     tiles = mapTiles({ latitude: terrain.latitude, longitude: terrain.longitude, bounds }).tiles.map(tile => {
       const image = new Image();
       image.crossOrigin = 'anonymous';
@@ -73,10 +71,16 @@ export function createMapLayer(onLoad) {
   }
 
   return {
-    tiles(terrain) {
+    tiles(terrain, area = null) {
       if (!terrain?.patches?.length) return [];
-      if (key !== terrainKey(terrain)) load(terrain);
-      return tiles.filter(tile => tile.ready);
+      const bounds = area ?? rangeBounds(terrainRange(terrain), terrain.cellMetres);
+      const next = [terrain.latitude, terrain.longitude, bounds.west, bounds.east, bounds.south, bounds.north].join(',');
+      if (key !== next) {
+        key = next;
+        load(terrain, bounds);
+      }
+      const ready = tiles.filter(tile => tile.ready);
+      return ready.length === tiles.length ? ready : [...previous, ...ready];
     }
   };
 }

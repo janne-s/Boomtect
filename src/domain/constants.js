@@ -15,7 +15,7 @@
  */
 
 /** The application's version, as in package.json (a test keeps them equal). */
-export const APP_VERSION = '0.71.0';
+export const APP_VERSION = '0.72.0';
 export const MODEL_VERSION = '33.3.0';
 
 export const SAMPLE_RATE_HZ = 48000;
@@ -624,7 +624,7 @@ export const VIEW = Object.freeze({
     padding: .08,
     rotateRadiansPerPixel: .008,
     pitchRange: Object.freeze([.12, 1.45]),
-    zoomRange: Object.freeze([.2, 40]),
+    zoomRange: Object.freeze([.02, 40]),
     zoomPerPixel: .006,
     wheelLinePixels: 16,
     defaultView: Object.freeze({ yaw: .62, pitch: .42, zoom: 1, panU: 0, panV: 0 }),
@@ -757,6 +757,9 @@ export const VIEW = Object.freeze({
    * and of the darkest lines, how much bluer than red water is, and how much it shows.
    */
   map: Object.freeze({
+    // The map covers the floor the view shows, with viewMargin to spare; a low view sees no farther than minimumSine allows.
+    viewMargin: 1.25,
+    minimumSine: .25,
     maximumZoom: 17,
     pixelsAcross: 2048,
     alpha: 1,

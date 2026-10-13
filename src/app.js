@@ -194,7 +194,7 @@ const views = [createCubeView($('cube'), {
   focus: () => focusReceiver(),
   contours: () => state.preferences.contours,
   names: () => state.preferences.names,
-  map: () => (state.preferences.map && state.scene.terrain?.enabled ? mapLayer.tiles(state.scene.terrain) : null),
+  map: area => (state.preferences.map && state.scene.terrain?.enabled ? mapLayer.tiles(state.scene.terrain, area) : null),
   clouds: () => state.preferences.clouds
 })];
 
@@ -1450,6 +1450,7 @@ function rebuildPanel() {
   $('cube-attribution').hidden = !scene.terrain;
   $('names').hidden = !scene.terrain;
   $('map').hidden = !scene.terrain;
+  syncZoomButtons();
   $('cone').hidden = scene.mode !== 'sonic';
   $('clouds').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
   syncToggles();
@@ -2270,7 +2271,7 @@ const TOGGLES = Object.freeze({
       redrawViews();
     }
   },
-  map: { read: () => state.preferences.map, write: on => { state.preferences.map = on; }, after: () => redrawViews() }
+  map: { read: () => state.preferences.map, write: on => { state.preferences.map = on; }, after: () => { syncZoomButtons(); redrawViews(); } }
 });
 
 function syncToggles() {
@@ -2286,6 +2287,17 @@ for (const [id, { read, write, after }] of Object.entries(TOGGLES)) {
   });
 }
 syncToggles();
+
+/** With the map on, the view gets buttons to zoom, for looking over a wider area than the scene. */
+const ZOOM_STEP = 1.5;
+function syncZoomButtons() {
+  const shown = Boolean(state.preferences.map && state.scene.terrain);
+  $('zoom-in').hidden = !shown;
+  $('zoom-out').hidden = !shown;
+}
+$('zoom-in').addEventListener('click', () => views[0].zoomBy(ZOOM_STEP));
+$('zoom-out').addEventListener('click', () => views[0].zoomBy(1 / ZOOM_STEP));
+syncZoomButtons();
 $('attribution-button').addEventListener('click', () => {
   const open = $('attribution-text').hidden;
   $('attribution-text').hidden = !open;
