@@ -15,7 +15,7 @@
  */
 
 /** The application's version, as in package.json (a test keeps them equal). */
-export const APP_VERSION = '0.69.1';
+export const APP_VERSION = '0.70.0';
 export const MODEL_VERSION = '33.3.0';
 
 export const SAMPLE_RATE_HZ = 48000;

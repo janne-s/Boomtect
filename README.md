@@ -257,8 +257,10 @@ microphone along the Mach cone.
 - **Echotect** — Per microphone, its pressure in mono without terrain echoes,
   and a handoff (JSON) with the place, the air, the microphone, and the
   direction and distance the sound comes from.
-- **Terrain echoes** — Off, the files are rendered again without the terrain's
-  echoes.
+- **Terrain echoes** — With, without, or only the terrain's echoes. Without
+  leaves out the surroundings' rumble too, which stands in for the echoes
+  where they are not traced, and Only is the render with echoes less the one
+  without.
 - **Place** — Off, the Echotect handoff names no place, and Echotect keeps its
   own around its Listener. The same choice stands beside a microphone's
   **Send to Echotect**.

@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, receiverResult, sumSegments, tailSamples, tailStretches } from './domain/render.js';
+import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -2011,12 +2011,15 @@ $('open-file').addEventListener('change', async () => {
 
 /**
  * The export plan and results of the scene without its terrain echoes, at the playback gain: the
- * scene rendered again with them switched off, or its own when it has none.
+ * scene rendered again with them switched off, or its own when it has none. The surroundings'
+ * rumble, which stands in for the echoes when they are off, stays off too, so that the render with
+ * echoes less this one is the echoes alone.
  */
 async function withoutTerrainEchoes(gain) {
   if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results };
   const scene = structuredClone(state.scene);
   scene.terrain.echoes = false;
+  scene.ground.surroundings = false;
   const results = await renderFull(scene);
   const plan = exportPlan(scene, results, gain);
   if (!plan) throw new Error('Nothing is heard without the terrain echoes.');
@@ -2059,6 +2062,10 @@ async function sendToEchotect(receiverId, trigger) {
     operation('send', null);
   }
 }
+
+/** What of the terrain echoes the exported files hold. */
+const TERRAIN_ECHO_CHOICES = Object.freeze({ with: 'With', without: 'Without', only: 'Only' });
+const exportEchoChoice = () => (TERRAIN_ECHO_CHOICES[state.preferences.exportEchoChoice] ? state.preferences.exportEchoChoice : 'with');
 
 const EXPORT_LABELS = Object.freeze({ scene: 'Scene (JSON)', stereo: 'Stereo', microphones: 'Microphones', ambix: 'Ambisonics', echotect: 'Echotect' });
 const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
@@ -2125,10 +2132,12 @@ $('export').addEventListener('click', async () => {
   }
   if (echoesActive(state.scene)) {
     const row = element('label');
-    const box = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'export-echoes', checked: state.preferences.exportEchoes ?? true });
+    const select = document.createElement('select');
+    select.id = 'export-echoes';
+    for (const [value, label] of Object.entries(TERRAIN_ECHO_CHOICES)) select.add(new Option(label, value, false, value === exportEchoChoice()));
     const text = element('span');
     text.append(element('strong', '', 'Terrain echoes'));
-    row.append(box, text, element('small'));
+    row.append(element('span'), text, select);
     options.push(row);
   }
   $('export-options').replaceChildren(...options);
@@ -2155,7 +2164,7 @@ $('export-form').addEventListener('submit', async event => {
   const echoes = $('export-echoes');
   state.preferences.exportItems = [...selected];
   state.preferences.exportName = name;
-  if (echoes) state.preferences.exportEchoes = echoes.checked;
+  if (echoes) state.preferences.exportEchoChoice = echoes.value;
   state.preferences.exportPlace = $('export-place').checked;
   savePreferences();
   const submit = $('export-submit');
@@ -2166,9 +2175,12 @@ $('export-form').addEventListener('submit', async event => {
     const { plan: full, composition } = exportState;
     const stem = fileStem(name);
     // Without terrain echoes, the scene is rendered again with them switched off.
-    const terrainEchoes = Boolean(echoes?.checked);
-    const dry = echoes && (!terrainEchoes || selected.has('echotect')) ? await withoutTerrainEchoes(full.gain) : { plan: full, results: state.results };
-    const plan = terrainEchoes || !echoes ? full : dry.plan;
+    const choice = echoes ? echoes.value : 'with';
+    const dry = choice !== 'with' || (echoes && selected.has('echotect')) ? await withoutTerrainEchoes(full.gain) : { plan: full, results: state.results };
+    const plan = choice === 'with' ? full : choice === 'without' ? dry.plan : exportPlan(state.scene, new Map(
+      [...state.results].map(([id, result]) => [id, resultDifference(result, dry.results.get(id))])
+    ), full.gain);
+    if (!plan) throw new Error('Nothing is heard in the terrain echoes alone.');
     const echotect = { plan: dry.plan, handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file) };
     const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
       ...parseScene(state.scene),
@@ -2183,7 +2195,7 @@ $('export-form').addEventListener('submit', async event => {
         startSeconds,
         fullScalePa: 1 / plan.gain,
         peakPa: plan === full ? composition.peakPa : plan.listening.peakPa,
-        terrainEchoes: plan === full && echoesActive(state.scene),
+        terrainEchoContent: echoesActive(state.scene) ? choice : null,
         speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
         soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
         modelVersion: MODEL_VERSION,

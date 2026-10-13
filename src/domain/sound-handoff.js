@@ -66,6 +66,8 @@ function propagationContent(scene, terrainEchoes) {
     turbulence: scene.air.turbulenceStrength > 0,
     ground: scene.ground.enabled,
     forest: scene.ground.enabled && scene.ground.forest,
+    // The rumble of the surroundings stands in for terrain echoes where they are not traced.
+    surroundings: scene.ground.surroundings && !(terrain?.echoes),
     terrain: Boolean(terrain),
     'terrain-shielding': Boolean(terrain?.shielding),
     'terrain-echoes': Boolean(terrain?.echoes && terrainEchoes)

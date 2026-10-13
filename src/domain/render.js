@@ -1514,6 +1514,28 @@ export function receiverResult(receiver, scene, combined, arrivals, nonlinearPat
   };
 }
 
+/**
+ * One result less another of the same receiver, on a timeline that holds both: the terrain echoes
+ * alone, for instance, as a render with them less one without. The sum of paths is linear, so the
+ * difference holds exactly what one render has and the other lacks. Arrivals are the first's.
+ */
+export function resultDifference(minuend, subtrahend) {
+  const { sampleRate } = minuend;
+  const start = Math.min(minuend.startSeconds, subtrahend.startSeconds);
+  const offset = result => Math.round((result.startSeconds - start) * sampleRate);
+  const length = Math.max(...[minuend, subtrahend].map(result => offset(result) + result.channels[0].length));
+  let peakPa = 0;
+  const channels = minuend.channels.map((_, channel) => {
+    const out = new Float32Array(length);
+    out.set(minuend.channels[channel], offset(minuend));
+    const from = offset(subtrahend);
+    subtrahend.channels[channel].forEach((value, index) => { out[from + index] -= value; });
+    if (channel === 0) out.forEach(value => { peakPa = Math.max(peakPa, Math.abs(value)); });
+    return out;
+  });
+  return { ...minuend, startSeconds: start, channels, samples: channels[0], peakPa };
+}
+
 export function renderReceiver(preparedEmitters, receiver, scene) {
   const segment = renderReceiverRange(preparedEmitters, receiver, scene);
   return receiverResult(receiver, scene, combineWithTails([segment], receiver, scene), arrivalTable(preparedEmitters, receiver, scene), segment.nonlinearPaths);
