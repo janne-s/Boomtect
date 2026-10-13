@@ -171,7 +171,7 @@ function frontArc(step, elapsed, routeLength) {
   return step.fromArc + elapsed / VIEW.flash.traverseSeconds * routeLength - step.offsetMetres;
 }
 
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false, map = () => null }) {
+export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false, map = () => false, mapTiles: loadMapTiles = () => [] }) {
   let scene = null;
   let selection = null;
   let view = { ...VIEW.box.defaultView };
@@ -1509,8 +1509,8 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const state = animation?.() ?? null;
     const usable = new Set(planes().filter(planeUsable).map(plane => plane.name));
 
-    const area = currentSurface().flat ? null : mapArea();
-    const mapTiles = area ? map(area) : null;
+    const area = map() ? mapArea() : null;
+    const mapTiles = area ? loadMapTiles(area) : null;
     if (!mapTiles) drawTerrain(context, colors, true);
     // The map reaches past the box under its walls, and is laid again on the box's own floor.
     if (mapTiles) drawMap(context, mapTiles, area);

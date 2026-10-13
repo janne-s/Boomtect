@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="assets/vendor/fontawesome/css/fontawesome.min.css" />
     <link rel="stylesheet" href="assets/vendor/fontawesome/css/solid.min.css" />
     <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="src/app-reset.js"></script>
     <script type="module" src="src/app.js"></script>
   </head>
   <body>
@@ -41,7 +42,7 @@
       </div>
       <span id="listen-label" class="listen-label"></span>
       <span class="spacer"></span>
-      <button type="button" class="icon-toggle" id="settings" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
+      <button type="button" class="icon-toggle" id="settings" data-recovery-dialog="settings-dialog" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
       <button type="button" id="open">Open</button>
       <button type="button" id="save">Save</button>
       <button type="button" id="export" disabled>Export</button>
@@ -72,6 +73,7 @@
             <button type="button" class="info-button" id="attribution-button" aria-expanded="false" aria-controls="attribution-text" title="Data sources">i</button>
             <div class="attribution-text" id="attribution-text" hidden>
               <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Terrain Tiles: Mapzen / AWS Open Data</a> (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, national datasets)<br />
+              Place names: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> · © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a><br />
               Place names and search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors<br />
               Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, SRTM; style © <a href="https://opentopomap.org/" target="_blank" rel="noopener">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA</a>)
             </div>
@@ -231,6 +233,7 @@
           <div class="settings-grid" id="device-grid"></div>
         </div>
         <footer class="export-actions">
+          <button type="button" data-reset-app="Boomtect" data-storage-prefix="boomtect.">Reset app</button>
           <button type="submit" value="cancel">Cancel</button>
           <button type="submit" class="primary" value="save">Save settings</button>
         </footer>

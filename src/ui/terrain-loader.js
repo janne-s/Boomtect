@@ -1,9 +1,12 @@
 import { GROUND } from '../domain/constants.js';
 import { decodePngRgb } from '../domain/png.js';
-import { PLACE_NAME_KINDS } from '../domain/scene.js';
-import { buildPatch, curvatureDropMetres, decodeTerrarium, metresPerDegree, rangeBounds, TERRAIN_PROVIDER, terrainRange, tilePixel, tilePlan, TILE_SIZE } from '../domain/terrain.js';
+import { mapLabels } from '../domain/map-labels.js';
+import { buildPatch, curvatureDropMetres, decodeTerrarium, metresPerDegree, mapTiles, rangeBounds, TERRAIN_PROVIDER, terrainRange, tilePixel, tilePlan, TILE_SIZE } from '../domain/terrain.js';
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const PLACE_TILEJSON_URL = 'https://tiles.openfreemap.org/planet/latest';
+const PLACE_TILE_ZOOM = 14;
+const PLACE_TILE_CONCURRENCY = 4;
+let placeTileSource = null;
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
@@ -38,32 +41,50 @@ export async function searchPlace(text, { signal } = {}) {
 }
 
 /**
- * Named places, peaks, and lakes inside a terrain's rectangle of patches, from OpenStreetMap through
- * the Overpass API, in the scene frame. Null when the service cannot be reached, so that names
- * already shown can be kept.
+ * Opt-in place, peak and lake labels from OpenFreeMap's static OpenMapTiles tiles.
+ * No API key or Overpass query. Label density depends on zoom; this is a map label layer,
+ * not a complete gazetteer. Attribution: © OpenMapTiles, © OpenStreetMap contributors.
+ * Null on failure so existing names can be kept. Cancelling propagates to every request.
  */
 export async function fetchPlaceNames(terrain, signal) {
-  const { latitude, longitude } = terrain;
-  const { north, east } = metresPerDegree(latitude);
-  const bounds = rangeBounds(terrainRange(terrain), terrain.cellMetres);
-  const box = [latitude + bounds.south / north, longitude + bounds.west / east, latitude + bounds.north / north, longitude + bounds.east / east].map(value => value.toFixed(6)).join(',');
-  const query = `[out:json][timeout:25];(node["place"~"^(city|town|village|hamlet|locality)$"]["name"](${box});node["natural"="peak"]["name"](${box});way["natural"="water"]["name"](${box});relation["natural"="water"]["name"](${box}););out center ${GROUND.terrain.maximumPlaceNames};`;
   try {
-    const response = await fetch(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: query }), signal });
-    if (!response.ok) return null;
-    const { elements = [] } = await response.json();
-    return elements.flatMap(element => {
-      const tags = element.tags ?? {};
-      const kind = tags.natural === 'peak' ? 'peak' : tags.natural === 'water' ? 'water' : tags.place;
-      const lat = element.lat ?? element.center?.lat;
-      const lon = element.lon ?? element.center?.lon;
-      if (!PLACE_NAME_KINDS.includes(kind) || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
-      const x = (lon - longitude) * east;
-      const y = (lat - latitude) * north;
+    signal?.throwIfAborted();
+    if (!placeTileSource) {
+      const response = await fetch(PLACE_TILEJSON_URL, { signal, mode: 'cors' });
+      if (!response.ok) return null;
+      const source = await response.json();
+      const template = source.tiles?.[0];
+      if (typeof template !== 'string' || !template.startsWith('https://tiles.openfreemap.org/')) throw new Error('Invalid place name tile source.');
+      placeTileSource = { template, zoom: Math.min(PLACE_TILE_ZOOM, source.maxzoom ?? PLACE_TILE_ZOOM) };
+    }
+    const { latitude, longitude } = terrain;
+    const { north, east } = metresPerDegree(latitude);
+    const bounds = rangeBounds(terrainRange(terrain), terrain.cellMetres);
+    const plan = mapTiles({ latitude, longitude, bounds, maximumZoom: placeTileSource.zoom, pixelsAcross: 8192 });
+    const labels = new Array(plan.tiles.length);
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(PLACE_TILE_CONCURRENCY, labels.length) }, async () => {
+      while (cursor < plan.tiles.length) {
+        signal?.throwIfAborted();
+        const index = cursor++;
+        const tile = plan.tiles[index];
+        const url = placeTileSource.template.replace('{z}', tile.zoom).replace('{x}', tile.x).replace('{y}', tile.y);
+        const response = await fetch(url, { signal, mode: 'cors' });
+        if (!response.ok) throw new Error(`Place name tile could not be loaded (${response.status}).`);
+        labels[index] = mapLabels(await response.arrayBuffer(), tile);
+      }
+    }));
+    signal?.throwIfAborted();
+    const seen = new Set();
+    return labels.flat().flatMap(item => {
+      const x = (item.longitude - longitude) * east;
+      const y = (item.latitude - latitude) * north;
       if (x < bounds.west || x > bounds.east || y < bounds.south || y > bounds.north) return [];
-      const elevation = Number.parseFloat(tags.ele);
-      return [{ name: (tags.name ?? '').slice(0, 80), kind, x, y, elevationMetres: kind === 'peak' && Number.isFinite(elevation) ? elevation : null }];
-    }).filter(item => item.name).slice(0, GROUND.terrain.maximumPlaceNames);
+      const key = `${item.kind}:${item.name}:${Math.round(x / 10)},${Math.round(y / 10)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ name: item.name, kind: item.kind, x, y, elevationMetres: item.elevationMetres }];
+    }).slice(0, GROUND.terrain.maximumPlaceNames);
   } catch (error) {
     if (signal?.aborted) throw error;
     return null;

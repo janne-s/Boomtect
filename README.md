@@ -17,7 +17,8 @@ pressure pulse. A lightning channel is thousands of them along a branching,
 zigzagging path; a blast is one. Each pulse travels to each microphone with its
 own delay and loss, and the microphone hears their sum.
 
-Thunder, Blast, and Sonic are separate modes, each with its own scene. A
+Thunder, Blast, and Sonic keep their own emitters and acoustic settings. The
+active place and terrain travel with you when switching modes. A
 supersonic body's booms leave its flight path where the sound reaches a
 microphone along the Mach cone.
 
@@ -140,11 +141,13 @@ microphone along the Mach cone.
   spreads out and the air absorbs it. On in every mode at first.
 - **Cone** — While the sound plays, each supersonic body's Mach cone trails behind
   it through the fronts it has left, within the box and above the ground.
-- **Names** — Place names, peaks, and lakes on the terrain. Switched on over
-  terrain without names, it asks for them again.
+- **Names** — Optional place names, peaks, and lakes from OpenFreeMap. Off
+  initially; switch on to fetch names over loaded terrain. Labels vary with
+  map scale. Switching off cancels a pending request.
 - **Map** — A topographic map flat on the floor in place of the terrain's relief,
   in the scene's colours. It reaches as far as the view shows, coarser the
   farther out, and **+** and **−** zoom the view to look over a wider area.
+  Works at the selected place with or without loaded terrain.
 - **Cloud** — A storm's cloud as dark fog, lit around the flashes inside it.
 - **i** — The sources of the terrain and map data.
 - **Phone** — The scene fills the screen. The parameters open one group at a
@@ -214,18 +217,24 @@ microphone along the Mach cone.
 - **Ground layer** and **Layer lapse** — A layer of air next to the ground with
   its own lapse rate, such as a low inversion on a calm night.
 
+Use **Reset app** in Settings to return to the initial workspace.
+After confirmation it removes Boomtect’s saved scenes and preferences from this
+browser and reloads. Echotect’s data and downloaded files are kept. The reset
+button works independently of the main application’s startup.
+
 ## Terrain
 
 - **Place** — Where the scene's origin lies, saved with the scene with or
   without terrain. The map button opens a map to move under the centre mark,
-  with the area the scene needs around it. Loaded terrain follows the place.
+  with the area the scene needs around it. **Load** in this map dialog fetches
+  terrain immediately. Loaded terrain follows the place.
 - **Resolution** — The spacing of the heights. A scene too large for the
   terrain's budget takes a spacing two or more times as coarse.
 - **Find** — Finds a place by name, or takes "latitude, longitude".
 - **Load terrain** — Fetches the elevation the scene needs and saves it in the
   scene, so the scene opens the same way later without a connection. Place
-  names follow on their own. The terrain is held in square patches: those under
-  the emitters and microphones and, around them, a quarter of the scene's size
+  names load only while **Names** is on. The terrain is held in square patches:
+  those under the emitters and microphones and, around them, a quarter of the scene's size
   (at least 1 km) for the slopes that echo. Move or add something past the
   edge and the patches it now needs load a moment later; those no longer needed
   are dropped.
@@ -383,7 +392,10 @@ Terrain heights: [Terrain Tiles](https://github.com/tilezen/joerd/blob/master/do
 by Mapzen on AWS Open Data (SRTM, GMTED2010, NED, ETOPO1, EU-DEM, and national
 datasets). Place search: [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/).
 Map and place names: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
-contributors, through the Overpass API for the names.
+contributors. Optional place labels use [OpenFreeMap](https://openfreemap.org/)
+vector tiles with the © [OpenMapTiles](https://openmaptiles.org/) schema
+(CC BY 4.0); no API key is required. This is a scale-dependent map label layer,
+not a complete list of every named feature.
 Both are fetched only when asked for.
 
 ## Third-party code

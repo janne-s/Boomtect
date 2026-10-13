@@ -61,12 +61,12 @@ const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 *
  * corners in the scene frame. The zoom is the finest at which about VIEW.map.pixelsAcross pixels span
  * the rectangle's longer side, within GROUND.terrain.maximumTileRequests tiles.
  */
-export function mapTiles({ latitude, longitude, bounds }) {
+export function mapTiles({ latitude, longitude, bounds, maximumZoom = VIEW.map.maximumZoom, pixelsAcross = VIEW.map.pixelsAcross }) {
   const { north, east } = metresPerDegree(latitude);
   const degrees = { west: longitude + bounds.west / east, east: longitude + bounds.east / east, south: latitude + bounds.south / north, north: latitude + bounds.north / north };
   const side = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
-  let zoom = VIEW.map.maximumZoom;
-  while (zoom > MINIMUM_TILE_ZOOM && (tilePixelMetres(latitude, zoom) < side / VIEW.map.pixelsAcross || tileRange(degrees, zoom).count > GROUND.terrain.maximumTileRequests)) zoom -= 1;
+  let zoom = maximumZoom;
+  while (zoom > MINIMUM_TILE_ZOOM && (tilePixelMetres(latitude, zoom) < side / pixelsAcross || tileRange(degrees, zoom).count > GROUND.terrain.maximumTileRequests)) zoom -= 1;
   const range = tileRange(degrees, zoom);
   const local = (x, y) => ({ x: ((x / 2 ** zoom) * 360 - 180 - longitude) * east, y: (tileLatitude(y, zoom) - latitude) * north });
   const tiles = [];

@@ -130,6 +130,7 @@ export const GROUND = Object.freeze({
     coverageDelayMilliseconds: 800,
     /** Seconds a network request for place names or a place search may take before it is given up. */
     placeNamesLimitSeconds: 30,
+    loadLimitSeconds: 60,
     placeSearchLimitSeconds: 15,
     /** Nominatim's usage policy allows one search a second. */
     searchIntervalMilliseconds: 1000
@@ -753,10 +754,11 @@ export const VIEW = Object.freeze({
   }),
   /**
    * The map on the floor: the finest zoom (OpenTopoMap serves up to 17) at which about pixelsAcross
-   * pixels span the terrain, drawn opaque, its tiles turned into the palette: lightness of open land
+   * pixels span the visible area, drawn opaque, its tiles turned into the palette: lightness of open land
    * and of the darkest lines, how much bluer than red water is, and how much it shows.
    */
   map: Object.freeze({
+    cachedTiles: 144,
     // The map covers the floor the view shows, with viewMargin to spare; a low view sees no farther than minimumSine allows.
     viewMargin: 1.25,
     minimumSine: .25,

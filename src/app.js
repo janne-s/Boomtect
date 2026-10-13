@@ -21,6 +21,8 @@ import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrai
 import { createPlaceMap } from './ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './ui/map-layer.js';
+import { createLatestTask } from './ui/latest-task.js';
+import { sceneInMode } from './domain/scene-mode.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, showerMembers } from './domain/meteor.js';
@@ -35,6 +37,8 @@ import { attachSplitters } from './ui/splitters.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
+let resetting = false;
+window.addEventListener('app-reset', () => { resetting = true; });
 const WORKER_COUNT = Math.max(1, Math.min(RENDER.maximumWorkers, (navigator.hardwareConcurrency || 2) - 1));
 const workerLimit = () => Math.max(1, Math.min(WORKER_COUNT, state.preferences.threads || WORKER_COUNT));
 
@@ -48,6 +52,7 @@ const storage = {
     try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
   },
   write(key, value) {
+    if (resetting) return;
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage may be unavailable; the app works without it. */ }
   }
 };
@@ -61,7 +66,7 @@ function restoredScene(mode) {
 }
 
 const preferences = {
-  realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: true, map: false, cone: true, clouds: true, autoRender: true, preview: false, mode: 'thunder',
+  realDelay: true, wavefronts: { thunder: true, blast: true, sonic: true }, contours: true, names: false, map: false, cone: true, clouds: true, autoRender: true, preview: false, mode: 'thunder',
   terrainDraft: { cellMetres: 30 }, cubeViews: {},
   panelWidth: 340, resultsHeight: 220,
   ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -83,7 +88,7 @@ const state = {
   soloId: null,
   preferences
 };
-state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
+state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
 const player = createPlayer();
 const mobile = createMobileLayout({ onResults: () => drawResults() });
@@ -194,7 +199,8 @@ const views = [createCubeView($('cube'), {
   focus: () => focusReceiver(),
   contours: () => state.preferences.contours,
   names: () => state.preferences.names,
-  map: area => (state.preferences.map && state.scene.terrain?.enabled ? mapLayer.tiles(state.scene.terrain, area) : null),
+  map: () => state.preferences.map,
+  mapTiles: area => mapLayer.tiles(state.scene.place, area),
   clouds: () => state.preferences.clouds
 })];
 
@@ -264,6 +270,8 @@ function commit(change) {
 }
 
 function invalidateResults() {
+  clearTimeout(state.renderTimer);
+  stopWorkers();
   player.stop();
   state.pause = null;
   state.results = null;
@@ -296,8 +304,6 @@ function drawOperations() {
   if (operations.size && !operationsTimer) operationsTimer = setInterval(drawOperations, 500);
   if (!operations.size && operationsTimer) { clearInterval(operationsTimer); operationsTimer = null; }
 }
-
-const timeLimit = seconds => AbortSignal.timeout(seconds * 1000);
 
 function syncPlayButton() {
   const button = $('play');
@@ -334,6 +340,7 @@ function failRender(message) {
 }
 
 function stopWorkers() {
+  state.revision += 1;
   state.workers.forEach(worker => worker.terminate());
   state.workers = [];
   clearInterval(state.watchdog);
@@ -375,9 +382,8 @@ function spawnWorker(revision, message, { onProgress, onResult }, transfer = [])
  * are added once to the sum. Every worker gets the scene as it was when the render started.
  */
 function startRender({ full = false, variant = null } = {}) {
-  state.revision += 1;
-  const revision = state.revision;
   stopWorkers();
+  const revision = state.revision;
   setStatus('');
   const scene = variant ?? (state.preferences.preview && !full ? previewScene(state.scene) : state.scene);
   if (!scene.emitters.some(emitter => emitter.enabled)) {
@@ -1161,7 +1167,19 @@ function rebuildDetails() {
 }
 
 let terrainCoverageTimer = null;
-let terrainCoverageRunning = false;
+const terrainLoadTask = createLatestTask();
+const terrainCoverageTask = createLatestTask();
+const placeNamesTask = createLatestTask();
+const placeSearchTask = createLatestTask();
+
+function cancelGeographicTasks() {
+  clearTimeout(terrainCoverageTimer);
+  terrainLoadTask.cancel();
+  terrainCoverageTask.cancel();
+  placeNamesTask.cancel();
+  placeSearchTask.cancel();
+  for (const key of ['terrain', 'names', 'place']) operation(key, null);
+}
 
 function sceneBounds(scene) {
   const bounds = { west: Infinity, east: -Infinity, south: Infinity, north: -Infinity };
@@ -1195,81 +1213,92 @@ function neededPatches(scene, resolutionMetres) {
 const sameRange = (a, b) => a && b && a.column0 === b.column0 && a.column1 === b.column1 && a.row0 === b.row0 && a.row1 === b.row1;
 const terrainCoverageKey = terrain => (terrain ? `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${Object.values(terrainRange(terrain)).join(',')}` : '');
 
-async function coveredTerrain(terrain, anchor, needed, label) {
+async function coveredTerrain(terrain, anchor, needed, label, task) {
   const { cellMetres, range } = needed;
   const keep = terrain && terrain.cellMetres === cellMetres && terrain.latitude === anchor.latitude && terrain.longitude === anchor.longitude
     ? terrain.patches.filter(patch => patch.column >= range.column0 && patch.column <= range.column1 && patch.row >= range.row0 && patch.row <= range.row1) : [];
   const have = new Set(keep.map(patch => `${patch.column},${patch.row}`));
   const missing = rangePatches(range).filter(({ column, row }) => !have.has(`${column},${row}`));
-  const fetched = missing.length ? await capturePatches(anchor, cellMetres, missing, { onProgress: share => operation('terrain', label, { share }) }) : [];
+  const fetched = missing.length ? await capturePatches(anchor, cellMetres, missing, {
+    signal: task.signal,
+    onProgress: share => { if (task.current()) operation('terrain', label, { share }); }
+  }) : [];
   const bounds = rangeBounds(range, cellMetres);
   const names = (terrain?.names ?? []).filter(item => item.x >= bounds.west && item.x <= bounds.east && item.y >= bounds.south && item.y <= bounds.north);
   return { latitude: anchor.latitude, longitude: anchor.longitude, cellMetres, patches: [...keep, ...fetched], names };
 }
 
-let terrainCoverageAgain = false;
-
 function scheduleTerrainCoverage() {
   clearTimeout(terrainCoverageTimer);
+  terrainCoverageTask.cancel();
+  if (terrainLoadTask.busy) return;
+  operation('terrain', null);
   terrainCoverageTimer = setTimeout(async () => {
     const { terrain } = state.scene;
     // Without emitters the scene is being cleared for new ones in the same place, so its terrain stays.
     if (!terrain?.enabled || !state.scene.emitters.length) return;
-    if (terrainCoverageRunning) { terrainCoverageAgain = true; return; }
     const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
     if (needed.cellMetres === terrain.cellMetres && sameRange(needed.range, terrainRange(terrain))) return;
-    terrainCoverageRunning = true;
+    const task = terrainCoverageTask.start(GROUND.terrain.loadLimitSeconds * 1000);
+    operation('terrain', 'Loading terrain', { share: 0 });
     try {
-      const next = await coveredTerrain(terrain, terrain, needed, 'Loading terrain');
+      const next = await coveredTerrain(terrain, terrain, needed, 'Loading terrain', task);
+      if (!task.current()) return;
       const covered = terrainCoverageKey(next) !== terrainCoverageKey(state.scene.terrain);
-      commit(scene => { if (scene.terrain) Object.assign(scene.terrain, next); });
-      if (covered) loadPlaceNames(state.scene.terrain);
-    } catch (error) {
-      setStatus(`The terrain could not be loaded: ${error.message}`, true);
-    } finally {
-      terrainCoverageRunning = false;
+      terrainCoverageTask.finish(task);
       operation('terrain', null);
-      if (terrainCoverageAgain) { terrainCoverageAgain = false; scheduleTerrainCoverage(); }
+      commit(scene => { if (scene.terrain) Object.assign(scene.terrain, next); });
+      if (covered && state.preferences.names) loadPlaceNames(state.scene.terrain);
+    } catch (error) {
+      if (task.current()) setStatus(`The terrain could not be loaded: ${error.message}`, true);
+    } finally {
+      if (terrainCoverageTask.finish(task)) operation('terrain', null);
     }
   }, GROUND.terrain.coverageDelayMilliseconds);
 }
 
-let placeNamesLoading = false;
-
 async function loadPlaceNames(terrain) {
-  if (placeNamesLoading) return;
-  placeNamesLoading = true;
-  $('names').disabled = true;
+  if (!terrain || !state.preferences.names) return;
+  const task = placeNamesTask.start(GROUND.terrain.placeNamesLimitSeconds * 1000);
+  const key = terrainCoverageKey(terrain);
   operation('names', 'Place names', { limitSeconds: GROUND.terrain.placeNamesLimitSeconds });
-  let names = null;
   try {
-    names = await fetchPlaceNames(terrain, timeLimit(GROUND.terrain.placeNamesLimitSeconds));
-  } catch {
+    const names = await fetchPlaceNames(terrain, task.signal);
+    if (!task.current() || !state.preferences.names || terrainCoverageKey(state.scene.terrain) !== key) return;
+    if (names === null) { setStatus('Place names could not be loaded. Switch Names off and on to retry.', true); return; }
+    state.scene.terrain.names = names;
+    storeScene();
+    redrawViews();
+  } catch (error) {
+    if (task.current()) setStatus(`Place names could not be loaded: ${error.message}`, true);
   } finally {
-    operation('names', null);
-    placeNamesLoading = false;
-    $('names').disabled = false;
+    if (placeNamesTask.finish(task)) operation('names', null);
   }
-  if (!names || terrainCoverageKey(state.scene.terrain) !== terrainCoverageKey(terrain)) return;
-  state.scene.terrain.names = names;
-  storeScene();
-  redrawViews();
 }
 
 /** Loads terrain around `place` and moves the scene there; the scene stays as it was if loading fails. */
 async function loadTerrain(trigger, place = state.scene.place) {
+  clearTimeout(terrainCoverageTimer);
+  terrainCoverageTask.cancel();
+  placeNamesTask.cancel();
+  operation('names', null);
+  const task = terrainLoadTask.start(GROUND.terrain.loadLimitSeconds * 1000);
   if (trigger) trigger.disabled = true;
+  operation('terrain', 'Loading terrain', { share: 0 });
   try {
-    const covered = await coveredTerrain(null, place, neededPatches(state.scene, state.preferences.terrainDraft.cellMetres), 'Loading terrain');
+    const covered = await coveredTerrain(null, place, neededPatches(state.scene, state.preferences.terrainDraft.cellMetres), 'Loading terrain', task);
+    if (!task.current()) return;
     const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
     const settings = state.scene.terrain ? Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).map(key => [key, state.scene.terrain[key]])) : TERRAIN_DEFAULTS;
+    terrainLoadTask.finish(task);
+    operation('terrain', null);
     commit(next => { next.place = place; next.terrain = { ...settings, ...covered, datumMetres }; });
-    loadPlaceNames(state.scene.terrain);
+    if (state.preferences.names) loadPlaceNames(state.scene.terrain);
   } catch (error) {
-    setStatus(`The terrain could not be loaded: ${error.message}`, true);
+    if (task.current()) setStatus(`The terrain could not be loaded: ${error.message}`, true);
   } finally {
     if (trigger) trigger.disabled = false;
-    operation('terrain', null);
+    if (terrainLoadTask.finish(task)) operation('terrain', null);
   }
 }
 
@@ -1277,7 +1306,7 @@ async function loadTerrain(trigger, place = state.scene.place) {
 async function setPlace(change, trigger) {
   const place = { ...state.scene.place, ...change };
   if (state.scene.terrain) await loadTerrain(trigger, place);
-  else commit(next => { next.place = place; });
+  else { cancelGeographicTasks(); commit(next => { next.place = place; }); }
 }
 
 function terrainPanel(container) {
@@ -1305,7 +1334,7 @@ function terrainPanel(container) {
   numberField(container, { key: 'terrainCellMetres', value: draft.cellMetres, onCommit: value => { draft.cellMetres = value; savePreferences(); } });
   const actions = element('div', 'field-actions');
   actions.append(button(scene.terrain ? 'Load again' : 'Load terrain', event => loadTerrain(event.currentTarget)));
-  if (scene.terrain) actions.append(button('Remove', () => commit(next => { next.terrain = null; })));
+  if (scene.terrain) actions.append(button('Remove', () => { cancelGeographicTasks(); commit(next => { next.terrain = null; }); }));
   container.append(actions);
   if (!scene.terrain) return;
   const { terrain } = scene;
@@ -1330,7 +1359,8 @@ function showPlaceCoordinates({ latitude, longitude }) {
 }
 
 function placeExtentMetres() {
-  const bounds = rangeBounds(neededPatches(state.scene, state.preferences.terrainDraft.cellMetres).range, state.preferences.terrainDraft.cellMetres);
+  const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
+  const bounds = rangeBounds(needed.range, needed.cellMetres);
   return Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
 }
 
@@ -1346,16 +1376,18 @@ function openPlaceDialog() {
 }
 
 async function findPlace(text) {
+  const task = placeSearchTask.start(GROUND.terrain.placeSearchLimitSeconds * 1000);
   operation('place', `Finding ${text}`, { limitSeconds: GROUND.terrain.placeSearchLimitSeconds });
   try {
-    const found = await searchPlace(text, { signal: timeLimit(GROUND.terrain.placeSearchLimitSeconds) });
+    const found = await searchPlace(text, { signal: task.signal });
+    if (!task.current()) return null;
     if (!found) setStatus(`No place found for ${text}`, true);
     return found;
   } catch (error) {
-    setStatus(`The place search failed: ${error.message}`, true);
+    if (task.current()) setStatus(`The place search failed: ${error.message}`, true);
     return null;
   } finally {
-    operation('place', null);
+    if (placeSearchTask.finish(task)) operation('place', null);
   }
 }
 
@@ -1374,13 +1406,14 @@ $('place-search').addEventListener('submit', event => {
   if (text) showFoundPlace(text);
 });
 $('place-overlay').addEventListener('pointerdown', () => { placeShown = $('place-query').value.trim(); });
-$('place-cancel').addEventListener('click', () => $('place-dialog').close());
+$('place-cancel').addEventListener('click', () => { placeSearchTask.cancel(); operation('place', null); $('place-dialog').close(); });
+$('place-dialog').addEventListener('close', () => { placeSearchTask.cancel(); operation('place', null); });
 $('place-done').addEventListener('click', async () => {
   const text = $('place-query').value.trim();
   if (text && text !== placeShown && !(await showFoundPlace(text))) return;
   const { latitude, longitude } = placeMap.centre();
   $('place-dialog').close();
-  await setPlace({ name: $('place-query').value.trim(), latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5) }, $('place-done'));
+  await loadTerrain($('place-done'), { name: $('place-query').value.trim(), latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5) });
 });
 
 /** Puts the focus back in the field that had it after a rebuild, so a number field's next step still lands. */
@@ -1451,9 +1484,9 @@ function rebuildPanel() {
   const terrainFields = $('terrain-fields');
   terrainFields.replaceChildren();
   terrainPanel(terrainFields);
-  $('cube-attribution').hidden = !scene.terrain;
+  $('cube-attribution').hidden = !scene.terrain && !state.preferences.map;
   $('names').hidden = !scene.terrain;
-  $('map').hidden = !scene.terrain;
+  $('map').hidden = false;
   syncZoomButtons();
   $('cone').hidden = scene.mode !== 'sonic';
   $('clouds').hidden = !scene.emitters.some(emitter => emitter.kind === 'storm');
@@ -1999,8 +2032,9 @@ $('open-file').addEventListener('change', async () => {
   if (!file) return;
   try {
     const scene = readScene(JSON.parse(await file.text()));
+    cancelGeographicTasks();
     state.scene = scene;
-    state.selection = { type: 'emitter', id: scene.emitters[0].id };
+    state.selection = { type: 'emitter', id: scene.emitters[0]?.id ?? null };
     storeScene();
     state.preferences.mode = scene.mode;
     savePreferences();
@@ -2295,13 +2329,16 @@ $('details').addEventListener('close', () => { state.detailsId = null; });
 document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEventListener('click', () => {
   const mode = button.dataset.mode;
   if (mode === state.scene.mode) return;
-  state.scene = restoredScene(mode);
-  state.selection = { type: 'emitter', id: state.scene.emitters[0].id };
+  cancelGeographicTasks();
+  state.scene = sceneInMode(state.scene, restoredScene(mode));
+  storeScene();
+  state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
   state.preferences.mode = mode;
   savePreferences();
   views[0].setView(state.preferences.cubeViews?.[mode] ?? VIEW.box.defaultView);
   invalidateResults();
   refreshPanel();
+  scheduleTerrainCoverage();
   if (state.preferences.autoRender) startRender();
 }));
 
@@ -2328,12 +2365,21 @@ const TOGGLES = Object.freeze({
     read: () => state.preferences.names,
     write: on => { state.preferences.names = on; },
     after: () => {
+      if (!state.preferences.names) { placeNamesTask.cancel(); operation('names', null); }
       // Switched on over a terrain without names, it asks for them again: the service may have failed before.
       if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
       redrawViews();
     }
   },
-  map: { read: () => state.preferences.map, write: on => { state.preferences.map = on; }, after: () => { syncZoomButtons(); redrawViews(); } }
+  map: {
+    read: () => state.preferences.map,
+    write: on => { state.preferences.map = on; },
+    after: () => {
+      if (!state.preferences.map) mapLayer.clear();
+      $('cube-attribution').hidden = !state.scene.terrain && !state.preferences.map;
+      syncZoomButtons(); redrawViews();
+    }
+  }
 });
 
 function syncToggles() {
@@ -2353,7 +2399,7 @@ syncToggles();
 /** With the map on, the view gets buttons to zoom, for looking over a wider area than the scene. */
 const ZOOM_STEP = 1.5;
 function syncZoomButtons() {
-  const shown = Boolean(state.preferences.map && state.scene.terrain);
+  const shown = Boolean(state.preferences.map);
   $('zoom-in').hidden = !shown;
   $('zoom-out').hidden = !shown;
 }
