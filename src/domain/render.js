@@ -1536,6 +1536,31 @@ export function resultDifference(minuend, subtrahend) {
   return { ...minuend, startSeconds: start, channels, samples: channels[0], peakPa };
 }
 
+/**
+ * About how much of the timeline a render without terrain echoes fills, from 0 to 1: each
+ * microphone's sound ends as much earlier as its last echo arrives after its last other path.
+ * The render itself is made only on export, so this stands for its length until then.
+ */
+export function echoFreeShare(results) {
+  let start = Infinity;
+  let end = -Infinity;
+  let echoFreeEnd = -Infinity;
+  for (const result of results.values()) {
+    const { arrivals } = result;
+    let last = -Infinity;
+    let lastEchoFree = -Infinity;
+    for (let index = 0; index < arrivals.count; index += 1) {
+      last = Math.max(last, arrivals.seconds[index]);
+      if (arrivals.kinds[index] < PATH_ECHO) lastEchoFree = Math.max(lastEchoFree, arrivals.seconds[index]);
+    }
+    const ends = result.startSeconds + result.samples.length / result.sampleRate;
+    start = Math.min(start, result.startSeconds);
+    end = Math.max(end, ends);
+    echoFreeEnd = Math.max(echoFreeEnd, Number.isFinite(lastEchoFree) ? ends - (last - lastEchoFree) : result.startSeconds);
+  }
+  return end > start ? Math.min(1, Math.max(0, (echoFreeEnd - start) / (end - start))) : 1;
+}
+
 export function renderReceiver(preparedEmitters, receiver, scene) {
   const segment = renderReceiverRange(preparedEmitters, receiver, scene);
   return receiverResult(receiver, scene, combineWithTails([segment], receiver, scene), arrivalTable(preparedEmitters, receiver, scene), segment.nonlinearPaths);

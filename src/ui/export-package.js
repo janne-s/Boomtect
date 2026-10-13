@@ -1,7 +1,6 @@
 export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
 import { serializeHandoff } from '../domain/handoff.js';
-import { PATH_ECHO } from '../domain/refraction.js';
 import { zipStore } from '../domain/zip.js';
 import { composeListening } from './listening.js';
 import { renderComposition } from './player.js';
@@ -43,31 +42,6 @@ export function exportPlan(scene, results, gain) {
 
 /** How many files an item gives. */
 export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 * plan.microphones.length : 1);
-
-/**
- * About how much of the timeline a render without terrain echoes fills, from 0 to 1: each
- * microphone's sound ends as much earlier as its last echo arrives after its last other path.
- * The render itself is made only on export, so this stands for its length until then.
- */
-export function echoFreeShare(results) {
-  let start = Infinity;
-  let end = -Infinity;
-  let echoFreeEnd = -Infinity;
-  for (const result of results.values()) {
-    const { arrivals } = result;
-    let last = -Infinity;
-    let lastEchoFree = -Infinity;
-    for (let index = 0; index < arrivals.count; index += 1) {
-      last = Math.max(last, arrivals.seconds[index]);
-      if (arrivals.kinds[index] < PATH_ECHO) lastEchoFree = Math.max(lastEchoFree, arrivals.seconds[index]);
-    }
-    const ends = result.startSeconds + result.samples.length / result.sampleRate;
-    start = Math.min(start, result.startSeconds);
-    end = Math.max(end, ends);
-    echoFreeEnd = Math.max(echoFreeEnd, Number.isFinite(lastEchoFree) ? ends - (last - lastEchoFree) : result.startSeconds);
-  }
-  return end > start ? Math.min(1, Math.max(0, (echoFreeEnd - start) / (end - start))) : 1;
-}
 
 /**
  * Which items the plan can give, and their sizes in bytes for a selection (their timeline depends

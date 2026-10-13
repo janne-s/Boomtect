@@ -33,7 +33,7 @@ test('the terrain echoes alone are a render with them less one without: silent b
 });
 
 test('the share of the timeline without echoes ends as much earlier as the last echo comes after the last other path', async () => {
-  const { echoFreeShare } = await import('../src/ui/export-package.js');
+  const { echoFreeShare } = await import('../src/domain/render.js');
   const result = (startSeconds, seconds, kinds, lengthSeconds) => ({
     startSeconds, sampleRate: 100, samples: new Float32Array(lengthSeconds * 100),
     arrivals: { count: seconds.length, seconds, kinds }
