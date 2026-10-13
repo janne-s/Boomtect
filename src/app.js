@@ -931,11 +931,12 @@ function storeScene() {
 const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
 
 function receiverCard(container, receiver, selected) {
-  // As on an emitter, the microphone is removed from its own header; the last one stays.
+  // As on an emitter, the microphone is removed from its own header; the last one stays, its cross kept as a space.
   const remove = element('button', 'icon-button');
   remove.type = 'button';
   remove.title = 'Remove';
   remove.disabled = state.scene.receivers.length <= 1;
+  remove.style.visibility = remove.disabled ? 'hidden' : '';
   remove.setAttribute('aria-label', `Remove ${receiver.name}`);
   remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
   remove.addEventListener('click', event => {
@@ -980,14 +981,13 @@ function receiverCard(container, receiver, selected) {
       liveFields.orientation = { receiverId: receiver.id, set: item => { facing.set(item.headingDegrees); elevation.set(item.pitchDegrees); } };
       card.append(orientation);
     }
-    const echotect = element('div', 'fields');
-    selectField(echotect, {
-      label: 'Moves', value: echotectPlacement(), options: Object.entries(PLACEMENT_LABELS),
-      onCommit: value => { state.preferences.echotectPlacement = value; savePreferences(); }
-    });
-    card.append(echotect);
+    // Read as one line: Send to Echotect with the place and direction, the direction, or the sound only.
     const actions = element('div', 'card-actions');
-    actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }));
+    const sendWith = element('label', 'send-with');
+    const withSelect = placementSelect();
+    withSelect.addEventListener('change', () => { state.preferences.echotectPlacement = withSelect.value; savePreferences(); });
+    sendWith.append(element('span', '', 'with'), withSelect);
+    actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }), sendWith);
     card.append(actions);
   }
   container.append(card);
@@ -2038,8 +2038,12 @@ async function withoutTerrainEchoes(gain) {
   return { plan, results };
 }
 
-/** What Echotect may move to fit a sent sound (`HANDOFF_PLACEMENTS`), shared by the microphone card and the export. */
-const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Both', source: 'Source', none: 'Nothing' });
+/**
+ * What goes with a sound to Echotect (`HANDOFF_PLACEMENTS`), shared by the microphone card and the
+ * export: its place (and direction), so Echotect moves its Listener and Source; its direction, so only
+ * the Source moves; or the sound only, so a scene set up there stays as it is.
+ */
+const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Place', source: 'Direction', none: 'Sound only' });
 const echotectPlacement = () => (PLACEMENT_LABELS[state.preferences.echotectPlacement] ? state.preferences.echotectPlacement : 'listener-and-source');
 
 function placementSelect() {
@@ -2150,7 +2154,7 @@ $('export').addEventListener('click', async () => {
     const select = placementSelect();
     select.id = 'export-placement';
     const text = element('span');
-    text.append(element('strong', '', 'Echotect moves'));
+    text.append(element('strong', '', 'Echotect with'));
     row.append(element('span'), text, select);
     options.push(row);
   }

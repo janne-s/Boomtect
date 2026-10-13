@@ -582,6 +582,21 @@ button.macro-value:hover {
 .card-actions button {
   background: var(--line);
 }
+.card-actions button:hover:not(:disabled) {
+  background: var(--faint);
+}
+.send-with {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+}
+.send-with select {
+  min-width: 0;
+  color: var(--ink);
+}
 .group {
   margin-top: 18px;
 }
