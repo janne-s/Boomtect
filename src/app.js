@@ -2140,6 +2140,18 @@ $('export').addEventListener('click', async () => {
     return row;
   }));
   const options = [];
+  // Terrain echoes are for the files above; the Echotect files are always without them.
+  if (echoesActive(state.scene)) {
+    const row = element('label');
+    const select = document.createElement('select');
+    select.id = 'export-echoes';
+    select.addEventListener('change', updateExportSummary);
+    for (const [value, label] of Object.entries(TERRAIN_ECHO_CHOICES)) select.add(new Option(label, value, false, value === exportEchoChoice()));
+    const text = element('span');
+    text.append(element('strong', '', 'Terrain echoes'));
+    row.append(element('span'), text, select);
+    options.push(row);
+  }
   // The Echotect files and Send to Echotect are for one microphone: the one selected, else the first that listens.
   if (state.scene.receivers.length > 1) {
     const row = element('label');
@@ -2158,17 +2170,6 @@ $('export').addEventListener('click', async () => {
     select.id = 'export-placement';
     const text = element('span');
     text.append(element('strong', '', 'Echotect with'));
-    row.append(element('span'), text, select);
-    options.push(row);
-  }
-  if (echoesActive(state.scene)) {
-    const row = element('label');
-    const select = document.createElement('select');
-    select.id = 'export-echoes';
-    select.addEventListener('change', updateExportSummary);
-    for (const [value, label] of Object.entries(TERRAIN_ECHO_CHOICES)) select.add(new Option(label, value, false, value === exportEchoChoice()));
-    const text = element('span');
-    text.append(element('strong', '', 'Terrain echoes'));
     row.append(element('span'), text, select);
     options.push(row);
   }
