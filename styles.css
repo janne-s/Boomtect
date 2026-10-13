@@ -582,13 +582,6 @@ button.macro-value:hover {
 .card-actions button {
   background: var(--line);
 }
-.card-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px;
-  color: var(--muted);
-}
 .group {
   margin-top: 18px;
 }

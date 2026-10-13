@@ -931,11 +931,23 @@ function storeScene() {
 const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
 
 function receiverCard(container, receiver, selected) {
+  // As on an emitter, the microphone is removed from its own header; the last one stays.
+  const remove = element('button', 'icon-button');
+  remove.type = 'button';
+  remove.title = 'Remove';
+  remove.disabled = state.scene.receivers.length <= 1;
+  remove.setAttribute('aria-label', `Remove ${receiver.name}`);
+  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+  remove.addEventListener('click', event => {
+    event.stopPropagation();
+    commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); });
+  });
+  remove.addEventListener('keydown', event => event.stopPropagation());
   const card = cardNode(selected, {
     checked: receiver.listen, title: 'Listen',
     onCheck: on => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = on; }),
     onToggle: () => { select(selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }); refreshPanel(); }
-  }, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`));
+  }, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`), remove);
   if (selected) {
     const fields = element('div', 'fields');
     textField(fields, { label: 'Name', value: receiver.name, onCommit: value => updateReceiver(receiver.id, item => { item.name = value; }) });
@@ -968,14 +980,14 @@ function receiverCard(container, receiver, selected) {
       liveFields.orientation = { receiverId: receiver.id, set: item => { facing.set(item.headingDegrees); elevation.set(item.pitchDegrees); } };
       card.append(orientation);
     }
+    const echotect = element('div', 'fields');
+    selectField(echotect, {
+      label: 'Moves', value: echotectPlacement(), options: Object.entries(PLACEMENT_LABELS),
+      onCommit: value => { state.preferences.echotectPlacement = value; savePreferences(); }
+    });
+    card.append(echotect);
     const actions = element('div', 'card-actions');
     actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }));
-    const moves = element('label', 'card-option');
-    const movesSelect = placementSelect();
-    movesSelect.addEventListener('change', () => { state.preferences.echotectPlacement = movesSelect.value; savePreferences(); });
-    moves.append(element('span', '', 'Moves'), movesSelect);
-    actions.append(moves);
-    actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
   }
   container.append(card);
@@ -2027,7 +2039,7 @@ async function withoutTerrainEchoes(gain) {
 }
 
 /** What Echotect may move to fit a sent sound (`HANDOFF_PLACEMENTS`), shared by the microphone card and the export. */
-const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Listener and Source', source: 'Source', none: 'Nothing' });
+const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Both', source: 'Source', none: 'Nothing' });
 const echotectPlacement = () => (PLACEMENT_LABELS[state.preferences.echotectPlacement] ? state.preferences.echotectPlacement : 'listener-and-source');
 
 function placementSelect() {

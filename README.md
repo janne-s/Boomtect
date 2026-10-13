@@ -262,10 +262,10 @@ microphone along the Mach cone.
   leaves out the surroundings' rumble too, which stands in for the echoes
   where they are not traced, and Only is the render with echoes less the one
   without.
-- **Echotect moves** — What Echotect moves to fit the sound: its Listener to
-  where the microphone was and its Source the way the sound came from, only
-  its Source, or nothing. The same choice stands beside a microphone's
-  **Send to Echotect**.
+- **Echotect moves** — What Echotect moves to fit the sound: Both, its
+  Listener to where the microphone was and its Source the way the sound came
+  from; only its Source; or Nothing. The same choice, **Moves**, stands above a
+  microphone's **Send to Echotect**.
 
 All files are 32-bit float at one full scale. Files of more than two channels
 are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
