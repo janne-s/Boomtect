@@ -276,12 +276,14 @@ every file starts at the same moment.
 ## Echotect
 
 For echoes from buildings and streets, place a Boomtect sound in an
-[Echotect](https://github.com/janne-s/Echotect) echo field: **Send to
-Echotect** in the export opens Echotect with a microphone's sound, or export
-**Echotect** and choose the package in Echotect as your own sound. Echotect
+[Echotect](https://github.com/janne-s/Echotect) echo field. In the export,
+**Send to Echotect** opens Echotect with the sound of the microphone chosen in
+**Echotect from**; or export **Echotect** and choose the package in Echotect as
+your own sound. **Echotect with** decides where it lands: with Place, Echotect
 puts its Listener where the microphone was and its Source the way the sound
-came from, and absorbs only the air beyond what the sound already holds. One
-direction stands for sound that arrives from many.
+came from; with Direction, only its Source moves; with Sound only, its scene
+stays as it is. Echotect absorbs only the air beyond what the sound already
+holds. One direction stands for sound that arrives from many.
 
 ## Model
 
