@@ -1,6 +1,7 @@
 export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
 import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
 import { serializeHandoff } from '../domain/handoff.js';
+import { PATH_ECHO } from '../domain/refraction.js';
 import { zipStore } from '../domain/zip.js';
 import { composeListening } from './listening.js';
 import { renderComposition } from './player.js';
@@ -43,16 +44,47 @@ export function exportPlan(scene, results, gain) {
 /** How many files an item gives. */
 export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 * plan.microphones.length : 1);
 
-/** Which items the plan can give, and their sizes in bytes for a selection (their timeline depends on it). */
-export function exportSizes(plan, selected) {
+/**
+ * About how much of the timeline a render without terrain echoes fills, from 0 to 1: each
+ * microphone's sound ends as much earlier as its last echo arrives after its last other path.
+ * The render itself is made only on export, so this stands for its length until then.
+ */
+export function echoFreeShare(results) {
+  let start = Infinity;
+  let end = -Infinity;
+  let echoFreeEnd = -Infinity;
+  for (const result of results.values()) {
+    const { arrivals } = result;
+    let last = -Infinity;
+    let lastEchoFree = -Infinity;
+    for (let index = 0; index < arrivals.count; index += 1) {
+      last = Math.max(last, arrivals.seconds[index]);
+      if (arrivals.kinds[index] < PATH_ECHO) lastEchoFree = Math.max(lastEchoFree, arrivals.seconds[index]);
+    }
+    const ends = result.startSeconds + result.samples.length / result.sampleRate;
+    start = Math.min(start, result.startSeconds);
+    end = Math.max(end, ends);
+    echoFreeEnd = Math.max(echoFreeEnd, Number.isFinite(lastEchoFree) ? ends - (last - lastEchoFree) : result.startSeconds);
+  }
+  return end > start ? Math.min(1, Math.max(0, (echoFreeEnd - start) / (end - start))) : 1;
+}
+
+/**
+ * Which items the plan can give, and their sizes in bytes for a selection (their timeline depends
+ * on it). `echoFree` is the share of the timeline a render without terrain echoes fills, which the
+ * Echotect files always are and the others are with `withoutEchoes`.
+ */
+export function exportSizes(plan, selected, { echoFree = 1, withoutEchoes = false } = {}) {
   const aligned = selected.has('microphones') || selected.has('ambix');
-  const length = aligned ? plan.everyone.length : plan.listening.length;
+  const share = withoutEchoes ? echoFree : 1;
+  const everyone = Math.ceil(plan.everyone.length * share);
+  const length = Math.ceil((aligned ? plan.everyone.length : plan.listening.length) * share);
   return {
     scene: 4096,
     stereo: wavByteLength(length, 2),
-    microphones: plan.microphones.reduce((sum, microphone) => sum + wavByteLength(plan.everyone.length, isHead(plan, microphone) ? 2 : 1), 0),
-    ambix: plan.order > 0 ? plan.microphones.reduce((sum, microphone) => sum + wavByteLength(plan.everyone.length, microphone.channels.length), 0) : 0,
-    echotect: plan.microphones.length * (wavByteLength(plan.everyone.length, 1) + HANDOFF_BYTES)
+    microphones: plan.microphones.reduce((sum, microphone) => sum + wavByteLength(everyone, isHead(plan, microphone) ? 2 : 1), 0),
+    ambix: plan.order > 0 ? plan.microphones.reduce((sum, microphone) => sum + wavByteLength(everyone, microphone.channels.length), 0) : 0,
+    echotect: plan.microphones.length * (wavByteLength(Math.ceil(plan.everyone.length * echoFree), 1) + HANDOFF_BYTES)
   };
 }
 

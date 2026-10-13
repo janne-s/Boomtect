@@ -10,7 +10,7 @@ import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTail
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
-import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './ui/export-package.js';
+import { AMBISONIC_CONVENTION, availableItems, echoFreeShare, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './ui/export-package.js';
 import { soundHandoff } from './domain/sound-handoff.js';
 import { handoffMessage } from './domain/handoff.js';
 import { ECHOTECT_URL, openTect } from './ui/tect-link.js';
@@ -2078,7 +2078,8 @@ function exportSelection() {
 function updateExportSummary() {
   const { plan } = exportState;
   const selected = exportSelection();
-  const sizes = exportSizes(plan, selected);
+  const echoes = $('export-echoes');
+  const sizes = exportSizes(plan, selected, { echoFree: exportState.echoFree, withoutEchoes: echoes?.value === 'without' });
   for (const item of availableItems(plan)) $(`export-size-${item}`).textContent = formatBytes(sizes[item]);
   const count = [...selected].reduce((sum, item) => sum + itemFiles(plan, item), 0);
   const bytes = [...selected].reduce((sum, item) => sum + sizes[item], 0);
@@ -2108,7 +2109,7 @@ $('export').addEventListener('click', async () => {
   if (!current) return;
   const plan = exportPlan(state.scene, state.results, current.gain);
   if (!plan) return;
-  exportState = { plan, composition: current.composition };
+  exportState = { plan, composition: current.composition, echoFree: echoesActive(state.scene) ? echoFreeShare(state.results) : 1 };
   const chosen = new Set(state.preferences.exportItems ?? ['scene', 'stereo']);
   $('export-list').replaceChildren(...availableItems(plan).map(item => {
     const row = element('label');
@@ -2134,6 +2135,7 @@ $('export').addEventListener('click', async () => {
     const row = element('label');
     const select = document.createElement('select');
     select.id = 'export-echoes';
+    select.addEventListener('change', updateExportSummary);
     for (const [value, label] of Object.entries(TERRAIN_ECHO_CHOICES)) select.add(new Option(label, value, false, value === exportEchoChoice()));
     const text = element('span');
     text.append(element('strong', '', 'Terrain echoes'));
