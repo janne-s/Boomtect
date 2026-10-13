@@ -255,31 +255,33 @@ microphone along the Mach cone.
   binaural microphone in stereo.
 - **Ambisonics** — One AmbiX file per microphone (ACN, SN3D; front is north,
   left is west), when the render is spatial.
-- **Echotect** — A microphone's pressure in mono without terrain echoes, and
-  a handoff (JSON) with the place, the air, the microphone, and the direction
-  and distance the sound comes from. **Echotect from** chooses the microphone
-  when there are several, and **Send to Echotect** sends the same to Echotect
-  in its own window instead of a file.
 - **Terrain echoes** — With, without, or only the terrain's echoes. Without
   leaves out the surroundings' rumble too, which stands in for the echoes
   where they are not traced, and Only is the render with echoes less the one
   without.
-- **Echotect with** — What goes with the Echotect files: Place, so Echotect
-  puts its Listener where the microphone was and its Source the way the sound
-  came from; Direction, so only its Source moves; or Sound only, so a scene set
-  up there stays as it is.
 
 All files are 32-bit float at one full scale. Files of more than two channels
 are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
 every file starts at the same moment.
 
+Below them, **Echotect** prepares a microphone's pressure in mono without
+terrain echoes, and a handoff with the place, the air, the microphone, and the
+direction and distance the sound comes from. **Send to Echotect** opens
+Echotect with it in its own window, and **Save file** saves it as a package
+(WAV and JSON).
+
+- **Microphone** — Whose sound it is, when there are several.
+- **With** — Place, so Echotect puts its Listener where the microphone was and
+  its Source the way the sound came from; Direction, so only its Source moves;
+  or Sound only, so a scene set up there stays as it is.
+
 ## Echotect
 
 For echoes from buildings and streets, place a Boomtect sound in an
-[Echotect](https://github.com/janne-s/Echotect) echo field. In the export,
-**Send to Echotect** opens Echotect with the sound of the microphone chosen in
-**Echotect from**; or export **Echotect** and choose the package in Echotect as
-your own sound. **Echotect with** decides where it lands: with Place, Echotect
+[Echotect](https://github.com/janne-s/Echotect) echo field. In the export's
+Echotect section, **Send to Echotect** opens Echotect with the chosen
+microphone's sound, or **Save file** saves it to choose in Echotect as your own
+sound. **With** decides where it lands: with Place, Echotect
 puts its Listener where the microphone was and its Source the way the sound
 came from; with Direction, only its Source moves; with Sound only, its scene
 stays as it is. Echotect absorbs only the air beyond what the sound already

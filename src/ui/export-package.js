@@ -12,12 +12,13 @@ import { renderComposition } from './player.js';
  * - microphones: one file per microphone, an omni's pressure in mono and a binaural one's head in
  *   stereo;
  * - ambix: one AmbiX file per microphone, when the render is spatial;
- * - echotect: the chosen microphone's pressure in mono without terrain echoes and its handoff
- *   (`sound-handoff.js`), for Echotect to add its own.
+ * - echotect: saved from the dialog's Echotect section rather than chosen here, the chosen
+ *   microphone's pressure in mono without terrain echoes and its handoff (`sound-handoff.js`), for
+ *   Echotect to add its own.
  * Every file shares one full scale, the playback gain, so their levels compare; with per-microphone
  * files all start at one time, so they line up.
  */
-const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix', 'echotect']);
+const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
 const HANDOFF_BYTES = 2048;
 
 const slug = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'boomtect';

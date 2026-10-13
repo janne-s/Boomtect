@@ -2105,6 +2105,7 @@ function updateExportSummary() {
   const timeline = aligned ? plan.everyone : plan.listening;
   $('export-contract').textContent = `${timeline.sampleRate / 1000} kHz · 32-bit float · full scale ${Number((1 / plan.gain).toPrecision(3)).toLocaleString('en')} Pa · from ${formatSeconds(timeline.startSeconds)} after the flash`;
   $('export-submit').disabled = selected.size === 0;
+  $('echotect-summary').textContent = `Mono · ${echoesActive(state.scene) ? 'without terrain echoes · ' : ''}≈ ${formatBytes(sizes.echotect)}`;
 }
 
 $('export').addEventListener('click', async () => {
@@ -2140,7 +2141,6 @@ $('export').addEventListener('click', async () => {
     return row;
   }));
   const options = [];
-  // Terrain echoes are for the files above; the Echotect files are always without them.
   if (echoesActive(state.scene)) {
     const row = element('label');
     const select = document.createElement('select');
@@ -2152,7 +2152,9 @@ $('export').addEventListener('click', async () => {
     row.append(element('span'), text, select);
     options.push(row);
   }
-  // The Echotect files and Send to Echotect are for one microphone: the one selected, else the first that listens.
+  $('export-options').replaceChildren(...options);
+  // The Echotect section's sound is one microphone's: the one selected, else the first that listens.
+  const echotectOptions = [];
   if (state.scene.receivers.length > 1) {
     const row = element('label');
     const select = document.createElement('select');
@@ -2160,20 +2162,21 @@ $('export').addEventListener('click', async () => {
     const chosen = state.selection?.type === 'receiver' ? state.selection.id : (state.scene.receivers.find(item => item.listen) ?? state.scene.receivers[0]).id;
     for (const receiver of state.scene.receivers) select.add(new Option(receiver.name, receiver.id, false, receiver.id === chosen));
     const text = element('span');
-    text.append(element('strong', '', 'Echotect from'));
+    text.append(element('strong', '', 'Microphone'));
     row.append(element('span'), text, select);
-    options.push(row);
+    echotectOptions.push(row);
   }
   {
     const row = element('label');
     const select = placementSelect();
     select.id = 'export-placement';
     const text = element('span');
-    text.append(element('strong', '', 'Echotect with'));
+    text.append(element('strong', '', 'With'));
     row.append(element('span'), text, select);
-    options.push(row);
+    echotectOptions.push(row);
   }
-  $('export-options').replaceChildren(...options);
+  $('echotect-options').replaceChildren(...echotectOptions);
+  $('echotect-error').hidden = true;
   $('export-name').value = state.preferences.exportName ?? `boomtect-${state.scene.mode}`;
   $('export-error').hidden = true;
   updateExportSummary();
@@ -2184,6 +2187,36 @@ $('export').addEventListener('click', async () => {
 
 /** The microphone the dialog's Echotect choices are for. */
 const echotectMicrophone = () => $('export-echotect-microphone')?.value ?? state.scene.receivers[0].id;
+
+/** Saves the Echotect section's sound as a package, the same that Send to Echotect sends. */
+$('echotect-save').addEventListener('click', async event => {
+  const name = $('export-name').value.trim();
+  if (!name) { $('export-name').reportValidity(); return; }
+  const trigger = event.currentTarget;
+  state.preferences.exportName = name;
+  state.preferences.echotectPlacement = $('export-placement').value;
+  savePreferences();
+  trigger.disabled = true;
+  $('echotect-error').hidden = true;
+  operation('export', 'Exporting');
+  try {
+    const dry = await withoutTerrainEchoes(exportState.plan.gain);
+    const stem = fileStem(name);
+    const files = await exportFiles(dry.plan, new Set(['echotect']), stem, null, {
+      plan: dry.plan, receiverId: echotectMicrophone(), handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file)
+    });
+    if (!files.length) throw new Error('The microphone has no sound.');
+    const { name: fileName, blob } = exportDownload(files, `${stem}-echotect`);
+    download(fileName, blob);
+    $('export-dialog').close();
+  } catch (error) {
+    $('echotect-error').textContent = error instanceof Error ? error.message : String(error);
+    $('echotect-error').hidden = false;
+  } finally {
+    trigger.disabled = false;
+    operation('export', null);
+  }
+});
 
 $('export-send').addEventListener('click', () => {
   state.preferences.echotectPlacement = $('export-placement').value;
@@ -2209,7 +2242,6 @@ $('export-form').addEventListener('submit', async event => {
   state.preferences.exportItems = [...selected];
   state.preferences.exportName = name;
   if (echoes) state.preferences.exportEchoChoice = echoes.value;
-  state.preferences.echotectPlacement = $('export-placement').value;
   savePreferences();
   const submit = $('export-submit');
   submit.disabled = true;
@@ -2220,12 +2252,11 @@ $('export-form').addEventListener('submit', async event => {
     const stem = fileStem(name);
     // Without terrain echoes, the scene is rendered again with them switched off.
     const choice = echoes ? echoes.value : 'with';
-    const dry = choice !== 'with' || (echoes && selected.has('echotect')) ? await withoutTerrainEchoes(full.gain) : { plan: full, results: state.results };
+    const dry = choice !== 'with' ? await withoutTerrainEchoes(full.gain) : null;
     const plan = choice === 'with' ? full : choice === 'without' ? dry.plan : exportPlan(state.scene, new Map(
       [...state.results].map(([id, result]) => [id, resultDifference(result, dry.results.get(id))])
     ), full.gain);
     if (!plan) throw new Error('Nothing is heard in the terrain echoes alone.');
-    const echotect = { plan: dry.plan, receiverId: echotectMicrophone(), handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file) };
     const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
       ...parseScene(state.scene),
       export: {
@@ -2245,7 +2276,7 @@ $('export-form').addEventListener('submit', async event => {
         modelVersion: MODEL_VERSION,
         exportedAt: new Date().toISOString()
       }
-    }), echotect);
+    }));
     const { name: fileName, blob } = exportDownload(files, stem);
     download(fileName, blob);
     $('export-dialog').close();

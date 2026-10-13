@@ -1037,6 +1037,23 @@ details summary {
 .export-dialog {
   width: min(460px, calc(100% - 32px));
 }
+.export-echotect {
+  border-top: 1px solid var(--line);
+}
+.export-echotect h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.export-go {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-go .export-summary {
+  flex: 1;
+}
 .export-body {
   display: flex;
   flex-direction: column;
