@@ -261,8 +261,9 @@ microphone along the Mach cone.
   leaves out the surroundings' rumble too, which stands in for the echoes
   where they are not traced, and Only is the render with echoes less the one
   without.
-- **Place** — Off, the Echotect handoff names no place, and Echotect keeps its
-  own around its Listener. The same choice stands beside a microphone's
+- **Echotect moves** — What Echotect moves to fit the sound: its Listener to
+  where the microphone was and its Source the way the sound came from, only
+  its Source, or nothing. The same choice stands beside a microphone's
   **Send to Echotect**.
 
 All files are 32-bit float at one full scale. Files of more than two channels

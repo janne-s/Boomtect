@@ -14,6 +14,7 @@ const complete = () => ({
   air: { temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325 },
   listener: { positionMetres: { east: 1400, north: 0 }, heightAboveGroundMetres: 1.7, headingDegrees: 270, pitchDegrees: 0 },
   arrival: { azimuthDegrees: 270, elevationDegrees: 12, distanceMetres: 1400 },
+  placement: 'listener-and-source',
   audio: { sampleRateHz: 48000, channels: 1, layout: 'pressure', sampleFormat: 'ieee-float32', fullScalePa: 20, startSeconds: 3.9, file: 'mic-1.wav' },
   content: { includes: ['direct', 'ground'], excludes: ['terrain-echoes'] },
   reliability: 'C'
@@ -83,4 +84,10 @@ test('the application version is the one in package.json', async () => {
   const { APP_VERSION } = await import('../src/domain/constants.js');
   const { readFileSync } = await import('node:fs');
   assert.equal(APP_VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+});
+
+test('what the receiver may move is its own choice, or follows whether a place is named', () => {
+  assert.equal(readHandoff({ ...complete(), placement: 'none' }).placement, 'none');
+  assert.equal(readHandoff({ ...complete(), placement: undefined }).placement, 'listener-and-source');
+  assert.equal(readHandoff({ ...complete(), placement: 'teleport', place: null }).placement, 'source');
 });

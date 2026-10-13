@@ -970,12 +970,11 @@ function receiverCard(container, receiver, selected) {
     }
     const actions = element('div', 'card-actions');
     actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }));
-    // Whether the sound takes its place along, or Echotect keeps its own; shared with the export's choice.
-    const place = element('label', 'card-option');
-    const placeBox = Object.assign(document.createElement('input'), { type: 'checkbox', checked: state.preferences.exportPlace ?? true });
-    placeBox.addEventListener('change', () => { state.preferences.exportPlace = placeBox.checked; savePreferences(); });
-    place.append(placeBox, element('span', '', 'Place'));
-    actions.append(place);
+    const moves = element('label', 'card-option');
+    const movesSelect = placementSelect();
+    movesSelect.addEventListener('change', () => { state.preferences.echotectPlacement = movesSelect.value; savePreferences(); });
+    moves.append(element('span', '', 'Moves'), movesSelect);
+    actions.append(moves);
     actions.append(button('Remove', () => commit(next => { next.receivers = next.receivers.filter(item => item.id !== receiver.id); }), { disabled: state.scene.receivers.length <= 1 }));
     card.append(actions);
   }
@@ -2026,9 +2025,19 @@ async function withoutTerrainEchoes(gain) {
   return { plan, results };
 }
 
+/** What Echotect may move to fit a sent sound (`HANDOFF_PLACEMENTS`), shared by the microphone card and the export. */
+const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Listener and Source', source: 'Source', none: 'Nothing' });
+const echotectPlacement = () => (PLACEMENT_LABELS[state.preferences.echotectPlacement] ? state.preferences.echotectPlacement : 'listener-and-source');
+
+function placementSelect() {
+  const select = document.createElement('select');
+  for (const [value, label] of Object.entries(PLACEMENT_LABELS)) select.add(new Option(label, value, false, value === echotectPlacement()));
+  return select;
+}
+
 /** The handoff of one microphone of a plan, its field (omni first) on the plan's timeline. */
 const microphoneHandoff = (plan, results, microphone, file) => soundHandoff({
-  withPlace: state.preferences.exportPlace ?? true,
+  placement: echotectPlacement(),
   scene: plan.scene, receiver: plan.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
   channels: microphone.channels, arrivals: results.get(microphone.receiverId).arrivals, fullScalePa: 1 / plan.gain,
   startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: crypto.randomUUID(), createdAt: new Date().toISOString()
@@ -2125,10 +2134,11 @@ $('export').addEventListener('click', async () => {
   const options = [];
   {
     const row = element('label');
-    const box = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'export-place', checked: state.preferences.exportPlace ?? true });
+    const select = placementSelect();
+    select.id = 'export-placement';
     const text = element('span');
-    text.append(element('strong', '', 'Place'));
-    row.append(box, text, element('small', '', placeLabel(state.scene.place)));
+    text.append(element('strong', '', 'Echotect moves'));
+    row.append(element('span'), text, select);
     options.push(row);
   }
   if (echoesActive(state.scene)) {
@@ -2167,7 +2177,7 @@ $('export-form').addEventListener('submit', async event => {
   state.preferences.exportItems = [...selected];
   state.preferences.exportName = name;
   if (echoes) state.preferences.exportEchoChoice = echoes.value;
-  state.preferences.exportPlace = $('export-place').checked;
+  state.preferences.echotectPlacement = $('export-placement').value;
   savePreferences();
   const submit = $('export-submit');
   submit.disabled = true;

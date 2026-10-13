@@ -12,6 +12,11 @@ export const HANDOFF_FORMAT = 'tect.handoff';
 export const HANDOFF_VERSION = 1;
 /** A sound heard at a listener; 'source' is kept for a directional source a tect emits. */
 export const HANDOFF_KINDS = Object.freeze(['sound', 'source']);
+/**
+ * What the receiving tect may move to fit the sound: its listener to where the sound was heard and
+ * its source the way it came from, only its source, or nothing, keeping a scene already set up.
+ */
+export const HANDOFF_PLACEMENTS = Object.freeze(['listener-and-source', 'source', 'none']);
 const RELIABILITY_CLASSES = Object.freeze(['A', 'B', 'C']);
 const TEXT_LENGTH = 120;
 const LIST_LENGTH = 32;
@@ -144,6 +149,8 @@ export function readHandoff(value) {
     air: optional(value.air, 'air', air),
     listener: optional(value.listener, 'listener', listener) ?? listener({}),
     arrival: optional(value.arrival, 'arrival', arrival),
+    // Without its own choice, a handoff with a place moves both, and one without moves the source.
+    placement: HANDOFF_PLACEMENTS.includes(value.placement) ? value.placement : value.place ? 'listener-and-source' : 'source',
     audio: audio(value.audio),
     // Which parts of the propagation the sound holds, and which it leaves to the receiver.
     content: { includes: texts(content.includes, 'content.includes'), excludes: texts(content.excludes, 'content.excludes') },
