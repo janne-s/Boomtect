@@ -255,9 +255,11 @@ microphone along the Mach cone.
   binaural microphone in stereo.
 - **Ambisonics** — One AmbiX file per microphone (ACN, SN3D; front is north,
   left is west), when the render is spatial.
-- **Echotect** — Per microphone, its pressure in mono without terrain echoes,
-  and a handoff (JSON) with the place, the air, the microphone, and the
-  direction and distance the sound comes from.
+- **Echotect** — A microphone's pressure in mono without terrain echoes, and
+  a handoff (JSON) with the place, the air, the microphone, and the direction
+  and distance the sound comes from. **Echotect from** chooses the microphone
+  when there are several, and **Send to Echotect** sends the same to Echotect
+  in its own window instead of a file.
 - **Terrain echoes** — With, without, or only the terrain's echoes. Without
   leaves out the surroundings' rumble too, which stands in for the echoes
   where they are not traced, and Only is the render with echoes less the one
@@ -265,8 +267,7 @@ microphone along the Mach cone.
 - **Echotect with** — What goes with the Echotect files: Place, so Echotect
   puts its Listener where the microphone was and its Source the way the sound
   came from; Direction, so only its Source moves; or Sound only, so a scene set
-  up there stays as it is. A microphone's **Send to Echotect with**
-  offers the same.
+  up there stays as it is.
 
 All files are 32-bit float at one full scale. Files of more than two channels
 are WAVE_FORMAT_EXTENSIBLE with no speaker positions. With per-microphone files,
@@ -276,7 +277,7 @@ every file starts at the same moment.
 
 For echoes from buildings and streets, place a Boomtect sound in an
 [Echotect](https://github.com/janne-s/Echotect) echo field: **Send to
-Echotect** on a microphone opens Echotect with its sound, or export
+Echotect** in the export opens Echotect with a microphone's sound, or export
 **Echotect** and choose the package in Echotect as your own sound. Echotect
 puts its Listener where the microphone was and its Source the way the sound
 came from, and absorbs only the air beyond what the sound already holds. One

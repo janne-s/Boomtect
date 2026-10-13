@@ -981,14 +981,6 @@ function receiverCard(container, receiver, selected) {
       liveFields.orientation = { receiverId: receiver.id, set: item => { facing.set(item.headingDegrees); elevation.set(item.pitchDegrees); } };
       card.append(orientation);
     }
-    // Read as one line: Send to Echotect with the place and direction, the direction, or the sound only.
-    const actions = element('div', 'card-actions');
-    const sendWith = element('label', 'send-with');
-    const withSelect = placementSelect();
-    withSelect.addEventListener('change', () => { state.preferences.echotectPlacement = withSelect.value; savePreferences(); });
-    sendWith.append(element('span', '', 'with'), withSelect);
-    actions.append(button('Send to Echotect', event => sendToEchotect(receiver.id, event.currentTarget), { disabled: !state.results }), sendWith);
-    card.append(actions);
   }
   container.append(card);
 }
@@ -2039,8 +2031,7 @@ async function withoutTerrainEchoes(gain) {
 }
 
 /**
- * What goes with a sound to Echotect (`HANDOFF_PLACEMENTS`), shared by the microphone card and the
- * export: its place (and direction), so Echotect moves its Listener and Source; its direction, so only
+ * What goes with a sound to Echotect (`HANDOFF_PLACEMENTS`), chosen in the export: its place (and direction), so Echotect moves its Listener and Source; its direction, so only
  * the Source moves; or the sound only, so a scene set up there stays as it is.
  */
 const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Place', source: 'Direction', none: 'Sound only' });
@@ -2149,6 +2140,18 @@ $('export').addEventListener('click', async () => {
     return row;
   }));
   const options = [];
+  // The Echotect files and Send to Echotect are for one microphone: the one selected, else the first that listens.
+  if (state.scene.receivers.length > 1) {
+    const row = element('label');
+    const select = document.createElement('select');
+    select.id = 'export-echotect-microphone';
+    const chosen = state.selection?.type === 'receiver' ? state.selection.id : (state.scene.receivers.find(item => item.listen) ?? state.scene.receivers[0]).id;
+    for (const receiver of state.scene.receivers) select.add(new Option(receiver.name, receiver.id, false, receiver.id === chosen));
+    const text = element('span');
+    text.append(element('strong', '', 'Echotect from'));
+    row.append(element('span'), text, select);
+    options.push(row);
+  }
   {
     const row = element('label');
     const select = placementSelect();
@@ -2176,6 +2179,17 @@ $('export').addEventListener('click', async () => {
   $('export-dialog').showModal();
   // Focus the dialog itself, so its first control is not ringed when it opens.
   $('export-dialog').focus();
+});
+
+/** The microphone the dialog's Echotect choices are for. */
+const echotectMicrophone = () => $('export-echotect-microphone')?.value ?? state.scene.receivers[0].id;
+
+$('export-send').addEventListener('click', () => {
+  state.preferences.echotectPlacement = $('export-placement').value;
+  savePreferences();
+  const receiverId = echotectMicrophone();
+  $('export-dialog').close();
+  sendToEchotect(receiverId, $('export'));
 });
 
 $('export-all').addEventListener('click', () => {
@@ -2210,7 +2224,7 @@ $('export-form').addEventListener('submit', async event => {
       [...state.results].map(([id, result]) => [id, resultDifference(result, dry.results.get(id))])
     ), full.gain);
     if (!plan) throw new Error('Nothing is heard in the terrain echoes alone.');
-    const echotect = { plan: dry.plan, handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file) };
+    const echotect = { plan: dry.plan, receiverId: echotectMicrophone(), handoff: (microphone, { file }) => microphoneHandoff(dry.plan, dry.results, microphone, file) };
     const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
       ...parseScene(state.scene),
       export: {

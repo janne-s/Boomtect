@@ -12,7 +12,7 @@ import { renderComposition } from './player.js';
  * - microphones: one file per microphone, an omni's pressure in mono and a binaural one's head in
  *   stereo;
  * - ambix: one AmbiX file per microphone, when the render is spatial;
- * - echotect: per microphone, its pressure in mono without terrain echoes and its handoff
+ * - echotect: the chosen microphone's pressure in mono without terrain echoes and its handoff
  *   (`sound-handoff.js`), for Echotect to add its own.
  * Every file shares one full scale, the playback gain, so their levels compare; with per-microphone
  * files all start at one time, so they line up.
@@ -41,7 +41,7 @@ export function exportPlan(scene, results, gain) {
 }
 
 /** How many files an item gives. */
-export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 * plan.microphones.length : 1);
+export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 : 1);
 
 /**
  * Which items the plan can give, and their sizes in bytes for a selection (their timeline depends
@@ -58,7 +58,7 @@ export function exportSizes(plan, selected, { echoFree = 1, withoutEchoes = fals
     stereo: wavByteLength(length, 2),
     microphones: plan.microphones.reduce((sum, microphone) => sum + wavByteLength(everyone, isHead(plan, microphone) ? 2 : 1), 0),
     ambix: plan.order > 0 ? plan.microphones.reduce((sum, microphone) => sum + wavByteLength(everyone, microphone.channels.length), 0) : 0,
-    echotect: plan.microphones.length * (wavByteLength(Math.ceil(plan.everyone.length * echoFree), 1) + HANDOFF_BYTES)
+    echotect: wavByteLength(Math.ceil(plan.everyone.length * echoFree), 1) + HANDOFF_BYTES
   };
 }
 
@@ -76,8 +76,8 @@ function placed(channels, offset, length) {
 
 /**
  * The files of a selection: [{ name, data }]. `describe` gets the export block for the scene document
- * once the audio files are known. `echotect` gives the plan rendered without terrain echoes and the
- * handoff of one of its microphones.
+ * once the audio files are known. `echotect` gives the plan rendered without terrain echoes, the
+ * microphone it is for (`receiverId`), and the handoff of a microphone.
  */
 export async function exportFiles(plan, selected, stem, describe, echotect) {
   const { listening, everyone, microphones, gain, order } = plan;
@@ -111,7 +111,7 @@ export async function exportFiles(plan, selected, stem, describe, echotect) {
   }
   if (selected.has('echotect')) {
     const { everyone } = echotect.plan;
-    for (const microphone of echotect.plan.microphones) {
+    for (const microphone of echotect.plan.microphones.filter(item => item.receiverId === echotect.receiverId)) {
       const name = `${stem}-${slug(microphone.name)}-echotect`;
       files.push({ name: `${name}.wav`, data: new Uint8Array(encodeFloat32Wav([scaled(microphone.channels[0])], everyone.sampleRate)) });
       const handoff = echotect.handoff(microphone, { file: `${name}.wav` });
