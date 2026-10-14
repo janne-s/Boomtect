@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
+import { THUNDER } from '../src/domain/constants.js';
 import { blastSources, emitterSources, kinneyGrahamOverpressureRatio } from '../src/domain/emitters.js';
 import { lightningEmitterFlashes, relaxationRadiusMetres, segmentsFromPoints, tortuousPath, weakShockPulse } from '../src/domain/lightning.js';
 import { createRandom } from '../src/domain/random.js';
@@ -137,4 +138,14 @@ test('return-stroke energy falls as e^(−2z/λ) with height, and in-cloud chann
   assert.ok(start >= mainLength / base.channelSpeedMetresPerSecond * .99);
   assert.ok(Math.abs(emissionSeconds(flash, flash.strokes[0], step, 3000) - start - 3000 / base.inCloudSpeedMetresPerSecond) < 1e-12);
   assert.equal(lightningEmitterFlashes({ ...base, flashType: 'intra-cloud', baseMetres: { x: 0, y: 0, z: 2000 }, inCloudLengthMetres: 4000 })[0].channels.filter(channel => channel.inCloud).length, 0);
+});
+
+test('a storm whose shared segment budget runs out leaves out the channels that do not fit', () => {
+  // Seed 1 at the largest storm once failed: a late branch's walk outran what was left.
+  const storm = { ...defaultStorm('storm', 'Storm', 1), flashCount: 60, branchCount: 50, branchDepth: 3 };
+  const flashes = stormFlashes(storm);
+  assert.equal(flashes.length, 60);
+  const segments = flashes.reduce((sum, flash) => sum + flash.channels.reduce((total, channel) => total + channel.segments.length, 0), 0);
+  const mains = flashes.reduce((sum, flash) => sum + flash.channels.filter(channel => channel.main).reduce((total, channel) => total + channel.segments.length, 0), 0);
+  assert.ok(segments - mains <= THUNDER.stormSegmentBudget);
 });

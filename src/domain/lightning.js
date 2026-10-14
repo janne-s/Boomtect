@@ -67,6 +67,22 @@ function channelPath(random, start, end, spec, budget, options = {}) {
   return points;
 }
 
+/**
+ * A channel the flash adds within what is left of its budget: a branch, an in-cloud channel, or a
+ * new path to ground. A walk longer than the budget leaves the channel out and gives the budget
+ * back; only the main channel's walk is an error (`tortuousPath`).
+ */
+function budgetedPath(random, start, end, spec, budget, options = {}) {
+  const remaining = budget.remaining;
+  try {
+    return channelPath(random, start, end, spec, budget, options);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    budget.remaining = remaining;
+    return null;
+  }
+}
+
 export function segmentsFromPoints(points) {
   const segments = [];
   let arcMetres = 0;
@@ -124,7 +140,8 @@ function growBranches(random, spec, budget, parent, level, channels) {
     }
     const reach = direction.z < 0 ? Math.min(nominal, (junction.z - spec.groundAt(junction.x, junction.y) - GROUND_CLEARANCE_METRES) / -direction.z) : nominal;
     if (!(reach > spec.segmentLengthMetres) || reach * BUDGET_MARGIN / spec.segmentLengthMetres > budget.remaining) continue;
-    const points = channelPath(random, junction, add(junction, scaled(direction, reach)), spec, budget, { endAtGround: true, budget: budget.remaining });
+    const points = budgetedPath(random, junction, add(junction, scaled(direction, reach)), spec, budget, { endAtGround: true, budget: budget.remaining });
+    if (!points) continue;
     const channel = {
       points,
       main: false,
@@ -166,7 +183,8 @@ export function lightningFlash(input) {
       const reach = spec.inCloudLengthMetres * uniform(random, THUNDER.channel.inCloudLengthShare);
       const direction = { x: Math.cos(elevation) * Math.cos(azimuth), y: Math.cos(elevation) * Math.sin(azimuth), z: Math.sin(elevation) };
       if (reach * BUDGET_MARGIN / spec.segmentLengthMetres > budget.remaining) continue;
-      const points = channelPath(random, spec.topMetres, add(spec.topMetres, scaled(direction, reach)), spec, budget);
+      const points = budgetedPath(random, spec.topMetres, add(spec.topMetres, scaled(direction, reach)), spec, budget);
+      if (!points) continue;
       channels.push({ points, main: false, inCloud: true, level: 1, energyScale: spec.inCloudEnergyRatio, emissionOffsetMetres: 0, mainLength });
       inCloud.push({ channel: channels.length - 1, fromArc: 0, offsetMetres: 0, offsetSeconds: mainLength / spec.channelSpeedMetresPerSecond, speedMetresPerSecond: spec.inCloudSpeedMetresPerSecond });
     }
@@ -186,8 +204,8 @@ export function lightningFlash(input) {
         const groundX = junction.x + reach * Math.cos(azimuth);
         const groundY = junction.y + reach * Math.sin(azimuth);
         const groundPoint = { x: groundX, y: groundY, z: spec.groundAt(groundX, groundY) };
-        if (above * BUDGET_MARGIN / spec.segmentLengthMetres < budget.remaining) {
-          const lower = channelPath(random, groundPoint, junction, spec, budget);
+        const lower = above * BUDGET_MARGIN / spec.segmentLengthMetres < budget.remaining ? budgetedPath(random, groundPoint, junction, spec, budget) : null;
+        if (lower) {
           channels.push({ points: lower, main: true, level: 0, energyScale: 1, emissionOffsetMetres: 0, mainLength, termination: true });
           route = [
             { channel: channels.length - 1, fromArc: 0, offsetMetres: 0 },
