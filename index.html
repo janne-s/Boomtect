@@ -193,27 +193,29 @@
           <h2 id="export-title">Export</h2>
           <button type="button" id="export-all">Select all</button>
         </header>
-        <div class="export-body">
-          <label class="export-name"><span>Name</span><input type="text" id="export-name" maxlength="80" required /></label>
-          <div class="export-list" id="export-list"></div>
-          <div class="export-list" id="export-options"></div>
-          <p class="export-contract" id="export-contract"></p>
-          <div class="export-go">
-            <p class="export-summary" id="export-summary"></p>
-            <button type="submit" id="export-submit" class="primary" value="export">Export</button>
+        <div class="export-scroll">
+          <div class="export-body">
+            <label class="export-name"><span>Name</span><input type="text" id="export-name" maxlength="80" required /></label>
+            <div class="export-list" id="export-list"></div>
+            <div class="export-list" id="export-options"></div>
+            <p class="export-contract" id="export-contract"></p>
+            <div class="export-go">
+              <p class="export-summary" id="export-summary"></p>
+              <button type="submit" id="export-submit" class="primary" value="export">Export</button>
+            </div>
+            <p class="export-error" id="export-error" role="alert" hidden></p>
           </div>
-          <p class="export-error" id="export-error" role="alert" hidden></p>
+          <section class="export-body export-echotect" aria-labelledby="echotect-title">
+            <h3 id="echotect-title">Echotect</h3>
+            <div class="export-list" id="echotect-options"></div>
+            <div class="export-go">
+              <p class="export-summary" id="echotect-summary"></p>
+              <button type="button" id="echotect-save">Save file</button>
+              <button type="button" id="export-send">Send to Echotect</button>
+            </div>
+            <p class="export-error" id="echotect-error" role="alert" hidden></p>
+          </section>
         </div>
-        <section class="export-body export-echotect" aria-labelledby="echotect-title">
-          <h3 id="echotect-title">Echotect</h3>
-          <div class="export-list" id="echotect-options"></div>
-          <div class="export-go">
-            <p class="export-summary" id="echotect-summary"></p>
-            <button type="button" id="echotect-save">Save file</button>
-            <button type="button" id="export-send">Send to Echotect</button>
-          </div>
-          <p class="export-error" id="echotect-error" role="alert" hidden></p>
-        </section>
         <footer class="export-actions">
           <button type="submit" value="cancel">Close</button>
         </footer>

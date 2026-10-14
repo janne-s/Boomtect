@@ -1486,9 +1486,10 @@ details summary {
     flex: 1;
     height: auto;
   }
-  .export-body,
+  .export-scroll,
   .settings-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
   .settings-grid {
