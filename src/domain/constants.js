@@ -585,6 +585,12 @@ export const RENDER = Object.freeze({
    * sources, measured on heap and buffers), and the budget keeps all workers together near 800 MB.
    */
   sourceCopiesBudget: 1000000,
+  /**
+   * A path's share of the progress by its frame group (direct and ground, shadow, echo, roar,
+   * roar's reflection), as its time relative to a direct path: measured 0.081, 1.77, and 0.37 ms per
+   * path for a storm of 731 081 point sources over terrain with echoes. Progress only, not the render.
+   */
+  progressWeights: Object.freeze([1, 22, 4.5, 1, 1]),
   /** A render whose workers have sent nothing for this long has failed, for example out of memory. */
   stallSeconds: 60,
   /** Render workers at most, one fewer than the processor's threads. */

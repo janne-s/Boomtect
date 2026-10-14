@@ -1340,6 +1340,10 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
   const shared = scene.render.quality.sharedScatter ? sharedScatter(channels, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
+  // Progress counts work rather than paths: a shadow or an echo takes several times a direct path's time.
+  const weightOf = index => RENDER.progressWeights[frameGroup(paths, index) % FRAME_GROUPS];
+  const totalWeight = selected.reduce((sum, index) => sum + weightOf(index), 0);
+  let doneWeight = 0;
   let cursor = 0;
   while (cursor < selected.length) {
     const group = frameGroup(paths, selected[cursor]);
@@ -1354,6 +1358,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared);
+      doneWeight += weightOf(index);
       cursor += 1;
     }
     shared?.finish(spectra);
@@ -1373,7 +1378,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
         for (let sample = 0; sample < plan.size; sample += 1) output[at + sample] += block[sample];
       });
     }
-    onProgress?.(traceShare + (1 - traceShare) * cursor / selected.length);
+    onProgress?.(traceShare + (1 - traceShare) * doneWeight / totalWeight);
   }
   // The roar is linear in what arrives, so each range adds its own and their sum is exact. The
   // diffuse tails are added once to the sum of the ranges (combineWithTails).
