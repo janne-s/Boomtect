@@ -35,6 +35,7 @@ import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
 import { attachTimelineSeek } from './ui/timeline.js';
+import { createRenderMarker, unfinishedRenderText } from './ui/render-marker.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
@@ -47,6 +48,15 @@ const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Ba
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const $ = id => document.getElementById(id);
+
+const RENDER_MARKER_STORAGE_KEY = 'boomtect.renderUnfinished';
+const renderMarker = createRenderMarker({
+  getItem: key => localStorage.getItem(key),
+  setItem: (key, value) => { if (!resetting) localStorage.setItem(key, value); },
+  removeItem: key => localStorage.removeItem(key)
+}, RENDER_MARKER_STORAGE_KEY);
+// Read before anything renders, which would replace it.
+const unfinishedRender = renderMarker.take();
 
 const storage = {
   read(key) {
@@ -287,7 +297,10 @@ function operation(key, text, { share = null, limitSeconds = null } = {}) {
   if (text === null) operations.delete(key);
   else operations.set(key, { text, share, limitSeconds, since: operations.get(key)?.since ?? performance.now() });
   drawOperations();
-  if (key === 'render') syncPlayButton();
+  if (key === 'render') {
+    renderMarker.phase(text);
+    syncPlayButton();
+  }
 }
 
 function drawOperations() {
@@ -395,17 +408,20 @@ function startRender({ full = false, variant = null } = {}) {
   let sources;
   let prepared;
   let workerCount = workerLimit();
+  renderMarker.phase('Preparing sources', { preview: Boolean(scene.render.preview) });
   try {
     prepared = prepareScene(scene);
     sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
     workerCount = Math.max(1, Math.min(workerLimit(), Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
   } catch (error) {
+    renderMarker.phase(null);
     setStatus(error.message, true);
     drawResults();
     return;
   }
   const started = performance.now();
   state.heard = performance.now();
+  renderMarker.phase('Tracing paths', { sources });
   operation('render', 'Tracing paths', { share: 0 });
   const channels = (scene.render.ambisonicOrder + 1) ** 2;
   const shares = Math.max(1, Math.min(channels, Math.floor(workerCount / scene.receivers.length)));
@@ -534,8 +550,7 @@ function finishRender(scene, arrivals, sums, parts, info) {
       return [receiver.id, receiverResult(receiver, scene, finishSum(sums[index], scene.render.sampleRate), arrivals[index], nonlinearPaths)];
     }));
   } catch (error) {
-    setStatus(error.message, true);
-    if (info.variant) failRender(error.message); else drawResults();
+    failRender(error.message);
     return;
   }
   if (info.variant) {
@@ -2447,5 +2462,14 @@ $('add-receiver').addEventListener('click', () => commit(scene => {
 
 window.addEventListener('resize', () => drawResults());
 
+// A page hidden normally leaves no mark; one the browser stops while rendering does.
+window.addEventListener('pagehide', () => renderMarker.suspend());
+window.addEventListener('pageshow', event => { if (event.persisted && operations.has('render')) renderMarker.restore(); });
+
 refreshPanel();
-if (state.preferences.autoRender) startRender(); else syncPlayButton();
+// After an unfinished render the scene opens without rendering it again by itself, which would stop the page again.
+if (unfinishedRender) {
+  setStatus(unfinishedRenderText(unfinishedRender), true);
+  syncPlayButton();
+} else if (state.preferences.autoRender) startRender();
+else syncPlayButton();
