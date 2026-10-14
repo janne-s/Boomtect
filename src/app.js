@@ -6,7 +6,7 @@ import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from './domain/render.js';
+import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
@@ -464,7 +464,7 @@ function startRender({ full = false, variant = null } = {}) {
           failRender(error.message);
           return;
         }
-        renderRanges(revision, scene, arrivals, tracedPaths, responses, { sources, workerCount, started, variant: Boolean(variant) });
+        renderRanges(revision, scene, prepared, arrivals, tracedPaths, responses, { sources, workerCount, started, variant: Boolean(variant) });
       }
     });
   }
@@ -488,19 +488,20 @@ function renderJobs(scene, arrivals, workerCount) {
   });
 }
 
-function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
+function renderRanges(revision, scene, prepared, arrivals, tracedPaths, responses, info) {
   const jobs = renderJobs(scene, arrivals, info.workerCount);
   const progress = new Array(jobs.length).fill(0);
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
   operation('render', 'Rendering', { share: 0 });
-  // A receiver's paths go to its last job without a copy; the jobs before it get copies.
-  const lastJob = new Map(jobs.flatMap((job, index) => job.receivers.map(receiver => [receiver, index])));
+  // Each job gets only the paths of its times, with what sizes the frames of all of them; a receiver
+  // rendered whole gets its paths without a copy. The page keeps none of them.
+  const extents = tracedPaths.map(paths => frameExtents(prepared, paths));
   jobs.forEach((job, index) => {
-    const paths = job.receivers.map(receiver => tracedPaths[receiver]);
-    const transfer = job.receivers.filter(receiver => lastJob.get(receiver) === index)
-      .flatMap(receiver => Object.values(tracedPaths[receiver]).filter(ArrayBuffer.isView).map(array => array.buffer));
-    spawnWorker(revision, { type: 'render', scene, ...job, paths }, {
+    const whole = !Number.isFinite(job.fromSeconds) && !Number.isFinite(job.toSeconds);
+    const paths = job.receivers.map(receiver => (whole ? tracedPaths[receiver] : pathRange(tracedPaths[receiver], job.fromSeconds, job.toSeconds)));
+    const transfer = paths.flatMap(table => Object.values(table).filter(ArrayBuffer.isView).map(array => array.buffer));
+    spawnWorker(revision, { type: 'render', scene, ...job, paths, extents: job.receivers.map(receiver => extents[receiver]) }, {
       onProgress: fraction => {
         progress[index] = fraction;
         operation('render', 'Rendering', { share: progress.reduce((a, b) => a + b, 0) / jobs.length });
@@ -512,6 +513,8 @@ function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
       }
     }, [...new Set(transfer)]);
   });
+  // The workers' handlers would otherwise keep the whole table alive through the render.
+  tracedPaths.fill(null);
 }
 
 const receiverSegments = (parts, receiver) => parts.map(list => list.find(segment => segment.receiverId === receiver.id)).filter(Boolean);

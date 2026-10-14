@@ -643,19 +643,16 @@ function erf(x) {
  * Frame layout of one frame group at one receiver: hop H and block 2H hold any of its paths with
  * pre-roll and tail. It depends on all of the group's paths, so every time range shares it.
  */
-function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ) {
-  const speed = profile.groundSpeed;
-  let highest = receiverZ;
-  let longestElement = 0;
-  let longestSpan = 0;
-  let largestCreep = 0;
-  let smallestRadius = Infinity;
-  let largestRadius = 0;
-  for (const table of [prepared.sources, paths.cells[Math.floor(group / FRAME_GROUPS)]].filter(Boolean)) {
-    for (let index = 0; index < table.length; index += 1) longestElement = Math.max(longestElement, table.elementMetres[index]);
-  }
+/**
+ * What sizes each frame group's frames, over all of a receiver's paths: the longest span, the largest
+ * creeping loss and its radii, and the highest point. A render of a range of times gets them from
+ * the whole, so that its frames are the same as a render of all of it.
+ */
+export function frameExtents(preparedEmitters, paths) {
+  const extents = Array.from({ length: FRAME_GROUPS * preparedEmitters.length }, () => ({ longestSpan: 0, largestCreep: 0, smallestRadius: Infinity, largestRadius: 0, highest: -Infinity }));
   for (let index = 0; index < paths.count; index += 1) {
-    if (frameGroup(paths, index) !== group) continue;
+    const extent = extents[frameGroup(paths, index)];
+    const prepared = preparedEmitters[paths.emitter[index]];
     const sources = isEcho(paths.kind[index]) ? paths.cells[paths.emitter[index]] : prepared.sources;
     const source = paths.source[index];
     // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase; the
@@ -664,13 +661,48 @@ function framePlan(prepared, group, paths, sampleRate, profile, scene, receiverZ
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
     // A boom's turbulent front reaches FLIGHT.turbulentFront.longestRises rise times past it, a reflection's scattered part as many of its means.
-    longestSpan = Math.max(longestSpan, span + paths.timeSpread[index] + FLIGHT.turbulentFront.longestRises * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
-    largestCreep = Math.max(largestCreep, paths.creepNepers[index]);
+    extent.longestSpan = Math.max(extent.longestSpan, span + paths.timeSpread[index] + FLIGHT.turbulentFront.longestRises * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
+    extent.largestCreep = Math.max(extent.largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
-      smallestRadius = Math.min(smallestRadius, paths.creepRadius[index]);
-      largestRadius = Math.max(largestRadius, paths.creepRadius[index]);
+      extent.smallestRadius = Math.min(extent.smallestRadius, paths.creepRadius[index]);
+      extent.largestRadius = Math.max(extent.largestRadius, paths.creepRadius[index]);
     }
-    highest = Math.max(highest, paths.height[index]);
+    extent.highest = Math.max(extent.highest, paths.height[index]);
+  }
+  return extents;
+}
+
+/**
+ * The paths that arrive in [fromSeconds, toSeconds), copied into a table of their own. Each keeps
+ * its index in the whole table as `origin`, which seeds its random parts as in a render of all of it.
+ */
+export function pathRange(paths, fromSeconds, toSeconds) {
+  const chosen = [];
+  for (let index = 0; index < paths.count; index += 1) {
+    if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) chosen.push(index);
+  }
+  const range = pathTable(chosen.length);
+  for (const key of Object.keys(PATH_ARRAYS)) {
+    const width = PATH_WIDTHS[key] ?? 1;
+    const from = paths[key];
+    const to = range[key];
+    chosen.forEach((index, position) => {
+      for (let part = 0; part < width; part += 1) to[position * width + part] = from[index * width + part];
+    });
+  }
+  range.origin = Uint32Array.from(chosen, index => (paths.origin ? paths.origin[index] : index));
+  range.count = chosen.length;
+  range.cells = paths.cells;
+  return range;
+}
+
+function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, receiverZ) {
+  const speed = profile.groundSpeed;
+  const { longestSpan, largestCreep, smallestRadius, largestRadius } = extent;
+  const highest = Math.max(receiverZ, extent.highest);
+  let longestElement = 0;
+  for (const table of [prepared.sources, paths.cells[Math.floor(group / FRAME_GROUPS)]].filter(Boolean)) {
+    for (let index = 0; index < table.length; index += 1) longestElement = Math.max(longestElement, table.elementMetres[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
   // Soft ground lags the creeping response up to PROPAGATION.softCreepLag times as much as rigid ground, which spreads it.
@@ -908,15 +940,17 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       groundIm[point] = q[1];
     }
   }
-  const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(index + 1, 0x165667b1), binHz) : null;
+  // A path of a range keeps its seeds from its index in the whole table.
+  const key = paths.origin ? paths.origin[index] : index;
+  const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(key + 1, 0x165667b1), binHz) : null;
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   // With shared scatter, a scattered echo goes into its group of the frame unspread; the group is spread once.
-  const spreadSeed = seed ^ Math.imul(index + 1, 0x85ebca6b);
+  const spreadSeed = seed ^ Math.imul(key + 1, 0x85ebca6b);
   const group = paths.timeSpread[index] > 0 && shared ? shared.group(paths.timeSpread[index], spreadSeed, plan, limit) : null;
   if (group) spectra = group.spectra;
   const spreadArrivals = paths.timeSpread[index] > 0 && !group ? scatterArrivals(paths.timeSpread[index], spreadSeed, binHz, scene.render.quality.scatterArrivals) : null;
   // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
-  const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(index + 1, 0x27d4eb2f) : seed, binHz) : null;
+  const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(key + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
   const phaseStepIm = Math.sin(phaseStep);
@@ -1292,14 +1326,18 @@ function synthesizeFrame(real, imaginary, size, sampleRate) {
  * samples at hop H; each frame is one inverse FFT, overlap-added in Float64. Time zero is the
  * scene's emission origin. Returns the segment's first sample index and its samples.
  */
-export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null } = {}) {
+export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
   const traceShare = traced ? 0 : TRACE_SHARE;
   const paths = traced ?? receiverPaths(preparedEmitters, receiver, scene, { onProgress: onProgress && (share => onProgress(TRACE_SHARE * share)) });
   const receiverZ = onGround(terrainSurface(scene.terrain), receiver.positionMetres).z;
-  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => Array.from({ length: FRAME_GROUPS }, (_, part) => framePlan(prepared, FRAME_GROUPS * emitterIndex + part, paths, sampleRate, profile, scene, receiverZ)));
+  const extentOf = extents ?? frameExtents(preparedEmitters, paths);
+  const plans = preparedEmitters.flatMap((prepared, emitterIndex) => Array.from({ length: FRAME_GROUPS }, (_, part) => {
+    const group = FRAME_GROUPS * emitterIndex + part;
+    return framePlan(prepared, group, extentOf[group], paths, sampleRate, profile, scene, receiverZ);
+  }));
   const selected = [];
   for (let index = 0; index < paths.count; index += 1) {
     if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);

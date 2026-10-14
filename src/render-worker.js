@@ -41,6 +41,7 @@ self.addEventListener('message', ({ data }) => {
         fromSeconds: data.fromSeconds,
         toSeconds: data.toSeconds,
         paths: data.paths[index],
+        extents: data.extents[index],
         onProgress: share => self.postMessage({ revision, type: 'progress', fraction: (index + share) / data.receivers.length })
       });
       return { receiverId: receiver.id, ...segment };
