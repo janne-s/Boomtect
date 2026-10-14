@@ -457,6 +457,8 @@ function startRender({ full = false, variant = null } = {}) {
         let tracedPaths;
         try {
           tracedPaths = scene.receivers.map((receiver, receiverIndex) => assemblePaths(prepared, receiver, scene, traced[receiverIndex]));
+          // The parts are in the assembled paths now; holding them would keep both through the render.
+          traced.fill(null);
           arrivals = scene.receivers.map((receiver, receiverIndex) => arrivalTable(prepared, receiver, scene, { paths: tracedPaths[receiverIndex] }));
         } catch (error) {
           failRender(error.message);
@@ -492,8 +494,13 @@ function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
   operation('render', 'Rendering', { share: 0 });
+  // A receiver's paths go to its last job without a copy; the jobs before it get copies.
+  const lastJob = new Map(jobs.flatMap((job, index) => job.receivers.map(receiver => [receiver, index])));
   jobs.forEach((job, index) => {
-    spawnWorker(revision, { type: 'render', scene, ...job, paths: job.receivers.map(index => tracedPaths[index]) }, {
+    const paths = job.receivers.map(receiver => tracedPaths[receiver]);
+    const transfer = job.receivers.filter(receiver => lastJob.get(receiver) === index)
+      .flatMap(receiver => Object.values(tracedPaths[receiver]).filter(ArrayBuffer.isView).map(array => array.buffer));
+    spawnWorker(revision, { type: 'render', scene, ...job, paths }, {
       onProgress: fraction => {
         progress[index] = fraction;
         operation('render', 'Rendering', { share: progress.reduce((a, b) => a + b, 0) / jobs.length });
@@ -503,7 +510,7 @@ function renderRanges(revision, scene, arrivals, tracedPaths, responses, info) {
         remaining -= 1;
         if (remaining === 0) responses.then(list => { if (revision === state.revision) addRenderTails(revision, scene, arrivals, parts, list, info); });
       }
-    });
+    }, [...new Set(transfer)]);
   });
 }
 

@@ -265,7 +265,7 @@ export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, li
  * directivity of its straight element ℓs (class C). A preview's `physics.sourceMerge` lets one source
  * stand in for that many segments in a row (PREVIEW).
  */
-export function flashSources(flashes, physics, air, sources = []) {
+export function flashSources(flashes, physics, air, sources = [], firstFlash = 0) {
   const speed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   const groundPressurePa = air.pressureKpa * 1000;
   const density = airDensityKilogramsPerCubicMetre(groundPressurePa, air.temperatureCelsius);
@@ -294,7 +294,7 @@ export function flashSources(flashes, physics, air, sources = []) {
           const acousticEnergy = group.length === 1 ? physics.acousticEfficiency * energy * segment.lengthMetres
             : physics.acousticEfficiency * group.reduce((sum, index) => sum + energyOf(channel.segments[index], index) * channel.segments[index].lengthMetres, 0);
           sources.push({
-            flash: flashIndex,
+            flash: firstFlash + flashIndex,
             positionMetres: segment.centreMetres,
             direction: segment.direction,
             elementMetres: Math.min(physics.straightLengthMetres, segment.lengthMetres),

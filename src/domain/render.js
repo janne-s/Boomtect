@@ -1,7 +1,7 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
-import { emitterSources } from './emitters.js';
+import { emitterSourceTable } from './emitters.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
@@ -99,8 +99,7 @@ export function prepareScene(scene) {
   const surface = terrainSurface(scene.terrain);
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
-    const rows = emitterSources(emitter, scene.air, surface, scene.render.quality).sources;
-    const sources = sourceTable(rows);
+    const { sources, rows } = emitterSourceTable(emitter, scene.air, surface, scene.render.quality);
     // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
     // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
     // An aircraft's or a booster's booms also come back from the stratosphere far away (`secondary.js`).
@@ -445,9 +444,11 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
     }
     return sums;
   });
-  const count = parts.reduce((sum, part) => sum + part.direct.count + part.specular.reduce((total, table) => total + (table?.count ?? 0), 0), 0)
-    + merged.reduce((sum, sums) => sum + sums.size, 0);
-  const paths = pathTable(count);
+  const specularCount = parts.reduce((sum, part) => sum + part.specular.reduce((total, table) => total + (table?.count ?? 0), 0), 0);
+  const scatteredCount = merged.reduce((sum, sums) => sum + sums.size, 0);
+  // A single part with nothing to add is the result as it is, rather than a second copy of it.
+  if (parts.length === 1 && !specularCount && !scatteredCount) return { ...parts[0].direct, cells: frame.cells };
+  const paths = pathTable(parts.reduce((sum, part) => sum + part.direct.count, 0) + specularCount + scatteredCount);
   for (const part of parts) appendPaths(paths, part.direct);
   const add = pathWriter(frame, scene, paths);
   frame.cells.forEach((table, emitterIndex) => {
@@ -466,10 +467,11 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
   return assemblePaths(preparedEmitters, receiver, scene, [tracePart(preparedEmitters, receiver, scene, { onProgress })]);
 }
 
+/** A table's paths in views of its arrays, without copying them: a copy of a large table would hold it twice. */
 export function compactPaths(paths) {
   const compact = { count: paths.count, cells: paths.cells };
   for (const [key, array] of Object.entries(paths)) {
-    if (ArrayBuffer.isView(array)) compact[key] = array.slice(0, paths.count * (PATH_WIDTHS[key] ?? 1));
+    if (ArrayBuffer.isView(array)) compact[key] = array.subarray(0, paths.count * (PATH_WIDTHS[key] ?? 1));
   }
   return { paths: compact, buffers: Object.values(compact).filter(ArrayBuffer.isView).map(array => array.buffer) };
 }

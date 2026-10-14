@@ -8,7 +8,8 @@ import { meteorBursts, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { stormFlashes } from './storm.js';
+import { stormFlashes, stormFlashSequence } from './storm.js';
+import { sourceTable, sourceTableBuilder } from './source-table.js';
 import { onGround } from './terrain.js';
 
 export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster', 'fireworks']);
@@ -128,6 +129,25 @@ export function emitterSources(emitter, air, surface = null, quality = null) {
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   if (emitter.kind === 'fireworks') return { flashes: [], sources: fireworksSources(emitter, air, surface) };
   const flashes = emitterFlashes(emitter, surface);
-  // The render's quality may let one source stand in for several segments of a flash.
-  return { flashes, sources: flashSources(flashes, quality?.sourceMerge > 1 ? { ...emitter, sourceMerge: quality.sourceMerge } : emitter, air) };
+  return { flashes, sources: flashSources(flashes, flashPhysics(emitter, quality), air) };
+}
+
+/** The render's quality may let one source stand in for several segments of a flash. */
+const flashPhysics = (emitter, quality) => (quality?.sourceMerge > 1 ? { ...emitter, sourceMerge: quality.sourceMerge } : emitter);
+
+/**
+ * An emitter's point sources as a table, with its source rows when it has few. A storm's flashes
+ * go into the table one at a time: all of a large storm's flashes and source objects at once would
+ * take several times the memory of the table.
+ */
+export function emitterSourceTable(emitter, air, surface = null, quality = null) {
+  if (emitter.kind !== 'storm') {
+    const rows = emitterSources(emitter, air, surface, quality).sources;
+    return { sources: sourceTable(rows), rows };
+  }
+  const builder = sourceTableBuilder();
+  const physics = flashPhysics(emitter, quality);
+  let index = 0;
+  for (const flash of stormFlashSequence(emitter, surface)) flashSources([flash], physics, air, builder, index++);
+  return { sources: builder.table(), rows: [] };
 }
