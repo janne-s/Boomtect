@@ -34,6 +34,7 @@ import { createSettings } from './ui/settings.js';
 import { createPlayer } from './ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './ui/splitters.js';
+import { attachTimelineSeek } from './ui/timeline.js';
 
 const sceneStorageKey = mode => `boomtect.scene.${mode}`;
 const PREFERENCES_STORAGE_KEY = 'boomtect.preferences';
@@ -1893,6 +1894,10 @@ function drawTimeline(seconds) {
   $('cube-timeline-time').textContent = `${Math.max(0, seconds).toFixed(2)} s`;
   $('cube-timeline-arrival').style.left = share(result.startSeconds);
   $('cube-timeline-progress').style.width = share(seconds);
+  const seek = $('cube-timeline-seek');
+  seek.max = String(end);
+  seek.value = String(Math.max(0, Math.min(end, seconds)));
+  seek.setAttribute('aria-valuetext', `${Math.max(0, seconds).toFixed(2)} seconds`);
 }
 
 function showPlaying() {
@@ -1983,6 +1988,18 @@ $('play').addEventListener('click', () => {
 $('plot-play').addEventListener('click', () => {
   if (player.playing()) pausePlayback();
   else if (state.results) startPlayback();
+});
+
+attachTimelineSeek($('cube-timeline-seek'), {
+  seek(seconds) {
+    if (!state.results) return;
+    const skippedSeconds = player.clock()?.skippedSeconds ?? state.pause?.skippedSeconds ?? null;
+    player.stop();
+    state.pause = { seconds, skippedSeconds };
+    syncPlayButton();
+    drawStill();
+  },
+  play() { if (state.pause && state.results) startPlayback(); }
 });
 
 for (const canvas of [$('waveform'), $('arrivals')]) {

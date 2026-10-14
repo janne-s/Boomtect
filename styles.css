@@ -300,6 +300,17 @@ figcaption {
 .icon-toggle[hidden] {
   display: none;
 }
+.ui-icon {
+  width: 18px;
+  height: 18px;
+}
+#preview[aria-pressed="false"] {
+  color: var(--muted);
+}
+#preview .ui-icon {
+  width: 20px;
+  height: 20px;
+}
 .listen-label {
   margin-left: 4px;
   color: var(--ink);
@@ -334,6 +345,9 @@ figcaption {
 .modes button[aria-checked="true"] {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.modes button i {
+  display: none;
 }
 
 .layout {
@@ -762,6 +776,30 @@ button.macro-value:hover {
 }
 .overlay-timeline[hidden] {
   display: none;
+}
+.timeline-seek {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.timeline-seek input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+:root[data-keyboard] .timeline-seek:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 .timeline-bar {
   position: relative;
@@ -1219,20 +1257,47 @@ details summary {
   }
   .bar {
     flex-wrap: nowrap;
-    gap: 6px;
+    gap: 4px;
     padding: 8px;
   }
   .brand {
-    margin-right: 2px;
+    margin-right: 0;
+    flex: none;
+  }
+  .modes {
+    flex: none;
+    margin-right: 0;
   }
   .modes button {
-    padding: 5px 8px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 15px;
+  }
+  .modes button i {
+    display: inline-block;
+  }
+  .modes button span {
+    display: none;
+  }
+  .bar #play {
+    flex: none;
+    width: 64px;
+    height: 36px;
   }
   .bar #settings,
+  .bar .github-link {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    color: var(--ink);
+  }
+  .bar .github-link {
+    margin-left: auto;
+  }
   .bar #open,
   .bar #save,
   .bar #export,
-  .bar .github-link,
   .listen-label,
   .spacer {
     display: none;
@@ -1456,5 +1521,24 @@ details summary {
   }
   .info-section .warning {
     color: var(--accent);
+  }
+}
+
+@media (max-width: 360px) {
+  .bar {
+    gap: 2px;
+    padding: 6px;
+  }
+  .brand {
+    font-size: 12px;
+  }
+  .modes button,
+  .bar #settings,
+  .bar .github-link {
+    width: 32px;
+  }
+  .bar #play {
+    min-width: 56px;
+    width: 56px;
   }
 }

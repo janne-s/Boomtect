@@ -30,19 +30,19 @@
     <header class="bar">
       <span class="brand">Boomtect</span>
       <div class="modes" role="radiogroup" aria-label="Mode">
-        <button type="button" role="radio" data-mode="thunder" aria-checked="true">Thunder</button>
-        <button type="button" role="radio" data-mode="blast" aria-checked="false">Blast</button>
-        <button type="button" role="radio" data-mode="sonic" aria-checked="false">Sonic</button>
+        <button type="button" role="radio" data-mode="thunder" aria-checked="true" aria-label="Thunder" title="Thunder"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Thunder</span></button>
+        <button type="button" role="radio" data-mode="blast" aria-checked="false" aria-label="Blast" title="Blast"><i class="fa-solid fa-explosion" aria-hidden="true"></i><span>Blast</span></button>
+        <button type="button" role="radio" data-mode="sonic" aria-checked="false" aria-label="Sonic" title="Sonic"><i class="fa-solid fa-wave-square" aria-hidden="true"></i><span>Sonic</span></button>
       </div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
+      <button type="button" class="icon-toggle" id="settings" data-recovery-dialog="settings-dialog" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
       <div class="icon-toggles" role="group" aria-label="Rendering and playback">
         <button type="button" class="icon-toggle" id="auto-render" aria-pressed="true" aria-label="Auto render" title="Auto render"><i class="fa-solid fa-repeat" aria-hidden="true"></i></button>
         <button type="button" class="icon-toggle" id="real-delay" aria-pressed="true" aria-label="Real delay" title="Real delay"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></button>
-        <button type="button" class="icon-toggle" id="preview" aria-pressed="false" aria-label="Preview" title="Preview"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></button>
+        <button type="button" class="icon-toggle" id="preview" aria-pressed="false" aria-label="Preview" title="Preview"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13a7 7 0 0 1 14 0Z" fill="currentColor"/><circle cx="20.5" cy="11.5" r="2.5" fill="currentColor"/><path d="M2 14.5 4 15h12l3-2M6 15v3m8-3v3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <span id="listen-label" class="listen-label"></span>
       <span class="spacer"></span>
-      <button type="button" class="icon-toggle" id="settings" data-recovery-dialog="settings-dialog" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
       <button type="button" id="open">Open</button>
       <button type="button" id="save">Save</button>
       <button type="button" id="export" disabled>Export</button>
@@ -62,7 +62,7 @@
         <div class="view-side">
           <div class="icon-toggles view-tools" role="toolbar" aria-label="View" aria-orientation="vertical">
             <button type="button" class="icon-toggle" id="wavefront" aria-pressed="false" aria-label="Wavefronts" title="Wavefronts"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></button>
-            <button type="button" class="icon-toggle" id="cone" aria-pressed="false" aria-label="Mach cone" title="Mach cone" hidden><i class="fa-solid fa-jet-fighter" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="cone" aria-pressed="false" aria-label="Mach cone" title="Mach cone" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="18" cy="12" rx="3" ry="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M18 4 3 12l15 8M3 12h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
             <button type="button" class="icon-toggle" id="clouds" aria-pressed="false" aria-label="Cloud" title="Cloud" hidden><i class="fa-solid fa-cloud" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="names" aria-pressed="false" aria-label="Place names" title="Place names" hidden><i class="fa-solid fa-tag" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="map" aria-pressed="false" aria-label="Map" title="Map" hidden><i class="fa-solid fa-map" aria-hidden="true"></i></button>
@@ -84,7 +84,10 @@
           <ul class="operations" id="cube-operations" aria-live="polite"></ul>
           <div class="overlay-timeline" id="cube-timeline" hidden>
             <span id="cube-timeline-time"></span>
-            <div class="timeline-bar"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
+            <div class="timeline-seek">
+              <div class="timeline-bar" aria-hidden="true"><div class="timeline-arrival" id="cube-timeline-arrival"></div><div class="timeline-progress" id="cube-timeline-progress"></div></div>
+              <input type="range" id="cube-timeline-seek" min="0" max="1" step="0.01" value="0" aria-label="Playback position" />
+            </div>
           </div>
         </div>
         <div class="overlay overlay-bottom">
@@ -135,7 +138,7 @@
           <div class="fields" id="terrain-fields"></div>
         </details>
         <details class="group" data-sheet="output">
-          <summary><i class="fa-solid fa-sliders" aria-hidden="true"></i>Output</summary>
+          <summary><i class="fa-solid fa-volume-high" aria-hidden="true"></i>Output</summary>
           <div class="fields" id="output-fields"></div>
           <div class="row-buttons sheet-files">
             <button type="button" data-proxy="open">Open</button>
@@ -162,7 +165,7 @@
         <button type="button" data-sheet="receivers" aria-label="Microphones" title="Microphones"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
         <button type="button" data-sheet="environment" aria-label="Air and ground" title="Air and ground"><i class="fa-solid fa-wind" aria-hidden="true"></i></button>
         <button type="button" data-sheet="terrain" aria-label="Terrain" title="Terrain"><i class="fa-solid fa-mountain" aria-hidden="true"></i></button>
-        <button type="button" data-sheet="output" aria-label="Output" title="Output"><i class="fa-solid fa-sliders" aria-hidden="true"></i></button>
+        <button type="button" data-sheet="output" aria-label="Output" title="Output"><i class="fa-solid fa-volume-high" aria-hidden="true"></i></button>
         <button type="button" id="results-toggle" class="results-toggle" aria-expanded="false" aria-controls="results" aria-label="Plots" title="Plots"><i class="fa-solid fa-wave-square" aria-hidden="true"></i></button>
       </nav>
     </main>

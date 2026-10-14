@@ -109,24 +109,26 @@ microphone along the Mach cone.
   hear.
 - **Pause** — The button on the pressure plot holds playback where it is; Play
   goes on from there, Stop starts over.
-- **Scrubbing** — Press either plot to move playback to that moment, and drag to
-  move it further; on release it plays on from there. Sound fades in and out
-  as it starts and stops.
+- **Scrubbing** — Press either plot or the small scene timeline to move playback
+  to that moment, and drag to move it further; on release it plays on from there,
+  including from pause. The scene timeline also supports arrow keys (one second),
+  Page Up / Down (one tenth of its duration), and Home / End. Sound fades in and
+  out as it starts and stops.
 - **Auto** (circling arrows, beside Play) — Renders again soon after every
   change. Off, changes wait for Render.
 - **In progress** — Rendering and loading are listed in the corner of the
   scene while they run, each with how far it has come, how long it has run, and
   for requests over the network when it gives up. The last message stands above
   them: a note fades, an error stays.
-- **Settings** (gear) — How much of the sound a render computes, kept with the
-  scene: the cutoff level, the highest frequency, the flash detail (how many
+- **Settings** (gear beside Play, also on mobile) — How much of the sound a
+  render computes, kept with the scene: the cutoff level, the highest frequency, the flash detail (how many
   segments one source stands for), the echo detail (the echo cells' size), a
   scattered echo's arrivals, a coarse forest (on a coarse frequency grid), and
   shared scatter (a frame's scattered echoes spread in a few groups), with the cost against the full computation and an
   estimate of its time from the last render; the preview; and the threads this
   device renders on.
-- **Preview** (gauge, beside Play) — Renders a lighter version of the scene's
-  settings: a flash's sources merged in fours, echo cells twice as large, and
+- **Preview** (turtle, beside Play or in the mobile view switches) — Renders a
+  lighter version of the scene's settings: a flash's sources merged in fours, echo cells twice as large, and
   sound up to 2 kHz at most.
   About as loud, as long, and as dark as the full render, a few times quicker
   over terrain. An export is always rendered in full.
@@ -139,7 +141,7 @@ microphone along the Mach cone.
 - **Wavefront** — While the sound plays, shows the wavefronts as ripples where
   they cross the floor, the terrain, and the walls, fading as their sound
   spreads out and the air absorbs it. On in every mode at first.
-- **Cone** — While the sound plays, each supersonic body's Mach cone trails behind
+- **Cone** (cone icon) — While the sound plays, each supersonic body's Mach cone trails behind
   it through the fronts it has left, within the box and above the ground.
 - **Names** — Optional place names, peaks, and lakes from OpenFreeMap. Off
   initially; switch on to fetch names over loaded terrain. Labels vary with
@@ -153,7 +155,8 @@ microphone along the Mach cone.
 - **Phone** — The scene fills the screen. The parameters open one group at a
   time from the icons along the bottom, the plots fold into a strip that opens
   over the scene, and the selection's and the listening microphone's facts open
-  from the name at the top.
+  from the name at the top. Mode buttons use lightning, blast, and wave icons;
+  Settings stays beside Play, GitHub at the right edge, and Output uses a speaker.
 - **Listen** — The checkbox on a microphone adds it to what plays. During
   playback, the sound continues from the same moment with the new combination.
   Microphones that do not listen still show their level, muted.
