@@ -1,23 +1,13 @@
 import { PROPAGATION } from './constants.js';
 
-/**
- * Diffraction of sound over terrain edges (class B): Fresnel–Kirchhoff diffraction over a thin
- * edge, with several ridges combined by Deygout's method (Deygout 1966, as in ITU-R P.526). A real
- * ridge is rounded and lets less sound into its shadow than a thin edge would, more so at high
- * frequencies: each edge adds the loss of a cylinder of its crest's radius (ITU-R P.526-15 §4.2,
- * class B), with the causal phase of its slope (class C). Terrain finer than the heightfield is not
- * modelled.
- */
+/** Class B: thin-edge Fresnel–Kirchhoff, Deygout 1966 (ITU-R P.526), rounding ITU-R P.526-15 §4.2; the rounding's phase class C. */
 
 const SERIES_LIMIT = 1.5;
 const EPSILON = 6e-8;
 const MAXIMUM_ITERATIONS = 100;
 const TINY = 1e-30;
 
-/**
- * Fresnel integrals C(x) = ∫₀ˣ cos(πt²/2) dt and S(x) = ∫₀ˣ sin(πt²/2) dt, by a power series
- * below 1.5 and a continued fraction above (Press et al., Numerical Recipes, §6.9), to about 1e-7.
- */
+/** Numerical Recipes §6.9, to about 1e-7. */
 export function fresnelIntegrals(x) {
   const ax = Math.abs(x);
   let c;
@@ -74,12 +64,7 @@ export function fresnelIntegrals(x) {
   return x < 0 ? [-c, -s] : [c, s];
 }
 
-/**
- * The field behind a thin edge relative to the free field, F(ν) = ((1 + i)/2)·∫_ν^∞ e^(−iπt²/2) dt,
- * as [re, im]. ν > 0 when the edge rises above the line of sight; F(0) = 1/2, F → 1 well clear of
- * the edge. Its phase e^(−iπν²/2) is the delay of the path over the edge, in the e^(+iωt)
- * convention of `fft.js`, so it multiplies the spectrum of the unobstructed path.
- */
+/** [re, im] in the e^(+iωt) convention of `fft.js`. */
 export function knifeEdge(nu) {
   const [c, s] = fresnelIntegrals(nu);
   const a = .5 - c;
@@ -87,23 +72,17 @@ export function knifeEdge(nu) {
   return [(a + b) / 2, (a - b) / 2];
 }
 
-/**
- * The extra loss of a rounded obstacle over a thin edge, T(m, n) in decibels (ITU-R P.526-15
- * eqs. 26–27): m measures its radius against the Fresnel zone, n its height.
- */
+/** ITU-R P.526-15 eqs. 26–27. */
 export function roundingDecibels(m, n) {
   if (m * n <= 4) return (8.2 + 12 * n) * m ** (.73 + .27 * (1 - Math.exp(-1.43 * n)));
   return -6 - 20 * Math.log10(m * n) + 7.2 * Math.sqrt(m) - (2 - 17 * n) * m + 3.6 * m ** 1.5 - .8 * m * m;
 }
 
-/** An edge's rounding loss at a frequency in nepers, as P.526 gives it. */
 function roundingNepers(edge, frequencyHz) {
-  // x = πR/λ; m = R·(d₁ + d₂)/(d₁·d₂)·x^(−1/3), n = h/R·x^(2/3).
   const cube = Math.cbrt(edge.radiusRatio * frequencyHz);
   return Math.max(0, roundingDecibels(edge.spread / cube, edge.rise * cube * cube)) * Math.LN10 / 20;
 }
 
-/** How much of an edge's rounding acts at a frequency, from 0 to 1 as kR grows (PROPAGATION.ridge). */
 function roundingShare(edge, frequencyHz) {
   const kR = 2 * edge.radiusRatio * frequencyHz;
   const [low, high] = PROPAGATION.ridge.fadeKR;
@@ -112,12 +91,7 @@ function roundingShare(edge, frequencyHz) {
   return position * position * (3 - 2 * position);
 }
 
-/**
- * The field behind an edge relative to the free field, as [re, im]: the thin edge's F(ν), ν =
- * g·sqrt(f), times its rounding's loss with the phase lag of a loss rising as f^p, tan(pπ/2) times
- * the loss, from the local slope p of P.526's loss (Kramers–Kronig for a power law; class C); both
- * fade in together with kR.
- */
+/** The rounding's phase by Kramers–Kronig for a power law, class C. */
 export function edgeField(edge, frequencyHz) {
   const [re, im] = knifeEdge(edge.factor * Math.sqrt(frequencyHz));
   const share = edge.radiusRatio ? roundingShare(edge, frequencyHz) : 0;
@@ -135,28 +109,14 @@ export function edgeField(edge, frequencyHz) {
 
 const SLOPE_STEP = 1.05;
 
-/**
- * The geometric factor of an edge, g = h·sqrt(2(d₁ + d₂)/(c·d₁·d₂)), so that ν = g·sqrt(f) at
- * frequency f: h is the edge's height above the line of sight, d₁ and d₂ its distances from the
- * two ends, c the speed of sound.
- */
 const edgeFactor = (heightMetres, fromStart, toEnd, speed) => heightMetres * Math.sqrt(2 * (fromStart + toEnd) / (speed * fromStart * toEnd));
 
-/**
- * An edge of height h above the line, d₁ and d₂ from the ends, over a crest of radius R (0 for a
- * thin edge): its factor g, and for its rounding R·(d₁ + d₂)/(d₁·d₂), h/R, and πR/c.
- */
 export function ridgeEdge(heightMetres, fromStart, toEnd, radiusMetres, speed) {
   const factor = edgeFactor(heightMetres, fromStart, toEnd, speed);
   if (!(radiusMetres > 0)) return { factor, spread: 0, rise: 0, radiusRatio: 0 };
   return { factor, spread: radiusMetres * (fromStart + toEnd) / (fromStart * toEnd), rise: heightMetres / radiusMetres, radiusRatio: Math.PI * radiusMetres / speed };
 }
 
-/**
- * Deygout's edges along a profile (`distances`, ground `terrain`, `path` heights): the crest of
- * largest obstruction ratio h·sqrt((d₁ + d₂)/(d₁·d₂)), then the largest between each end and it.
- * Each crest's radius comes from the ground's curvature `span` samples either side. At most three.
- */
 export function deygoutEdges({ distances, terrain, path, total, startHeight, endHeight, speed, span = 1 }) {
   // Only crests count as edges: on the flank of one rounded hill Deygout would find it twice.
   // A level crest of several samples counts once, at its first sample.

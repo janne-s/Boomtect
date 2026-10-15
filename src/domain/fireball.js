@@ -2,16 +2,8 @@ import { BLAST } from './constants.js';
 import { fft, nextPowerOfTwo } from './fft.js';
 import { createRandom, normalDeviate } from './random.js';
 
-/**
- * The roar after a blast's shock: the fireball, afterburning, and thrown earth and debris, which go
- * on for about a second after the shock while the shock itself lasts milliseconds. Class C
- * throughout: a seeded noise burst fitted to recordings of improvised charges set off on an open
- * grass field (FBI video, at least about 100 m, camera audio whose level control lifts the tail and
- * whose clipped peaks lower the shock; Doc/reference/audio), with the spectrum and envelope of
- * BLAST.roar. Its sources are those of the shock.
- */
+/** Class C, fitted to open-field charge recordings (FBI video, Doc/reference/audio). */
 
-/** Time after the shock by which the roar has fallen 70 dB. */
 export const fireballSpanSeconds = durationSeconds => BLAST.roar.riseSeconds * 5 + durationSeconds * 70 / BLAST.roar.durationDecibels;
 
 function density(frequencyHz) {
@@ -24,10 +16,6 @@ function density(frequencyHz) {
   return BLAST.roar.spectrumDensity[band] * (frequencyHz / BLAST.roar.spectrumHz[band]) ** slope;
 }
 
-/**
- * The roar's samples per unit level: shaped noise under its envelope, scaled so that its largest
- * RMS over BLAST.roar.windowSeconds is 1. Deterministic from the seed.
- */
 export function fireballSamples(seed, durationSeconds, sampleRate) {
   const length = Math.ceil(fireballSpanSeconds(durationSeconds) * sampleRate);
   const size = nextPowerOfTwo(length);

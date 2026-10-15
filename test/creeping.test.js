@@ -30,11 +30,9 @@ test('the creeping mode is that of rigid ground at q = 0 and of a pressure-relea
   close(modeRoot([0, 0], [-1, 0])[0], -1.018792971647471, 1e-12, 'rigid');
   close(modeRoot([1e7, 0], [-2.3, 0])[0], -2.338107410459767, 1e-6, 'pressure release');
   close(SOFT_RATIO, 2.338107410459767 / 1.018792971647471, 1e-12, 'ratio');
-  // Grass under the standard atmosphere: rigid-like at low frequencies, soft at high ones.
   const ratios = creepingLossRatios([20, 10000], GROUND.flowResistivity.grass, 340, 340 / .0039);
   assert.ok(Math.abs(ratios[0] - 1) < .15, `${ratios[0]}`);
   assert.ok(Math.abs(ratios[1] - SOFT_RATIO) < .05, `${ratios[1]}`);
-  // Softer ground turns soft at lower frequencies.
   assert.ok(creepingTransitionHz(GROUND.flowResistivity.snow, 340, 87000) < creepingTransitionHz(GROUND.flowResistivity.grass, 340, 87000));
 });
 
@@ -54,7 +52,6 @@ test('soft ground never lets more through the shadow than rigid ground, and its 
     const [a, b] = shadowResponse(bin * rate / size, nepers, 0, transition);
     re[bin] = a; im[bin] = b; re[size - bin] = a; im[size - bin] = -b;
   }
-  // The response passes the mean of the pulse unchanged: H(0) = 1.
   re[0] = 1;
   fft(re, im, true);
   let total = 0;

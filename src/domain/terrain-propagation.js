@@ -2,24 +2,10 @@ import { PROPAGATION } from './constants.js';
 import { deygoutEdges } from './diffraction.js';
 import { multipleReflections, rayBetween, rayHeightAt, reflectedRay, speedAt } from './refraction.js';
 
-/**
- * Sound paths over a terrain surface, in the scene frame with heights above the datum.
- *
- * Shielding (class B with the limits in `diffraction.js`): the ray is sampled every half cell and
- * checked against the ground; Deygout's edges over the ground that rises above it give the path's
- * diffraction. Ground within one cell of either end is not checked, because terrain finer than the
- * heightfield is unknown and the ground right under a microphone is the reflecting plane.
- *
- * Reflection: from the tangent plane of the ground under the receiver. A level plane uses the
- * refracted reflection exactly, solved with the profile shifted to the plane's height (a linear
- * profile stays linear). A sloping plane mirrors the source across it for straight geometry and
- * times its two legs along refracted rays (class B/C).
- */
+/** Shielding class B within the limits of `diffraction.js`; reflection class B/C. */
 
 const SAMPLES_PER_CELL = 2;
-/** Ground samples along a path for its mean plane, ends included. */
 const MEAN_PLANE_SAMPLES = 32;
-/** A plane this close to level is treated as level. */
 const LEVEL_TOLERANCE = 1e-12;
 
 let buffers = { size: 0 };
@@ -39,7 +25,6 @@ export function shieldingEdges(profile, surface, source, receiver) {
   const skip = surface.cellMetres;
   const count = Math.floor((horizontal - 2 * skip) / step);
   if (count < 1) return [];
-  // Distances along the path, from horizontal distances by the path's slant.
   const slant = Math.hypot(horizontal, receiver.z - source.z) / horizontal;
   const { distances, terrain, path } = sampleBuffers(count);
   const unitX = (receiver.x - source.x) / horizontal;
@@ -62,14 +47,7 @@ export function shieldingEdges(profile, surface, source, receiver) {
   });
 }
 
-/**
- * The refraction shadow of a path over terrain judged from the mean ground plane between its ends
- * (class B/C): the least-squares line through the ground profile under the path, from which the
- * equivalent heights of both ends are measured at right angles and kept at or above zero, as in
- * CNOSSOS-EU (Directive (EU) 2015/996, Annex II; formula to verify against the Annex). The linear
- * profile is taken to start at the plane's height under `b`. Returns the profile and both ends in
- * that frame, where the ground is z = 0; on level ground it is the ground under `b` exactly.
- */
+/** Class B/C: the mean plane as in CNOSSOS-EU (Directive (EU) 2015/996, Annex II; to verify). */
 export function meanPlaneFrame(profile, heightAt, a, b, samples = MEAN_PLANE_SAMPLES) {
   const horizontal = Math.hypot(b.x - a.x, b.y - a.y);
   let sumD = 0; let sumZ = 0; let sumDD = 0; let sumDZ = 0;
@@ -92,14 +70,9 @@ export function meanPlaneFrame(profile, heightAt, a, b, samples = MEAN_PLANE_SAM
   };
 }
 
-/** The profile seen from ground at a given height: the same air, with c₀ taken at that height. */
 export const shiftedProfile = (profile, heightMetres) => (heightMetres === 0 ? profile : { groundSpeed: speedAt(profile, heightMetres), gradient: profile.gradient });
 
-/**
- * Rays with several ground contacts, over level ground: the plane z = 0 without terrain, or the
- * tangent plane under the receiver where it is level, as if it extended level. None over sloping
- * ground (class C).
- */
+/** Class C. */
 export function terrainMultipleReflections(profile, surface, source, receiver) {
   if (surface.flat) return multipleReflections(profile, source, receiver);
   const height = surface.heightAt(receiver.x, receiver.y);

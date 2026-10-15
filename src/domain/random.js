@@ -1,4 +1,4 @@
-/** Deterministic uniform generator on [0, 1) from a 32-bit seed (mulberry32). */
+/** mulberry32. */
 export function createRandom(seed) {
   let state = seed >>> 0;
   return () => {
@@ -12,7 +12,6 @@ export function createRandom(seed) {
 
 export const uniform = (random, [low, high]) => low + random() * (high - low);
 
-/** Standard normal deviate by Box–Muller from a uniform generator. */
 export function normalDeviate(random) {
   const radius = Math.sqrt(-2 * Math.log(1 - random()));
   return radius * Math.cos(2 * Math.PI * random());

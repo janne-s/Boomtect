@@ -1,30 +1,14 @@
 import { speedOfSoundMetresPerSecond, temperatureAtHeightKelvin, temperatureLayers } from './air.js';
 import { AIR, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, PROPAGATION, VIEW } from './constants.js';
 
-/**
- * Sound paths in air whose sound speed changes linearly with height, c(z) = c₀ + g·z. Coordinates
- * are metres (x east, y north, z up, ground at z = 0), times seconds, speeds m/s, g in 1/s.
- *
- * Class A for the given profile. With c linear in z the medium is the half-space model of
- * hyperbolic geometry, with lengths measured in travel time: rays are circular arcs centred on the
- * height where c would vanish, z* = −c₀/g, and the travel time between two points is
- * t = arcosh(1 + D²/(2 a₁ a₂)) / |g|, with D their distance and a = c/|g| (Červený 2000, as quoted
- * in arXiv 2003.11418). Wavefronts of a point source are spheres, and a ray tube's area follows
- * from the hyperbolic sphere, (a sinh σ)² per steradian with σ = |g|·t.
- *
- * Class B: the profile is the secant of c = sqrt(γ R T(z)) between the ground and
- * AIR.profileFitHeightMetres for T(z) = T₀ − Γz.
- */
+/** Class A for the given profile (Červený 2000, as quoted in arXiv 2003.11418); the profile's fit class B. */
 
-/** Below this gradient (1/s) the air is homogeneous and rays are straight. */
 const FLAT_GRADIENT = 1e-12;
-/** First zero of Ai′(−τ): the least-attenuated creeping mode over rigid ground. */
 const RIGID_CREEPING_ZERO = 1.0187929716;
 const ROOT_ITERATIONS = 100;
 const ROOT_TOLERANCE_METRES = 1e-11;
 const BRANCH_SCAN_STEPS = 64;
 const HALF_PI = Math.PI / 2;
-/** Squared sines this close below zero are rounding at a turning point. */
 const ROUNDING = 1e-12;
 
 export const PATH_DIRECT = 0;
@@ -33,19 +17,12 @@ export const PATH_SHADOW = 2;
 export const PATH_ECHO = 3;
 export const PATH_SCATTER = 4;
 
-/**
- * The linear sound-speed profile of the scene's air: ground speed c₀ and gradient g, and the wind
- * as the vectors it blows toward at the ground (`wind`, m/s, x east and y north) and its shear
- * (`shear`, 1/s), or null in still air. Without refraction the air is homogeneous and still.
- */
 export function soundSpeedProfile(air) {
   const groundSpeed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   if (!air.refraction) return { groundSpeed, gradient: 0 };
-  // Over a ground layer the profile is fitted across it; a path reaching higher is fitted to its own top (`pathProfile`).
   const fitHeight = air.groundLayerMetres > 0 ? air.groundLayerMetres : AIR.profileFitHeightMetres;
   const trueSpeed = height => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, height));
   const gradient = (trueSpeed(fitHeight) - groundSpeed) / fitHeight;
-  // Heights where the layered profile bends, so that its slowness is integrated smoothly between them.
   const breaks = temperatureLayers(air).map(layer => layer.top).filter(Number.isFinite);
   const layered = { fitHeight, trueSpeed, breaks };
   if (!air.windSpeedMetresPerSecond && !air.windShearPerSecond) return { groundSpeed, gradient, layered };
@@ -65,20 +42,13 @@ const GAUSS_NODES = [.0198550717512319, .1016667612931866, .2372337950418355, .4
 const GAUSS_WEIGHTS = [.0506142681451881, .1111905172266872, .1568533229389436, .1813418916891810, .1813418916891810, .1568533229389436, .1111905172266872, .0506142681451881];
 const SLOWNESS_ITERATIONS = 30;
 
-/**
- * The profile of the path between two points (class C): where the path reaches above the fit height
- * of the scene's profile, the linear profile from the ground speed whose slowness, averaged over the
- * heights the path spans, equals that of the layered c(z), so a straight path through the tropopause
- * or a ground layer takes its true time and keeps the closed-form rays; below the fit height it is
- * the scene's profile itself. The wind along the path is added by `alongProfile`.
- */
+/** Class C. */
 export function pathProfile(profile, a, b) {
   const top = Math.max(a.z, b.z);
   if (!profile.layered || !(top > profile.layered.fitHeight)) return alongProfile(profile, b.x - a.x, b.y - a.y);
   const bottom = Math.max(0, Math.min(a.z, b.z));
   const span = top - bottom;
   const c0 = profile.groundSpeed;
-  // Mean slowness over [bottom, top], piece by piece between the layers' boundaries.
   const edges = [bottom, ...profile.layered.breaks.filter(height => height > bottom && height < top), top];
   let target = 0;
   for (let piece = 1; piece < edges.length; piece += 1) {
@@ -86,7 +56,6 @@ export function pathProfile(profile, a, b) {
     for (let node = 0; node < GAUSS_NODES.length; node += 1) target += width * GAUSS_WEIGHTS[node] / profile.layered.trueSpeed(edges[piece - 1] + width * GAUSS_NODES[node]);
   }
   target /= span;
-  // Mean slowness of c₀ + g·z over [bottom, top]: ln(c(top)/c(bottom))/(g·span), solved for g by Newton from the secant.
   let gradient = (profile.layered.trueSpeed(top) - c0) / top;
   for (let iteration = 0; iteration < SLOWNESS_ITERATIONS; iteration += 1) {
     const low = c0 + gradient * bottom;
@@ -102,13 +71,7 @@ export function pathProfile(profile, a, b) {
   return alongProfile({ ...profile, gradient }, b.x - a.x, b.y - a.y);
 }
 
-/**
- * The profile for sound travelling horizontally along (dx, dy): the effective sound speed
- * c(z) + u(z)·n, with n the unit horizontal direction, which stays linear in height (class B, the
- * effective-sound-speed approximation, e.g. Salomons, Computational Atmospheric Acoustics, 2001; it
- * holds for small Mach numbers and paths near the horizontal, and overstates the wind on steep ones).
- * In still air, or straight up or down, it is the profile itself.
- */
+/** Class B: effective sound speed (Salomons 2001); holds for small Mach numbers and near-horizontal paths. */
 export function alongProfile(profile, dx, dy) {
   if (!profile.wind) return profile;
   const horizontal = Math.hypot(dx, dy);
@@ -125,17 +88,14 @@ export const speedAt = (profile, heightMetres) => profile.groundSpeed + profile.
 
 const flat = profile => Math.abs(profile.gradient) < FLAT_GRADIENT;
 
-/** asinh(x)/x, accurate near zero. */
 function asinhRatio(x) {
   return x < 1e-4 ? 1 - x * x / 6 : Math.asinh(x) / x;
 }
 
-/** θ/sin θ for the arc length of a circular arc from its chord, accurate near zero. */
 function arcRatio(half) {
   return half < 1e-4 ? 1 + half * half / 6 : half / Math.sin(half);
 }
 
-/** Travel time and spreading distance of `rayBetween` without its directions, for paths traced in large numbers. */
 export function rayTiming(profile, a, b) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
   const speedA = speedAt(profile, a.z);
@@ -145,11 +105,6 @@ export function rayTiming(profile, a, b) {
   return { seconds: distance / mean * asinhRatio(x), spreadMetres: distance * Math.sqrt(speedB / speedA) * Math.sqrt(1 + x * x) };
 }
 
-/**
- * The ray between two points: travel time, arc length, the spreading distance whose inverse is
- * the amplitude factor (D in homogeneous air), and unit propagation directions where it leaves `a`
- * and where it reaches `b`. It may pass below the ground; `inShadow` tells whether it does.
- */
 export function rayBetween(profile, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -163,8 +118,7 @@ export function rayBetween(profile, a, b) {
   const x = Math.abs(g) * distance / (2 * mean);
   const seconds = distance / mean * asinhRatio(x);
   const spreadMetres = distance * Math.sqrt(speedB / speedA) * Math.sqrt(1 + x * x);
-  // Tangents in the vertical plane (horizontal, vertical), from the circle through both points
-  // centred at z*; scaled by 2·horizontal·|g| so that they stay finite as g → 0.
+  // Scaled by 2·horizontal·|g| so that they stay finite as g → 0.
   const sum = speedA + speedB;
   const departure = planeDirection(2 * horizontal * speedA, g * horizontal * horizontal + dz * sum, dx, dy, horizontal);
   const arrival = planeDirection(2 * horizontal * speedB, dz * sum - g * horizontal * horizontal, dx, dy, horizontal);
@@ -180,10 +134,6 @@ function planeDirection(along, up, dx, dy, horizontal) {
   return { x: dx * h, y: dy * h, z: up / length };
 }
 
-/**
- * Height of the ray between two points at horizontal distance `s` from the first, for checking it
- * against terrain: a straight line in homogeneous air, otherwise the arc around z* = −c₀/g.
- */
 export function rayHeightAt(profile, a, b, s) {
   const horizontal = Math.hypot(b.x - a.x, b.y - a.y);
   if (!(horizontal > 0)) return a.z;
@@ -197,12 +147,7 @@ export function rayHeightAt(profile, a, b, s) {
   return zStar + Math.sign(fromA) * Math.sqrt(Math.max(0, radius * radius - (s - centre) ** 2));
 }
 
-/**
- * Horizontal distance from a height down to where a ray grazes the ground, in air whose speed
- * falls with height; Infinity otherwise. The direct ray from height z₁ to height z₂ stays above the
- * ground up to a horizontal distance of grazingRange(z₁) + grazingRange(z₂); beyond lies the
- * shadow. For small heights it is sqrt(2·c₀·z/|g|) (Fleagle 1949).
- */
+/** Fleagle 1949 for small heights. */
 export function grazingRange(profile, heightMetres) {
   if (profile.gradient >= 0 || flat(profile)) return Infinity;
   if (heightMetres <= 0) return 0;
@@ -212,12 +157,6 @@ export function grazingRange(profile, heightMetres) {
   return heightMetres * (cz + c0) / (c0 * sine);
 }
 
-/**
- * One leg of a reflected ray, from the ground up to a height, for a ray that meets the ground at
- * grazing angle ψ: horizontal distance and its derivative with respect to the ray parameter
- * ξ = cos ψ / c₀ (Snell's invariant cos θ / c). `turned` legs pass their highest point before
- * reaching the height, which only happens when the speed grows with height.
- */
 function leg(profile, sinPsi, cosPsi, heightMetres, turned) {
   const c0 = profile.groundSpeed;
   const g = profile.gradient;
@@ -242,10 +181,6 @@ function leg(profile, sinPsi, cosPsi, heightMetres, turned) {
   return { metres: (s0 + sz) / (g * xi), derivative: -(s0Term + szTerm + s0 + sz) / (g * xi * xi), sine: sz };
 }
 
-/**
- * The ψ in [low, high] where `range(ψ)` reaches `target`, by Newton steps on the analytic slope that
- * fall back to bisection whenever a step leaves the bracket; the bracket ends lie on either side.
- */
 function solveAngle(range, target, low, high) {
   const lowBelow = range(low).metres < target;
   let psi = (low + high) / 2;
@@ -262,13 +197,6 @@ function solveAngle(range, target, low, high) {
   return psi;
 }
 
-/**
- * The ground-reflected ray between a source and a receiver, or null where none exists (in the
- * shadow, or beyond the reach of single reflections). Both legs share Snell's invariant, so the
- * ray is the one whose two legs from the ground point add up to the horizontal distance; with a
- * gradient that grows with height the higher leg may turn first. The ray tube gives the spreading,
- * A = ρ·|∂ρ/∂ξ|·sin θs·sin θr / (ξ·cs²), capped near caustics.
- */
 export function reflectedRay(profile, source, receiver) {
   const dx = receiver.x - source.x;
   const dy = receiver.y - source.y;
@@ -281,7 +209,6 @@ export function reflectedRay(profile, source, receiver) {
   const g = profile.gradient;
   const higher = Math.max(zs, zr);
   const ratio = speedAt(profile, higher) / c0;
-  // Lowest grazing angle at which the higher end is reached before turning.
   const lowest = g > 0 && !flat(profile) ? Math.atan(Math.sqrt(Math.max(0, (ratio - 1) * (ratio + 1)))) : 0;
   const pair = (psi, turnedHigher) => {
     const sinPsi = Math.sin(psi);
@@ -290,7 +217,6 @@ export function reflectedRay(profile, source, receiver) {
     const second = leg(profile, sinPsi, cosPsi, zr, turnedHigher && zr > zs);
     return first && second ? { first, second, sinPsi, cosPsi } : null;
   };
-  // Horizontal distance and its slope dρ/dψ = dρ/dξ · (−sin ψ / c₀).
   const range = turned => psi => {
     const legs = pair(psi, turned);
     if (!legs) return { metres: Infinity, slope: NaN };
@@ -341,15 +267,7 @@ export function reflectedRay(profile, source, receiver) {
 const BOUNCE_SCAN_STEPS = 48;
 const BOUNCE_BISECTIONS = 50;
 
-/**
- * Rays that touch the ground 2…PROPAGATION.maximumBounces times between a source and a receiver above level
- * ground, where the speed grows with height and bends rays back down (class A on the profile). Every
- * contact is at the same grazing angle ψ, and between two contacts the ray is a circular hop of
- * 2·(c₀/g)·tan ψ. Each end's leg may reach its height rising or, past its highest point, falling, so
- * every pair of the two is searched: the angles where the legs and hops add up to the horizontal
- * distance are bracketed on a scan of ψ and refined by bisection. Spreading follows the ray tube as
- * for one contact, with ∂(hop)/∂ξ = −2/(g·sin ψ·ξ²). Returns the rays, each with its `bounces`.
- */
+/** Class A on the profile. */
 export function multipleReflections(profile, source, receiver, maximumBounces = PROPAGATION.maximumBounces) {
   const g = profile.gradient;
   if (!(g > 0) || flat(profile) || maximumBounces < 2) return [];
@@ -432,7 +350,6 @@ function bounceRay(profile, source, receiver, { first, second, sinPsi, cosPsi },
   };
 }
 
-/** The reflected ray in homogeneous air: the straight path from the image source below the ground. */
 function imageRay(profile, source, receiver) {
   const dx = receiver.x - source.x;
   const dy = receiver.y - source.y;
@@ -450,11 +367,7 @@ function imageRay(profile, source, receiver) {
   };
 }
 
-/**
- * The path into the shadow (class B/C): the limiting ray grazes the ground, the sound creeps along
- * it for `creepMetres` at the ground speed, and leaves on the limiting ray to the receiver. Its
- * spreading is that of the ray the ground blocks, so it meets the direct ray at the shadow boundary.
- */
+/** Class B/C. */
 export function shadowPath(profile, source, receiver) {
   const dx = receiver.x - source.x;
   const dy = receiver.y - source.y;
@@ -499,29 +412,18 @@ export function travelSeconds(profile, source, receiver) {
     + secondsBetween(profile, along(horizontal - toReceiver, 0), receiver);
 }
 
-/** The first sound from a point to a receiver: the direct ray, or the creeping path in the shadow. */
 export function firstArrival(profile, source, receiver) {
   return inShadow(profile, source, receiver) ? shadowPath(profile, source, receiver) : rayBetween(profile, source, receiver);
 }
 
-/**
- * Class B: attenuation of the least-attenuated creeping mode along the ground, in nepers per metre
- * per cube root of hertz: α(f) = (√3/2)·τ₁·(k/2)^(1/3)·(|g|/c₀)^(2/3) with k = 2πf/c₀ and τ₁ the
- * first zero of Ai′ (rigid ground). It follows from the Airy-function mode of a linear profile over
- * a reflecting plane, the same form as Fock's creeping waves on a curved surface of radius c₀/|g|
- * (Pierce, Acoustics, 1981, ch. 9; verify). Softer ground attenuates more.
- */
+/** Class B: Airy-function creeping mode over rigid ground (Pierce, Acoustics, 1981, ch. 9; verify). */
 export function creepingCoefficient(profile) {
   if (profile.gradient >= 0 || flat(profile)) return 0;
   const c0 = profile.groundSpeed;
   return Math.sqrt(3) / 2 * RIGID_CREEPING_ZERO * Math.cbrt(Math.PI / c0) * (-profile.gradient / c0) ** (2 / 3);
 }
 
-/**
- * The profile to draw a front from a source with: the linear profile while it holds at the source's
- * height, and otherwise homogeneous air at the layered air's speed there. The linear fit extended
- * far above the troposphere would give a meteor's fronts a speed near zero, or below it, at 100 km.
- */
+/** The linear fit extended far above the troposphere would slow a meteor's fronts to near zero. */
 export function localProfile(profile, heightMetres) {
   const trueSpeed = profile.layered?.trueSpeed;
   if (!trueSpeed) return profile;
@@ -529,10 +431,6 @@ export function localProfile(profile, heightMetres) {
   return Math.abs(speedAt(profile, heightMetres) - speed) <= VIEW.wavefront.localProfileTolerance * speed ? profile : { groundSpeed: speed, gradient: 0 };
 }
 
-/**
- * The wavefront of a point source after `seconds`: a sphere whose centre moves away from the
- * height where c would vanish, at a·cosh σ, with radius a·sinh σ, σ = |g|·t, a = c(zs)/|g|.
- */
 export function wavefront(profile, source, seconds) {
   const cs = speedAt(profile, source.z);
   if (flat(profile)) return { centre: source, radiusMetres: cs * seconds };

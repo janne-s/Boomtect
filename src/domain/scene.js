@@ -11,7 +11,6 @@ import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 const SCENE_FORMAT = 'boomtect.scene';
 const SCENE_VERSION = 29;
 
-/** The render's computation at its fullest, the default (`render.quality`); lighter settings trade accuracy for time. */
 export const DEFAULT_QUALITY = Object.freeze({
   cutoffDecibels: -14 * 20 / Math.LN10,
   highestFrequencyHz: SAMPLE_RATE_HZ / 2,
@@ -33,11 +32,7 @@ export const DEFAULT_PLACE = Object.freeze({ name: 'Koli', latitude: 63.0964, lo
 
 export const PLACE_NAME_KINDS = Object.freeze(['city', 'town', 'village', 'peak', 'water', 'hamlet', 'locality']);
 
-/**
- * Every bounded number in a scene: unit, range, and reliability class of the value it controls.
- * Class A comes from first principles, B from literature, C from heuristic or synthetic choice.
- * A null class marks a placement or output choice rather than a model value.
- */
+/** A null reliability marks a placement or output choice, not a model value. */
 export const PARAMETERS = Object.freeze({
   temperatureCelsius: { minimum: -40, maximum: 50, unit: '°C', label: 'Temperature', reliability: 'A' },
   relativeHumidityPercent: { minimum: 0, maximum: 100, unit: '%', label: 'Humidity', reliability: 'B' },
@@ -147,7 +142,6 @@ export const PARAMETERS = Object.freeze({
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
   ambisonicOrder: { minimum: 0, maximum: MAXIMUM_AMBISONIC_ORDER, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
-  // The render's computation (`render.quality`): how much of the sound it computes, not what the sound is.
   cutoffDecibels: { minimum: -140, maximum: -60, unit: 'dB', label: 'Cutoff level', reliability: null },
   highestFrequencyHz: { minimum: 1000, maximum: SAMPLE_RATE_HZ / 2, unit: 'Hz', label: 'Highest frequency', reliability: null },
   sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Flash detail', reliability: null, integer: true },
@@ -290,10 +284,7 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
 
 export const TERRAIN_DEFAULTS = Object.freeze({ enabled: true, shielding: true, echoes: true, scattering: .5, echoCellMetres: 100, echoLimit: 500 });
 
-/**
- * An artillery barrage: 24 rounds in salvos of six over a minute, within 150 m. A 155 mm high-explosive
- * shell carries roughly 7–11 kg of explosive (class C as a default; set the charge as its TNT equivalent).
- */
+/** Class C as a default. */
 export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 20261012) {
   const blast = defaultBlast();
   return {
@@ -315,11 +306,7 @@ export function defaultBarrage(id = 'barrage-1', name = 'Barrage', seed = 202610
   };
 }
 
-/**
- * A fireworks display: 30 shells of about 100 mm in pairs over a minute from mortars within 30 m,
- * bursting at about 140 m; a third of them crackle, each with 40 stars of 10 pops of 0.1 mg TNT
- * (class C, see FIREWORKS).
- */
+/** Class C, see FIREWORKS. */
 export function defaultFireworks(id = 'fireworks-1', name = 'Fireworks', seed = 20261019) {
   return {
     id, name, kind: 'fireworks', enabled: true, seed,
@@ -340,11 +327,7 @@ export function defaultFireworks(id = 'fireworks-1', name = 'Fireworks', seed = 
   };
 }
 
-/**
- * A reconnaissance aircraft at Mach 1.6 and 6 km flying east past the origin, its boom heard there
- * about half a minute after the start, the time sound takes down from its height. Booms rise in a
- * few milliseconds (class C until verified; turbulence and molecular relaxation set it).
- */
+/** Rise time class C until verified. */
 export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013) {
   const body = FLIGHT.bodies.reconnaissance;
   return {
@@ -364,11 +347,7 @@ export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013)
   };
 }
 
-/**
- * A bright fireball on Chelyabinsk's track (19 km/s, 18° below the horizontal, trail ending near 27 km;
- * Borovička et al. 2013, Popova et al. 2013, class B), mirrored to head east-northeast, but a 1 m stony
- * meteoroid instead of a 19 m one so that it renders quickly. Its rise time and breakup are class C.
- */
+/** Class B: Chelyabinsk's track (Borovička et al. 2013, Popova et al. 2013); rise time and breakup class C. */
 export function defaultMeteor(id = 'meteor-1', name = 'Meteor', seed = 20261015) {
   return {
     id, name, kind: 'meteor', enabled: true, seed,
@@ -396,11 +375,7 @@ export function defaultShower(id = 'shower-1', name = 'Shower', seed = 20261016)
   };
 }
 
-/**
- * A bullwhip cracked 1.5 m above the ground, 3 m west of the origin, toward the east: its tip at
- * Krehl and Engemann's Mach 2.19, an 8 cm cracker of K_S 0.08 (class C, d/l about 1/20), and a
- * shock that rises in 10 µs.
- */
+/** Class C. */
 export function defaultWhip(id = 'whip-1', name = 'Whip', seed = 20261017) {
   return {
     id, name, kind: 'whip', enabled: true, seed,
@@ -415,12 +390,7 @@ export function defaultWhip(id = 'whip-1', name = 'Whip', seed = 20261017) {
   };
 }
 
-/**
- * A Falcon 9 first stage returning to a pad 8 km west of the origin, as at Vandenberg in Durrant et
- * al. 2022: from 40 km at Mach 2.5, 70° below the horizontal, heading east (class C, a typical
- * descent after the entry burn; the boom is found low on the path, where the speed follows the
- * drag). A 47 m body with K_S fitted to their 130 Pa and 0.29 s at 8 km (class C).
- */
+/** Class C, K_S fitted to Durrant et al. 2022 at 8 km. */
 export function defaultBooster(id = 'booster-1', name = 'Booster', seed = 20261018) {
   return {
     id, name, kind: 'booster', enabled: true, seed,
@@ -447,7 +417,6 @@ export function defaultReceiver(id = 'receiver-1', name = 'Mic 1', { type = 'omn
 
 export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.padMetres ?? emitter.startMetres ?? emitter.baseMetres;
 
-/** The heading, whole degrees clockwise from north, from one point of the plan toward another (north when they coincide). */
 export function headingToward(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -456,7 +425,6 @@ export function headingToward(from, to) {
 
 export function defaultScene(mode = 'thunder') {
   const blast = mode === 'blast';
-  // A scene starts with a binaural microphone; microphones added later are omni.
   const receiver = defaultReceiver('receiver-1', 'Mic 1', { type: 'binaural' });
   if (mode === 'thunder') receiver.positionMetres = { x: 1400, y: 0, z: 1.7 };
   if (blast) receiver.positionMetres = { x: 400, y: 0, z: 1.7 };
@@ -487,7 +455,6 @@ function check(condition, message) {
   if (!condition) throw new SceneError(message);
 }
 
-// While `readScene` runs, a number outside its range is brought into it instead of rejected.
 let bringIntoRange = false;
 
 function number(value, key, path) {
@@ -591,11 +558,6 @@ function emitter(value, index) {
   return lightning;
 }
 
-/**
- * Loaded terrain: the geographic point at the scene origin it was loaded around (the scene's place),
- * the cell, the datum (sea level height of z = 0), and a rectangle of whole patches whose heights are
- * base64 16-bit steps above each patch's base (`terrain.js`). Null when the scene has no terrain.
- */
 function terrain(value) {
   if (value === null || value === undefined) return null;
   check(typeof value === 'object', 'terrain must be an object or null.');
@@ -637,10 +599,6 @@ function terrain(value) {
   };
 }
 
-/**
- * Where the scene lies: a name and the geographic point (WGS84 degrees) at its origin. Every scene
- * has one, with or without terrain; terrain is loaded around it.
- */
 function place(value) {
   check(value && typeof value === 'object', 'place is missing.');
   check(typeof value.name === 'string' && value.name.length <= PLACE_NAME_LENGTH, 'place.name must be a short text.');
@@ -670,7 +628,6 @@ function uniqueIds(items, path) {
   check(new Set(items.map(item => item.id)).size === items.length, `${path} ids must be unique.`);
 }
 
-/** Validates a scene document and returns a complete copy, or throws SceneError. */
 export function parseScene(value) {
   check(value && typeof value === 'object', 'The scene is not an object.');
   check(value.format === SCENE_FORMAT, 'This is not a Boomtect scene.');
@@ -683,7 +640,6 @@ export function parseScene(value) {
   check(GROUND_TYPES.includes(ground.type), 'ground.type is not supported.');
   check(typeof ground.forest === 'boolean', 'ground.forest must be true or false.');
   check(typeof ground.surroundings === 'boolean', 'ground.surroundings must be true or false.');
-  // A scene may be empty of emitters while the next is chosen.
   check(Array.isArray(value.emitters) && value.emitters.length <= RENDER.maximumEmitters,
     `A scene holds at most ${RENDER.maximumEmitters} emitters.`);
   check(Array.isArray(value.receivers) && value.receivers.length >= 1 && value.receivers.length <= RENDER.maximumReceivers,
@@ -748,7 +704,6 @@ const EMITTER_DEFAULTS = Object.freeze({
 
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** `value` with every field it lacks taken from `defaults`, through nested objects; a list is kept whole. */
 function filled(value, defaults) {
   if (!isRecord(defaults)) return value === undefined ? structuredClone(defaults) : value;
   if (!isRecord(value)) return value === undefined ? structuredClone(defaults) : value;
@@ -757,12 +712,6 @@ function filled(value, defaults) {
   return result;
 }
 
-/**
- * Reads a scene document of any version, as saved in a file or the browser: a field it lacks takes
- * its default, a field it does not know is dropped, and a number outside its range is brought into
- * it. Only a document that is not a Boomtect scene, or whose content is broken, is rejected.
- * Adding a field therefore needs only its default; a field whose meaning changes takes a new name.
- */
 export function readScene(value) {
   check(isRecord(value) && value.format === SCENE_FORMAT, 'This is not a Boomtect scene.');
   const base = defaultScene(MODES.includes(value.mode) ? value.mode : undefined);
@@ -772,7 +721,6 @@ export function readScene(value) {
     : base.emitters;
   scene.receivers = Array.isArray(value.receivers) ? value.receivers.map(item => filled(item, defaultReceiver())) : base.receivers;
   scene.terrain = isRecord(value.terrain) ? filled(value.terrain, TERRAIN_DEFAULTS) : null;
-  // Terrain lies at the place: a place apart from its terrain takes the terrain's point.
   const { terrain } = scene;
   if (isRecord(scene.place) && terrain && (terrain.latitude !== scene.place.latitude || terrain.longitude !== scene.place.longitude)
     && [terrain.latitude, terrain.longitude].every(Number.isFinite)) {

@@ -103,7 +103,6 @@ test('the Mach cone drawn at the clock opens at asin(1/M) behind the body, and a
   const halfAngle = Math.asin(1 / flight.mach);
   for (const ring of cone.rings) {
     for (const point of ring) {
-      // Flying east: the cone's axis points back west from the body.
       const back = { x: cone.apex.x - point.x, y: point.y - cone.apex.y, z: point.z - cone.apex.z };
       const angle = Math.atan2(Math.hypot(back.y, back.z), back.x);
       assert.ok(Math.abs(angle - halfAngle) < 1e-3, `${angle} vs ${halfAngle}`);
@@ -127,7 +126,6 @@ test('turbulence spikes a boom’s front, seeded, while its N-wave keeps its are
   assert.deepEqual(rough.samples, render(1e-6).samples);
   const area = samples => samples.reduce((sum, value) => sum + Math.max(0, value), 0);
   assert.ok(Math.abs(area(rough.samples) / area(calm.samples) - 1) < .05);
-  // Its front is no longer one clean step: the peak moves and the first milliseconds differ.
   const peak = samples => samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0);
   assert.ok(Math.abs(peak(rough.samples) / peak(calm.samples) - 1) > .03, `${peak(rough.samples)} vs ${peak(calm.samples)}`);
 });
@@ -139,7 +137,6 @@ test('a body supersonic at its start has flown before it: a microphone beside th
   const flight = parsed.emitters[0];
   const path = flightPath(flight, parsed.air);
   const receiver = parsed.receivers[0].positionMetres;
-  // From the start alone the boom would leave before it; with the approach it is found there.
   assert.equal(flightBooms(path, flight, receiver, soundSpeedProfile(parsed.air), parsed.air).length, 0);
   const [boom] = flightBooms(withApproach(path, parsed.air), flight, receiver, soundSpeedProfile(parsed.air), parsed.air);
   assert.ok(boom && boom.emissionSeconds < flight.startSeconds && boom.point.x < flight.startMetres.x);
@@ -165,7 +162,6 @@ test('beyond the edge of its carpet a boom creeps into the shadow, weaker and da
     const flight = parsed.emitters[0];
     const booms = flightBooms(withApproach(flightPath(flight, parsed.air), parsed.air), flight, parsed.receivers[0].positionMetres, soundSpeedProfile(parsed.air), parsed.air);
     const { samples } = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
-    // The share of the signal's energy left after a 5-sample moving average takes out what lies above about 2 kHz.
     let total = 0;
     let smooth = 0;
     for (let index = 4; index < samples.length; index += 1) {

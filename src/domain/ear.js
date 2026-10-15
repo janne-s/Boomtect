@@ -1,15 +1,10 @@
 import { EAR } from './constants.js';
 
-/**
- * The optional listener model of what plays: middle-ear reflex and loudness compression, with
- * classes and sources at EAR (`constants.js`). Both read the uncalibrated model pressure, so the
- * whole is class C.
- */
+/** Class C as a whole: it reads uncalibrated model pressure. Sources at EAR in `constants.js`. */
 
 const toDb = value => 20 * Math.log10(Math.max(value, 1e-30));
 const fromDb = decibels => 10 ** (decibels / 20);
 
-/** RMS of a signal in consecutive windows. */
 export function envelope(samples, sampleRate, seconds = EAR.envelopeSeconds) {
   const window = Math.max(1, Math.round(sampleRate * seconds));
   const values = new Float64Array(Math.ceil(samples.length / window));
@@ -22,11 +17,6 @@ export function envelope(samples, sampleRate, seconds = EAR.envelopeSeconds) {
   return { window, values };
 }
 
-/**
- * The reflex attenuation in decibels per envelope frame, from the pressure envelope in pascals:
- * each frame above threshold asks for an attenuation that arrives after a level-dependent latency,
- * rises and falls with the onset and release time constants, and fades while sustained.
- */
 export function reflexAttenuation(pressureEnvelope, frameSeconds) {
   const frames = pressureEnvelope.length;
   const target = new Float64Array(frames);
@@ -54,7 +44,6 @@ export function reflexAttenuation(pressureEnvelope, frameSeconds) {
   return attenuation;
 }
 
-/** Per-sample gain from per-frame decibels, interpolated between frame centres. */
 function frameGains(decibels, window, length) {
   const gains = new Float64Array(length);
   for (let index = 0; index < length; index += 1) {
@@ -66,11 +55,6 @@ function frameGains(decibels, window, length) {
   return gains;
 }
 
-/**
- * Lowers gains so that no sample of `pressure` rises above its loudest one: each gain at most the
- * ratio that brings its sample to that peak, then limited to EAR.onsetCapSlewDbPerSecond of change
- * forward and backward, which can only lower it further.
- */
 function capGains(gains, pressure, sampleRate) {
   let loudest = 0;
   for (const value of pressure) loudest = Math.max(loudest, Math.abs(value));
@@ -84,20 +68,13 @@ function capGains(gains, pressure, sampleRate) {
   for (let index = gains.length - 2; index >= 0; index -= 1) gains[index] = Math.min(gains[index], gains[index + 1] * step);
 }
 
-/**
- * Applies the listener model to one listener's channels, driven by channel 0 (the pressure). The
- * same time-varying processing goes to every channel, so an ambisonic field keeps its directions.
- */
 export function applyEar(channels, sampleRate, { reflex = true, loudness = true, capOnsets = true } = {}) {
   let output = channels.map(channel => Float32Array.from(channel));
   const length = output[0].length;
   if (reflex) {
     const { window, values } = envelope(output[0], sampleRate);
     const attenuation = reflexAttenuation(values, window / sampleRate);
-    // A low shelf as a state-variable filter (Simper's trapezoidal SVF, the RBJ shelf's response),
-    // its gain moving smoothly sample by sample. Switching a biquad's coefficients every frame instead
-    // stepped its state under a loud bass: as the reflex moved under a 20 Hz tone it added 6–18 dB
-    // more at 300 Hz–2 kHz, a buzz at the frame rate.
+    // A smoothly moving SVF shelf: switching a biquad's coefficients every frame buzzed at the frame rate under a loud bass.
     const gains = frameGains(attenuation.map(decibels => -decibels), window, length);
     const warped = Math.tan(Math.PI * EAR.shelfHz / sampleRate);
     const damping = Math.SQRT2;
@@ -123,9 +100,7 @@ export function applyEar(channels, sampleRate, { reflex = true, loudness = true,
     });
   }
   if (loudness) {
-    // The level as above. Taken over 10 ms windows instead it swung with each cycle of a bass and
-    // modulated it, adding its harmonics in the upper bass (measured: 80–160 Hz at 58–66 dB under a
-    // 40 Hz tone, which small speakers do not play while they play these).
+    // Over 10 ms windows it swung with each cycle of a bass and added its harmonics.
     const square = 1 - Math.exp(-1 / (EAR.loudnessMeanSquareSeconds * sampleRate));
     const smooth = 1 - Math.exp(-1 / (EAR.loudnessLevelSeconds * sampleRate));
     const level = new Float64Array(length);
@@ -137,7 +112,6 @@ export function applyEar(channels, sampleRate, { reflex = true, loudness = true,
       loudest = Math.max(loudest, level[index]);
     }
     if (loudest > -300) {
-      // Silence counts from the floor, so the smoothing does not climb from far below it.
       const floor = loudest + EAR.loudnessFloorDb;
       let decibels = Math.max(level[0], floor);
       let peak = -Infinity;

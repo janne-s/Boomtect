@@ -30,12 +30,10 @@ test('a meteor’s boom follows ReVelle: Δp/p = 0.0575 at 10 R₀, then x^(−3
   const at = radii => meteorBoom(meteor, air, height, radii * radiusMetres, p).overpressurePa;
   assert.ok(Math.abs(Math.log(at(1000) / at(100)) / Math.log(10) + .75) < 1e-9);
   assert.ok(Math.abs(Math.log(at(1e6) / at(1e5)) / Math.log(10) + .5) < 1e-9);
-  // Its N-wave lengthens as x^¼.
   const duration = radii => meteorBoom(meteor, air, height, radii * radiusMetres, p).durationSeconds;
   assert.ok(Math.abs(Math.log(duration(1000) / duration(100)) / Math.log(10) - .25) < 1e-6);
 });
 
-/** A meteor's render in plain air without ground, and its stationary arrival over the trail. */
 function plainMeteor(diameterMetres) {
   const scene = plainScene('sonic');
   scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
@@ -64,7 +62,6 @@ test('a meteor’s boom is one N-wave from where its Mach cone reaches the micro
     const onset = samples.findIndex(value => Math.abs(value) > .01 * Math.abs(samples[peak]));
     const onsetSeconds = result.startSeconds + onset / sampleRate;
     assert.ok(Math.abs(onsetSeconds - earliest) < .01, `${diameter} m: ${onsetSeconds} vs ${earliest}`);
-    // The front rises to half the peak within a few milliseconds, not over the trail's spread of arrivals.
     const half = samples.findIndex(value => Math.abs(value) > .5 * Math.abs(samples[peak]));
     assert.ok((half - onset) / sampleRate < .01, `${diameter} m rises over ${(half - onset) / sampleRate} s`);
   }
@@ -87,24 +84,20 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
     // Within the pressure spread of one of the generations: S·2^k·e^(±4σ).
     const ratio = Math.log2(ram(burst.positionMetres.z) / (meteor.strengthMegapascals * 1e6));
     assert.ok(ratio > -3 && ratio < meteor.breakupCount + 2, `${ratio}`);
-    // Each fragment of generation k carries the breakup share over 2^k.
     const share = burst.chargeKilograms * 4.184e6 / (meteor.breakupShare * energy);
     assert.ok([1, 2, 4, 8].some(fragments => Math.abs(share * fragments - 1) < 1e-9));
   }
   const last = bursts.at(-1);
   assert.ok(Math.abs(last.positionMetres.z - meteor.endHeightMetres) < 1e-6);
   assert.ok(Math.abs(last.chargeKilograms - meteor.burstShare * energy / 4.184e6) < 1e-9);
-  // No more energy is released than the body has: the burst takes what the breakups leave.
   const greedy = meteorBursts({ ...meteor, breakupCount: 6, breakupShare: .5, burstShare: 1 }, air);
   assert.ok(greedy.reduce((sum, burst) => sum + burst.chargeKilograms, 0) * 4.184e6 <= energy * (1 + 1e-12));
-  // Each lies on the trail at the time the body passes, in order along it.
   const { start, direction } = meteorTrail(meteor);
   for (const burst of bursts) {
     const along = (burst.emissionSeconds - meteor.startSeconds) * speed;
     assert.ok(Math.abs(start.x + direction.x * along - burst.positionMetres.x) < 1e-6);
   }
   assert.ok(bursts.every((burst, index) => !index || burst.emissionSeconds >= bursts[index - 1].emissionSeconds));
-  // A body too strong for its trail only bursts; no shares, no blasts.
   assert.equal(meteorBursts({ ...meteor, strengthMegapascals: 100 }, air).length, 1);
   assert.equal(meteorBursts({ ...meteor, breakupShare: 0, burstShare: 0 }, air).length, 0);
 });
@@ -123,7 +116,6 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   assert.ok(Math.abs(burst.linearRadiusMetres / (20 * cubeRoot) - 1) < 1e-9);
   const slower = Math.sqrt(temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, place.positionMetres.z));
   assert.ok(Math.abs(burst.durationSeconds / (.006 * cubeRoot * slower) - 1) < 1e-9);
-  // A large meteoroid's burst is held to the longest positive phase, and its scene renders.
   const large = { ...meteor, diameterMetres: 50 };
   assert.ok(emitterSources(large, air).sources.slice(1).every(source => source.durationSeconds === BLAST.maximumHighBlastSeconds));
   const scene = plainScene('sonic');
@@ -138,7 +130,6 @@ test('a meteor’s breakups and burst are heard after its boom when they lie pas
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   assert.ok(result.samples.every(Number.isFinite));
-  // Boom first, then three blasts: four separate onsets above 5 % of the peak.
   const { samples, sampleRate } = result;
   const onsets = [];
   let last = -Infinity;
@@ -173,7 +164,6 @@ test('a meteor’s cone is drawn with the speed of sound at its height, not the 
   const now = track.seconds.at(-1) + 30;
   const cone = machCone(track, now, soundSpeedProfile(parsed.air));
   assert.ok(cone && cone.rings.length > 5);
-  // The oldest ring: from the start of the trail, 30 s and more ago; its radius is about c(z)·t.
   const ring = cone.rings.at(-1);
   const centre = ring.reduce((sum, point) => ({ x: sum.x + point.x / ring.length, y: sum.y + point.y / ring.length, z: sum.z + point.z / ring.length }), { x: 0, y: 0, z: 0 });
   const radius = Math.hypot(ring[0].x - centre.x, ring[0].y - centre.y, ring[0].z - centre.z);

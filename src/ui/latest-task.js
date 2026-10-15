@@ -1,4 +1,3 @@
-/** One replaceable async task. Ownership survives an abort until finish/cancel clears it. */
 export function createLatestTask() {
   let active = null;
   return {

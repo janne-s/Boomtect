@@ -20,10 +20,7 @@ export function nextPowerOfTwo(value) {
   return length;
 }
 
-/**
- * In-place radix-2 complex FFT. Forward uses e^(−iωt); inverse uses e^(+iωt) and divides by the
- * length, so inverse(forward(x)) = x.
- */
+/** Forward e^(−iωt); inverse e^(+iωt), divided by the length. */
 export function fft(real, imaginary, inverse = false) {
   const length = real.length;
   if (!isPowerOfTwo(length) || imaginary.length !== length) throw new RangeError('FFT length must be a power of two.');
@@ -59,7 +56,6 @@ export function fft(real, imaginary, inverse = false) {
   if (inverse) for (let index = 0; index < length; index += 1) { real[index] /= length; imaginary[index] /= length; }
 }
 
-/** Overlap-add transforms this many kernel lengths at a time (numerical, not a model value). */
 const BLOCK_KERNELS = 4;
 
 export function silent(samples, from, to) {
@@ -67,17 +63,10 @@ export function silent(samples, from, to) {
   return true;
 }
 
-/** The transform size for overlap-add of a signal with a kernel: a few kernels long, or the whole if it is shorter. */
 export function overlapSize(signalLength, kernelLength) {
   return Math.min(BLOCK_KERNELS * nextPowerOfTwo(kernelLength), nextPowerOfTwo(signalLength + kernelLength));
 }
 
-/**
- * Adds the linear convolution of each signal with one real `kernel` into its target from the first
- * sample, as far as the target reaches. Overlap-add in blocks a few kernels long, so that minutes of
- * sound need no transform of their whole length; two signals share each transform as its real and
- * imaginary parts, which a real kernel keeps apart. Silent blocks are skipped.
- */
 export function convolveAdd(targets, signals, kernel) {
   const length = Math.max(0, ...signals.map(signal => signal.length));
   if (!length || !kernel.length) return;

@@ -1,9 +1,3 @@
-/**
- * An exact PNG decoder for elevation tiles. Adopted from Echotect `src/terrain-tiles.js` at
- * commit cb712ef: elevation is data, not an image, and reading it back through a canvas lets
- * colour management and anti-fingerprinting noise alter the channels.
- */
-
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 const PNG_CHANNELS = Object.freeze({ 2: 3, 3: 1, 6: 4 });
 
@@ -21,7 +15,7 @@ async function inflate(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** Decodes an 8-bit, non-interlaced RGB, RGBA, or palette PNG to its exact RGB bytes; one step in red is 256 m. */
+/** Not through a canvas: colour management and anti-fingerprinting noise alter elevation, one red step being 256 m. */
 export async function decodePngRgb(buffer) {
   const bytes = new Uint8Array(buffer);
   if (!PNG_SIGNATURE.every((value, index) => bytes[index] === value)) throw new Error('Terrain tile is not a PNG.');

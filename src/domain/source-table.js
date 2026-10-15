@@ -1,29 +1,14 @@
-/**
- * Point sources as parallel typed arrays. Emitters produce sources as objects, which also keep
- * their flash geometry alive through shared references; the renderer holds this table instead,
- * about 140 bytes per source against roughly 700 for the objects and their geometry. Units follow
- * the source objects: metres, seconds, pascal-metres.
- */
 const SOURCE_COLUMNS = Object.freeze({
   x: Float64Array, y: Float64Array, z: Float64Array,
-  /** Unit direction of the radiating line element; directed is 0 for a point without one. */
   dx: Float64Array, dy: Float64Array, dz: Float64Array, directed: Uint8Array,
   elementMetres: Float64Array, emissionSeconds: Float64Array, amplitudePaMetres: Float64Array,
-  /** PULSE_NWAVE, PULSE_TRIPLE (a booster's triple boom), PULSE_FRIEDLANDER, or PULSE_NOISE (a blast's roar, from its seed). */
   pulse: Uint8Array, noiseSeed: Uint32Array,
-  /** A secondary shock's delay factors (`explosives.js`); 0 for any other source. */
   secondaryDelaySeconds: Float64Array, secondaryCubeRoot: Float64Array,
-  /** 1 for a flight, whose booms the renderer finds per receiver. */
   flight: Uint8Array,
   durationSeconds: Float64Array, decay: Float64Array, spanSeconds: Float64Array, linearRadiusMetres: Float64Array,
-  /** The weak-shock parameters; relaxationRadius is 0 for a source without a weak shock. */
   relaxationRadius: Float64Array, sourcePeriodSeconds: Float64Array, limitRadii: Float64Array
 });
 
-/**
- * Builds a source table one source at a time, so that a large emitter never holds all its sources
- * as objects at once. `push` takes a source object, as an emitter's list would.
- */
 export function sourceTableBuilder(capacity = 1024) {
   let room = Math.max(1, capacity);
   let length = 0;
@@ -71,7 +56,6 @@ export function sourceTableBuilder(capacity = 1024) {
       }
       length += 1;
     },
-    /** The table of the sources pushed so far, in views of the builder's columns. */
     table() {
       return { length, ...Object.fromEntries(Object.entries(columns).map(([key, array]) => [key, array.subarray(0, length)])) };
     }

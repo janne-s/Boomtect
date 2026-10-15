@@ -44,7 +44,6 @@ test('the reflex fades while the sound is sustained', () => {
 test('loudness compression shrinks level differences to the exponent', () => {
   const signal = Float32Array.from({ length: SAMPLE_RATE }, (_, index) => (index < SAMPLE_RATE / 2 ? 1 : .01) * Math.sin(index * .3));
   const [heard] = applyEar([signal], SAMPLE_RATE, { reflex: false, loudness: true });
-  // Once the level has settled after the drop, a third of a second on.
   const before = 20 * Math.log10(rms(signal, .2, .45) / rms(signal, .85, .98));
   const after = 20 * Math.log10(rms(heard, .2, .45) / rms(heard, .85, .98));
   assert.ok(Math.abs(after - EAR.loudnessExponent * before) < .5, `${before} → ${after}`);
@@ -60,7 +59,6 @@ test('the reflex moving under a loud bass adds no buzz at the frame rate', () =>
   const sampleRate = SAMPLE_RATE;
   const x = Float32Array.from({ length: 2 * sampleRate }, (_, index) => (index > sampleRate / 2 ? 200 : 0) * Math.sin(2 * Math.PI * 20 * index / sampleRate));
   const [y] = applyEar([x], sampleRate, { reflex: true, loudness: false });
-  // While it engages: the level at 1 kHz against the tone, which has none there.
   const from = Math.round(.55 * sampleRate);
   const length = sampleRate / 2;
   let re = 0;
@@ -93,7 +91,6 @@ test('loudness compression adds no harmonics of a loud bass', () => {
 
 test('with its onsets capped, Loudness raises no sample above the loudest going in, and still raises the quiet', () => {
   const sampleRate = 48000;
-  // A quiet hiss for a second, then a 50 Pa N-wave of 100 ms, then the hiss again.
   const signal = Float32Array.from({ length: 3 * sampleRate }, (_, index) => {
     const t = index / sampleRate - 1;
     const hiss = .01 * Math.sin(index * 1.7) * Math.sin(index * .013);
@@ -105,7 +102,6 @@ test('with its onsets capped, Loudness raises no sample above the loudest going 
   const [capped] = applyEar([signal], sampleRate, { reflex: false, loudness: true });
   assert.ok(peak(free) > 1.5 * peak(signal), `${peak(free)}`);
   assert.ok(peak(capped) <= peak(signal) * (1 + 1e-6), `${peak(capped)}`);
-  // The hiss before the onset is raised as without the cap, away from it.
   const quiet = [Math.round(.2 * sampleRate), Math.round(.6 * sampleRate)];
   assert.ok(rms(capped, ...quiet) > 10 * rms(signal, ...quiet));
   assert.ok(Math.abs(rms(capped, ...quiet) / rms(free, ...quiet) - 1) < 1e-6);

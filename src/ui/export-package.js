@@ -5,29 +5,12 @@ import { zipStore } from '../domain/zip.js';
 import { composeListening } from './listening.js';
 import { renderComposition } from './player.js';
 
-/**
- * The export package, after Echotect's: a chosen set of files, one as it is or several in a ZIP.
- * - scene: the parameter document with what was exported and how;
- * - stereo: what plays, rendered offline into two channels as playback sounds;
- * - microphones: one file per microphone, an omni's pressure in mono and a binaural one's head in
- *   stereo;
- * - ambix: one AmbiX file per microphone, when the render is spatial;
- * - echotect: saved from the dialog's Echotect section rather than chosen here, the chosen
- *   microphone's pressure in mono without terrain echoes and its handoff (`sound-handoff.js`), for
- *   Echotect to add its own.
- * Every file shares one full scale, the playback gain, so their levels compare; with per-microphone
- * files all start at one time, so they line up.
- */
 const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
 const HANDOFF_BYTES = 2048;
 
 const slug = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'boomtect';
 export const fileStem = slug;
 
-/**
- * What can be exported for the scene's results: the listening composition, and every microphone on
- * one timeline as a head of the sound field (its omni channel first). Null without results.
- */
 export function exportPlan(scene, results, gain) {
   const listening = composeListening(scene, results);
   if (!listening) return null;
@@ -35,20 +18,13 @@ export function exportPlan(scene, results, gain) {
   if (!everyone) return null;
   const types = new Map(scene.receivers.map(receiver => [receiver.id, receiver.type]));
   const order = scene.render.ambisonicOrder;
-  // Every microphone in the scene's order with its channels on the shared timeline: the whole field
   const fields = new Map([...everyone.heads.map(head => [head.receiverId, head]), ...everyone.omnis.map(omni => [omni.receiverId, { ...omni, channels: [omni.channel] }])]);
   const microphones = scene.receivers.map(receiver => fields.get(receiver.id)).filter(Boolean);
   return { scene, listening, everyone, microphones, types, gain, order };
 }
 
-/** How many files an item gives. */
 export const itemFiles = (plan, item) => (item === 'microphones' || item === 'ambix' ? plan.microphones.length : item === 'echotect' ? 2 : 1);
 
-/**
- * Which items the plan can give, and their sizes in bytes for a selection (their timeline depends
- * on it). `echoFree` is the share of the timeline a render without terrain echoes fills, which the
- * Echotect files always are and the others are with `withoutEchoes`.
- */
 export function exportSizes(plan, selected, { echoFree = 1, withoutEchoes = false } = {}) {
   const aligned = selected.has('microphones') || selected.has('ambix');
   const share = withoutEchoes ? echoFree : 1;
@@ -75,11 +51,6 @@ function placed(channels, offset, length) {
   });
 }
 
-/**
- * The files of a selection: [{ name, data }]. `describe` gets the export block for the scene document
- * once the audio files are known. `echotect` gives the plan rendered without terrain echoes, the
- * microphone it is for (`receiverId`), and the handoff of a microphone.
- */
 export async function exportFiles(plan, selected, stem, describe, echotect) {
   const { listening, everyone, microphones, gain, order } = plan;
   const aligned = selected.has('microphones') || selected.has('ambix');

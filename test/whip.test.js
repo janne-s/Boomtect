@@ -37,13 +37,11 @@ test('a whip’s crack is Carlson’s boom of its cracker where it leaves the pa
   const whip = scene.emitters[0];
   const receiver = { x: -2.75, y: 0, z: 4.6 };
   const booms = flightBooms(whipPath(whip, scene.air), whipBody(whip), receiver, soundSpeedProfile(scene.air), scene.air);
-  // The strongest leaves near the top speed, as the lash turns the tip over.
   const boom = booms.reduce((best, item) => (item.mach > best.mach ? item : best));
   assert.ok(boom.mach > 2 && boom.mach < whip.mach * 1.001, `${booms.map(item => item.mach)}`);
   const pressure = scene.air.pressureKpa * 1000;
   const expected = carlsonBoom({ mach: boom.mach, vehiclePressurePa: pressure, groundPressurePa: pressure, vehicleSoundSpeed: 1, lengthMetres: whip.crackerLengthMetres, shapeFactor: whip.crackerShapeFactor, distanceMetres: boom.ray.metres });
   assert.ok(Math.abs(boom.overpressurePa / expected.overpressurePa - 1) < .01, `${boom.overpressurePa} vs ${expected.overpressurePa}`);
-  // A fraction of a millisecond.
   assert.ok(boom.durationSeconds > 1e-4 && boom.durationSeconds < 5e-4, `${boom.durationSeconds}`);
   const slow = whipScene({ mach: .9 });
   assert.equal(flightBooms(whipPath(slow.emitters[0], slow.air), whipBody(slow.emitters[0]), receiver, soundSpeedProfile(slow.air), slow.air).length, 0);

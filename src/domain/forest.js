@@ -5,16 +5,12 @@ import { createRandom, normalDeviate } from './random.js';
 
 const FOLIAGE_SCALE = GROUND.foliageDecibelsPerCubeRootHertz * Math.LN10 / 20 / (Math.cbrt(2 * Math.PI) * Math.cos(Math.PI / 6));
 
-/** Foliage loss and phase lag per metre of path at a frequency, nepers and radians. */
 export function foliageExponent(frequencyHz) {
   const [loss, lag] = cubeRootExponent(frequencyHz, GROUND.foliageCutoffHz);
   return [FOLIAGE_SCALE * loss, FOLIAGE_SCALE * lag];
 }
 
-/**
- * The length of a straight path of `metres` between heights `a` and `b` above the ground that runs
- * under the canopy (class C: ISO 9613-2 bends the path down on a 5 km arc; the ground is taken level).
- */
+/** Class C: ISO 9613-2 bends the path on a 5 km arc; here the ground is level. */
 export function foliageMetres(metres, a, b, treeHeightMetres) {
   const low = Math.min(a, b);
   const high = Math.max(a, b);
@@ -27,20 +23,14 @@ const FOREST = Object.freeze({ ...GROUND.forest, salt: 0 });
 
 const SURROUNDINGS = Object.freeze({ ...GROUND.surroundings, salt: 0x5bd1e995 });
 
-/** A 32-bit seed from a receiver's id, so that each receiver hears its own forest. */
 export function forestSeed(id) {
   let hash = 0x811c9dc5;
   for (let index = 0; index < id.length; index += 1) hash = Math.imul(hash ^ id.charCodeAt(index), 0x01000193);
   return hash >>> 0;
 }
 
-/**
- * Impulse responses of the forest's tail per Ambisonic channel, without the direct sound: seeded
- * Gaussian noise in octave bands, each decaying with its time at its share of a unit impulse's energy.
- * Diffuse: order n carries 1/(2n + 1) of the omnidirectional energy (SN3D). `[first, last)` makes a share.
- */
 export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels], density = 1) {
-  // A sparser forest returns less of the sound, in proportion to its density (class C); its times stay.
+  // Class C.
   return cachedResponses(density === 1 ? FOREST : { ...FOREST, energyShare: FOREST.energyShare * density }, seed, sampleRate, first, last, 'forest');
 }
 
@@ -48,7 +38,6 @@ export function surroundingsResponses(seed, channels, sampleRate, [first, last] 
   return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last, 'surroundings');
 }
 
-// A thread renders several ranges of one receiver in turn; they share the last responses made.
 const lastResponses = new Map();
 
 function cachedResponses(profile, seed, sampleRate, first, last, name) {
@@ -62,7 +51,6 @@ function makeResponses(profile, seed, sampleRate, first, last) {
   const size = nextPowerOfTwo(length);
   const binHz = sampleRate / size;
   const bands = GROUND.reverbBandsHz.length;
-  // Crossover weights per bin; their squares sum to one, so the bands split the noise's energy.
   const weights = GROUND.reverbBandsHz.map(() => new Float64Array(size / 2 + 1));
   for (let bin = 1; bin <= size / 2; bin += 1) {
     const position = Math.log2(bin * binHz / GROUND.reverbBandsHz[0]);
@@ -82,14 +70,12 @@ function makeResponses(profile, seed, sampleRate, first, last) {
     fft(noiseRe, noiseIm);
     const order = Math.floor(Math.sqrt(channel));
     const response = new Float64Array(length);
-    // Two bands share each inverse transform: one as the real part of the signal, the other as the imaginary.
     for (let band = 0; band < bands; band += 2) {
       const re = new Float64Array(size);
       const im = new Float64Array(size);
       const energies = [0, 0];
       for (let part = 0; part < 2 && band + part < bands; part += 1) {
         const weightsOf = weights[band + part];
-        // The band's Hermitian spectrum enters times 1 or times i.
         for (let bin = 1; bin <= size / 2; bin += 1) {
           const weight = weightsOf[bin];
           if (!weight) continue;
@@ -117,7 +103,6 @@ function makeResponses(profile, seed, sampleRate, first, last) {
           signal[index] *= (1 - Math.exp(-t / profile.buildSeconds)) * Math.exp(-decay * t);
           energy += signal[index] * signal[index];
         }
-        // A unit impulse carries bandEnergy / (size / 2) of its energy in this band.
         const target = profile.energyShare * profile.seconds[band + part] / profile.seconds[5] * bandEnergy / (size / 2) / (2 * order + 1);
         const scale = energy > 0 ? Math.sqrt(target / energy) : 0;
         for (let index = 0; index < length; index += 1) response[index] += signal[index] * scale;
@@ -127,11 +112,6 @@ function makeResponses(profile, seed, sampleRate, first, last) {
   });
 }
 
-/**
- * Adds a diffuse tail to rendered channels in place: each channel gains the omnidirectional pressure
- * (`source`, or channel 0) convolved with its response, by overlap-add in blocks a few responses long;
- * one transform of the whole render took seconds and hundreds of megabytes. The channels must hold room.
- */
 export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   const length = outputs[0].length;
   const kernelLength = responses[0].length;
@@ -152,7 +132,6 @@ export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   const re = new Float64Array(size);
   const im = new Float64Array(size);
   for (let start = 0; start < length; start += block) {
-    // A render range's room for its tails is silent until the tails are added.
     if (silent(source, start, start + block)) continue;
     sourceRe.fill(0);
     sourceIm.fill(0);
@@ -173,7 +152,6 @@ export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   }
 }
 
-/** The forest's and then the surroundings' tails of a stretch of pressure; linear, so consecutive stretches sum to the whole. */
 export function diffuseTails(pressure, { forest = null, surroundings = null }, channels) {
   const length = pressure.length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
   const tails = Array.from({ length: channels }, () => new Float64Array(length));

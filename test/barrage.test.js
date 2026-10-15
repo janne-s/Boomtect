@@ -18,7 +18,6 @@ test('a barrage lands its rounds in salvos over its duration, within its radius,
     assert.equal(round.positionMetres.z, GROUND_BURST_METRES);
     assert.ok(round.startSeconds >= 0 && round.startSeconds <= barrage.durationSeconds * 1.2 + barrage.salvoSpreadSeconds);
   }
-  // Five salvos: gaps between landings cluster within a salvo and open up between them.
   const gaps = rounds.slice(1).map((round, index) => round.startSeconds - rounds[index].startSeconds);
   assert.equal(gaps.filter(gap => gap > 3).length, 4);
 });

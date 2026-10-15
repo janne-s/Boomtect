@@ -1,11 +1,6 @@
 import { VIEW } from '../domain/constants.js';
 import { PARAMETERS } from '../domain/scene.js';
 
-/**
- * Macro controls: a user-interface shortcut, not a model value. Each maps a slider position t in
- * [0, 1] to ordinary parameters, which keep their reliability classes, and reads t back from them.
- */
-
 const logPosition = (value, [low, high]) => Math.log(value / low) / Math.log(high / low);
 const logValue = (t, [low, high]) => low * (high / low) ** t;
 const clamp01 = value => Math.min(1, Math.max(0, value));
@@ -15,12 +10,6 @@ const percent = t => `${Math.round(t * 100)} %`;
 const kilo = (value, unit) => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} k${unit}` : `${+value.toPrecision(3)} ${unit}`);
 const metres = value => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} km` : value >= 10 ? `${Math.round(value)} m` : `${+value.toPrecision(2)} m`);
 
-/**
- * A macro that sets one parameter may also take a typed value (`entry`): the parameter in its own
- * unit (`unit`, or metres and TNT equivalents in any of their units), read with `get` and written
- * with `set`. Typed values may go beyond the slider's span, within the parameter's range, which
- * the scene's validation checks.
- */
 const UNITS = Object.freeze({
   metres: Object.freeze({ m: 1, km: 1000 }),
   charge: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6 })
@@ -33,10 +22,6 @@ export function entryText(entry, item) {
   return `${+value.toPrecision(6)}${entry.unit ? ` ${entry.unit}` : ''}`;
 }
 
-/**
- * A typed value in the entry's base unit: a number with a comma or a point, then its unit if it
- * has a choice of them (the shown one when left out), or its own unit, which may be left out.
- */
 export function parseEntry(entry, text, item) {
   const match = /^\s*([-+]?(?:\d+[.,]?\d*|[.,]\d+)(?:e[-+]?\d+)?)\s*(.*?)\s*$/i.exec(text);
   if (!match) throw new Error(`${text.trim() || 'An empty value'} is not a number.`);
@@ -227,7 +212,6 @@ const flightHeight = {
   read: item => clamp01(logPosition(Math.max(100, item.startMetres.z), [100, 100000])),
   write: (item, t) => {
     item.startMetres = { ...item.startMetres, z: Math.round(logValue(t, [100, 100000])) };
-    // A meteor's trail keeps ending below its start.
     if (item.endHeightMetres !== undefined) item.endHeightMetres = Math.min(item.endHeightMetres, Math.max(0, item.startMetres.z - 1000));
   },
   show: item => metres(item.startMetres.z),
@@ -362,10 +346,6 @@ const whipCracker = {
   entry: { units: 'metres', get: item => item.crackerLengthMetres, set: (item, value) => { item.crackerLengthMetres = value; } }
 };
 
-/**
- * When an emitter starts on the scene timeline: the slider is cubic, in hundredths of a second near
- * zero and seconds near the end of its range, where a typed value is more precise.
- */
 const onset = {
   label: 'Onset',
   read: item => clamp01(Math.cbrt(item.startSeconds / range('startSeconds')[1])),
@@ -438,10 +418,6 @@ const boosterBallistic = {
   entry: { unit: 'kg/m²', get: item => item.ballisticKilogramsPerSquareMetre, set: (item, value) => { item.ballisticKilogramsPerSquareMetre = value; } }
 };
 
-/**
- * Macro sliders for an emitter, in display order. Flashes, storms, blasts, barrages, and fireworks take
- * their onset when `onset` is set, as when they sound with others.
- */
 export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   const timed = list => (withOnset ? [...list, onset] : list);
   if (emitter.kind === 'lightning') return timed([energy, height, branching, jaggedness, crack, strokes]);

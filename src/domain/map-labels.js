@@ -1,7 +1,4 @@
-/** OpenMapTiles labels in MVT 1/2 tiles. No rendering or network dependencies.
- * Format: https://github.com/mapbox/vector-tile-spec/tree/master/2.1
- * Layers: https://openmaptiles.org/docs/schema/
- */
+/** Format: https://github.com/mapbox/vector-tile-spec/tree/master/2.1, layers: https://openmaptiles.org/docs/schema/ */
 const MAXIMUM_TILE_BYTES = 16 * 1024 * 1024;
 const LABEL_LAYERS = new Set(['place', 'mountain_peak', 'water_name']);
 const PLACE_KINDS = new Set(['city', 'town', 'village', 'hamlet', 'locality']);
@@ -60,7 +57,6 @@ function packed(bytes) {
   return values;
 }
 
-/** A point label, or the midpoint along the longest water label line. */
 function labelPoint(commands, type) {
   let x = 0; let y = 0;
   const lines = [];

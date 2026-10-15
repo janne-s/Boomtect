@@ -1,19 +1,8 @@
 import { readHandoff } from './handoff.js';
 import { PATH_DIRECT, PATH_SHADOW } from './refraction.js';
 
-/**
- * A microphone's sound as a handoff (`handoff.js`) for a tect that adds its own echoes, such as
- * Echotect: the omni pressure, where it was heard, and one direction and distance to place the
- * sound's source at: the compass direction from the rendered field, the elevation and distance
- * from its paths. Class C: thunder and a boom arrive from many directions at once, and one mean
- * direction stands for them all.
- */
+/** Class C: one mean direction stands for sound that arrives from many. */
 
-/**
- * The mean direction the sound comes from, compass degrees and elevation, from the active intensity
- * of a first-order AmbiX field (W times the north, west, and up components, summed over the whole
- * sound, so it is weighted by energy). Null without a first-order field or a sound.
- */
 export function fieldArrival(channels) {
   if (channels.length < 4) return null;
   const [w, west, up, north] = channels;
@@ -33,7 +22,6 @@ export function fieldArrival(channels) {
   };
 }
 
-/** A value of the sound's paths (`arrivalTable`) weighted by their energy, over the paths `include` keeps; null without any. */
 function energyMean(arrivals, values, include = () => true) {
   let weight = 0;
   let sum = 0;
@@ -46,17 +34,11 @@ function energyMean(arrivals, values, include = () => true) {
   return weight > 0 ? sum / weight : null;
 }
 
-/** The length of the sound's paths, metres, weighted by their energy. */
 export const arrivalDistance = arrivals => energyMean(arrivals, arrivals.metres);
 
-/**
- * The elevation the sound comes from, degrees, over the paths that come through the air alone. At
- * the ground the field cannot tell it: a reflection arrives with the direct sound from below, and
- * their vertical intensities cancel.
- */
+/** Through the air alone: at the ground a reflection's vertical intensity cancels the direct sound's. */
 export const arrivalElevation = arrivals => energyMean(arrivals, arrivals.elevations, kind => kind === PATH_DIRECT || kind === PATH_SHADOW);
 
-/** Which parts of the propagation a scene's sound holds. */
 function propagationContent(scene, terrainEchoes) {
   const terrain = scene.terrain?.enabled ? scene.terrain : null;
   const parts = {
@@ -66,7 +48,6 @@ function propagationContent(scene, terrainEchoes) {
     turbulence: scene.air.turbulenceStrength > 0,
     ground: scene.ground.enabled,
     forest: scene.ground.enabled && scene.ground.forest,
-    // The rumble of the surroundings stands in for terrain echoes where they are not traced.
     surroundings: scene.ground.surroundings && !(terrain?.echoes),
     terrain: Boolean(terrain),
     'terrain-shielding': Boolean(terrain?.shielding),
@@ -78,12 +59,6 @@ function propagationContent(scene, terrainEchoes) {
   };
 }
 
-/**
- * The handoff of one microphone's pressure. `channels` is its field on the export's timeline (the
- * omni channel first), `arrivals` its arrival table, `fullScalePa` the pressure a sample of 1 stands
- * for, and `startSeconds` when the first sample is from the event's start. `placement` is what the
- * receiving tect may move (`HANDOFF_PLACEMENTS`); the place goes along whatever it is.
- */
 export function soundHandoff({ scene, receiver, channels, arrivals, fullScalePa, startSeconds, file, terrainEchoes, placement = 'listener-and-source', appVersion, id, createdAt }) {
   const direction = fieldArrival(channels);
   return readHandoff({

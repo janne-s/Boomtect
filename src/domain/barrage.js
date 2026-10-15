@@ -1,21 +1,11 @@
 import { BLAST } from './constants.js';
 import { createRandom, normalDeviate } from './random.js';
 
-/**
- * A barrage: rounds that land over an area in salvos, as artillery fires. Each round is a blast of
- * its own, so its physics is the blast's; where and when the rounds land is seeded and class C.
- *
- * The salvos are spread evenly over the duration with some jitter, and the rounds of one salvo land
- * within its spread, uniformly over a disc. Charges spread lognormally about the mean, keeping it.
- * A share of the rounds burst in the air at a height; the rest on the ground.
- */
-
-/** Height of a round that bursts on the ground, as the single blast's default. */
 export const GROUND_BURST_METRES = 1;
 
 const SHARED_KEYS = Object.freeze(['explosive', 'secondaryShock', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'linearScaledDistance', 'durationSecondsPerCubeRootKilogram', 'decay', 'riseTimeSeconds']);
 
-/** The rounds of a barrage as blasts in landing order, each with its own seed, position above the ground, onset, and charge. */
+/** Class C. */
 export function barrageRounds(barrage) {
   const random = createRandom(barrage.seed);
   const salvos = Math.ceil(barrage.roundCount / barrage.salvoSize);

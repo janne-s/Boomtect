@@ -23,7 +23,6 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
   return top / denominators.reduce((product, value) => product * Math.sqrt(1 + (scaledDistance / value) ** 2), 1);
 }
 
-/** A flight, whip, booster, or meteor as one row whose booms the renderer finds per receiver; `flash` is its index in a formation or shower. */
 function flightSource(flight, flash = 0, pulse = 'n-wave') {
   return {
     flash, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
@@ -31,21 +30,11 @@ function flightSource(flight, flash = 0, pulse = 'n-wave') {
   };
 }
 
-/** The Fireball level at which a blast has no roar. */
 const FIREBALL_OFF_DECIBELS = -60;
 
-/**
- * A TNT blast's shock pulse: the scaled distance from where it propagates linearly, m/kg^⅓, its
- * positive phase per cube root of the charge, s/kg^⅓, and its Friedlander decay (see `blastSources`).
- */
 export const BLAST_PULSE = Object.freeze({ linearScaledDistance: 20, durationSecondsPerCubeRootKilogram: .006, decay: 1 });
 
-/**
- * A blast high in thin air as the shock of a ground-level one (class B, Sachs scaling): at pressure p
- * and sound speed c a charge W behaves as W·p₀/p does at the ground in size, with pressures scaled by
- * p/p₀ and times by c₀/c. Its amplitude is stated in ground-level air, √(p₀/p) higher, as a ray tube
- * carries it down (temperature neglected, as for a meteor's boom). No secondary shock or roar.
- */
+/** Class B, Sachs scaling; temperature neglected. */
 function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, air, flash) {
   const groundPressurePa = air.pressureKpa * 1000;
   const pressurePa = pressureAtHeightPa(air, positionMetres.z);
@@ -58,15 +47,7 @@ function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, a
   return { ...shock, flash, amplitudePaMetres: shock.amplitudePaMetres * Math.sqrt(scale), durationSeconds, spanSeconds: friedlanderSpanSeconds(durationSeconds, BLAST_PULSE.decay) };
 }
 
-/**
- * A blast as point sources at one place: its shock, its secondary shock, and its roar. The shock is a
- * Friedlander pulse whose amplitude comes from the Kinney & Graham fit at the linearization scaled
- * distance, from where propagation is linear (class B). The positive phase scales with the cube
- * root of the charge (Hopkinson–Cranz, class B) from a reference duration (class C until the
- * Kinney & Graham duration fit is verified). The secondary shock is the same pulse of a smaller
- * charge, delayed per path by the explosive's fit (`explosives.js`); the roar is a seeded noise
- * burst at a level against the shock's amplitude at the same distance (`fireball.js`).
- */
+/** Class B: Kinney & Graham amplitude, Hopkinson–Cranz duration scaling; the reference duration class C until verified. */
 export function blastSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const shock = kilograms => {
@@ -84,7 +65,6 @@ export function blastSources(emitter, air, surface = null) {
   };
   const primary = shock(emitter.chargeKilograms);
   const secondary = { ...shock(BLAST.secondaryMassShare * emitter.chargeKilograms), secondaryShock: secondaryShockFactors(emitter.explosive, emitter.chargeKilograms) };
-  // A large fireball burns as its buoyancy lifts it, in a time that grows as the sixth root of its mass
   const roarSeconds = emitter.fireballSecondsPerSixthRootKilogram * emitter.chargeKilograms ** (1 / 6);
   const roar = {
     flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds,
@@ -101,13 +81,11 @@ export function emitterFlashes(emitter, surface = null) {
   return [];
 }
 
-/** A meteor's or shower's rows: one per meteor for its booms, first, then the blasts where each breaks up and bursts. */
 function meteorSources(emitter, air) {
   const members = showerMembers(emitter);
   return [...members.map(flightSource), ...members.flatMap((meteor, index) => meteorBursts(meteor, air).map(burst => highBlastSource(burst, air, index)))];
 }
 
-/** A fireworks display's thump, burst, or pop (`fireworks.js`) as a TNT blast without a secondary shock or roar; a thump keeps its own positive phase. */
 const fireworksBlast = blast => ({
   durationSecondsPerCubeRootKilogram: BLAST_PULSE.durationSecondsPerCubeRootKilogram, ...blast, kind: 'blast', explosive: 'tnt', secondaryShock: false,
   fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0, linearScaledDistance: BLAST_PULSE.linearScaledDistance, decay: BLAST_PULSE.decay
@@ -132,14 +110,9 @@ export function emitterSources(emitter, air, surface = null, quality = null) {
   return { flashes, sources: flashSources(flashes, flashPhysics(emitter, quality), air) };
 }
 
-/** The render's quality may let one source stand in for several segments of a flash. */
 const flashPhysics = (emitter, quality) => (quality?.sourceMerge > 1 ? { ...emitter, sourceMerge: quality.sourceMerge } : emitter);
 
-/**
- * An emitter's point sources as a table, with its source rows when it has few. A storm's flashes
- * go into the table one at a time: all of a large storm's flashes and source objects at once would
- * take several times the memory of the table.
- */
+/** A storm's flashes go in one at a time: all at once would take several times the table's memory. */
 export function emitterSourceTable(emitter, air, surface = null, quality = null) {
   if (emitter.kind !== 'storm') {
     const rows = emitterSources(emitter, air, surface, quality).sources;

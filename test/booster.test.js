@@ -16,7 +16,6 @@ const boosterScene = (booster = {}, receiver = { x: -8000, y: 8000, z: 1.7 }) =>
   return parseScene(scene);
 };
 
-/** The triple boom per unit front shock at τ, as `tripleSpectrum` describes it. */
 function triple(tau, T, f, h) {
   if (tau < 0 || tau > T) return 0;
   return 1 + (tau >= f * T ? h : 0) - 2 * (1 + h * (1 - f)) * tau / T;
@@ -39,7 +38,6 @@ test('the triple boom’s spectrum is the Fourier integral of its signature, whi
     const scale = Math.hypot(re, im);
     assert.ok(Math.abs(sRe - re) < 1e-4 * T && Math.abs(sIm - im) < 1e-4 * T, `${frequency} Hz: ${sRe} ${sIm} against ${re} ${im} (${scale})`);
   }
-  // Near zero frequency the spectrum vanishes against the signature's length, as one of no net area must.
   assert.ok(Math.hypot(...tripleSpectrum(1e-6, T, f, h)) < 1e-5 * T);
   // Durrant et al.'s figure 5 at 8 km, front 130 Pa: about −105 Pa before the middle shock, 35 Pa after it, −65 Pa at the end.
   const at = tau => 130 * triple(tau, T, f, h);
@@ -57,7 +55,6 @@ test('a booster falls under drag and gravity to its pad, below Mach 1 at about 6
   assert.ok(Math.abs(path.speed[0] / sound(booster.startHeightMetres) - booster.mach) < 1e-9);
   const subsonic = path.speed.findIndex((speed, index) => speed < sound(path.z[index]));
   assert.ok(path.z[subsonic] > 5000 && path.z[subsonic] < 7000, `${path.z[subsonic]}`);
-  // Along its path it slows by drag and gravity: dv/dt = −ρv²/(2β) − g·v_z/v.
   const index = path.z.findIndex(z => z < 3000);
   const z = path.z[index];
   const density = pressureAtHeightPa(scene.air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(scene.air, z));
@@ -79,7 +76,6 @@ test('a booster’s boom 8 km from its pad has about the 130 Pa and 0.29 s that 
   const result = renderReceiver(prepareScene(scene), scene.receivers[0], scene);
   assert.ok(result.samples.every(Number.isFinite));
   assert.ok(result.peakPa > 100 && result.peakPa < 170, `${result.peakPa}`);
-  // The three shocks: the steepest rises over a millisecond, at least 20 ms apart.
   const rate = result.sampleRate ?? 48000;
   const window = Math.round(rate / 1000);
   const rises = [];
@@ -115,9 +111,7 @@ test('a booster below the speed of sound leaves its Mach cone: no apex, and the 
   const profile = soundSpeedProfile(scene.air);
   const sound = z => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(scene.air, z));
   const subsonic = path.speed.findIndex((speed, index) => index > 0 && speed < sound(path.z[index]));
-  // While supersonic the body is the apex.
   assert.ok(machCone(path, path.seconds[subsonic - 40], profile).apex);
-  // Afterwards there is none, and the rings come from the same points of the path, only farther spread.
   const early = machCone(path, path.seconds[subsonic + 20], profile);
   const late = machCone(path, path.seconds[subsonic + 60], profile);
   assert.equal(early.apex, null);

@@ -2,23 +2,10 @@ import { BLAST, FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED } from './
 import { airDensityKilogramsPerCubicMetre } from './air.js';
 import { createRandom, normalDeviate } from './random.js';
 
-/**
- * A fireworks display: shells fired from mortars over an area in salvos, as a barrage's rounds
- * land, each heard as its mortar's thump on the ground, its burst high in the air a flight time
- * later, and, for a share of the shells, its crackling stars as a swarm of tiny pops. Each is a
- * blast of its own; the physics and its classes are FIREWORKS'. The muzzle flash and the shell's
- * flight are not sounds here.
- */
-
 const G = STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED;
-/** Shell diameters the burst-height fit spans, metres. */
 const DIAMETER_RANGE = Object.freeze([.03, .4]);
 
-/**
- * A shell fired straight up in still air of density ρ, as a sphere: its launch speed for the top
- * of its flight at `heightMetres`, and the time it takes there (class A for the drag law, with
- * k = ρ·C_D·A/(2m): H = ln(1 + k·v₀²/g)/(2k), t = atan(v₀·√(k/g))/√(g·k)).
- */
+/** Class A for the drag law. */
 export function shellFlight(diameterMetres, heightMetres, density) {
   const mass = FIREWORKS.massKilogramsPerCubicMetre * diameterMetres ** 3;
   const k = density * FIREWORKS.dragCoefficient * Math.PI * diameterMetres ** 2 / 4 / (2 * mass);
@@ -26,11 +13,6 @@ export function shellFlight(diameterMetres, heightMetres, density) {
   return { massKilograms: mass, launchMetresPerSecond, flightSeconds: Math.atan(launchMetresPerSecond * Math.sqrt(k / G)) / Math.sqrt(G * k) };
 }
 
-/**
- * The shells of a display in firing order: each with its seed, diameter, mass, mortar (on the
- * ground), launch time, burst point (its height above the ground at the mortar), burst time, and
- * whether its stars crackle. Deterministic from the display and the air.
- */
 export function fireworksShells(fireworks, air) {
   const random = createRandom(fireworks.seed);
   const density = airDensityKilogramsPerCubicMetre(air.pressureKpa * 1000, air.temperatureCelsius);
@@ -64,12 +46,6 @@ export function fireworksShells(fireworks, air) {
   return shells.sort((a, b) => a.launchSeconds - b.launchSeconds);
 }
 
-/**
- * A crackling shell's pops: each star leaves the burst at FIREWORKS.starMetresPerSecond in a seeded
- * direction, slowed by drag in air of density ρ and pulled down; each of its pops comes at a seeded
- * time within the crackle and where the star is then. Positions are heights above the ground at
- * the mortar, as the burst's, kept a metre above it.
- */
 export function shellPops(shell, fireworks, density) {
   const random = createRandom(shell.seed);
   const pull = density / (2 * FIREWORKS.starKilogramsPerSquareMetre);
@@ -83,7 +59,6 @@ export function shellPops(shell, fireworks, density) {
     let velocity = [FIREWORKS.starMetresPerSecond * across * Math.cos(around), FIREWORKS.starMetresPerSecond * across * Math.sin(around), FIREWORKS.starMetresPerSecond * up];
     let position = [shell.burstMetres.x, shell.burstMetres.y, shell.burstMetres.z];
     const track = [position];
-    // Midpoint steps of dv/dt = −(ρ/2β)|v|v − g.
     const rate = v => { const drag = pull * Math.hypot(...v); return [-drag * v[0], -drag * v[1], -drag * v[2] - G]; };
     for (let index = 0; index < steps; index += 1) {
       const a = rate(velocity);
@@ -105,11 +80,6 @@ export function shellPops(shell, fireworks, density) {
   return pops.sort((a, b) => a.startSeconds - b.startSeconds);
 }
 
-/**
- * The display's blasts, as a blast's charge (kg TNT), place (height above the ground), and onset, a
- * thump also with its positive phase per cube root of the charge: `events`, the mortars' thumps and the shells'
- * bursts, in time order, and `pops`, the crackling stars'. Deterministic from the display and the air.
- */
 export function fireworksBlasts(fireworks, air) {
   const density = airDensityKilogramsPerCubicMetre(air.pressureKpa * 1000, air.temperatureCelsius);
   const shells = fireworksShells(fireworks, air);

@@ -64,7 +64,7 @@ const storage = {
   },
   write(key, value) {
     if (resetting) return;
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage may be unavailable; the app works without it. */ }
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
   }
 };
 
@@ -72,7 +72,7 @@ function restoredScene(mode) {
   try {
     const scene = readScene(storage.read(sceneStorageKey(mode)));
     if (scene.mode === mode) return scene;
-  } catch { /* A missing or broken scene falls back to the default. */ }
+  } catch {}
   return defaultScene(mode);
 }
 
@@ -152,7 +152,6 @@ const orientationBall = createOrientationBall($('cube-orientation-ball'), {
   onCommit: () => storeScene()
 });
 
-// Focus is drawn plainly while moving by keyboard, and quietly after a pointer (styles.css).
 document.addEventListener('keydown', event => { if (event.key === 'Tab') document.documentElement.dataset.keyboard = ''; }, true);
 document.addEventListener('pointerdown', () => { delete document.documentElement.dataset.keyboard; }, true);
 
@@ -222,7 +221,6 @@ function groundAnchored(handle, item) {
   return handle.field === 'positionMetres';
 }
 
-/** A ground-anchored point keeps its height above the ground; on a wall its height is measured from the ground under it. */
 function storedPoint(handle, item, point) {
   if (!groundAnchored(handle, item)) return point;
   if (handle.onGround) return { ...point, z: 0 };
@@ -363,7 +361,6 @@ function stopWorkers() {
   state.fullRender = null;
 }
 
-/** Renders the scene in full; with `variant`, renders that scene instead and resolves with its results, leaving the scene's own. */
 function renderFull(variant = null) {
   return new Promise((resolve, reject) => {
     startRender({ full: true, variant });
@@ -390,11 +387,6 @@ function spawnWorker(revision, message, { onProgress, onResult }, transfer = [])
   worker.postMessage({ revision, ...message }, transfer);
 }
 
-/**
- * Renders on a pool of workers: each receiver's tracing is split across workers and assembled here,
- * then its arrivals are split into time ranges that reuse the traced paths, and the diffuse tails
- * are added once to the sum. Every worker gets the scene as it was when the render started.
- */
 function startRender({ full = false, variant = null } = {}) {
   stopWorkers();
   const revision = state.revision;
@@ -494,8 +486,6 @@ function renderRanges(revision, scene, prepared, arrivals, tracedPaths, response
   const parts = new Array(jobs.length);
   let remaining = jobs.length;
   operation('render', 'Rendering', { share: 0 });
-  // Each job gets only the paths of its times, with what sizes the frames of all of them; a receiver
-  // rendered whole gets its paths without a copy. The page keeps none of them.
   const extents = tracedPaths.map(paths => frameExtents(prepared, paths));
   jobs.forEach((job, index) => {
     const whole = !Number.isFinite(job.fromSeconds) && !Number.isFinite(job.toSeconds);
@@ -536,7 +526,6 @@ function addRenderTails(revision, scene, arrivals, parts, responses, info) {
   if (!jobs.length) { finish(); return; }
   let remaining = jobs.length;
   operation('render', 'Adding tails', { share: 0 });
-  // Every stretch is cut from the sum before any tail is added to it.
   jobs.forEach(({ index, from, to }) => {
     const pressure = sums[index].channels[0].slice(from, to);
     spawnWorker(revision, { type: 'tails', pressure, responses: responses[index], channels: sums[index].channels.length }, {
@@ -638,7 +627,6 @@ function earOnWorker(parts, sampleRate, setting) {
 
 let earPending = 0;
 
-/** The composition through the ear model, on a worker; cached per render and setting, so Play finds it ready. */
 async function earApplied(composition) {
   const { earReflex: reflex, earLoudness: loudness, earCapOnsets: capOnsets } = state.scene.render;
   if (!composition || (!reflex && !loudness)) return composition;
@@ -655,11 +643,9 @@ async function earApplied(composition) {
       if (!earPending) operation('ear', null);
     }).catch(() => {});
     missing.forEach(({ part }, index) => {
-      // Only the latest setting is kept per receiver: a long render's channels are large.
       for (const stored of earCache.keys()) if (stored.startsWith(`${part.receiverId}:`)) earCache.delete(stored);
       const entry = { results, channels: batch.then(all => all[index]) };
       earCache.set(key(part), entry);
-      // A failed run is not kept, so the next request tries again.
       entry.channels.catch(() => { if (earCache.get(key(part)) === entry) earCache.delete(key(part)); });
     });
   }
@@ -694,7 +680,6 @@ function prepareEar() {
   listening().catch(error => setStatus(`Ear model failed: ${error.message}`, true));
 }
 
-/** The composition and its gain: binaural decoding gets RENDER.binauralHeadroom, a mix is scaled by 1/√parts. */
 async function listening() {
   const composition = await earApplied(composeListening(state.scene, state.results));
   if (!composition) return null;
@@ -963,7 +948,6 @@ function storeScene() {
 const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
 
 function receiverCard(container, receiver, selected) {
-  // As on an emitter, the microphone is removed from its own header; the last one stays, its cross kept as a space.
   const remove = element('button', 'icon-button');
   remove.type = 'button';
   remove.title = 'Remove';
@@ -987,7 +971,6 @@ function receiverCard(container, receiver, selected) {
     selectField(fields, {
       label: 'Type', value: receiver.type, options: Object.entries(RECEIVER_TYPE_LABELS),
       onCommit: value => {
-        // A binaural microphone hears the sound field, so it turns the Ambisonic render on if it was off.
         if (value === 'binaural' && state.scene.render.ambisonicOrder === 0) {
           commit(next => { next.receivers.find(item => item.id === receiver.id).type = value; next.render.ambisonicOrder = 1; });
         } else commitListening(next => { next.receivers.find(item => item.id === receiver.id).type = value; });
@@ -1261,7 +1244,6 @@ function scheduleTerrainCoverage() {
   operation('terrain', null);
   terrainCoverageTimer = setTimeout(async () => {
     const { terrain } = state.scene;
-    // Without emitters the scene is being cleared for new ones in the same place, so its terrain stays.
     if (!terrain?.enabled || !state.scene.emitters.length) return;
     const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
     if (needed.cellMetres === terrain.cellMetres && sameRange(needed.range, terrainRange(terrain))) return;
@@ -1302,7 +1284,6 @@ async function loadPlaceNames(terrain) {
   }
 }
 
-/** Loads terrain around `place` and moves the scene there; the scene stays as it was if loading fails. */
 async function loadTerrain(trigger, place = state.scene.place) {
   clearTimeout(terrainCoverageTimer);
   terrainCoverageTask.cancel();
@@ -1328,7 +1309,6 @@ async function loadTerrain(trigger, place = state.scene.place) {
   }
 }
 
-/** Moves the scene to another place; loaded terrain is loaded again there. */
 async function setPlace(change, trigger) {
   const place = { ...state.scene.place, ...change };
   if (state.scene.terrain) await loadTerrain(trigger, place);
@@ -1442,7 +1422,6 @@ $('place-done').addEventListener('click', async () => {
   await loadTerrain($('place-done'), { name: $('place-query').value.trim(), latitude: +latitude.toFixed(5), longitude: +longitude.toFixed(5) });
 });
 
-/** Puts the focus back in the field that had it after a rebuild, so a number field's next step still lands. */
 function keepingFocus(root, rebuild) {
   const focused = document.activeElement;
   const fields = () => [...root.querySelectorAll('input, select')];
@@ -1453,7 +1432,7 @@ function keepingFocus(root, rebuild) {
   if (again && again.dataset.key === focused.dataset.key && again.type === focused.type) again.focus({ preventScroll: true });
 }
 
-/** Waits for a focused number field to lose focus before rebuilding: replacing it ends its steps, in Safari even with the focus put back. */
+/** Waits for a focused number field to blur: replacing it ends its steps, in Safari even with the focus put back. */
 function refreshPanel() {
   const panel = document.querySelector('aside.panel');
   if (deferWhileEditing(panel, refreshPanel)) return;
@@ -1654,7 +1633,6 @@ function drawResults(playheadSeconds = state.pause?.seconds ?? null, { frame = f
   const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
   const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
   drawWaveform($('waveform'), { key, traces, soloId }, playheadSeconds);
-  // A blast is one point, so its arrivals are shown by the direction they come from rather than by height.
   const byDirection = state.scene.mode === 'blast';
   drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
   if (!frame) {
@@ -1706,7 +1684,6 @@ function strokeTimeline(emitter) {
   return cachedFlashes(emitter).flatMap((flash, index) => flash.strokes.map(stroke => ({ flash: index, time: flash.startSeconds + stroke.offsetSeconds, route: stroke.route })));
 }
 
-/** What the scene view shows at the playback clock. A stroke's light runs figuratively in VIEW.flash.traverseSeconds; physically it takes microseconds. */
 function animationState() {
   const clock = playbackClock();
   if (!clock) return null;
@@ -1786,7 +1763,6 @@ function wavefrontAmplitudes(emitter) {
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom]));
   }
   if (emitter.kind === 'booster') {
-    // At Mach 1.5, about where the booster's boom leaves its path.
     return new Map([[`${emitter.id}:0`, boomFront(1.5, emitter.lengthMetres, emitter.shapeFactor, 1000)]]);
   }
   if (emitter.kind === 'whip') {
@@ -1871,7 +1847,7 @@ function wavefrontSpheres(now, profile) {
       const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
       front.strength = frontStrength(amplitude, front.radiusMetres, frequencyHz);
       if (!profile.wind) return { source: point, group, order, ...front };
-      // The wind carries the front with it, at its speed at the source's height (drawn only, class C).
+      // Drawn only, class C.
       const seconds = now - emitted;
       const drift = axis => (profile.wind[axis] + profile.shear[axis] * point.z) * seconds;
       return { source: point, group, order, ...front, centre: { ...front.centre, x: front.centre.x + drift('x'), y: front.centre.y + drift('y') } };
@@ -1915,7 +1891,6 @@ function drawTimeline(seconds) {
   holder.hidden = false;
   const end = result.startSeconds + result.samples.length / result.sampleRate;
   const share = value => `${Math.min(100, Math.max(0, value / end * 100))}%`;
-  // Always two decimals, so the clock keeps its width as it counts.
   $('cube-timeline-time').textContent = `${Math.max(0, seconds).toFixed(2)} s`;
   $('cube-timeline-arrival').style.left = share(result.startSeconds);
   $('cube-timeline-progress').style.width = share(seconds);
@@ -1939,7 +1914,6 @@ async function resumePlayback() {
   let started = false;
   try {
     const current = await listening();
-    // Playback may have stopped while the ear model ran.
     const clock = player.clock();
     if (!player.playing() || !clock) return;
     if (!current) { player.stop(); syncPlayButton(); return; }
@@ -1958,7 +1932,7 @@ async function resumePlayback() {
   }
 }
 
-/** Plays from where playback paused or was scrubbed to; call it first thing in a user gesture, which the audio context needs. */
+/** Call it first thing in a user gesture, which the audio context needs. */
 async function startPlayback() {
   const unlocked = player.unlock(state.scene.render.sampleRate);
   const { results } = state;
@@ -1968,7 +1942,6 @@ async function startPlayback() {
     do {
       scene = state.scene;
       current = await listening();
-      // The render may have been replaced meanwhile.
       if (results !== state.results) return;
     } while (scene !== state.scene);
     if (!current) { setStatus('No sound reaches the listening microphones'); return; }
@@ -2089,12 +2062,7 @@ $('open-file').addEventListener('change', async () => {
   }
 });
 
-/**
- * The export plan and results of the scene without its terrain echoes, at the playback gain: the
- * scene rendered again with them switched off, or its own when it has none. The surroundings'
- * rumble, which stands in for the echoes when they are off, stays off too, so that the render with
- * echoes less this one is the echoes alone.
- */
+/** The surroundings' rumble stays off too, so that the render with echoes less this one is the echoes alone. */
 async function withoutTerrainEchoes(gain) {
   if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results };
   const scene = structuredClone(state.scene);
@@ -2106,10 +2074,6 @@ async function withoutTerrainEchoes(gain) {
   return { plan, results };
 }
 
-/**
- * What goes with a sound to Echotect (`HANDOFF_PLACEMENTS`), chosen in the export: its place (and direction), so Echotect moves its Listener and Source; its direction, so only
- * the Source moves; or the sound only, so a scene set up there stays as it is.
- */
 const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Place', source: 'Direction', none: 'Sound only' });
 const echotectPlacement = () => (PLACEMENT_LABELS[state.preferences.echotectPlacement] ? state.preferences.echotectPlacement : 'listener-and-source');
 
@@ -2119,7 +2083,6 @@ function placementSelect() {
   return select;
 }
 
-/** The handoff of one microphone of a plan, its field (omni first) on the plan's timeline. */
 const microphoneHandoff = (plan, results, microphone, file) => soundHandoff({
   placement: echotectPlacement(),
   scene: plan.scene, receiver: plan.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
@@ -2127,7 +2090,6 @@ const microphoneHandoff = (plan, results, microphone, file) => soundHandoff({
   startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: crypto.randomUUID(), createdAt: new Date().toISOString()
 });
 
-/** Sends a microphone's sound without terrain echoes to Echotect, opening it in another window. */
 async function sendToEchotect(receiverId, trigger) {
   let link;
   try {
@@ -2156,7 +2118,6 @@ async function sendToEchotect(receiverId, trigger) {
   }
 }
 
-/** What of the terrain echoes the exported files hold. */
 const TERRAIN_ECHO_CHOICES = Object.freeze({ with: 'With', without: 'Without', only: 'Only' });
 const exportEchoChoice = () => (TERRAIN_ECHO_CHOICES[state.preferences.exportEchoChoice] ? state.preferences.exportEchoChoice : 'with');
 
@@ -2229,7 +2190,6 @@ $('export').addEventListener('click', async () => {
     options.push(row);
   }
   $('export-options').replaceChildren(...options);
-  // The Echotect section's sound is one microphone's: the one selected, else the first that listens.
   const echotectOptions = [];
   if (state.scene.receivers.length > 1) {
     const row = element('label');
@@ -2261,10 +2221,8 @@ $('export').addEventListener('click', async () => {
   $('export-dialog').focus();
 });
 
-/** The microphone the dialog's Echotect choices are for. */
 const echotectMicrophone = () => $('export-echotect-microphone')?.value ?? state.scene.receivers[0].id;
 
-/** Saves the Echotect section's sound as a package, the same that Send to Echotect sends. */
 $('echotect-save').addEventListener('click', async event => {
   const name = $('export-name').value.trim();
   if (!name) { $('export-name').reportValidity(); return; }
@@ -2326,7 +2284,6 @@ $('export-form').addEventListener('submit', async event => {
   try {
     const { plan: full, composition } = exportState;
     const stem = fileStem(name);
-    // Without terrain echoes, the scene is rendered again with them switched off.
     const choice = echoes ? echoes.value : 'with';
     const dry = choice !== 'with' ? await withoutTerrainEchoes(full.gain) : null;
     const plan = choice === 'with' ? full : choice === 'without' ? dry.plan : exportPlan(state.scene, new Map(
@@ -2408,7 +2365,6 @@ const TOGGLES = Object.freeze({
     write: on => { state.preferences.names = on; },
     after: () => {
       if (!state.preferences.names) { placeNamesTask.cancel(); operation('names', null); }
-      // Switched on over a terrain without names, it asks for them again: the service may have failed before.
       if (state.preferences.names && state.scene.terrain && !state.scene.terrain.names.length) loadPlaceNames(state.scene.terrain);
       redrawViews();
     }
@@ -2438,7 +2394,6 @@ for (const [id, { read, write, after }] of Object.entries(TOGGLES)) {
 }
 syncToggles();
 
-/** With the map on, the view gets buttons to zoom, for looking over a wider area than the scene. */
 const ZOOM_STEP = 1.5;
 function syncZoomButtons() {
   const shown = Boolean(state.preferences.map);
@@ -2472,12 +2427,11 @@ $('add-receiver').addEventListener('click', () => commit(scene => {
 
 window.addEventListener('resize', () => drawResults());
 
-// A page hidden normally leaves no mark; one the browser stops while rendering does.
 window.addEventListener('pagehide', () => renderMarker.suspend());
 window.addEventListener('pageshow', event => { if (event.persisted && operations.has('render')) renderMarker.restore(); });
 
 refreshPanel();
-// After an unfinished render the scene opens without rendering it again by itself, which would stop the page again.
+// Not rendered again by itself: that would stop the page again.
 if (unfinishedRender) {
   setStatus(unfinishedRenderText(unfinishedRender), true);
   syncPlayButton();

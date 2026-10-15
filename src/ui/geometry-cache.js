@@ -14,7 +14,6 @@ export function useTerrain(terrain) {
 
 export const currentSurface = () => surface;
 
-/** Cumulative arc length at every point of a polyline, in metres. */
 function arcs(points) {
   const values = new Float64Array(points.length);
   for (let index = 1; index < points.length; index += 1) {
@@ -25,7 +24,6 @@ function arcs(points) {
   return values;
 }
 
-/** A value per emitter id, kept while the emitter's shape (all but its name and switch) and `extra` stay the same. */
 function cached(cache, emitter, extra, compute) {
   const { name: _name, enabled: _enabled, ...shape } = emitter;
   const key = JSON.stringify([shape, extra]);
@@ -36,7 +34,6 @@ function cached(cache, emitter, extra, compute) {
   return value;
 }
 
-/** Channels and strokes of an emitter over the current terrain; every channel carries the arc length of its points. */
 export function cachedFlashes(emitter) {
   if (!caches.has(surface)) caches.set(surface, new Map());
   return cached(caches.get(surface), emitter, null, () => {
@@ -50,7 +47,6 @@ export function cachedFlashes(emitter) {
 const tracks = new Map();
 const trackSurfaces = new Map();
 
-/** The bodies' tracks of a track emitter in the given air; a whip stands, and a booster lands, on the current terrain. */
 export function cachedTracks(emitter, air) {
   if (trackSurfaces.get(emitter.id) !== surface) tracks.delete(emitter.id);
   trackSurfaces.set(emitter.id, surface);

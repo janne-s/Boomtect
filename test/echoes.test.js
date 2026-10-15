@@ -25,7 +25,6 @@ const mirror = (point, normal, offset) => {
 };
 
 test('the specular point on a sloping plane gives its image path to its stored heights, with no focusing', () => {
-  // Ground z = 0.2·x + 0.05·y + 300 m.
   const surface = terrainSurface(terrain((x, y) => .2 * x + .05 * y + 300));
   const echo = echoSurface(surface);
   const S = { x: -800, y: 300, z: 1500 };
@@ -43,7 +42,6 @@ test('the specular point on a sloping plane gives its image path to its stored h
 });
 
 test('an echo from a slope beyond level ground arrives along its image path, 2 000 m', () => {
-  // A 56° slope rising from x = 800 m; the point P on it reflects S to R by construction.
   const surface = terrainSurface(terrain(x => Math.max(0, 1.5 * (x - 800))));
   const P = { x: 1000, y: 0, z: 300 };
   const normalAngle = Math.atan2(1, -1.5);
@@ -52,7 +50,6 @@ test('an echo from a slope beyond level ground arrives along its image path, 2 0
   const R = toward(normalAngle - Math.PI / 6, 800);
   const field = echoField(surface, homogeneous, R, { scattering: 0, limit: 10 });
   const paths = echoPaths(field, S);
-  // The strongest echo; the rounded foot of the slope adds a weaker one, convex and so spread out.
   assert.ok(paths.every(path => path.kind === PATH_ECHO));
   assert.ok(paths.slice(1).every(path => path.spreadMetres > 3 * 2000));
   // To the slope's stored heights, steps of about 70 mm over its range of 4.8 km.
@@ -112,7 +109,6 @@ test('source cells keep the total energy and keep strokes apart', () => {
   for (let cell = 0; cell < cells.length; cell += 1) total += cells.amplitudePaMetres[cell] ** 2;
   assert.ok(Math.abs(total - 30) < 1e-9);
   assert.equal(cells.emissionSeconds[1], 2 * PROPAGATION.echoCellSeconds);
-  // The later stroke shares its place, and the echo geometry traced from it, with the first.
   assert.equal(cells.places.length, 2);
   assert.equal(cells.place[0], cells.place[1]);
   assert.ok(Math.abs(cells.places.x[0] - (9 * 10 + 16 * 50 + 4 * 50) / 29) < 1e-9);
@@ -176,7 +172,6 @@ test('merged scattered echoes do not fall on a regular grid of arrival times, wh
   const parsed = parseScene(scene);
   const prepared = prepareScene(parsed);
   const paths = receiverPaths(prepared, parsed.receivers[0], parsed);
-  // Phases of the arrivals within the merging bin: spread evenly, their mean vector is short.
   let re = 0;
   let im = 0;
   let count = 0;
@@ -192,11 +187,9 @@ test('merged scattered echoes do not fall on a regular grid of arrival times, wh
 });
 
 test('a blast on rigid ground hears its echoes with the ground images at both ends, close to +12 dB', () => {
-  // A ridge 1.5 km away; blast 1 m and microphone 1.7 m above level ground, so both images merge with the echo.
   const ridge = x => Math.max(0, .4 * (x - 1500));
   const echoEnergy = groundEnabled => {
     const scene = plainScene('blast');
-    // 50 m cells, in one patch a side around the origin.
     scene.terrain = terrain(ridge, { cells: 256, extentMetres: 12800, scattering: 1 });
     scene.air = { ...scene.air, refraction: false, absorption: false, turbulenceStrength: 0 };
     scene.ground = { ...scene.ground, enabled: groundEnabled, type: 'rigid' };
@@ -204,7 +197,6 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
     scene.receivers[0].positionMetres = { x: -400, y: 0, z: 1.7 };
     const parsed = parseScene(scene);
     const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
-    // From well after the direct sound and its tail, before which no echo can arrive.
     const from = Math.round((2.5 - result.startSeconds) * result.sampleRate);
     return result.samples.slice(from).reduce((sum, value) => sum + value * value, 0);
   };
@@ -213,8 +205,6 @@ test('a blast on rigid ground hears its echoes with the ground images at both en
 });
 
 test('an echo whose legs pass through the refraction shadow keeps the shadow floor on each leg', () => {
-  // A low slope from 3 km on in ISA air, at most 20 m high: from 1 m and 1.7 m above level ground both
-  // legs to it lie in the shadow. Only its echoes count, not the level ground's near the two ends.
   const surface = terrainSurface(terrain(x => Math.max(0, .02 * (x - 3000)), { cells: 120, extentMetres: 8000 }));
   const profile = { groundSpeed: 340.3, gradient: -.0039 };
   const R = { x: -500, y: 0, z: 1.7 };
@@ -241,7 +231,6 @@ test('scattered echoes spread over their patches rather than arriving as clicks'
   const parsed = parseScene(scene);
   const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
   const samples = result.samples;
-  // 2–8 kHz, where a click stands out; kurtosis per 50 ms window from 0.5 s after the shock.
   const size = nextPowerOfTwo(2 * samples.length);
   const re = new Float64Array(size);
   const im = new Float64Array(size);
@@ -286,7 +275,6 @@ test('a boom over hills echoes from them, after it and from where it left the fl
   const still = { ...parsed, terrain: { ...parsed.terrain, echoes: false } };
   const quiet = renderReceiver(prepareScene(still), still.receivers[0], still);
   assert.ok(loud.samples.every(Number.isFinite));
-  // After the boom has passed, what remains is its echoes.
   const tail = result => {
     const from = Math.round((direct + .4 - result.startSeconds) * result.sampleRate);
     let sum = 0;
@@ -302,7 +290,6 @@ test('echo candidates come strongest at the receiver first, ties by kind and the
   const candidates = Array.from({ length: 500 }, (_, index) => ({
     index,
     kind: random() < .5 ? 3 : 4,
-    // Few distinct values, so that many tie.
     energy: Math.ceil(random() * 6) / 1000,
     r1: Math.ceil(random() * 3) * 500,
     r2: Math.ceil(random() * 3) * 500
@@ -328,7 +315,6 @@ test('tracing split into parts, as on several threads, gives the paths of one th
     assert.equal(split.count, whole.count);
     for (const key of Object.keys(whole)) {
       if (!ArrayBuffer.isView(whole[key])) continue;
-      // Both are made to the size of their paths.
       assert.equal(split[key].length, whole[key].length, key);
       for (let index = 0; index < whole[key].length; index += 1) {
         const [a, b] = [whole[key][index], split[key][index]];

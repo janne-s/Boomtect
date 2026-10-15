@@ -1,9 +1,6 @@
 import { fft } from './fft.js';
 
-/**
- * Faddeeva function w(z) = exp(−z²)·erfc(−iz), by Weideman's rational expansion
- * (SIAM J. Numer. Anal. 31, 1994) with N = 32 terms.
- */
+/** Weideman, SIAM J. Numer. Anal. 31, 1994. */
 const TERMS = 32;
 const M = 2 * TERMS;
 const M2 = 2 * M;
@@ -50,7 +47,6 @@ function upperHalfPlane(re, im) {
   ];
 }
 
-/** Returns [re, im] of w(re + i·im); the lower half-plane uses w(z) = 2·exp(−z²) − w(−z). */
 export function faddeeva(re, im) {
   if (im >= 0) return upperHalfPlane(re, im);
   const [mirroredRe, mirroredIm] = upperHalfPlane(-re, -im);

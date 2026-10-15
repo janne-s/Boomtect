@@ -4,11 +4,9 @@ import { composeListening } from '../src/ui/listening.js';
 import { defaultScene, parseScene } from '../src/domain/scene.js';
 
 test('playback without the real delay starts at the first sound, not at the render frame before it', () => {
-  // An omni microphone, whose result is its pressure alone.
   const blast = defaultScene('blast');
   const scene = parseScene({ ...blast, receivers: [{ ...blast.receivers[0], type: 'omni' }] });
   const sampleRate = 48000;
-  // A render whose frame starts 3 s before its only sound.
   const samples = new Float32Array(5 * sampleRate);
   samples[3 * sampleRate] = 100;
   const results = new Map([[scene.receivers[0].id, { receiverId: scene.receivers[0].id, sampleRate, startSeconds: 2, samples, channels: [samples], peakPa: 100 }]]);
@@ -35,6 +33,5 @@ test('a listening microphone that hears nothing plays silence beside one that he
   assert.equal(composition.length, sampleRate);
   assert.equal(composition.omnis[0].channel[100], 50);
   assert.ok(composition.omnis[1].channel.every(value => value === 0));
-  // Nothing heard anywhere: nothing to play.
   assert.equal(composeListening(parsed, new Map([['a', results.get('b')], ['b', results.get('b')]])), null);
 });

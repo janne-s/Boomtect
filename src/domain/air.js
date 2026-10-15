@@ -17,12 +17,7 @@ export function airDensityKilogramsPerCubicMetre(pressurePa, temperatureCelsius)
   return pressurePa / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (temperatureCelsius + KELVIN_OFFSET));
 }
 
-/**
- * The layers of the scene's temperature profile from the datum up, each with a constant lapse rate Γ
- * (K/m, positive when the temperature falls with height): an optional ground layer such as a low
- * inversion (class C), the troposphere up to the tropopause, and above it air of constant temperature
- * (ISO 2533, class B). An air without these fields has one layer at its lapse rate.
- */
+/** Ground layer class C; troposphere and isothermal stratosphere ISO 2533, class B. */
 export function temperatureLayers(air) {
   const ground = air.groundLayerMetres > 0 ? air.groundLayerMetres : 0;
   const tropopause = air.tropopauseMetres > ground ? air.tropopauseMetres : Infinity;
@@ -42,12 +37,7 @@ export function temperatureAtHeightKelvin(air, heightMetres) {
   return kelvin;
 }
 
-/**
- * Class A for the given profile: hydrostatic pressure of an ideal gas, layer by layer: across a layer
- * with T = T_b − Γ(z − z_b) it falls as (T/T_b)^(g/(RΓ)), and as exp(−g·Δz/(R·T_b)) without a gradient.
- * With Γ = 6.5 K/km and the tropopause at 11 km it is the ISA (ISO 2533, class B as a model of the
- * real atmosphere).
- */
+/** Class A for the profile; with Γ = 6.5 K/km and the tropopause at 11 km the ISA (ISO 2533, class B). */
 export function pressureAtHeightPa(air, heightMetres) {
   const height = Math.max(0, heightMetres);
   let pressure = air.pressureKpa * 1000;
@@ -66,21 +56,14 @@ export function pressureAtHeightPa(air, heightMetres) {
   return pressure;
 }
 
-/** ISO 9613-1: saturation vapour pressure over the reference pressure, at a temperature in kelvin. */
+/** ISO 9613-1. */
 const saturationPressureRatio = temperatureKelvin => 10 ** (-6.8346 * (TRIPLE_POINT_TEMPERATURE_KELVIN / temperatureKelvin) ** 1.261 + 4.6151);
 
-/**
- * The air at a height above the datum for the scene's layered atmosphere: temperature and pressure
- * from the linear profile, and humidity from water vapour whose density falls as exp(−z/H) with the
- * scale height H (class B: typically about 2 km, IRAM 30 m handbook; a median of 1.7 ± 0.5 km at
- * Armazones, arXiv 1103.3025), its relative humidity capped at saturation. Below the datum the
- * ground air is used (class C).
- */
+/** Vapour scale height class B (IRAM 30 m handbook; Armazones, arXiv 1103.3025); below the datum the ground air, class C. */
 export function airAtHeight(air, heightMetres) {
   const height = Math.max(0, heightMetres);
   const groundKelvin = air.temperatureCelsius + KELVIN_OFFSET;
   const kelvin = temperatureAtHeightKelvin(air, height);
-  // Vapour pressure e = ρᵥ·Rᵥ·T, so it falls with the density and the temperature.
   const groundVapour = air.relativeHumidityPercent / 100 * saturationPressureRatio(groundKelvin);
   const vapour = groundVapour * Math.exp(-height / air.humidityScaleHeightMetres) * kelvin / groundKelvin;
   return {
@@ -90,10 +73,7 @@ export function airAtHeight(air, heightMetres) {
   };
 }
 
-/**
- * Class B: ISO 9613-1 pure-tone atmospheric attenuation coefficient in dB/m.
- * Adopted from Echotect `src/acoustics.js` at commit cb712ef6.
- */
+/** Class B: ISO 9613-1, pure tone. */
 export function atmosphericAbsorptionDbPerMetre(frequencyHz, { temperatureCelsius, relativeHumidityPercent, pressureKpa }) {
   const temperatureKelvin = temperatureCelsius + KELVIN_OFFSET;
   const temperatureRatio = temperatureKelvin / REFERENCE_TEMPERATURE_KELVIN;

@@ -1,10 +1,5 @@
 import { VIEW } from '../domain/constants.js';
 
-
-/**
- * Lets the parameter column and the result row be resized by dragging or with the arrow keys.
- * Sizes are CSS pixels on the layout element and are reported back for storage.
- */
 export function attachSplitters(layout, { column, row }, sizes, onChange) {
   const apply = next => {
     const [low, high] = VIEW.panels.widthRange;

@@ -24,9 +24,7 @@ import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';
 
-/** Samples kept before each arrival for zero-phase smoothing, absorption, and directivity. */
 const PRE_ROLL_SAMPLES = 512;
-/** Terrain edges kept per path (Deygout's main edge and one on each side). */
 const MAXIMUM_EDGES = 3;
 const EDGE_KEYS = Object.freeze(['factor', 'spread', 'rise', 'radiusRatio']);
 const EDGE_WIDTH = EDGE_KEYS.length;
@@ -34,44 +32,26 @@ function pathEdge(paths, index, edge) {
   const at = (MAXIMUM_EDGES * index + edge) * EDGE_WIDTH;
   return Object.fromEntries(EDGE_KEYS.map((key, offset) => [key, paths.edges[at + offset]]));
 }
-/** Samples kept after each pulse for the ground-reflection response to settle. */
 const TAIL_GUARD_SAMPLES = 2048;
-/** Attenuation beyond which a bin no longer contributes: 14 Np ≈ 122 dB. */
 const NEGLIGIBLE_SMOOTHING = 1e-7;
 const GROUND_GRID_POINTS = 64;
-/**
- * In layered air, absorption is tabulated at heights this far apart and at this many frequencies
- * spaced evenly in log frequency, and each path takes the mean over the heights it spans. Linear
- * interpolation between the frequencies is within 0.1 dB of the coefficient up to 3 Np of loss.
- */
 const ABSORPTION_LAYER_METRES = 250;
 const ABSORPTION_GRID_POINTS = 128;
-/** Gaussian kernel standard deviation per 10–90 % rise time, as in `pulses.js`. */
 const RISE_TIME_PER_SIGMA = 2.5631;
-/** Coefficient of nonlinearity of air, (γ + 1)/2 (class A). */
+/** Class A. */
 const AIR_NONLINEARITY = (GAMMA_AIR + 1) / 2;
-/** Refraction radii at which a frame group tabulates its ground's creeping mode when the wind varies them. */
 const CREEPING_RADII = 8;
 const groundScatter = new Float64Array(GROUND_GRID_POINTS);
 const forestRe = new Float64Array(GROUND_GRID_POINTS);
 const forestIm = new Float64Array(GROUND_GRID_POINTS);
 const SMALL_ARGUMENT = 1e-4;
 
-/**
- * Seconds until the shadow response for a creeping loss of `nepersAtOneHertz` has fallen 80 dB below
- * its peak: an upper bound measured on its impulse response for creeping distances of 0.2–60 km and
- * gradients of 2–12 K/km, t ≤ 0.1 + 0.6·β^0.65.
- */
+/** An upper bound measured over 0.2–60 km and 2–12 K/km. */
 export function shadowTailSeconds(nepersAtOneHertz) {
   if (!(nepersAtOneHertz > 0)) return 0;
   return .1 + .6 * creepingBeta(nepersAtOneHertz) ** .65;
 }
 
-/**
- * Paths are framed per emitter, apart for shadow paths (longer tails) and echoes (cells as sources).
- * A blast's roar lasts seconds, so its paths are framed as impulses in groups of their own and
- * convolved once with the roar, its ground reflections with a roar of their own seed.
- */
 const FRAME_GROUPS = 5;
 const ROAR_GROUP = 3;
 const TRACE_SHARE = .3;
@@ -91,18 +71,13 @@ export function previewScene(scene) {
 
 const echoCellMetres = scene => scene.terrain.echoCellMetres * scene.render.quality.echoCellScale;
 
-/** The loss along a path, in nepers, past which its higher frequencies are not summed. */
 const cutoffNepers = scene => -scene.render.quality.cutoffDecibels * Math.LN10 / 20;
 
-/** Every enabled emitter as a typed table of point sources, pooled into cells when terrain echoes are traced. */
 export function prepareScene(scene) {
   const surface = terrainSurface(scene.terrain);
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const { sources, rows } = emitterSourceTable(emitter, scene.air, surface, scene.render.quality);
-    // The booms of a flight or a meteor leave its path where each receiver's arrival is stationary.
-    // Their echoes come from each receiver's booms (`receiverPaths`) and from a meteor's breakups and burst.
-    // An aircraft's or a booster's booms also come back from the stratosphere far away (`secondary.js`).
     if (emitter.kind === 'booster') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: emitter, path: boosterPath(emitter, scene.air, surface), booms: flightBooms, pulse: 'triple', secondary: true }] };
     if (emitter.kind === 'whip') return { emitter, sources, cells: null, echoRows: [], flights: [{ flight: whipBody(emitter), path: whipPath(emitter, scene.air, surface), booms: flightBooms }] };
     if (emitter.kind === 'flight' || emitter.kind === 'formation') {
@@ -119,20 +94,13 @@ export function prepareScene(scene) {
   return prepared;
 }
 
-/**
- * The top of the layer of air a path's profile describes (class C): the ground layer for a path that
- * stays within it, otherwise the tropopause. A ray rising above it meets air of another gradient.
- */
+/** Class C. */
 function airCeiling(air, top) {
   if (air.groundLayerMetres > 0 && top <= air.groundLayerMetres) return air.groundLayerMetres;
   return air.tropopauseMetres > 0 ? air.tropopauseMetres : Infinity;
 }
 
-/**
- * Class A: a receiver above the ground hears a pulse defined in ground-level air scaled by
- * sqrt(ρc at the receiver / ρc at the ground), from the energy flux along a ray tube. Source levels
- * are stated for ground-level air, so this is 1 at the ground and in homogeneous air.
- */
+/** Class A. */
 function receiverImpedanceFactor(air, profile, heightMetres) {
   if (!air.refraction) return 1;
   const density = pressureAtHeightPa(air, heightMetres) / pressureAtHeightPa(air, 0) * temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, heightMetres);
@@ -148,9 +116,7 @@ const PATH_ARRAYS = Object.freeze({
   seconds: Float64Array,
   metres: Float64Array,
   spreadMetres: Float64Array,
-  /** Creeping loss of a shadow path at 1 Hz, αL in nepers, which grows as f^(1/3). */
   creepNepers: Float64Array,
-  /** Radius c₀/|g| of the air along a shadow path, which scales its ground's creeping mode. */
   creepRadius: Float64Array,
   directivityCos: Float64Array,
   cosIncidence: Float64Array,
@@ -160,21 +126,15 @@ const PATH_ARRAYS = Object.freeze({
   edgeCount: Uint8Array,
   edges: Float64Array,
   bounces: Uint8Array,
-  /** An echo's image path differences at its source and receiver ends, metres, and the sines of its legs there. */
   endLift: Float64Array,
   endSine: Float64Array,
   sourceHeight: Float64Array,
-  /** Length of the path under a forest's canopy, metres. */
   foliageMetres: Float64Array,
-  /** 1 for a path of a blast's roar, 2 for its ground reflection, 0 for any other. */
   roar: Uint8Array,
-  /** The time a scattered echo spreads over, seconds, from just before its arrival. */
   timeSpread: Float64Array,
-  /** Height of the point the path leaves from: its source's, where a boom leaves its flight path, or where a secondary boom turns. */
   height: Float64Array,
-  /** How much a secondary boom's absorption exceeds the mean up to its turning height over its length, as a share. */
   absorptionExcess: Float64Array,
-  /** 1 for a secondary boom's ray, which has lost its shock in the thin air near its top (class C). */
+  /** Class C. */
   aloft: Uint8Array
 });
 
@@ -184,10 +144,7 @@ function pathTable(capacity) {
   return paths;
 }
 
-/**
- * What tracing at a receiver needs in every part of it. Over terrain each boom also echoes as a point
- * source where it leaves the path, at the boom's pressure (class C: the cone's front taken as a sphere).
- */
+/** Class C: the cone's front taken as a sphere. */
 function tracingFrame(preparedEmitters, receiver, scene) {
   const profile = soundSpeedProfile(scene.air);
   const surface = terrainSurface(scene.terrain);
@@ -199,14 +156,12 @@ function tracingFrame(preparedEmitters, receiver, scene) {
   const cells = preparedEmitters.map((prepared, emitterIndex) => {
     if (!prepared.flights) return prepared.cells;
     if (!traceEchoes) return null;
-    // A secondary boom comes down far from where it left; its echoes are not traced.
     const rows = [...prepared.echoRows, ...booms[emitterIndex].flatMap((list, member) => list.filter(boom => !boom.secondary).map(boom => boomEchoRow(boom, member, prepared.flights[member].pulse)))];
     return rows.length ? sourceCells(sourceTable(rows), echoCellMetres(scene)) : null;
   });
   return { profile, surface, receiverPosition, booms, cells, ground: scene.ground.enabled };
 }
 
-/** Writes paths into a table, growing it as needed: `add(emitterIndex, sourceIndex, sources, kind, path, edges)`. */
 function pathWriter(frame, scene, paths) {
   const { profile, surface, receiverPosition } = frame;
   const impedance = receiverImpedanceFactor(scene.air, profile, receiverPosition.z);
@@ -259,7 +214,6 @@ function pathWriter(frame, scene, paths) {
       : foliageMetres(path.metres, from.z - surface.heightAt(from.x, from.y), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
     if (path.durationSeconds !== undefined) {
-      // A boom brings its own duration and pressure; the row's amplitude is 1 Pa·m.
       paths.duration[index] = path.durationSeconds;
       paths.amplitudeScale[index] = path.overpressurePa * path.spreadMetres;
     } else if (sources.relaxationRadius[sourceIndex] > 0) {
@@ -279,14 +233,8 @@ function pathWriter(frame, scene, paths) {
   };
 }
 
-/** The `part`-th of `parts` contiguous ranges of `count` items: [start, end). */
 const partRange = (count, part, parts) => [Math.floor(count * part / parts), Math.floor(count * (part + 1) / parts)];
 
-/**
- * One thread's part of the tracing at a receiver: its contiguous share of sources and echo places.
- * Returns direct, shadow, and ground paths in one table, specular echoes per emitter, and scattered
- * echoes per emitter as sums by arrival bin and direction, which `assemblePaths` adds across parts.
- */
 export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts = 1, onProgress = null } = {}) {
   const frame = tracingFrame(preparedEmitters, receiver, scene);
   const { profile, surface, receiverPosition, booms, cells, ground } = frame;
@@ -299,7 +247,6 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
   let done = 0;
   const tick = onProgress ? () => { done += 1; if (done % every === 0) onProgress(done / units); } : () => {};
 
-  // Echoes first, as the progress counts them.
   const specular = cells.map(() => null);
   const scattered = cells.map(() => null);
   if (placeEnd > placeStart) {
@@ -321,7 +268,6 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
       const paths = pathTable(16);
       const add = pathWriter(frame, scene, paths);
       const merged = new Map();
-      // Place by place, so that only one place's traced paths are held at a time.
       for (let place = from; place < to; place += 1) {
         tick();
         const point = { x: places.x[place], y: places.y[place], z: places.z[place] };
@@ -358,7 +304,7 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
             const aloft = { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus, topMetres: boom.topMetres, absorptionExcess: boom.absorptionExcess };
             add(emitterIndex, sourceIndex, sources, PATH_DIRECT, aloft);
             if (!ground) continue;
-            // Its reflection from the ground under the receiver, the image's 2·h·sin ψ later (level ground there, class C).
+            // Class C: level ground under the receiver.
             const sine = -boom.ray.arrival.z;
             const lift = 2 * Math.max(0, receiverPosition.z - surface.heightAt(receiverPosition.x, receiverPosition.y)) * sine;
             add(emitterIndex, sourceIndex, sources, PATH_GROUND, {
@@ -367,7 +313,6 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
             });
             continue;
           }
-          // Beyond the carpet's edge the boom creeps into the shadow along the ground, as a point source's sound does, without a reflection of its own.
           if (boom.shadow) {
             add(emitterIndex, sourceIndex, sources, PATH_SHADOW, {
               ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus,
@@ -377,7 +322,7 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
           }
           add(emitterIndex, sourceIndex, sources, PATH_DIRECT, { ...boom.ray, ...shared, overpressurePa: boom.overpressurePa * boom.focus });
           if (!ground) continue;
-          // Its ground reflection carries the boom's pressure over its own length (Carlson's r^(−¾)); the ground model reflects it (K_R).
+          // The ground model applies K_R, so it is counted once.
           const reflected = surface.flat ? reflectedRay(boom.along, boom.point, receiverPosition) : terrainReflection(boom.along, surface, boom.point, receiverPosition);
           if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, { ...reflected, ...shared, overpressurePa: boom.overpressurePa * boom.focus * (boom.ray.metres / reflected.metres) ** .75 });
         }
@@ -393,7 +338,6 @@ function tracePoint(frame, scene, add, emitterIndex, sourceIndex, sources) {
   const { profile, surface, receiverPosition, ground } = frame;
   const position = sourcePosition(sources, sourceIndex);
   const along = pathProfile(profile, position, receiverPosition);
-  // Only air whose speed falls with height casts a shadow; over terrain it is judged from the mean ground plane.
   if (along.gradient < 0) {
     const plane = surface.flat ? { profile: along, from: position, to: receiverPosition } : meanPlaneFrame(along, surface.heightAt, position, receiverPosition);
     if (inShadow(plane.profile, plane.from, plane.to)) {
@@ -406,11 +350,10 @@ function tracePoint(frame, scene, add, emitterIndex, sourceIndex, sources) {
   const edges = shielding ? shieldingEdges(along, surface, position, receiverPosition) : [];
   add(emitterIndex, sourceIndex, sources, PATH_DIRECT, rayBetween(along, position, receiverPosition), edges);
   if (!ground) return;
-  // The reflection near the receiver crosses the same ridges as the direct sound (class C).
+  // Class C.
   const reflected = surface.flat ? reflectedRay(along, position, receiverPosition) : terrainReflection(along, surface, position, receiverPosition);
   if (reflected) add(emitterIndex, sourceIndex, sources, PATH_GROUND, reflected, edges);
-  // Where the air bends rays back down they may touch the ground several times (class C over terrain),
-  // but not those whose highest point leaves the layer the path's profile describes.
+  // Class C over terrain.
   if (along.gradient > 0) {
     const ceiling = airCeiling(scene.air, Math.max(position.z, receiverPosition.z));
     for (const ray of terrainMultipleReflections(along, surface, position, receiverPosition)) {
@@ -429,7 +372,6 @@ function appendPaths(target, source) {
   target.count += source.count;
 }
 
-/** Every path at a receiver from its traced parts, in one thread's order; scattered sums agree with one thread to rounding. */
 export function assemblePaths(preparedEmitters, receiver, scene, parts) {
   const frame = tracingFrame(preparedEmitters, receiver, scene);
   const merged = frame.cells.map((_, emitterIndex) => {
@@ -446,7 +388,6 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
   });
   const specularCount = parts.reduce((sum, part) => sum + part.specular.reduce((total, table) => total + (table?.count ?? 0), 0), 0);
   const scatteredCount = merged.reduce((sum, sums) => sum + sums.size, 0);
-  // A single part with nothing to add is the result as it is, rather than a second copy of it.
   if (parts.length === 1 && !specularCount && !scatteredCount) return { ...parts[0].direct, cells: frame.cells };
   const paths = pathTable(parts.reduce((sum, part) => sum + part.direct.count, 0) + specularCount + scatteredCount);
   for (const part of parts) appendPaths(paths, part.direct);
@@ -459,15 +400,10 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
   return paths;
 }
 
-/**
- * Every path from the prepared sources to one receiver. Over terrain the shadow and the ground
- * reflection are found as if the ground under the receiver extended level; shielding uses the terrain.
- */
 export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
   return assemblePaths(preparedEmitters, receiver, scene, [tracePart(preparedEmitters, receiver, scene, { onProgress })]);
 }
 
-/** A table's paths in views of its arrays, without copying them: a copy of a large table would hold it twice. */
 export function compactPaths(paths) {
   const compact = { count: paths.count, cells: paths.cells };
   for (const [key, array] of Object.entries(paths)) {
@@ -476,22 +412,12 @@ export function compactPaths(paths) {
   return { paths: compact, buffers: Object.values(compact).filter(ArrayBuffer.isView).map(array => array.buffer) };
 }
 
-/** ρc³ of the ground-level air, which sets how fast a shock ages. */
 export function airShockImpedance(air) {
   const density = air.pressureKpa * 1000 / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (air.temperatureCelsius + KELVIN_OFFSET));
   return density * soundSpeedProfile(air).groundSpeed ** 3;
 }
 
-/**
- * How much a blast's positive phase has lengthened, and its peak fallen, after `metres` of path.
- * A blast's shock ages as it spreads (class B, weak-shock theory of a spherical wave; Whitham 1956,
- * Pierce, Acoustics, ch. 11): its front outruns the zero crossing by βp/(2ρc³) per metre while p·T·r
- * stays fixed, so from the linearization radius r₀ on its positive phase lengthens as
- * T = T₀·√(1 + σ·ln(r/r₀)), σ = β·p₀·r₀/(ρc³T₀), and its peak falls by the same factor. The growth
- * stops where the pulse is no longer a shock, T/τ = PROPAGATION.oldAgeDurationRatio, at
- * r = T₀p₀r₀/(2K). A blast within its linearization radius of the ground spreads as a merged
- * hemispherical front of PROPAGATION.mergedFrontFactor times the pressure.
- */
+/** Class B: weak-shock aging of a spherical wave (Whitham 1956; Pierce, Acoustics, ch. 11). */
 export function blastStretch(sources, index, metres, shockImpedance, heightMetres) {
   const r0 = sources.linearRadiusMetres[index];
   const T0 = sources.durationSeconds[index];
@@ -510,13 +436,7 @@ function boomEchoRow(boom, member, pulse = 'n-wave') {
   };
 }
 
-/**
- * The image path differences and leg sines at an echo's two ends, over the ground taken level there
- * (class C), and the length of its two legs under the forest's canopy. An echo leaves a source near
- * the ground and reaches a receiver near it together with its image in the ground there: each end
- * adds the ground's reflection delayed by 2·h·sin φ, the image's extra path (class B, the same
- * reflection as the direct sound's), up to PROPAGATION.endImageSeconds.
- */
+/** Ground taken level at the ends, class C; the image delay class B. */
 function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   const sourceSine = Math.abs(path.departure.z);
   const receiverSine = Math.abs(path.arrival.z);
@@ -525,15 +445,7 @@ function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   return { sourceHeight, sourceSine, receiverSine, sourceLift: 2 * sourceHeight * sourceSine, receiverLift: 2 * receiverHeight * receiverSine, foliageMetres: foliage };
 }
 
-/**
- * Scattered echoes from all of an emitter's cells that reach the receiver within one
- * PROPAGATION.scatterBinSeconds and from one direction sector merge into one path (class C): its energy is
- * their sum, its direction, length, and incidence their energy-weighted means, and its arrival and
- * pulse those of the strongest. Scattering is incoherent, so this keeps the tail's energy and
- * density while the number of paths stays bounded by time and direction rather than by cells.
- * A mean arrival would settle near the middle of each bin and space the paths evenly, which sounds
- * as a tone at 1/PROPAGATION.scatterBinSeconds (measured: 100 Hz, 40 dB above the tail's spectrum).
- */
+/** Class C. A mean arrival per bin would space the paths evenly and sound as a tone at 1/scatterBinSeconds. */
 function mergeScattered(merged, cells, cell, path) {
   const arrival = cells.emissionSeconds[cell] + path.seconds;
   const key = Math.floor(arrival / PROPAGATION.scatterBinSeconds) * 64 + arrivalSector(path.arrival);
@@ -568,7 +480,6 @@ function mergedPath(entry, cells) {
     arrival,
     groundSine: entry.cosine / energy,
     ...Object.fromEntries(MERGED_END_KEYS.map(key => [key, entry[key] / energy])),
-    // Its patches arrive across the bin as well as across their own widths.
     timeSpread: entry.spreadSeconds / energy + PROPAGATION.scatterBinSeconds
   };
 }
@@ -581,10 +492,6 @@ function edgeDecibels(paths, index, frequencyHz) {
   return decibels;
 }
 
-/**
- * Arrival time, source height, length, elevation, and geometric level of every path, for the arrival
- * diagram and a handoff's distance and elevation; a shadow path's level includes its creeping loss at VIEW.arrivalDiagramHz.
- */
 export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const paths = options.paths ?? receiverPaths(preparedEmitters, receiver, scene, options);
   const heights = new Float32Array(paths.count);
@@ -604,7 +511,6 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   for (let index = 0; index < paths.count; index += 1) {
     const sources = pathSources(preparedEmitters, paths, index);
     heights[index] = paths.height[index];
-    // The compass direction the sound comes from, from its Ambisonic direction (north, west, up).
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     elevations[index] = Math.asin(Math.max(-1, Math.min(1, paths.direction[3 * index + 2]))) * 180 / Math.PI;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
@@ -614,13 +520,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), metres: paths.metres.slice(0, paths.count), heights, levels, bearings, elevations, kinds: paths.kind.slice(0, paths.count) };
 }
 
-/**
- * Class B (Clifford & Lataitis 1983, as summarized by Salomons 2001; verify): turbulence with
- * mean-square refractive-index fluctuation ⟨μ²⟩ and scale L gives a phase variance
- * σ² = A·√π·⟨μ²⟩·k²·R·L, with A = 0.5 when R > kL² and 1 otherwise. The direct and reflected rays,
- * separated by about h = 2·hs·hr/(hs + hr), share part of it: ρ = (√π/2)(L/h)·erf(h/L). Their phase
- * difference therefore varies with variance 2σ²(1 − ρ).
- */
+/** Class B: Clifford & Lataitis 1983, via Salomons 2001; to verify. */
 export function turbulentPhaseVariance(frequencyHz, metres, sourceHeight, receiverHeight, air, speed) {
   if (!(air.turbulenceStrength > 0)) return 0;
   const k = 2 * Math.PI * frequencyHz / speed;
@@ -639,15 +539,6 @@ function erf(x) {
   return x >= 0 ? y : -y;
 }
 
-/**
- * Frame layout of one frame group at one receiver: hop H and block 2H hold any of its paths with
- * pre-roll and tail. It depends on all of the group's paths, so every time range shares it.
- */
-/**
- * What sizes each frame group's frames, over all of a receiver's paths: the longest span, the largest
- * creeping loss and its radii, and the highest point. A render of a range of times gets them from
- * the whole, so that its frames are the same as a render of all of it.
- */
 export function frameExtents(preparedEmitters, paths) {
   const extents = Array.from({ length: FRAME_GROUPS * preparedEmitters.length }, () => ({ longestSpan: 0, largestCreep: 0, smallestRadius: Infinity, largestRadius: 0, highest: -Infinity }));
   for (let index = 0; index < paths.count; index += 1) {
@@ -655,12 +546,9 @@ export function frameExtents(preparedEmitters, paths) {
     const prepared = preparedEmitters[paths.emitter[index]];
     const sources = isEcho(paths.kind[index]) ? paths.cells[paths.emitter[index]] : prepared.sources;
     const source = paths.source[index];
-    // A weak shock's span is its period; an aged blast's tail lengthens with its positive phase; the
-    // roar is framed as an impulse.
     const span = paths.roar[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.flight[source] ? paths.duration[index] : 0);
-    // A boom's turbulent front reaches FLIGHT.turbulentFront.longestRises rise times past it, a reflection's scattered part as many of its means.
     extent.longestSpan = Math.max(extent.longestSpan, span + paths.timeSpread[index] + FLIGHT.turbulentFront.longestRises * ((sources.flight[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
     extent.largestCreep = Math.max(extent.largestCreep, paths.creepNepers[index]);
     if (paths.creepRadius[index] > 0) {
@@ -672,10 +560,6 @@ export function frameExtents(preparedEmitters, paths) {
   return extents;
 }
 
-/**
- * The paths that arrive in [fromSeconds, toSeconds), copied into a table of their own. Each keeps
- * its index in the whole table as `origin`, which seeds its random parts as in a render of all of it.
- */
 export function pathRange(paths, fromSeconds, toSeconds) {
   const chosen = [];
   for (let index = 0; index < paths.count; index += 1) {
@@ -705,7 +589,6 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
     for (let index = 0; index < table.length; index += 1) longestElement = Math.max(longestElement, table.elementMetres[index]);
   }
   const preRoll = PRE_ROLL_SAMPLES + Math.ceil(longestElement / speed * sampleRate / 2);
-  // Soft ground lags the creeping response up to PROPAGATION.softCreepLag times as much as rigid ground, which spreads it.
   const soft = scene.ground.enabled && !isReflecting(scene.ground.type);
   const shadowTail = Math.ceil(shadowTailSeconds(largestCreep * (soft ? PROPAGATION.softCreepLag : 1)) * sampleRate);
   const hop = nextPowerOfTwo(preRoll + Math.ceil(longestSpan * sampleRate) + TAIL_GUARD_SAMPLES + shadowTail);
@@ -720,7 +603,6 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
   for (let bin = 0; bin < bins; bin += 1) {
     const frequency = bin * sampleRate / size;
     absorption[bin] = scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(frequency, scene.air) : 0;
-    // A boom's rise comes mostly from its turbulent front (`turbulentFront`); each part of it rises in a tenth.
     smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds / (prepared.flights ? FLIGHT.turbulentFront.riseRatio : 1));
     if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
@@ -739,12 +621,7 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
   return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds, cutoff: cutoffNepers(scene) };
 }
 
-/**
- * Absorption in layered air (class B per layer, ISO 9613-1 with `airAtHeight`): the coefficient at
- * every ABSORPTION_LAYER_METRES up to `highest` on a log-frequency grid, and its integral over height
- * from the datum, so that a path's mean over the heights it spans is a difference of two integrals.
- * `position[bin]` places each FFT bin on the frequency grid.
- */
+/** Class B per layer: ISO 9613-1. */
 function layeredAbsorption(air, lowest, highestFrequency, bins, binHz, highest) {
   const layers = Math.max(2, Math.ceil(Math.max(0, highest) / ABSORPTION_LAYER_METRES) + 2);
   const ratio = Math.log(highestFrequency / lowest);
@@ -764,7 +641,6 @@ function layeredAbsorption(air, lowest, highestFrequency, bins, binHz, highest) 
   return { layers, coefficient, integral, position, path: new Float64Array(ABSORPTION_GRID_POINTS) };
 }
 
-/** Fills `layered.path` with the mean absorption between two heights above the datum, in Np/m. */
 function pathAbsorption(layered, fromZ, toZ) {
   const { layers, coefficient, integral, path } = layered;
   const top = (layers - 1) * ABSORPTION_LAYER_METRES;
@@ -798,7 +674,6 @@ function binAbsorption(plan, bin) {
   return path[lower] + (path[lower + 1] - path[lower]) * (at - lower);
 }
 
-/** The ground's creeping transition frequency at radii spaced in log over a frame group's shadow paths, which differ only in wind. */
 function groundCreeping(groundType, speed, smallest, largest) {
   const rows = largest > smallest * 1.0001 ? CREEPING_RADII : 1;
   const radii = Float64Array.from({ length: rows }, (_, row) => (rows > 1 ? smallest * (largest / smallest) ** (row / (rows - 1)) : smallest));
@@ -815,7 +690,6 @@ function pathTransitionHz(ground, radius) {
   return transitions[row] * (transitions[row + 1] / transitions[row]) ** mix;
 }
 
-/** Share of a grazing shock's reflection that is linear, from its parameter a; smooth between the regimes. */
 function linearShare(parameter) {
   return smoothStep((parameter - PROPAGATION.mergedParameter) / (PROPAGATION.linearParameter - PROPAGATION.mergedParameter));
 }
@@ -825,7 +699,6 @@ function smoothStep(x) {
   return t * t * (3 - 2 * t);
 }
 
-/** The first bin whose absorption over `metres` is negligible; call after `pathAbsorption` in layered air. */
 function absorptionLimit(plan, metres) {
   let low = 0;
   let high = plan.smoothingLimit;
@@ -836,16 +709,7 @@ function absorptionLimit(plan, metres) {
   return low;
 }
 
-/**
- * The shadow's transfer at one frequency, in the e^(+iωt) convention of `fft.js`. `nepersAtOneHertz`
- * is the creeping loss αL at 1 Hz, which grows as f^(1/3). The creeping mode's propagation constant
- * carries s^(1/3), s = iω, so its loss comes with a phase lag of 1/√3 of it: H = exp(−β·s^(1/3)) is
- * causal and delays the low frequencies (class B). Its impulse response has a t^(−4/3) tail, so
- * s^(1/3) becomes s·(s + ω_c)^(−2/3): a plain delay well below PROPAGATION.shadowRegularizationHz, a
- * loss 4.4 % short of the creeping law at 50 Hz, 2.1 % at 100 Hz, and 0.5 % at 400 Hz, and an
- * impulse response whose tail decays exponentially (class C).
- * The scattered share F of the shadow floor joins it smoothly, (1 − F)·H + F (class C).
- */
+/** Class B: the causal creeping response; its regularization and the shadow floor's join class C. */
 export function shadowResponse(frequencyHz, nepersAtOneHertz, floor, transitionHz = 0) {
   const [loss, lag] = shadowExponent(frequencyHz);
   if (!transitionHz) return shadowFromExponent(loss, lag, creepingBeta(nepersAtOneHertz), floor);
@@ -853,10 +717,8 @@ export function shadowResponse(frequencyHz, nepersAtOneHertz, floor, transitionH
   return shadowFromExponent(loss + softLoss, lag + softLag, creepingBeta(nepersAtOneHertz), floor);
 }
 
-/** β of the creeping response from its loss at 1 Hz: α(1 Hz)·L = (√3/2)·β·(2π)^(1/3). */
 const creepingBeta = nepersAtOneHertz => 2 * nepersAtOneHertz / (Math.sqrt(3) * Math.cbrt(2 * Math.PI));
 
-/** Real and imaginary parts of s·(s + ω_c)^(−2/3) at s = iω, which depend on frequency alone. */
 const shadowExponent = frequencyHz => cubeRootExponent(frequencyHz, PROPAGATION.shadowRegularizationHz);
 
 function shadowFromExponent(loss, lag, beta, floor) {
@@ -865,18 +727,12 @@ function shadowFromExponent(loss, lag, beta, floor) {
   return [magnitude * Math.cos(phase) + floor, magnitude * Math.sin(phase)];
 }
 
-/**
- * Adds one path into a frame spectrum: source pulse × rise smoothing × geometric spreading ×
- * ISO 9613-1 absorption along the path × line-element directivity × ground reflection × the
- * shadow response × e^(−iωτ) for the exact fractional offset τ. Trigonometric terms advance by rotation from bin to bin.
- */
 function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ, shared = null) {
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
   const { absorption, layered, foliage, smoothing, gridPosition, binHz, size } = plan;
-  // Foliage scatters the sound out of the path, causally; it is not undone by the shock's steepening (class C).
-  // A sparser forest scatters in proportion to its density, as fewer trunks and leaves per metre (class C).
+  // Class C.
   const underCanopy = foliage ? Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity : 0;
   const coarseForest = underCanopy > 0 && scene.render.quality.coarseForest;
   if (coarseForest) {
@@ -888,14 +744,11 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
   }
   const finestForest = underCanopy > 0 && !coarseForest;
-  // The pulse's peak at the receiver, Pa, and its acoustic Mach number.
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
   const mach = gain / (GAMMA_AIR * scene.air.pressureKpa * 1000);
-  // Absorption beyond the steady shock's own smoothing is undone by steepening: the loss is capped at
-  // that of a front rising in PROPAGATION.shockRisePascalSeconds / Δp, as far as the pulse is still a shock.
+  // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
-  // A blast's roar is no shock.
   const pulseKind = sources.pulse[sourceIndex];
   const shock = pulseKind === PULSE_NOISE || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
@@ -915,18 +768,15 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const reflected = kind === PATH_GROUND;
   const ground = (reflected || isEcho(kind)) && !isReflecting(scene.ground.type);
   const turbulent = reflected && scene.air.turbulenceStrength > 0;
-  // Share of the reflection that follows the ground's impedance; the rest merges with the direct front.
   const merging = reflected ? 1 - shock * (1 - linearShare(paths.cosIncidence[index] / Math.sqrt(2 * AIR_NONLINEARITY * mach))) : 1;
   let scattering = false;
   if (ground || turbulent) {
     const roughness = reflected && ground ? GROUND.roughnessMetres : 0;
     for (let point = 0; point < GROUND_GRID_POINTS; point += 1) {
       const frequency = plan.groundFrequencies[point];
-      // A specular echo reflects like the ground; a scattered one keeps the reflected share of its energy.
       let q = !ground ? [1, 0]
         : kind === PATH_SCATTER ? [planeReflectionMagnitude(frequency, scene.ground.type, paths.cosIncidence[index]), 0]
           : sphericalReflectionCoefficient(frequency, scene.ground.type, paths.cosIncidence[index], metres, speed);
-      // The coherent share, and the scattered rest; the part of a shock merging with the direct front stays whole.
       const k = 2 * Math.PI * frequency / speed;
       const variance = (2 * k * roughness * paths.cosIncidence[index]) ** 2
         + (turbulent ? turbulentPhaseVariance(frequency, metres, paths.height[index], receiverHeight, scene.air, speed) : 0);
@@ -934,22 +784,19 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       groundScatter[point] = reflected ? merging * Math.hypot(q[0], q[1]) * Math.sqrt(1 - coherent * coherent) : 0;
       if (groundScatter[point] > 0) scattering = true;
       q = [merging * coherent * q[0] + 1 - merging, merging * coherent * q[1]];
-      // Every contact of a ray that touches the ground several times reflects it at the same angle (class C).
+      // Class C.
       for (let bounce = 1, single = q; bounce < paths.bounces[index]; bounce += 1) q = [q[0] * single[0] - q[1] * single[1], q[0] * single[1] + q[1] * single[0]];
       groundRe[point] = q[0];
       groundIm[point] = q[1];
     }
   }
-  // A path of a range keeps its seeds from its index in the whole table.
   const key = paths.origin ? paths.origin[index] : index;
   const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(key + 1, 0x165667b1), binHz) : null;
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
-  // With shared scatter, a scattered echo goes into its group of the frame unspread; the group is spread once.
   const spreadSeed = seed ^ Math.imul(key + 1, 0x85ebca6b);
   const group = paths.timeSpread[index] > 0 && shared ? shared.group(paths.timeSpread[index], spreadSeed, plan, limit) : null;
   if (group) spectra = group.spectra;
   const spreadArrivals = paths.timeSpread[index] > 0 && !group ? scatterArrivals(paths.timeSpread[index], spreadSeed, binHz, scene.render.quality.scatterArrivals) : null;
-  // A boom's front, shared by its ground reflection, and its echoes, which return the front that reached the ground.
   const turbulence = sources.flight[sourceIndex] ? turbulentFront(plan.riseSeconds, FLIGHT.turbulentFront.frontShare * Math.sqrt(scene.air.turbulenceStrength / FLIGHT.turbulentFront.referenceTurbulence), isEcho(kind) ? seed ^ Math.imul(key + 1, 0x27d4eb2f) : seed, binHz) : null;
   const phaseStep = -2 * Math.PI * offsetSamples / size;
   const phaseStepRe = Math.cos(phaseStep);
@@ -966,10 +813,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let directivityIm = directivityStepIm;
 
   const omegaStep = 2 * Math.PI * binHz;
-  // A triple boom is the N-wave plus its middle shock (`tripleSpectrum`).
   const triple = pulseKind === PULSE_TRIPLE;
   const nWave = pulseKind === PULSE_NWAVE || triple;
-  // The roar is framed as a unit impulse and convolved with its noise later (see FRAME_GROUPS).
   const noise = pulseKind === PULSE_NOISE;
   const duration = paths.duration[index];
   const pulseStep = omegaStep * duration;
@@ -992,7 +837,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     let re;
     let im;
     if (noise) {
-      // A unit sample: the frame's synthesis multiplies by the sample rate.
       re = 1 / (binHz * size);
       im = 0;
     } else if (nWave) {
@@ -1090,7 +934,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       const mix = position - lower;
       const qRe = gridRe[lower] + (gridRe[lower + 1] - gridRe[lower]) * mix;
       const qIm = gridIm[lower] + (gridIm[lower + 1] - gridIm[lower]) * mix;
-      // 1 + Q·e^(−iωΔ/c), with the delay's phase advanced by rotation.
       const fRe = 1 + qRe * rotation.re - qIm * rotation.im;
       const fIm = qRe * rotation.im + qIm * rotation.re;
       const nextRe = re * fRe - im * fIm;
@@ -1133,13 +976,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   }
 }
 
-/**
- * Shared scatter (PROPAGATION.sharedClassesPerOctave): each frame's scattered echoes are summed by
- * group, a group being a class of time spread and a seeded variant, and at the frame's end each
- * group is spread once by `count` sub-arrivals over its class's spread and added to the frame.
- * Linear, so the sum is the same as spreading each echo by its group's arrivals. Groups keep their
- * buffers from frame to frame.
- */
 function sharedScatter(channels, count, salt) {
   const pool = new Map();
   let frameSeed = 0;
@@ -1194,11 +1030,6 @@ function sharedScatter(channels, count, salt) {
   };
 }
 
-/**
- * A scattered echo's sub-arrivals: seeded times across `spread` seconds, from half a merging bin
- * before its arrival, `count` of them (the quality's, PROPAGATION.scatterArrivals at the fullest) each of gain
- * ±1/√count, as rotations that start at bin 1.
- */
 function scatterArrivals(spread, seed, binHz, count) {
   const random = createRandom(seed >>> 0);
   const gain = new Float64Array(count);
@@ -1210,7 +1041,6 @@ function scatterArrivals(spread, seed, binHz, count) {
   return rotations(gain, delays, binHz, 0);
 }
 
-/** Sub-arrivals of the given gains and delays (times `scale` seconds) as phase rotations from bin 1, with `direct` the undelayed share. */
 function rotations(gain, delays, binHz, direct, scale = 1) {
   const count = gain.length;
   const re = new Float64Array(count);
@@ -1225,10 +1055,6 @@ function rotations(gain, delays, binHz, direct, scale = 1) {
   return { gain, re, im, stepRe, stepIm, direct };
 }
 
-/**
- * `count` seeded sub-arrivals of random sign and unit total energy, delayed exponentially with mean
- * `seconds` (at most FLIGHT.turbulentFront.longestRises means), as rotations from bin 1.
- */
 function subArrivals(count, seconds, seed, binHz) {
   const random = createRandom(seed >>> 0);
   const gain = new Float64Array(count);
@@ -1240,10 +1066,6 @@ function subArrivals(count, seconds, seed, binHz) {
   return rotations(gain, delays, binHz, 0, seconds);
 }
 
-/**
- * A boom's turbulent front (see FLIGHT.turbulentFront.arrivals): the direct front and seeded sub-arrivals of
- * zero sum whose energy is `share`² of the front's, delayed exponentially with mean `riseSeconds`, as rotations from bin 1.
- */
 function turbulentFront(riseSeconds, share, seed, binHz) {
   const random = createRandom((seed ^ 0x5bd1e995) >>> 0);
   const gain = Float64Array.from({ length: FLIGHT.turbulentFront.arrivals }, () => normalDeviate(random));
@@ -1257,11 +1079,7 @@ function turbulentFront(riseSeconds, share, seed, binHz) {
   return rotations(gain, delays, binHz, 1, riseSeconds);
 }
 
-/**
- * Fills `ends` with the ground images an echo carries at its source and receiver ends and returns
- * how many. A source within its linearization radius of the ground meets it while still a strong
- * shock, so its image merges with it as from rigid ground (class C).
- */
+/** Class C. */
 function echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) {
   if (!scene.ground.enabled) return 0;
   let count = 0;
@@ -1283,17 +1101,11 @@ function echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres,
   return count;
 }
 
-/**
- * Two channels' frames from their half spectra in one inverse transform: both are real, so the
- * first enters as the signal's real part and the second as its imaginary part. Returns the first
- * frame in `first.real` and the second in `first.imaginary`; `second` is left as it was.
- */
 function synthesizeFramePair(first, second, size, sampleRate) {
   const { real, imaginary } = first;
   for (let bin = 1; bin < size / 2; bin += 1) {
     const aRe = real[bin]; const aIm = imaginary[bin];
     const bRe = second.real[bin]; const bIm = second.imaginary[bin];
-    // A + iB at bin, and conj(A) + i·conj(B) at its mirror.
     real[bin] = aRe - bIm;
     imaginary[bin] = aIm + bRe;
     real[size - bin] = aRe + bIm;
@@ -1320,12 +1132,6 @@ function synthesizeFrame(real, imaginary, size, sampleRate) {
   return real;
 }
 
-/**
- * Renders the pressure contribution of the paths whose arrival lies in [fromSeconds, toSeconds)
- * at one receiver: p_r(t) = Σ (s_i * h_i,r)(t). Paths are gathered into overlapping frames of 2H
- * samples at hop H; each frame is one inverse FFT, overlap-added in Float64. Time zero is the
- * scene's emission origin. Returns the segment's first sample index and its samples.
- */
 export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
@@ -1360,9 +1166,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   if ((last - first) / sampleRate > RENDER.maximumSeconds) {
     throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
   }
-  // Each emitter's roar, which its impulses are convolved with; its ground reflection has a roar of its
-  // own seed, because the roar comes from the whole moving fireball and debris cloud rather than a
-  // point, and so does not interfere with its reflection (class C).
+  // Class C: the roar comes from the whole fireball and debris, so its reflection does not interfere with it.
   const roars = preparedEmitters.map(({ sources }) => {
     let index = 0;
     while (index < sources.length && sources.pulse[index] !== PULSE_NOISE) index += 1;
@@ -1378,7 +1182,6 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
   const shared = scene.render.quality.sharedScatter ? sharedScatter(channels, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
-  // Progress counts work rather than paths: a shadow or an echo takes several times a direct path's time.
   const weightOf = index => RENDER.progressWeights[frameGroup(paths, index) % FRAME_GROUPS];
   const totalWeight = selected.reduce((sum, index) => sum + weightOf(index), 0);
   let doneWeight = 0;
@@ -1418,8 +1221,6 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     }
     onProgress?.(traceShare + (1 - traceShare) * doneWeight / totalWeight);
   }
-  // The roar is linear in what arrives, so each range adds its own and their sum is exact. The
-  // diffuse tails are added once to the sum of the ranges (combineWithTails).
   for (const roar of roars) {
     for (const { samples, impulses } of roar ?? []) {
       if (impulses) convolveAdd(outputs, impulses, samples);
@@ -1432,7 +1233,6 @@ export function hasTails(scene) {
   return scene.ground.forest || surroundingsTail(scene);
 }
 
-// Over loaded terrain its echoes are the surroundings; over level ground a diffuse tail stands for them.
 const surroundingsTail = scene => scene.ground.surroundings && !(echoesActive(scene) && !terrainSurface(scene.terrain).flat);
 
 export function tailResponses(receiver, scene, channels = [0, channelCount(scene.render.ambisonicOrder)]) {
@@ -1450,13 +1250,8 @@ export function joinResponses(shares) {
   return { forest: join('forest'), surroundings: join('surroundings') };
 }
 
-/** Samples the tails reach beyond the sound that excites them. */
 export const tailSamples = responses => (responses?.forest?.[0].length ?? 0) + (responses?.surroundings?.[0].length ?? 0);
 
-/**
- * Sums rendered segments in the given order into Float64 channels from the earliest segment's
- * start, followed by `room` silent samples for the tails. Empty when no segment holds a sample.
- */
 export function sumSegments(segments, sampleRate, room = 0) {
   const present = segments.filter(segment => segment.channels[0].length);
   const count = segments[0]?.channels.length ?? 1;
@@ -1476,11 +1271,6 @@ export function sumSegments(segments, sampleRate, room = 0) {
   return { startSample: start, channels };
 }
 
-/**
- * Stretches [from, to) of `length` samples, `count` of about equal length or fewer, whose tails are
- * computed apart and added up (`diffuseTails` is linear). Each stretch transforms the whole responses
- * however short it is, so none is made shorter than `shortest` samples, the tails' length.
- */
 export function tailStretches(length, count, shortest = 1) {
   const parts = Math.max(1, Math.min(count, Math.floor(length / Math.max(1, shortest))));
   return Array.from({ length: parts }, (_, part) => [Math.floor(part * length / parts), Math.floor((part + 1) * length / parts)]);
@@ -1493,10 +1283,6 @@ export function addTails(sum, from, tails) {
   });
 }
 
-/**
- * Float32 channels from summed ones, checking every sample. Channel 0 is the omnidirectional
- * pressure W. Returns the channels, their start time, and the peak of W in pascals.
- */
 export function finishSum(sum, sampleRate) {
   let peakPa = 0;
   const channels = sum.channels.map((samples, channel) => {
@@ -1515,10 +1301,6 @@ export function combineSegments(segments, sampleRate) {
   return finishSum(sumSegments(segments, sampleRate), sampleRate);
 }
 
-/**
- * Sums rendered segments and adds the receiver's diffuse tails to the sum, computed over `stretches`
- * stretches of its pressure in turn, as the page does on several workers.
- */
 export function combineWithTails(segments, receiver, scene, stretches = 1) {
   const { sampleRate } = scene.render;
   const responses = tailResponses(receiver, scene);
@@ -1531,10 +1313,6 @@ export function combineWithTails(segments, receiver, scene, stretches = 1) {
   return finishSum(sum, sampleRate);
 }
 
-/**
- * Time boundaries that split all arrivals at every receiver into `count` parts of equal size. Pass
- * the receivers' arrival tables when they exist, so that their paths are not traced again.
- */
 export function partitionSeconds(preparedEmitters, scene, count, tables = scene.receivers.map(receiver => arrivalTable(preparedEmitters, receiver, scene))) {
   const times = new Float64Array(tables.reduce((sum, table) => sum + table.count, 0));
   let at = 0;
@@ -1559,11 +1337,6 @@ export function receiverResult(receiver, scene, combined, arrivals, nonlinearPat
   };
 }
 
-/**
- * One result less another of the same receiver, on a timeline that holds both: the terrain echoes
- * alone, for instance, as a render with them less one without. The sum of paths is linear, so the
- * difference holds exactly what one render has and the other lacks. Arrivals are the first's.
- */
 export function resultDifference(minuend, subtrahend) {
   const { sampleRate } = minuend;
   const start = Math.min(minuend.startSeconds, subtrahend.startSeconds);
@@ -1581,11 +1354,6 @@ export function resultDifference(minuend, subtrahend) {
   return { ...minuend, startSeconds: start, channels, samples: channels[0], peakPa };
 }
 
-/**
- * About how much of the timeline a render without terrain echoes fills, from 0 to 1: each
- * microphone's sound ends as much earlier as its last echo arrives after its last other path.
- * The render itself is made only on export, so this stands for its length until then.
- */
 export function echoFreeShare(results) {
   let start = Infinity;
   let end = -Infinity;

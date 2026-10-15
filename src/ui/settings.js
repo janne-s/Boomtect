@@ -2,15 +2,8 @@ import { PREVIEW } from '../domain/constants.js';
 import { previewQuality, relativeCost } from '../domain/render-cost.js';
 import { DEFAULT_QUALITY, PARAMETERS, QUALITY_NUMBERS, QUALITY_SWITCHES } from '../domain/scene.js';
 
-/** The Settings dialog: the computation belongs to the scene (`render.quality`) so it renders alike everywhere; the preview and threads to the device. */
-
 const plural = (value, one, many) => `${value} ${value === 1 ? one : many}`;
 
-/**
- * Each setting's slider step, how its value reads, and, for one that acts on only some scenes, what
- * reads in its place where it does nothing; `context` carries the terrain's echo cells and what the
- * scene holds.
- */
 const SETTINGS = Object.freeze({
   cutoffDecibels: { step: 1, format: value => `−${Math.abs(Math.round(value))} dB` },
   highestFrequencyHz: { step: 500, format: value => `${+(value / 1000).toFixed(1)} kHz` },
@@ -29,13 +22,6 @@ const PREVIEW_SUMMARY = `${PREVIEW.sourceMerge} segments · ${PREVIEW.echoCellSc
 
 const $ = id => document.getElementById(id);
 
-/**
- * `read()` gives the scene's quality, whether the preview is on, the device's threads and the most
- * there are, the terrain's echo cells (or null without terrain echoes), whether the scene has flashes
- * or storms and a forest, the scattered paths' share in the last render, and
- * the last render (`{ milliseconds, workers, quality }`, or null); `save({ quality, preview, threads })`
- * gets them back after Save.
- */
 export function createSettings({ read, save }) {
   const dialog = $('settings-dialog');
   let rows = [];
@@ -43,7 +29,6 @@ export function createSettings({ read, save }) {
 
   function slider(grid, key, label, value, { minimum, maximum }) {
     const { step, format, idle } = SETTINGS[key];
-    // A setting that does nothing in this scene is dimmed and keeps its value for when it would.
     const idleText = idle?.(context) ?? null;
     const id = `setting-${key}`;
     const name = document.createElement('label');
@@ -53,7 +38,6 @@ export function createSettings({ read, save }) {
     input.value = String(value);
     const output = document.createElement('output');
     output.htmlFor = id;
-    // A setting left alone keeps its stored value, which the slider's step may not reach.
     let touched = false;
     const current = () => (touched ? Number(input.value) : value);
     const fill = () => {
@@ -100,7 +84,6 @@ export function createSettings({ read, save }) {
 
   function updateCost() {
     const { preview, threads, ...chosen } = values();
-    // A scene without flashes costs the same at any flash detail.
     const quality = { ...(preview ? previewQuality(chosen) : chosen), ...(context.flashes ? {} : { sourceMerge: 1 }) };
     const share = relativeCost(quality, context.scatterShare, context.forest);
     const most = relativeCost({ ...DEFAULT_QUALITY, cutoffDecibels: PARAMETERS.cutoffDecibels.minimum, scatterArrivals: PARAMETERS.scatterArrivals.maximum }, context.scatterShare, context.forest);
@@ -109,7 +92,6 @@ export function createSettings({ read, save }) {
     let text = `≈ ${Math.round(share * 100)} % of full`;
     const { last } = context;
     if (last) {
-      // Time scales with the cost and, roughly, inversely with the threads.
       const lastQuality = context.flashes ? last.quality : { ...last.quality, sourceMerge: 1 };
       const seconds = last.milliseconds / 1000 * share / relativeCost(lastQuality, context.scatterShare, context.forest) * last.workers / threads;
       text += ` · ≈ ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;

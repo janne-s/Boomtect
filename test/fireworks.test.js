@@ -21,7 +21,6 @@ test('a shell fired straight up against drag tops out at its burst height in its
   const height = FIREWORKS.burstHeightMetresPerMetre * diameter;
   const { massKilograms, launchMetresPerSecond, flightSeconds } = shellFlight(diameter, height, density);
   assert.ok(Math.abs(massKilograms - .4) < 1e-12);
-  // Step dv/dt = −g − k·v² from the launch until the shell stops rising.
   const k = density * FIREWORKS.dragCoefficient * Math.PI * diameter ** 2 / 4 / (2 * massKilograms);
   let v = launchMetresPerSecond;
   let z = 0;

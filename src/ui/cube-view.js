@@ -18,7 +18,6 @@ const TERRAIN_LIGHT = (() => { const { x, y, z } = VIEW.terrain.light; const len
 const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
 const TERRAIN_RIPPLE_ITERATIONS = 14;
 
-/** The circles of a set that no other one contains: the rest add nothing to their union. */
 function outerCircles(circles) {
   const kept = [];
   for (const circle of [...circles].sort((a, b) => b.radius - a.radius)) {
@@ -27,10 +26,6 @@ function outerCircles(circles) {
   return kept;
 }
 
-/**
- * The edge of a union of circles as arcs [circle, from, to] in radians: each circle's arcs that no
- * other one covers. Pass circles none of which holds another (`outerCircles`).
- */
 function unionArcs(circles) {
   const arcs = [];
   for (const circle of circles) {
@@ -58,11 +53,7 @@ function unionArcs(circles) {
 
 const emptyBounds = () => ({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
 
-/**
- * Adds a polygon to a path, closed by a line back to its first point: in Chrome closePath takes time
- * in proportion to the path's earlier polygons, so hundreds of fronts in one path took quadratic
- * time. Strokes of such a path need round caps to look closed.
- */
+/** Not closePath: in Chrome it takes time in proportion to the path's earlier polygons. Strokes need round caps to look closed. */
 function addPolygon(path, points, bounds) {
   if (!points.length) return;
   path.moveTo(points[0].x, points[0].y);
@@ -102,7 +93,6 @@ function emitterPoints(emitter) {
 
 const ground = (x, y) => currentSurface().heightAt(x, y);
 const placed = point => ({ ...point, z: ground(point.x, point.y) + point.z });
-/** A ground flash's ground point is stored above the ground; other channel ends above the datum. */
 const channelBase = emitter => (emitter.flashType === 'cloud-to-ground' ? placed(emitter.baseMetres) : emitter.baseMetres);
 
 function facingTip(receiver, box) {
@@ -119,7 +109,6 @@ function handles(scene, box) {
   const list = [];
   for (const emitter of scene.emitters) {
     if (isTrackKind(emitter)) {
-      // A whip stands on the ground, as a blast does, and a booster lands on its pad; a flight's start is above the datum.
       const start = emitter.kind === 'booster' ? placed(emitter.padMetres) : emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
       if (emitter.kind === 'booster') list.push({ type: 'emitter', id: emitter.id, field: 'padMetres', point: start, onGround: true, role: 'start' });
       else list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
@@ -244,7 +233,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       includeExtent(flashes, () => flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
     }
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
-    // The box measures the scene, not the terrain, which goes on beyond it and fades toward its own edge.
     const surface = currentSurface();
     const enabled = scene.emitters.filter(emitter => emitter.enabled);
     const span = enabled.length && enabled.every(emitter => emitter.kind === 'whip') ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
@@ -334,10 +322,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return { ...point, [plane.fixed]: plane.value };
   }
 
-  /**
-   * Solves a screen point back to the two free coordinates of a plane through `base`. The
-   * plane's fixed coordinate comes from `base`, so pass the point already placed on the plane.
-   */
   function fromScreen(plane, base, x, y) {
     const origin = frame.project({ ...base, [plane.free[0]]: 0, [plane.free[1]]: 0 });
     const first = frame.project({ ...base, [plane.free[0]]: 1, [plane.free[1]]: 0 });
@@ -370,7 +354,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
 
   const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
 
-  /** Height lines above the floor: at round heights above sea level over terrain, above the ground otherwise. */
   function heightLevels(bounds, spacing) {
     const surface = currentSurface();
     const datum = surface.flat ? 0 : surface.datumMetres;
@@ -445,7 +428,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.stroke();
   }
 
-  /** A point's shadow on the screen: on the ground under it, or on a far wall by that wall's affine map. */
   function shadowProjectors() {
     const onWall = (fixed, value, [u, v]) => {
       const at = (a, b) => frame.project({ [fixed]: value, [u]: a, [v]: b });
@@ -539,7 +521,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /** Lights every channel point whose direct sound is arriving at the followed receiver now. */
   function drawSoundGlow(context, emitter, colors, sound) {
     const levels = [[], [], [], []];
     const { seconds, travelSeconds, key } = sound;
@@ -591,10 +572,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.globalAlpha = 1;
   }
 
-  /**
-   * Fills the union of the shapes in `path` faintly and draws only its outer edge. The cut also takes a
-   * thin stroke along every edge: where two edges nearly coincide the coverage stays below one and leaves a seam.
-   */
+  /** The cut also strokes every edge: where two edges nearly coincide the coverage stays below one and leaves a seam. */
   function unionOutline(context, path, color, { fillAlpha, edgeAlpha, bounds }) {
     scratch ??= document.createElement('canvas');
     if (scratch.width !== canvas.width || scratch.height !== canvas.height) {
@@ -642,7 +620,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return path;
   }
 
-  /** Where refraction lifts the sound off the ground: around each source, where the ray to the followed microphone's height grazes the ground. */
   function mixColors(a, b, t) {
     return a.map((value, index) => Math.round(value + (b[index] - value) * t));
   }
@@ -711,7 +688,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     return terrainMeshCache;
   }
 
-  /** The terrain as shaded quads far to near, in a back layer behind the walls and a front layer, reused until the view or the terrain changes. */
   function terrainLayers(colors) {
     const surface = currentSurface();
     const { box, farX, farY } = frame;
@@ -756,11 +732,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /**
-   * The floor the map covers: a square a power of two metres a side that holds what the view shows
-   * of the floor, centred on a grid of a quarter side near the floor under the view's centre, so that
-   * it changes only in steps as the view zooms and pans. Zoomed out, it is larger and its tiles coarser.
-   */
   function mapArea() {
     const { box, width, height, scale } = frame;
     const z = box.z0;
@@ -853,7 +824,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (shadowOutline?.key !== key) {
       const stride = Math.ceil(points.length / VIEW.shadowBoundary.points);
       const height = receiver.positionMetres.z;
-      // Outward from a source, so each direction's radius uses the air along it; downwind of a strong shear none is cast.
       const rings = [];
       for (let index = 0; index < points.length; index += stride) {
         const point = points[index];
@@ -928,14 +898,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   }
 
   function drawWavefronts(context, colors, { profile, spheres, total }) {
-    // Each flash's fronts form their own outline, so an older, wider front does not hide a newer
-    // one inside it. A flash is dropped once one of its spheres holds the box and the terrain around
-    // it even at its innermost ring: dropping a single sphere would uncover the edges it hides.
+    // A flash is dropped whole: dropping a single sphere would uncover the edges it hides.
     const { box } = frame;
     const innermost = (VIEW.wavefront.rippleAlphas.length - 1) * rippleSpacing();
     const terrain = currentSurface().bounds;
     const bounds = terrain ? { x0: Math.min(box.x0, terrain.west), x1: Math.max(box.x1, terrain.east), y0: Math.min(box.y0, terrain.south), y1: Math.max(box.y1, terrain.north) } : box;
-    // Fronts over terrain are thinned by their fixed order, so the same ones are drawn in every frame.
     const terrainStride = Math.max(1, Math.ceil(total / VIEW.wavefront.terrainSpheres));
     const groups = new Map();
     const passed = new Set();
@@ -967,7 +934,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     if (!currentSurface().flat) drawTerrainRipples(context, colors, spheres.filter(sphere => sphere.order % terrainStride === 0), spacing, strength);
     for (const face of faces) {
       const [u, v] = face.axes;
-      // The box's parallel projection is affine, so a face's points follow from three projected ones.
       const at = (a, b) => frame.project({ [face.fixed]: face.value, [u]: a, [v]: b });
       const origin = at(0, 0);
       const alongU = at(1, 0);
@@ -981,7 +947,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
-        // On the floor, a front past the shadow boundary goes on into the shadow, dimmer, as the sound that creeps there.
         const parts = [{ circles: [], alpha: alpha * strength }, { circles: [], alpha: alpha * strength * VIEW.wavefront.shadowShare }];
         for (const { source, centre, radiusMetres } of spheres) {
           const sphere = radiusMetres - ring * spacing;
@@ -993,7 +958,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
         }
         for (const part of parts) {
           if (!part.circles.length || part.alpha < VIEW.wavefront.visibleAlpha) continue;
-          // A circle that holds the whole face leaves the union's edge outside it.
           if (part.circles.some(circle => face.corners.every(([a, b]) => Math.hypot(a - circle.u, b - circle.v) <= circle.radius))) continue;
           strokeUnion(context, outerCircles(part.circles), [ux, uy, vx, vy, origin.x, origin.y], colors.glow, part.alpha);
         }
@@ -1002,10 +966,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     }
   }
 
-  /**
-   * Strokes the edge of a union of circles on a face, the circles in the face's metres and `mapping`
-   * the face's affine map to the screen: the arcs are traced in face metres and stroked on the screen.
-   */
   function strokeUnion(context, circles, mapping, color, alpha) {
     context.save();
     context.transform(...mapping);
@@ -1023,7 +983,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.globalAlpha = 1;
   }
 
-  /** Where the fronts meet the terrain: per direction, the horizontal distance at which the ground lies one radius from the centre (bisection). */
   function drawTerrainRipples(context, colors, spheres, spacing, strength = 1) {
     const rings = VIEW.wavefront.rippleAlphas.map((alpha, ring) => {
       if (alpha * strength < VIEW.wavefront.visibleAlpha) return null;
@@ -1171,7 +1130,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  /** The light of a storm's flashes in its cloud: representational, not a model of scattering. */
   function drawCloudLight(context, emitter, colors, strokes) {
     const layer = cloudLayers.get(emitter.id);
     if (!layer || !strokes?.length) return;
@@ -1291,7 +1249,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.fillStyle = color;
     context.beginPath();
     for (let star = 0; star < stars; star += 1) {
-      // A Fibonacci sphere: even heights, each turned by the golden angle.
       const up = 1 - 2 * (star + .5) / stars;
       const around = turn + star * Math.PI * (3 - Math.sqrt(5));
       const across = Math.sqrt(1 - up * up);
@@ -1335,7 +1292,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     let path = null;
     let from = 0;
     let to = 1;
-    // Narrows [from, to] to where start + t·delta lies within [minimum, maximum]; false if it never does.
     const within = (start, delta, minimum, maximum) => {
       if (delta === 0) return start >= minimum && start <= maximum;
       const t0 = (minimum - start) / delta;
@@ -1344,14 +1300,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       to = Math.min(to, Math.max(t0, t1));
       return true;
     };
-    // The projection is affine, so a line's pieces follow on screen from its projected ends `p` and `q`.
     const draw = (p, q, start, end) => {
       path.moveTo(p.x + (q.x - p.x) * start, p.y + (q.y - p.y) * start);
       path.lineTo(p.x + (q.x - p.x) * end, p.y + (q.y - p.y) * end);
     };
     const line = (a, b, p, q) => {
-      // The part of the line within the box (Liang–Barsky); where it may reach the ground, in pieces
-      // whose middle is above the ground.
       from = 0;
       to = 1;
       if (!within(a.x, b.x - a.x, low.x, high.x) || !within(a.y, b.y - a.y, low.y, high.y) || !within(a.z, b.z - a.z, low.z, high.z)) return;
@@ -1489,7 +1442,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let draws = 0;
   let drawRequested = false;
 
-  /** Draws on the next frame unless a draw comes first: a pointer can move more often than frames are shown. */
   function requestDraw() {
     if (drawRequested) return;
     drawRequested = true;
@@ -1512,7 +1464,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const area = map() ? mapArea() : null;
     const mapTiles = area ? loadMapTiles(area) : null;
     if (!mapTiles) drawTerrain(context, colors, true);
-    // The map reaches past the box under its walls, and is laid again on the box's own floor.
     if (mapTiles) drawMap(context, mapTiles, area);
     drawBox(context, colors);
     if (mapTiles) drawMap(context, mapTiles, { west: frame.box.x0, east: frame.box.x1, south: frame.box.y0, north: frame.box.y1 });
@@ -1709,13 +1660,11 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       drag = { ...drag, x, y };
       return;
     }
-    // A press that has not yet moved as far as a click may is a click: it selects and leaves the point where it was.
     if (!drag.moving && Math.hypot(x - drag.x, y - drag.y) < VIEW.box.clickPixels * (event.pointerType === 'touch' ? 2 : 1)) return;
     drag.moving = true;
     const solved = fromScreen(drag.plane, onPlane(drag.origin, drag.plane), x, y);
     if (!solved) return;
     const clamp = (value, limit, minimum = -limit) => Math.min(limit, Math.max(minimum, value));
-    // Points move in steps of a thousandth of the box or so, a metre at most: a whip's box is 4 m.
     const { box } = frame;
     drag.resolution = Math.min(1, 10 ** Math.floor(Math.log10(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0) / 1000)));
     const round = (value, step) => +(Math.round(value / step) * step).toFixed(Math.max(0, -Math.log10(step)));
@@ -1787,7 +1736,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       changeView({ yaw, pitch, zoom, panU, panV });
     },
     getView: () => view,
-    /** Zooms about the view's centre, as the wheel does about the pointer. */
     zoomBy(factor) { if (frame) zoomAt(factor, frame.width / 2, frame.height / 2); },
     draw,
     setAnimation(source) { animation = source; },

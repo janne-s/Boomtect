@@ -5,16 +5,10 @@ import { createRandom, normalDeviate, uniform } from './random.js';
 const logUniform = (random, [low, high]) => low * (high / low) ** random();
 const lognormal = (random, sigma) => Math.exp(sigma * normalDeviate(random) - sigma ** 2 / 2);
 
-/**
- * Deterministic flashes of a storm: positions uniform over a disc, onsets uniform over the
- * duration, a seeded mix of ground and cloud flashes, and lognormal energies. Every flash gets
- * its own seed for its channel shape.
- */
 export function stormFlashes(storm, surface = null) {
   return [...stormFlashSequence(storm, surface)];
 }
 
-/** The storm's flashes in order of onset, made one at a time, so that a caller need not hold them all. */
 export function* stormFlashSequence(storm, surface = null) {
   const groundAt = surface ? surface.heightAt : () => 0;
   const random = createRandom(storm.seed);

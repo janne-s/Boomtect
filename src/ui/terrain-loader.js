@@ -13,11 +13,6 @@ const COORDINATES = /^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/;
 const searchCache = new Map();
 let lastSearchAt = 0;
 
-/**
- * The place a search names: coordinates written as "latitude, longitude", or the first match from
- * OpenStreetMap Nominatim, as in Echotect and GeoFlute. Searches are spaced a second apart and
- * remembered for the session. Null when nothing matches.
- */
 export async function searchPlace(text, { signal } = {}) {
   const coordinates = text.match(COORDINATES);
   if (coordinates) {
@@ -40,12 +35,6 @@ export async function searchPlace(text, { signal } = {}) {
   return found;
 }
 
-/**
- * Opt-in place, peak and lake labels from OpenFreeMap's static OpenMapTiles tiles.
- * No API key or Overpass query. Label density depends on zoom; this is a map label layer,
- * not a complete gazetteer. Attribution: © OpenMapTiles, © OpenStreetMap contributors.
- * Null on failure so existing names can be kept. Cancelling propagates to every request.
- */
 export async function fetchPlaceNames(terrain, signal) {
   try {
     signal?.throwIfAborted();
@@ -99,12 +88,6 @@ async function decodeTile(response) {
   return elevations;
 }
 
-/**
- * Fetches terrain patches (`terrain.js`) of a cell size around the scene origin at `latitude`,
- * `longitude`: each from the Terrarium tiles that cover it, at the coarsest zoom whose pixels are no
- * larger than the cell, tiles shared between patches fetched once. Heights are lowered onto the
- * tangent plane at the origin. Adapted from Echotect `captureTerrain` (commit cb712ef).
- */
 export async function capturePatches(anchor, cellMetres, wanted, { signal, onProgress } = {}) {
   const tiles = new Map();
   const plans = wanted.map(({ column, row }) => {

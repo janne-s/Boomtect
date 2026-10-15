@@ -9,7 +9,6 @@ if (typeof document !== 'undefined') {
   for (const button of document.querySelectorAll('[data-recovery-dialog]')) {
     button.addEventListener('click', () => setTimeout(() => {
       const dialog = document.getElementById(button.dataset.recoveryDialog);
-      // Give the app's normal Settings handler the first chance to populate and open it.
       if (dialog && !dialog.open) {
         dialog.returnValue = 'cancel';
         dialog.showModal();

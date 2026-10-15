@@ -6,23 +6,15 @@ import { add, deflected, distance, length, scaled, subtract, unit } from './vect
 
 export const FLASH_TYPES = Object.freeze(['cloud-to-ground', 'intra-cloud']);
 
-/** Segments a tortuous walk may need per metre of straight reach, as a share of the step. */
 const BUDGET_MARGIN = 2;
 const STEP_TOLERANCE = 1e-9;
-/** A branch that comes this close to the ground ends there. */
 const GROUND_CLEARANCE_METRES = 1;
 
 const toRadians = degrees => degrees * Math.PI / 180;
 const FLAT_GROUND = () => 0;
 
-/**
- * Class C: a deterministic tortuous path. Each step leaves the direction toward the end by a
- * half-normal angle with the given mean and a uniform azimuth, so the path wanders but reaches
- * its end. A path that would go below the ground (`groundAt(x, y)`, the plane z = 0 by default) is
- * reflected above it, or ends when `endAtGround` is set; a target below the ground is lifted onto it.
- */
+/** Class C. */
 export function tortuousPath(random, start, target, stepMetres, tortuosityDegrees, { endAtGround = false, budget = THUNDER.maximumSegmentsPerEmitter, groundAt = FLAT_GROUND } = {}) {
-  // A target inside rising ground could never be reached by a walk kept above it; it moves up onto the ground.
   const groundAtTarget = groundAt(target.x, target.y);
   const end = target.z < groundAtTarget ? { ...target, z: groundAtTarget } : target;
   const total = distance(start, end);
@@ -52,10 +44,7 @@ export function tortuousPath(random, start, target, stepMetres, tortuosityDegree
   throw new RangeError(`A lightning channel needs more than ${budget} segments. Lengthen the segments or shorten the channel.`);
 }
 
-/**
- * Class C: a two-scale channel. A coarse walk with long steps and large deflections sets the
- * zigzag; a fine walk between its corners adds the small-scale tortuosity.
- */
+/** Class C. */
 function channelPath(random, start, end, spec, budget, options = {}) {
   const corners = tortuousPath(random, start, end, spec.macroStepMetres, spec.macroTortuosityDegrees, { ...options, groundAt: spec.groundAt });
   const points = [corners[0]];
@@ -67,11 +56,6 @@ function channelPath(random, start, end, spec, budget, options = {}) {
   return points;
 }
 
-/**
- * A channel the flash adds within what is left of its budget: a branch, an in-cloud channel, or a
- * new path to ground. A walk longer than the budget leaves the channel out and gives the budget
- * back; only the main channel's walk is an error (`tortuousPath`).
- */
 function budgetedPath(random, start, end, spec, budget, options = {}) {
   const remaining = budget.remaining;
   try {
@@ -116,11 +100,6 @@ function pointAtArc(points, arcMetres) {
   return { point: { ...points.at(-1) }, direction: unit(subtract(points.at(-1), points.at(-2))) };
 }
 
-/**
- * Recursive branches of a channel. Ground-flash branches fan downward like stepped-leader
- * branches; cloud-flash branches spread near the horizontal. Each level has fewer, shorter, and
- * weaker branches than the one before.
- */
 function growBranches(random, spec, budget, parent, level, channels) {
   if (level > spec.branchDepth) return;
   const count = Math.round(spec.branchCount * THUNDER.channel.subBranchCountShare ** (level - 1));
@@ -155,11 +134,6 @@ function growBranches(random, spec, budget, parent, level, channels) {
   }
 }
 
-/**
- * One flash as channels in space and strokes in time. A ground flash's later strokes follow the
- * previous path to ground or, with the given probability, strike a new ground point; intervals are
- * lognormal around the median, and segment energies vary by a mean-preserving lognormal factor.
- */
 export function lightningFlash(input) {
   const spec = { groundAt: FLAT_GROUND, ...input };
   const random = createRandom(spec.seed);
@@ -173,7 +147,6 @@ export function lightningFlash(input) {
   const branchIndices = channels.map((_, index) => index).slice(1);
 
   const ground = spec.type === 'cloud-to-ground';
-  // In-cloud channels start at the top once the first return stroke has reached it.
   const inCloud = [];
   if (ground && spec.inCloudLengthMetres > 0) {
     const firstAzimuth = 2 * Math.PI * random();
@@ -234,38 +207,20 @@ export function lightningFlash(input) {
   };
 }
 
-/**
- * When a channel point at arc `arcMetres` of a stroke's route step emits, in scene seconds: the
- * stroke's onset, the step's own delay, and the travel of the discharge along the channel at the
- * step's speed (the flash's channel speed unless the step has its own).
- */
 export function emissionSeconds(flash, stroke, step, arcMetres) {
   return flash.startSeconds + stroke.offsetSeconds + (step.offsetSeconds ?? 0)
     + (step.offsetMetres + arcMetres - step.fromArc) / (step.speedMetresPerSecond ?? flash.channelSpeedMetresPerSecond);
 }
 
-/**
- * The share of a flash's energy per metre that a segment deposits. Return-stroke channels: class B
- * for the decay (MTLE return-stroke model: the current falls as I(z) = I₀·e^(−z/λ) with height;
- * λ ≈ 2 km is the commonly used value, not yet verified against Nucci et al. 1988), class C for the
- * energy following the current squared, e^(−2z/λ). In-cloud channels are not return-stroke paths;
- * they thin out toward their tips (class C).
- */
+/** Class B: MTLE decay, λ ≈ 2 km not yet verified against Nucci et al. 1988; energy as current squared and the in-cloud taper class C. */
 export function segmentEnergyShare(flash, channel, segment) {
   if (channel.inCloud) return Math.exp(-THUNDER.channel.inCloudTaper * segment.arcMetres / channel.lengthMetres);
   return Math.exp(-2 * Math.max(0, segment.centreMetres.z) / flash.currentDecayHeightMetres);
 }
 
-/**
- * Class B: Few's relaxation radius R₀ = sqrt(E_l / (π·p)) for an energy per unit length E_l
- * released into air at ambient pressure p.
- */
+/** Class B: Few's relaxation radius. */
 export const relaxationRadiusMetres = (energyJoulesPerMetre, pressurePa) => Math.sqrt(energyJoulesPerMetre / (Math.PI * pressurePa));
 
-/**
- * The N-wave duration and the extra weak-shock decay of a channel segment's pulse after r metres:
- * the period grows from τ₀ at 10 R₀ until the wave turns linear at `limitRadii` relaxation radii.
- */
 export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii) {
   const x = Math.min(limitRadii, Math.max(THUNDER.weakShock.startRadii, metres / relaxationRadius));
   const period = THUNDER.weakShock.periodGrowth * sourcePeriodSeconds * x ** THUNDER.weakShock.periodExponent;
@@ -275,14 +230,7 @@ export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, li
   };
 }
 
-/**
- * Point sources of flashes. Each lit segment radiates an N-wave whose fundamental period is
- * τ₀ = k·R₀/c at the local ambient pressure and lengthens with distance (class B, ReVelle). Its
- * amplitude carries the acoustic share η of the segment's energy as an isotropic pulse of the
- * source period (class C): P·1 m = sqrt(3ρc·η·E·ℓ / (4π·T₀)). The segment radiates with the
- * directivity of its straight element ℓs (class C). A preview's `physics.sourceMerge` lets one source
- * stand in for that many segments in a row (PREVIEW).
- */
+/** Class B: ReVelle's period; amplitude and directivity class C. */
 export function flashSources(flashes, physics, air, sources = [], firstFlash = 0) {
   const speed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
   const groundPressurePa = air.pressureKpa * 1000;
@@ -291,7 +239,6 @@ export function flashSources(flashes, physics, air, sources = [], firstFlash = 0
     for (const stroke of flash.strokes) {
       for (const step of stroke.route) {
         const channel = flash.channels[step.channel];
-        // A preview's source stands in for `merge` segments in a row: at the middle one, with their acoustic energy together.
         const merge = physics.sourceMerge ?? 1;
         const energyOf = (segment, segmentIndex) => flash.energyJoulesPerMetre * stroke.energyScale * channel.energyScale * channel.energyVariation[segmentIndex]
           * segmentEnergyShare(flash, channel, segment);
@@ -332,10 +279,6 @@ export function flashSources(flashes, physics, air, sources = [], firstFlash = 0
   return sources;
 }
 
-/**
- * The flash of a single lightning emitter over a terrain surface. A ground flash's ground point is
- * stored above the ground (at it) and lands on the surface; heights in the cloud are above the datum.
- */
 export function lightningEmitterFlashes(emitter, surface = null) {
   const groundAt = surface ? surface.heightAt : FLAT_GROUND;
   const ground = emitter.flashType === 'cloud-to-ground';

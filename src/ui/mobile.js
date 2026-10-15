@@ -1,10 +1,3 @@
-/**
- * The phone layout (styles.css, below MOBILE_QUERY's width): the scene fills the screen, the panel's
- * sections open one at a time as full-screen sheets from the tab bar, the plots fold into a strip
- * that opens over the scene, and what the scene's corners tell about the selection and the listening
- * microphone opens from a chip. The desktop layout is untouched by it.
- */
-
 const MOBILE_QUERY = '(max-width: 700px)';
 
 const SHEET_TITLES = Object.freeze({
@@ -46,7 +39,6 @@ export function createMobileLayout({ onResults }) {
   document.querySelectorAll('.sheet-tabs [data-sheet]').forEach(button => button.addEventListener('click', () => openSheet(button.dataset.sheet)));
   $('sheet-close').addEventListener('click', closeSheet);
 
-  // The header's file actions, which the phone's header has no room for, are in the Output sheet.
   document.querySelectorAll('.sheet-files [data-proxy]').forEach(button => {
     const original = $(button.dataset.proxy);
     button.addEventListener('click', () => original.click());
@@ -55,7 +47,6 @@ export function createMobileLayout({ onResults }) {
     sync();
   });
 
-  // The rendering and playback switches stand with the view's switches on a phone.
   const toggles = document.querySelector('.bar .icon-toggles');
   const home = document.createComment('rendering switches');
   toggles.before(home);

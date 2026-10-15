@@ -1,10 +1,7 @@
 import { GROUND } from './constants.js';
 import { faddeeva } from './faddeeva.js';
 
-/**
- * Ground that reflects without loss: rigid ground, and water, whose impedance is some 3 600 times
- * that of air (class A for a calm surface; waves are not modelled).
- */
+/** Class A for a calm surface. */
 const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);
 export const isReflecting = groundType => REFLECTING_GROUNDS.includes(groundType);
 
@@ -22,19 +19,13 @@ export const GROUND_LABELS = Object.freeze({
 
 const SQRT_PI = Math.sqrt(Math.PI);
 
-/**
- * Class B: Delany–Bazley normalized surface impedance of a locally reacting porous ground,
- * in the e^(−iωt) convention, where its imaginary part is positive.
- */
+/** Class B: Delany–Bazley, e^(−iωt) convention. */
 export function delanyBazleyImpedance(frequencyHz, flowResistivityKpaSecondsPerSquareMetre) {
   const ratio = frequencyHz / flowResistivityKpaSecondsPerSquareMetre;
   return [1 + 9.08 * ratio ** -.75, 11.9 * ratio ** -.73];
 }
 
-/**
- * Class B: plane-wave reflection coefficient Rp = (cos θ − β)/(cos θ + β) of a locally reacting
- * ground with normalized admittance β, as [re, im] in the e^(−iωt) convention, and β itself.
- */
+/** Class B, e^(−iωt) convention. */
 function planeWave(frequencyHz, groundType, cosIncidence) {
   const flowResistivity = GROUND.flowResistivity[groundType];
   if (!flowResistivity) throw new RangeError(`Unknown ground type: ${groundType}`);
@@ -48,20 +39,14 @@ function planeWave(frequencyHz, groundType, cosIncidence) {
   return { planeRe: (differenceRe * sumRe - betaIm * betaIm) / sumScale, planeIm: (-betaIm * sumRe - differenceRe * betaIm) / sumScale, betaRe, betaIm, sumRe };
 }
 
-/** |Rp|, the share of the incident amplitude a ground reflects at a given incidence (class B). */
+/** Class B. */
 export function planeReflectionMagnitude(frequencyHz, groundType, cosIncidence) {
   if (isReflecting(groundType) || frequencyHz <= 0) return 1;
   const { planeRe, planeIm } = planeWave(frequencyHz, groundType, cosIncidence);
   return Math.hypot(planeRe, planeIm);
 }
 
-/**
- * Class B: spherical-wave reflection coefficient Q = Rp + (1 − Rp)·F(w) of a locally reacting
- * ground (Weyl–Van der Pol; see Attenborough, Li & Horoshenkov, Predicting Outdoor Sound, 2007).
- * Returned as [re, im] in the e^(+iωt) convention of `fft.js`, so it multiplies a forward spectrum.
- * `cosIncidence` is the cosine of the angle from the ground normal; `imagePathMetres` is the
- * image-source path length R2.
- */
+/** Class B: Weyl–Van der Pol (Attenborough, Li & Horoshenkov 2007), in the e^(+iωt) convention of `fft.js`. */
 export function sphericalReflectionCoefficient(frequencyHz, groundType, cosIncidence, imagePathMetres, speedOfSound) {
   if (isReflecting(groundType) || frequencyHz <= 0) return [1, 0];
   const { planeRe, planeIm, betaIm, sumRe } = planeWave(frequencyHz, groundType, cosIncidence);

@@ -4,19 +4,12 @@ import { fitCanvas, palette } from './canvas.js';
 const CIRCLE_POINTS = 72;
 const toRadians = degrees => degrees * Math.PI / 180;
 
-/** A unit look direction (east, north, up) from compass heading and elevation in degrees. */
 function lookDirection(headingDegrees, pitchDegrees) {
   const heading = toRadians(headingDegrees);
   const pitch = toRadians(pitchDegrees);
   return { x: Math.sin(heading) * Math.cos(pitch), y: Math.cos(heading) * Math.cos(pitch), z: Math.sin(pitch) };
 }
 
-/**
- * A small sphere showing a microphone's orientation from the same angle as the scene box: the
- * horizon with the compass points, two meridians, the look direction, and a handle on the horizon
- * at the facing. Beside it a vertical scale sets the elevation. Dragging on the sphere turns the
- * facing toward the pointer; dragging on the scale tilts.
- */
 export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
   let orientation = null;
   let drag = null;
@@ -30,7 +23,6 @@ export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
     return { x: cx + a * radius, y: cy - (point.z * Math.cos(pitch) + b * Math.sin(pitch)) * radius, depth: b * Math.cos(pitch) - point.z * Math.sin(pitch) };
   }
 
-  /** The compass heading of a screen point read on the horizon plane, by inverting the projection. */
   function headingAt(x, y) {
     const { yaw, pitch } = getView();
     const { cx, cy, radius } = geometry;
@@ -122,7 +114,7 @@ export function createOrientationBall(canvas, { getView, onChange, onCommit }) {
     if (!orientation || !geometry) return;
     const rect = canvas.getBoundingClientRect();
     drag = { mode: onScale(event.clientX - rect.left) ? 'pitch' : 'heading' };
-    try { canvas.setPointerCapture(event.pointerId); } catch { /* The drag still follows the pointer while it stays over the control. */ }
+    try { canvas.setPointerCapture(event.pointerId); } catch {}
     event.preventDefault();
     apply(event);
   });

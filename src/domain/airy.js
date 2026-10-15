@@ -1,9 +1,4 @@
-/**
- * The Airy function Ai and its derivative for complex arguments, by their power series
- * Ai(z) = c₁f(z) − c₂g(z) (Abramowitz & Stegun 10.4.2–10.4.3), which in double precision keep at
- * least ten significant digits for |z| ≤ 4, where the creeping-mode roots lie. Complex numbers are
- * [re, im] pairs.
- */
+/** Abramowitz & Stegun 10.4.2–10.4.3: at least ten significant digits for |z| ≤ 4. Complex numbers are [re, im]. */
 
 const AI_ZERO = 0.355028053887817239;
 const AI_PRIME_ZERO = 0.258819403792806798;
@@ -15,11 +10,9 @@ export const divide = ([a, b], [c, d]) => {
   return [(a * c + b * d) / scale, (b * c - a * d) / scale];
 };
 
-/** [Ai(z), Ai′(z)]. */
 export function airy(z) {
   const square = multiply(z, z);
   const cube = multiply(square, z);
-  // f = Σ aₖ z^{3k} and g = Σ bₖ z^{3k+1}, with aₖ = aₖ₋₁/((3k−1)·3k) and bₖ = bₖ₋₁/(3k·(3k+1)).
   let a = 1;
   let b = 1;
   let power = [1, 0];

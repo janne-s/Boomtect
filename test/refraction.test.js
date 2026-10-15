@@ -12,12 +12,7 @@ const air = (overrides = {}) => ({
 const isa = soundSpeedProfile(air());
 const inversion = soundSpeedProfile(air({ lapseRateKelvinPerMetre: -.01 }));
 
-/**
- * Reference ray by numerical integration (RK4 in arc length) of dx/ds = cos θ, dz/ds = sin θ,
- * dθ/ds = −g·cos θ / c, dt/ds = 1/c, launched at elevation θ₀ in the vertical plane, reflecting at
- * the ground, until it has covered `horizontal` metres. Returns height, time, arrival elevation, the
- * lowest height reached, and the arc length.
- */
+/** Reference ray by RK4 in arc length. */
 function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5, maximumBounces = 1 } = {}) {
   let state = [0, z0, theta0, 0];
   let s = 0;
@@ -38,7 +33,6 @@ function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5, ma
     let h = Math.min(step, (horizontal - state[0]) / Math.max(1e-9, Math.cos(state[2])));
     let next = advance(state, h);
     if (reflect && next[1] < 0 && bounces < maximumBounces) {
-      // Bisect the step to the ground, then mirror the elevation.
       let low = 0;
       let high = h;
       for (let i = 0; i < 60; i += 1) { const mid = (low + high) / 2; if (advance(state, mid)[1] < 0) high = mid; else low = mid; }
@@ -117,10 +111,6 @@ test('travel time is reciprocal and Snell’s invariant cos θ / c holds along a
   assert.ok(Math.abs(invariant(there.departure) / speedAt(isa, a.z) - invariant(there.arrival) / speedAt(isa, b.z)) < 1e-12);
 });
 
-/**
- * Ray-tube spreading by finite differences of the launch angle over the horizontal distance:
- * A = ρ·|∂ρ/∂θ₀|·|sin θr| / cos θ₀, for receivers on one height.
- */
 function tubeSpread(pathOf, source, receiverHeight, horizontal) {
   const delta = horizontal * 1e-5;
   const near = pathOf(source, { x: horizontal - delta, y: 0, z: receiverHeight });
@@ -173,10 +163,8 @@ test('the shadow starts where the limiting ray grazes the ground, as in Fleagle 
   }
   assert.ok(Math.abs(range / exact - 1) < .015, `${range} m vs ${exact} m`);
   assert.ok(Math.abs(range - 25000) < 1500, `${range} m`);
-  // Below small heights it is sqrt(2·c₀·z/|g|).
   const small = grazingRange(isa, 1.7);
   assert.ok(Math.abs(small / Math.sqrt(2 * isa.groundSpeed * 1.7 / -isa.gradient) - 1) < 1e-4);
-  // Just inside, the direct ray stays above the ground; just outside, it would pass below.
   const source = { x: 0, y: 0, z: 4000 };
   const boundary = grazingRange(isa, 4000) + grazingRange(isa, 1.7);
   for (const [factor, lit] of [[.999, true], [1.001, false]]) {
@@ -201,7 +189,6 @@ test('the shadow path joins the direct ray at the boundary and creeps along the 
   assert.ok(Math.abs(farther.seconds - shadow.seconds - 2000 / isa.groundSpeed) < 1e-3);
   assert.equal(firstArrival(isa, source, { x: boundary + 2000, y: 0, z: 1.7 }).seconds, farther.seconds);
   assert.equal(firstArrival(isa, source, { x: boundary - 2000, y: 0, z: 1.7 }).creepMetres, undefined);
-  // Creeping attenuation grows as f^(1/3) and with the gradient; none without a shadow.
   assert.ok(creepingCoefficient(isa) > 0);
   assert.equal(creepingCoefficient(inversion), 0);
   assert.ok(creepingCoefficient(soundSpeedProfile(air({ lapseRateKelvinPerMetre: .0098 }))) > creepingCoefficient(isa));
@@ -267,7 +254,6 @@ test('every path is finite or absent for random and edge-case geometry in all th
 test('wind adds its component along the path to the speed and its shear to the gradient, and nothing across it', () => {
   const air = { ...defaultScene().air, windSpeedMetresPerSecond: 10, windFromDegrees: 270, windShearPerSecond: .004 };
   const profile = soundSpeedProfile(air);
-  // From the west: blowing toward the east.
   const east = alongProfile(profile, 1000, 0);
   const west = alongProfile(profile, -1000, 0);
   const north = alongProfile(profile, 0, 1000);
@@ -297,7 +283,6 @@ test('a wind shear stronger than the temperature lapse lifts the shadow downwind
   };
   assert.equal(kindAt(5000), PATH_DIRECT);
   assert.equal(kindAt(-5000), PATH_SHADOW);
-  // Without wind, 5 km from a source 2 m high lies in the shadow either way.
   scene.air.windSpeedMetresPerSecond = 0;
   scene.air.windShearPerSecond = 0;
   assert.equal(kindAt(5000), PATH_SHADOW);
@@ -314,7 +299,6 @@ test('rays touching the ground several times in an inversion land on the receive
     assert.ok(Math.abs(traced.z - receiver.z) < .05, `${ray.bounces} contacts: height ${traced.z}`);
     assert.ok(Math.abs(traced.seconds - ray.seconds) < 2e-5, `${ray.bounces} contacts: ${traced.seconds} vs ${ray.seconds}`);
   }
-  // None in air whose speed falls with height.
   assert.equal(multipleReflections(isa, source, receiver).length, 0);
 });
 
@@ -324,7 +308,6 @@ test('the spreading of rays with several contacts equals the ray tube of neighbo
   const horizontal = 8000;
   for (const ray of multipleReflections(inversion, source, { x: horizontal, y: 0, z: zr })) {
     if (ray.spreadMetres <= ray.metres * 10 ** (-1 / 2) * 1.001) continue;
-    // The same family a little nearer and farther: the ray with as many contacts leaving closest in angle.
     const family = (a, b) => multipleReflections(inversion, a, b)
       .filter(other => other.bounces === ray.bounces)
       .reduce((best, other) => (Math.abs(elevation(other.departure) - elevation(ray.departure)) < Math.abs(elevation(best.departure) - elevation(ray.departure)) ? other : best));
@@ -340,7 +323,6 @@ test('a path above the fit height takes the true time of the layered air on a st
   const profile = soundSpeedProfile(layered);
   const top = { x: 0, y: 0, z: 14000 };
   const bottom = { x: 0, y: 0, z: 0 };
-  // ∫ dz / c(z) by the trapezoid rule on 1 m steps.
   let seconds = 0;
   const c = z => Math.sqrt(1.4 * 287.05 * temperatureAtHeightKelvin(layered, z));
   for (let z = 0; z < 14000; z += 1) seconds += (1 / c(z) + 1 / c(z + 1)) / 2;

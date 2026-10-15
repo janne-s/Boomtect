@@ -1,4 +1,3 @@
-/** A native, accessible range with track-wide touch seeking and playback on release. */
 export function attachTimelineSeek(input, { seek, play }) {
   const track = input.parentElement;
   let pointer = null;

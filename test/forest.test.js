@@ -12,7 +12,6 @@ const SAMPLE_RATE = 48000;
 function forestBlast({ distance = 400, forest = true } = {}) {
   const scene = plainScene('blast');
   scene.ground = { ...scene.ground, forest };
-  // The shock alone, so that the tail is the forest's.
   scene.emitters[0] = { ...scene.emitters[0], secondaryShock: false, fireballDecibels: -60 };
   scene.receivers[0].positionMetres = { x: distance, y: 0, z: 1.7 };
   return parseScene(scene);
@@ -52,7 +51,6 @@ test('the forest tail holds its share of each band and decays in the Koli time a
   const middle = share(700, 1400);
   assert.ok(middle > -11 && middle < -7, `${middle}`);
   assert.ok(share(20, 100) < middle - 5);
-  // Schroeder decay of the 1 kHz octave, −5 to −35 dB, extrapolated to 60 dB.
   const band = new Float64Array(size);
   const bandIm = new Float64Array(size);
   for (let bin = 1; bin < size / 2; bin += 1) {
@@ -98,7 +96,6 @@ test('in a forest nothing arrives before the blast, and its tail follows it', ()
 
 test('rendered in two ranges with the tails added to their sum in stretches, a forest scene matches the whole render', () => {
   const scene = forestBlast({ distance: 400 });
-  // Two blasts so that each range holds one.
   const second = { ...scene.emitters[0], id: 'blast-2', positionMetres: { x: -300, y: 200, z: 1 }, startSeconds: .5 };
   const value = parseScene({ ...scene, emitters: [scene.emitters[0], second] });
   const prepared = prepareScene(value);
@@ -130,7 +127,6 @@ test('tail responses made in shares of channels are those made at once', () => {
 test('a sparser forest returns its share of the tail and muffles less under its canopy', () => {
   const [dense] = forestResponses(7, 1, SAMPLE_RATE);
   const [sparse] = forestResponses(7, 1, SAMPLE_RATE, [0, 1], .25);
-  // The same noise, at half the amplitude for a quarter of the energy.
   for (const index of [100, 5000, 40000]) assert.ok(Math.abs(sparse[index] - dense[index] / 2) < 1e-12 * Math.abs(dense[index]) + 1e-18);
   const peak = density => {
     const scene = plainScene('blast');

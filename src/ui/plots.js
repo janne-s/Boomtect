@@ -31,11 +31,6 @@ function playhead(context, width, height, window, seconds, colors) {
   context.beginPath(); context.moveTo(x, VIEW.plots.topPixels); context.lineTo(x, height - VIEW.plots.bottomPixels); context.stroke();
 }
 
-/**
- * How a microphone's trace is drawn: each in its own color, the solo one opaque over the dimmed
- * rest, or with none soloed the listening ones slightly transparent so that overlaps show, over
- * the muted ones. Emphasized traces are drawn last. A single microphone keeps the plain colors.
- */
 function traceStyles(traces, soloId, colors) {
   const single = traces.length === 1;
   return traces
@@ -47,10 +42,6 @@ function traceStyles(traces, soloId, colors) {
     .sort((a, b) => Number(a.emphasized) - Number(b.emphasized));
 }
 
-/**
- * Draws the static part of a plot once per key into a backing canvas and copies it on every
- * animation frame, so the playhead does not rescan the signal.
- */
 const cache = new WeakMap();
 
 function cachedPlot(canvas, key, drawStatic, playheadSeconds) {
@@ -82,10 +73,6 @@ export function plotSeconds(canvas, clientX, clamp = false) {
   return start + Math.min(1, Math.max(0, share)) * (end - start);
 }
 
-/**
- * Min/max envelope of each microphone's pressure per pixel column, in pascals, on one time axis
- * and one scale, the largest peak of them all.
- */
 export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
     const live = traces.filter(trace => trace.result?.samples.length);
@@ -93,7 +80,6 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     const colors = palette();
     const window = sharedWindow(live);
     timeAxis(context, width, height, window, colors);
-    // One scale for every microphone, so their levels compare; a solo only brings one forward.
     const peakPa = Math.max(...live.map(trace => trace.result.peakPa));
     const middle = (VIEW.plots.topPixels + height - VIEW.plots.bottomPixels) / 2;
     const half = (height - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
@@ -102,7 +88,6 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
     const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
     context.strokeStyle = colors.line;
     context.beginPath(); context.moveTo(VIEW.plots.leftPixels, middle); context.lineTo(width - VIEW.plots.rightPixels, middle); context.stroke();
-    // Overlapping microphones add up like light, so one stays visible through another.
     context.globalCompositeOperation = live.length > 1 ? 'screen' : 'source-over';
     for (const { trace, color, alpha } of traceStyles(live, soloId, colors)) {
       const { samples, sampleRate, startSeconds } = trace.result;
@@ -135,11 +120,6 @@ export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = 
 
 const COMPASS = Object.freeze(['N', 'E', 'S', 'W', 'N']);
 
-/**
- * Every path's arrival time for each microphone against its source height, or with `byDirection`
- * against the compass direction it comes from, north at the top and again at the bottom; ground
- * paths and echoes in the secondary color.
- */
 export function drawArrivals(canvas, { key, traces, soloId, byDirection = false }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
     const live = traces.filter(trace => trace.result?.arrivals?.count);
@@ -169,7 +149,6 @@ export function drawArrivals(canvas, { key, traces, soloId, byDirection = false 
     }
     for (const { trace, single, color, alpha } of traceStyles(live, soloId, colors)) {
       const { arrivals } = trace.result;
-      // Ground reflections and echoes behind, in the secondary color or at half strength of the microphone's color.
       for (const reflected of [true, false]) {
         context.fillStyle = single ? (reflected ? colors.reflected : colors.direct) : color;
         const strength = !single && reflected ? alpha / 2 : alpha;

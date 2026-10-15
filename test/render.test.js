@@ -26,14 +26,11 @@ function peak(result, fromSeconds = -Infinity, toSeconds = Infinity) {
   return best;
 }
 
-/** A ground flash with the same energy all along and no in-cloud channels, for geometric checks. */
 const uniformChannel = () => ({ ...defaultLightning(), currentDecayHeightMetres: 1e6, inCloudLengthMetres: 0 });
 
-/** The shock alone, without its secondary shock and roar, for checks of the shock's own physics. */
 const shockOnly = { secondaryShock: false, fireballDecibels: -60 };
 const smallBlast = position => ({ ...defaultBlast(), ...shockOnly, chargeKilograms: .01, riseTimeSeconds: 1e-4, positionMetres: position });
 
-/** The weak-shock stretch of a scene's first blast after `metres`, by which its peak falls below 1/R. */
 function stretch(value, metres) {
   const [{ sources }] = prepareScene(value);
   return blastStretch(sources, 0, metres, airShockImpedance(value.air), sources.z[0]);
@@ -158,7 +155,6 @@ test('paths traced once and sent to other threads render and tabulate as paths t
   const value = scene({ emitter: lightning, receivers: [receiverAt('mic', { x: 700, y: 100, z: 2 })], ground: { enabled: true, type: 'grass' }, absorption: true });
   const prepared = prepareScene(value);
   const receiver = value.receivers[0];
-  // As a worker sends them: cut to their count and copied by structured cloning.
   const traced = structuredClone(compactPaths(receiverPaths(prepared, receiver, value)).paths);
   assert.deepEqual(arrivalTable(prepared, receiver, value, { paths: traced }), arrivalTable(prepared, receiver, value));
   const boundaries = partitionSeconds(prepared, value, 3);
@@ -182,7 +178,6 @@ test('turbulence leaves low frequencies coherent and decorrelates high ones', as
 
 test('turbulence fills the grazing ground dip of a distant blast', () => {
   const receivers = [receiverAt('mic', { x: 1000, y: 0, z: 1.7 })];
-  // A small charge, whose pulse has aged past being a shock by 1 km, so the ground reflects it linearly.
   const base = { emitter: smallBlast({ x: 0, y: 0, z: 1 }), receivers, ground: { enabled: true, type: 'grass' } };
   const calm = render(scene(base));
   const turbulentScene = scene(base);
@@ -219,7 +214,6 @@ test('with refraction a lit blast arrives at the ray travel time and keeps its f
   const refracted = peak(render(bent));
   const free = peak(render(straight));
   const straightSeconds = Math.hypot(5000, 998.3) / speedOfSoundMetresPerSecond(straight.air.temperatureCelsius);
-  // Both peaks sit the same rise time after their arrivals, so their difference is the travel-time difference.
   assert.ok(Math.abs(refracted.seconds - free.seconds - (ray.seconds - straightSeconds)) < 1.5 / 48000);
   assert.ok(refracted.seconds > free.seconds);
   assert.ok(Math.abs(20 * Math.log10(Math.abs(refracted.value / free.value))) < 1);
@@ -242,7 +236,6 @@ test('an inversion brings a ground reflection to a distant microphone that refra
   const inverted = scene({ emitter: smallBlast(source), receivers, ground, refraction: true });
   inverted.air.lapseRateKelvinPerMetre = -.01;
   const paths = render(inverted).arrivals;
-  // The direct ray first, then the reflection and the rays the inversion bends back to touch the ground again.
   assert.ok(paths.count > 2);
   assert.equal(paths.kinds[0], 0);
   assert.ok([...paths.kinds].slice(1).every(kind => kind === 1));
@@ -264,7 +257,6 @@ test('the shadow response is causal, lossless at low frequencies, f^(1/3) creepi
       assert.ok(Math.abs(loss / creeping - 1) < .05, `${creep} m, ${frequency} Hz: ${loss} vs ${creeping} Np`);
     }
     assert.ok(Math.abs(Math.hypot(...shadowResponse(20000, nepers * 50, floor)) / floor - 1) < 1e-3);
-    // Impulse response, band-limited to 4 kHz: nothing before the arrival, and at most −80 dB after the tail.
     const size = 1 << 17;
     const rate = 48000;
     const re = new Float64Array(size);
@@ -299,7 +291,6 @@ test('a strong blast keeps its shock: grazing over grass it merges with its refl
   const grass = at({ enabled: true, type: 'grass' });
   const rigid = at({ enabled: true, type: 'rigid' });
   assert.ok(Math.abs(10 * Math.log10(energy(grass) / energy(rigid))) < .1);
-  // The 10–90 % rise of the front, with and without absorption.
   const rise = samples => {
     let peak = 0;
     let top = 0;
@@ -313,14 +304,12 @@ test('a strong blast keeps its shock: grazing over grass it merges with its refl
   const free = { enabled: false, type: 'grass' };
   assert.ok(rise(at(free)) < 1e-4, `${rise(at(free))} s`);
   assert.ok(Math.abs(rise(at(free)) - rise(at(free, false))) < 5e-5);
-  // A small charge has aged past a shock by 400 m: grass still reflects it linearly.
   assert.ok(Math.abs(10 * Math.log10(energy(at({ enabled: true, type: 'grass' }, true, .001)) / energy(at({ enabled: true, type: 'rigid' }, true, .001)))) > 1);
 });
 
 test('a blast ages as a weak shock: its positive phase lengthens as √(1 + σ ln(r/r₀)) and outlasts the linear pulse', () => {
   const blast = { ...defaultBlast(), ...shockOnly, positionMetres: { x: 0, y: 0, z: 100 } };
   const value = scene({ emitter: blast, receivers: [receiverAt('near', { x: 400, y: 0, z: 100 }), receiverAt('far', { x: 4000, y: 0, z: 100 })] });
-  // From the front to the first zero crossing.
   const positivePhase = result => {
     const front = result.samples.findIndex(sample => sample > .5 * result.peakPa);
     let index = front;

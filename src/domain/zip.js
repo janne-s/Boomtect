@@ -1,8 +1,3 @@
-/**
- * Stored (uncompressed) ZIP archives for export packages. Adopted from Echotect `src/zip.js` at
- * commit c4dd5b1; the checksum here reads a byte at a time from a table, the same CRC-32 about
- * eight times faster, since exports reach hundreds of megabytes.
- */
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let byte = 0; byte < 256; byte += 1) {

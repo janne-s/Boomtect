@@ -122,10 +122,6 @@ button[aria-busy="true"]::after {
     transform: rotate(360deg);
   }
 }
-/*
- * Focus shows plainly only when moving by keyboard (data-keyboard, set on Tab and cleared by a
- * pointer). After a click a field keeps a quiet 1 px line, and other controls none.
- */
 :focus-visible {
   outline: none;
 }
@@ -489,10 +485,6 @@ canvas {
 .macros input[type="range"] {
   width: 100%;
 }
-/*
- * Range sliders draw their own track: --from and --to (set from the value) bound the filled part,
- * so a two-handle slider fills only between its handles.
- */
 input[type="range"] {
   --from: 0%;
   --to: 0%;
@@ -1051,7 +1043,6 @@ details summary {
   position: absolute;
   inset: 0;
 }
-/* OpenStreetMap's light tiles turned into the dark blue-grey palette. */
 #place-map {
   filter: invert(1) hue-rotate(185deg) saturate(.35) brightness(.85) contrast(.9);
 }
@@ -1245,7 +1236,6 @@ details summary {
 }
 
 @media (max-width: 700px) {
-  /* The scene fills the screen; nothing scrolls under a finger that turns or drags it. */
   html,
   body {
     height: 100dvh;

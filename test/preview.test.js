@@ -14,7 +14,6 @@ test('a preview merges the sources of a flash and keeps their acoustic energy', 
   const full = prepareScene(scene)[0].sources;
   const merged = prepareScene(preview)[0].sources;
   assert.ok(merged.length < full.length / PREVIEW.sourceMerge * 1.1, `${merged.length} of ${full.length}`);
-  // A source's acoustic energy goes as its amplitude squared times its period.
   const energy = sources => Array.from({ length: sources.length }, (_, index) => sources.amplitudePaMetres[index] ** 2 * sources.durationSeconds[index]).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(energy(merged) / energy(full) - 1) < 1e-9);
 });

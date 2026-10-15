@@ -2,13 +2,6 @@ import { diffuseTails } from './domain/forest.js';
 import { prepareScene, renderReceiverRange, tailResponses, tracePart } from './domain/render.js';
 import { parseScene } from './domain/scene.js';
 
-/**
- * `trace`: parts of the tracing at receivers, `jobs` of { receiver, part, parts }, which the page
- * puts together. `render`: the given receivers for the paths that arrive in [fromSeconds,
- * toSeconds), from their traced `paths`, without the diffuse tails. `responses`: the tails'
- * responses at the given receivers, of their `channels` [first, last) or all. `tails`: the tails of
- * a stretch of summed `pressure`.
- */
 self.addEventListener('message', ({ data }) => {
   const { revision, type, scene: value } = data;
   try {

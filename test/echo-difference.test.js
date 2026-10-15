@@ -8,7 +8,6 @@ import { syntheticTerrain } from './terrain-fixture.js';
 
 test('the terrain echoes alone are a render with them less one without: silent before the first echo, and the two add back up', () => {
   const ridge = (x, y) => 100 + 60 * Math.exp(-(((x - 900) / 120) ** 2));
-  // The surroundings' rumble stands in for the echoes only where they are off, so the render without them leaves it out too.
   const plain = plainScene('blast');
   const base = { ...plain, ground: { ...plain.ground, surroundings: true }, terrain: syntheticTerrain(ridge) };
   const wet = parseScene(base);

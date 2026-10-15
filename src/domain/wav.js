@@ -1,22 +1,16 @@
 const BYTES_PER_SAMPLE = 4;
 const FORMAT_CODE_IEEE_FLOAT = 3;
 const FORMAT_CODE_EXTENSIBLE = 0xfffe;
-/** KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, 00000003-0000-0010-8000-00aa00389b71, as stored. */
 const SUBFORMAT_IEEE_FLOAT = Object.freeze([0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71]);
 const RIFF_MAXIMUM_BYTES = 0xffffffff;
 
-/**
- * More than two channels are written as WAVE_FORMAT_EXTENSIBLE, as Microsoft asks of them, with no
- * speaker positions (channel mask 0): an AmbiX file's channels are components of the field, not
- * speakers.
- */
+/** WAVE_FORMAT_EXTENSIBLE with channel mask 0: AmbiX channels are field components, not speakers. */
 const extensible = channelCount => channelCount > 2;
 const formatBytes = channelCount => (extensible(channelCount) ? 40 : 16);
 const headerBytes = channelCount => 12 + 8 + formatBytes(channelCount) + 8;
 
 export const wavByteLength = (frameCount, channelCount) => headerBytes(channelCount) + frameCount * channelCount * BYTES_PER_SAMPLE;
 
-/** Encodes equal-length Float32Array channels as an IEEE float 32-bit WAV, samples unchanged. */
 export function encodeFloat32Wav(channels, sampleRate) {
   if (!Array.isArray(channels) || channels.length < 1) throw new Error('WAV export needs at least one channel.');
   const frameCount = channels[0].length;

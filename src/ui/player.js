@@ -2,21 +2,17 @@ import Omnitone from '../../assets/vendor/omnitone/omnitone.min.esm.js';
 import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
 import { RENDER } from '../domain/constants.js';
 
-/**
- * iOS treats Web Audio as ambient sound, which the silent switch mutes. Declaring the page's audio
- * session as playback (Safari 16.4+) makes it media, which plays through the switch; older iOS
- * takes the session from an HTML audio element, so there a silent one loops while sound plays.
- */
+/** iOS mutes Web Audio with the silent switch unless the session is playback (Safari 16.4+); older iOS needs a looping silent audio element. */
 const AUDIO_SESSION = typeof navigator !== 'undefined' && 'audioSession' in navigator;
 let silence = null;
 
 function declarePlayback() {
   if (AUDIO_SESSION) {
-    try { navigator.audioSession.type = 'playback'; } catch { /* Not settable here. */ }
+    try { navigator.audioSession.type = 'playback'; } catch {}
     return;
   }
   silence ??= silentLoop();
-  silence.play().catch(() => { /* Without a gesture or support, Web Audio plays as it would. */ });
+  silence.play().catch(() => {});
 }
 
 function silentLoop() {
@@ -36,12 +32,7 @@ function silentLoop() {
   return audio;
 }
 
-/**
- * Omnitone's higher-order decoder mirrors left and right relative to AmbiX: measured with a source
- * in the east and the listener facing north, it puts the source on the left. Its sine components
- * (m < 0) therefore enter with the opposite sign, after the orientation rotation, because a mirror
- * and a rotation do not commute. The first-order decoder follows AmbiX.
- */
+/** Omnitone's higher-order decoder mirrors left and right against AmbiX, so its m < 0 components flip sign after the rotation. */
 function omnitoneSign(acn, order) {
   if (order < 2) return 1;
   const degree = Math.floor(Math.sqrt(acn));
@@ -74,10 +65,7 @@ function rotationNetwork(context, order) {
 
 const binauralRenderers = new WeakMap();
 
-/**
- * An initialized Omnitone decoder for an order, created once per audio context and connected to its
- * destination for good. Playbacks share it, so each fades its heads before the decoder, never after.
- */
+/** Shared by playbacks, so each fades its heads before the decoder, never after. */
 async function binauralRenderer(context, order) {
   let renderers = binauralRenderers.get(context);
   if (!renderers) binauralRenderers.set(context, renderers = new Map());
@@ -102,7 +90,6 @@ function bufferSource(context, channels, gain, sampleRate) {
   return source;
 }
 
-/** Connects a composition to a destination: surround per speaker when the output has the channels, otherwise a panned stereo preview. */
 async function connectComposition(context, composition, gain, destination, { live, input = destination, fieldInput = null }) {
   const { kind, sampleRate, order } = composition;
   const sources = [];
@@ -159,17 +146,10 @@ export async function renderComposition(composition, gain) {
   return [0, 1].map(index => new Float32Array(rendered.getChannelData(index)));
 }
 
-/**
- * Web Audio playback of a composition on the scene timeline (seconds since the emission origin).
- * With the real delay the timeline starts at zero; without it, the silent lead-in before the first
- * sound is skipped. The audio context is created on the first Play so it starts from a user
- * gesture.
- */
 export function createPlayer() {
   let context = null;
   let current = null;
   let clock = null;
-  /** Counts play requests, so an older one still connecting does not start after a newer one. */
   let request = 0;
 
   function disconnect({ sources, nodes, faders }) {
@@ -188,7 +168,7 @@ export function createPlayer() {
       }
       for (const source of playback.sources) {
         source.onended = null;
-        try { source.stop(at + RENDER.fadeSeconds); } catch { /* Not started. */ }
+        try { source.stop(at + RENDER.fadeSeconds); } catch {}
       }
       setTimeout(() => disconnect(playback), (at - context.currentTime + RENDER.fadeSeconds * 2) * 1000);
     }
@@ -202,11 +182,7 @@ export function createPlayer() {
     silence?.pause();
   }
 
-  /**
-   * Declares the page's audio as playback and creates and resumes the audio context. Call it first
-   * thing in a user gesture: browsers allow audio to start only within a short time of the gesture,
-   * and preparing a long composition can take longer than that.
-   */
+  /** Call it first thing in a user gesture: audio may start only shortly after one. */
   function unlock(sampleRate) {
     declarePlayback();
     context ??= new AudioContext({ sampleRate });
@@ -220,17 +196,12 @@ export function createPlayer() {
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);
 
-  /**
-   * Plays a composition from `atSceneSeconds`, keeping `skippedSeconds` of lead-in. With `continuing` it
-   * cross-fades from the current playback at one moment; the two are near copies, so the fade is linear.
-   */
   async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null, continuing = false }) {
     const ticket = request += 1;
     await unlock(composition.sampleRate);
     if (!continuing) release();
     const fader = context.createGain();
     fader.connect(context.destination);
-    // The heads' fader carries the whole field to the decoder, channel for channel.
     const fieldFader = context.createGain();
     fieldFader.channelCount = channelCount(composition.order || 1);
     fieldFader.channelCountMode = 'explicit';

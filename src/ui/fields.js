@@ -1,6 +1,5 @@
 import { PARAMETERS } from '../domain/scene.js';
 
-/** How a stored SI value is shown in the panel; stored values never change unit. */
 const DISPLAY = Object.freeze({
   energyJoulesPerMetre: { scale: 1e-3, unit: 'kJ/m' },
   terrainExtentMetres: { scale: 1e-3, unit: 'km' },
@@ -58,10 +57,6 @@ function badge(reliability) {
 
 let fieldCounter = 0;
 
-/**
- * A number row bound to a parameter range. The value commits on change; an out-of-range entry is
- * marked and reverted instead of being clamped silently.
- */
 export function numberField(container, { key, label, value, onCommit, reliability }) {
   const parameter = PARAMETERS[key];
   const { scale, unit } = display(key);
@@ -100,7 +95,6 @@ export function numberField(container, { key, label, value, onCommit, reliabilit
   };
 }
 
-/** Coordinate rows for a point in metres; `axes` limits them, as for a point fixed to the ground. */
 export function pointFields(container, { label, point, onCommit, reliability = null, axes = ['x', 'y', 'z'] }) {
   const heading = document.createElement('div');
   heading.className = 'unit-row';

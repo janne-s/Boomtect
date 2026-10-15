@@ -3,32 +3,11 @@ import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from './refraction.js';
 import { onGround } from './terrain.js';
 
-/**
- * A body in supersonic flight and the sonic booms it leaves at a receiver.
- *
- * Each boom leaves the flight path where the arrival time T(t) = t + travel(x(t) → receiver) is
- * stationary: there the ray to the receiver leaves on the Mach cone (class A, the stationary
- * phase of the moving source; with the travel time along refracted rays, the Mach cone bends with
- * the air). A minimum of T is a boom; where none exists the body is subsonic or the air turns the
- * cone's rays away before the ground (Mach cutoff), which follows from the rays themselves.
- *
- * Its overpressure and duration follow Carlson's simplified method (NASA TP-1122, 1978, eqs. 1–2,
- * class B; checked against its sample problems, 74 Pa and 0.17 s for problem 1):
- *   Δp = K_p·K_R·√(p_v·p_g)·(M² − 1)^⅛·r^(−¾)·l^¾·K_S,  Δt = K_t·(3.42/a_v)·M/(M² − 1)^⅜·r^¼·l^¾·K_S,
- * with the ray's length r in place of his effective altitude, K_p = K_t = 1 (his charts' atmospheric
- * factors, 0.7–1.4 in his samples; class C), and the ground reflection K_R left to the ground model,
- * so that it is counted once. Where the flight accelerates or turns, rays from neighbouring points
- * converge: the boom grows as √(T″ of straight, steady flight / T″), up to FLIGHT.focusLimit (class B for
- * the stationary-phase law, class C for the limit, where ray theory fails at a caustic).
- */
+/** Booms where the arrival is stationary, class A; Carlson's simplified method (NASA TP-1122, 1978), class B with K_p = K_t = 1 class C; focusing class B, its limit class C. */
 
 export const BODY_TYPES = Object.freeze(Object.keys(FLIGHT.bodies));
 
-/**
- * The bodies of a flight emitter: a flight is one; a formation flies in a vee behind its leader,
- * each rank a lateral and a trailing spacing farther out and back, alternating sides (class C as a
- * pattern), all at the leader's settings.
- */
+/** Class C as a pattern. */
 export function flightMembers(emitter) {
   if (emitter.kind !== 'formation') return [emitter];
   const heading = emitter.headingDegrees * Math.PI / 180;
@@ -51,7 +30,6 @@ export function flightMembers(emitter) {
   });
 }
 
-/** Time step of the flight path, seconds, and the most steps kept. */
 const STEP_SECONDS = .05;
 const MAXIMUM_STEPS = 12000;
 const STOPPED_METRES_PER_SECOND = 1;
@@ -60,10 +38,8 @@ const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_,
   const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
   return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
 }));
-/** The speed of sound the body flies against: the layered air's, or the ground's in homogeneous air, as the sound travels. */
 const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
 
-/** The flight path every STEP_SECONDS from the onset, until its duration ends or it meets the ground. */
 export function flightPath(flight, air) {
   const steps = Math.min(MAXIMUM_STEPS, Math.max(2, Math.ceil(flight.durationSeconds / STEP_SECONDS)));
   const step = flight.durationSeconds / steps;
@@ -86,16 +62,10 @@ export function flightPath(flight, air) {
   return path;
 }
 
-/**
- * A whip's tip (WHIP): it speeds up to its top Mach number, turns around over the top on a half
- * circle, and slows down going back, at even rates along each straight part; a subsonic top speed
- * does not crack. Sampled every WHIP.stepSeconds, as `flightPath`.
- */
 export function whipPath(whip, air, surface = null) {
   const climb = whip.climbDegrees * Math.PI / 180;
   const heading = whip.headingDegrees * Math.PI / 180;
   const along = { x: Math.cos(climb) * Math.sin(heading), y: Math.cos(climb) * Math.cos(heading), z: Math.sin(climb) };
-  // The turn's other axis: up, square to the heading (or the heading's horizontal for a vertical throw).
   const upright = Math.abs(along.z) < .999 ? { x: -along.z * along.x, y: -along.z * along.y, z: 1 - along.z * along.z } : { x: Math.sin(heading), y: Math.cos(heading), z: 0 };
   const norm = Math.hypot(upright.x, upright.y, upright.z);
   const over = { x: upright.x / norm, y: upright.y / norm, z: upright.z / norm };
@@ -105,7 +75,6 @@ export function whipPath(whip, air, surface = null) {
   const slow = WHIP.subsonicMach * sound;
   const top = Math.max(whip.mach * sound, slow * 1.001);
   const knee = Math.min(sound, top);
-  // Straight parts at an even rate from one speed to another over a distance, as [seconds, rate].
   const even = (from, to, metres) => [2 * metres / (from + to), (to * to - from * from) / (2 * metres)];
   const parts = [];
   const straight = (from, to, metres, sign) => { const [seconds, rate] = even(from, to, metres); parts.push({ kind: 'line', seconds, from, rate, metres, sign }); };
@@ -114,7 +83,6 @@ export function whipPath(whip, air, surface = null) {
   parts.push({ kind: 'turn', seconds: Math.PI * radius / top, speed: top });
   if (top > sound) straight(top, sound, WHIP.decelerationMetres, -1);
   straight(Math.min(top, sound), slow, WHIP.subsonicMetres, -1);
-  // Each part starts where the last ended, in the plane of the heading and the turn's axis (a, b).
   let position = { a: -WHIP.subsonicMetres, b: 0 };
   let time = 0;
   for (const part of parts) {
@@ -136,7 +104,6 @@ export function whipPath(whip, air, surface = null) {
   };
   const steps = Math.max(2, Math.ceil(time / WHIP.stepSeconds));
   const step = time / steps;
-  // Its start time is when the tip reaches the speed of sound, or would.
   const sonic = parts[0].seconds;
   const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step };
   for (let index = 0; index <= steps; index += 1) {
@@ -153,14 +120,12 @@ export function whipPath(whip, air, surface = null) {
   return path;
 }
 
-/** A booster's fall to its pad under gravity and drag in the layered air (BOOSTER), set sideways so it ends at the pad. */
 export function boosterPath(booster, air, surface = null) {
   const pad = surface ? onGround(surface, booster.padMetres) : booster.padMetres;
   const heading = booster.headingDegrees * Math.PI / 180;
   const descent = booster.descentDegrees * Math.PI / 180;
   const density = z => pressureAtHeightPa(air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, Math.max(0, z)));
   const drag = .5 / booster.ballisticKilogramsPerSquareMetre;
-  // The state along the heading and up: [a, z, va, vz], stepped by the classical Runge–Kutta method.
   const rate = ([, z, va, vz]) => {
     const pull = drag * density(z) * Math.hypot(va, vz);
     return [va, vz, -pull * va, -pull * vz - STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED];
@@ -178,7 +143,6 @@ export function boosterPath(booster, air, surface = null) {
     state = state.map((value, index) => value + h / 6 * (k1[index] + 2 * k2[index] + 2 * k3[index] + k4[index]));
     states.push(state);
   }
-  // The last step ends where it reaches the pad's height, between the last two steps (its time is rounded to the step).
   const last = states.at(-1);
   const before = states.at(-2) ?? last;
   const share = last[1] < pad.z && before[1] > last[1] ? (before[1] - pad.z) / (before[1] - last[1]) : 1;
@@ -196,11 +160,6 @@ export function boosterPath(booster, air, surface = null) {
 
 export const whipBody = whip => ({ lengthMetres: whip.crackerLengthMetres, shapeFactor: whip.crackerShapeFactor });
 
-/**
- * The flight path with its approach before the start: a body supersonic at its start has been flying
- * before it, so its booms near the start left from there (FLIGHT.approachHeights). A subsonic start
- * has none. Views draw the path from the start.
- */
 export function withApproach(path, air) {
   const speed = path.speed[0];
   const mach = speed / soundSpeedAt(air, path.z[0]);
@@ -218,7 +177,6 @@ export function withApproach(path, air) {
   return approach;
 }
 
-/** Carlson's bow-shock overpressure, Pa, and signature duration, s, at a distance (see the module note). */
 export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicleSoundSpeed, lengthMetres, shapeFactor, distanceMetres, pressureFactor = 1, durationFactor = 1, reflectionFactor = 1 }) {
   const beta = mach * mach - 1;
   return {
@@ -227,14 +185,7 @@ export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicle
   };
 }
 
-/**
- * Where the arrival at a receiver is stationary along a path sampled every `path.step` seconds
- * (`seconds`, `x`, `y`, `z`): each minimum of T(t) = t + travel(x(t) → receiver) between its ends,
- * with the ray from there and T″. Beyond the edge of the boom's carpet, where the air turns the
- * rays away before the ground, the receiver is in the refraction shadow of that point: the ray is
- * then the creeping path into the shadow (`shadowPath`), and `shadow` is set (class B/C, as for a
- * point source's shadow). The receiver is in the frame of the path (heights above the datum).
- */
+/** Shadow paths class B/C, as a point source's. */
 export function stationaryArrivals(path, receiver, profile) {
   const count = path.seconds.length;
   if (count < 3) return [];
@@ -247,7 +198,6 @@ export function stationaryArrivals(path, receiver, profile) {
   const h = path.step;
   for (let index = 1; index < count - 1; index += 1) {
     if (!(arrival[index] < arrival[index - 1] && arrival[index] <= arrival[index + 1])) continue;
-    // The minimum between the samples, by a parabola through the three.
     const curvature = (arrival[index + 1] - 2 * arrival[index] + arrival[index - 1]) / (h * h);
     const shift = curvature > 0 ? Math.max(-.5, Math.min(.5, (arrival[index - 1] - arrival[index + 1]) / (2 * curvature * h * h))) : 0;
     const blend = values => values[index] + (shift >= 0 ? (values[index + 1] - values[index]) * shift : (values[index] - values[index - 1]) * shift);
@@ -259,7 +209,6 @@ export function stationaryArrivals(path, receiver, profile) {
   return found;
 }
 
-/** The booms of a flight path at a receiver in the path's frame, with their free-field overpressure, duration, and focusing. */
 export function flightBooms(path, flight, receiver, profile, air) {
   const booms = [];
   for (const { point, emissionSeconds, ray, along, curvature, blend, shadow } of stationaryArrivals(path, receiver, profile)) {
@@ -271,7 +220,6 @@ export function flightBooms(path, flight, receiver, profile, air) {
       mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
       vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
     });
-    // Steady straight flight at this Mach number and distance: T″ = v²(1 − 1/M²)/(c·r), c the ray's mean speed.
     const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
     const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
     const focus = Math.min(FLIGHT.focusLimit, Math.sqrt(steady / Math.max(curvature, steady / FLIGHT.focusLimit ** 2)));
@@ -280,10 +228,6 @@ export function flightBooms(path, flight, receiver, profile, air) {
   return booms;
 }
 
-/**
- * A body's Mach cone at the clock, for views: the envelope of the fronts it has left, with their
- * refraction. Once it slows below sound, the rings come from where it was last supersonic.
- */
 export function machCone(path, now, profile) {
   const count = path.seconds.length;
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
@@ -295,7 +239,6 @@ export function machCone(path, now, profile) {
     return Math.hypot(path.x[to] - path.x[from], path.y[to] - path.y[from], path.z[to] - path.z[from]) / ((to - from) * path.step);
   };
   const supersonic = index => speedAround(index) > speedAt(localProfile(profile, path.z[index]), path.z[index]);
-  // The newest point the rings may come from: the body, or where it last flew faster than sound.
   let end = last;
   while (end > 0 && !supersonic(end)) end -= 1;
   if (end < 1) return null;
@@ -303,7 +246,6 @@ export function machCone(path, now, profile) {
   const apex = flying && end === last;
   const rings = [];
   const radii = [];
-  // Behind a flying apex the first ring is a step back; without one, the front from `end` is the first.
   for (let ring = apex ? 1 : 0; ring <= VIEW.cone.rings; ring += 1) {
     const index = Math.round(end * (1 - ring / VIEW.cone.rings));
     const before = at(Math.max(0, index - 1));

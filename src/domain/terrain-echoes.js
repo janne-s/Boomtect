@@ -2,40 +2,20 @@ import { PROPAGATION } from './constants.js';
 import { inShadow, PATH_ECHO, PATH_SCATTER, pathProfile, rayBetween, rayTiming } from './refraction.js';
 import { meanPlaneFrame } from './terrain-propagation.js';
 
-/**
- * First-order echoes from terrain, after Echotect `src/terrain-space.js` at commit cb712ef: the
- * scattering share `s` splits each surface's reflected energy, `1 − s` specularly at the stationary
- * points of the path length on the surface (Fermat), `s` from every facet as a Lambertian patch.
- * Adapted to Boomtect's frame and units, to a coarser echo grid of its own, and to source cells:
- * point sources are pooled into cells of `cellMetres` and `PROPAGATION.echoCellSeconds`, and each cell's echoes at a
- * receiver are traced once (architecture decision 2, option B).
- *
- * Classes: the specular geometry is A on the given surface; the Lambertian energy
- * A·cosθᵢ·cosθₒ/π·((r₁+r₂)/(r₁r₂))² relative to an image source over the same path is B (Kuttruff,
- * Room Acoustics, diffuse reflection); the cells, the scattering share, the echo grid, the
- * visibility test, and the echo limit are C.
- */
+/** Specular geometry class A; Lambertian energy class B (Kuttruff, Room Acoustics); cells, scattering share, grid, visibility, and limit class C. */
 
 const HORIZON_AZIMUTHS = 16;
 const HORIZON_STEP_GROWTH = .15;
 const NEWTON_STEP_SPACINGS = .25;
 const NEWTON_TOLERANCE_SPACINGS = 1e-3;
 const NEWTON_ITERATIONS = 12;
-/**
- * A specular point on the plane under the receiver, within this angle and this height, is the ground
- * reflection, which the receiver's paths already carry; the height tolerance grows with the echo cell.
- */
 const COPLANAR_COSINE = Math.cos(2 * Math.PI / 180);
 const COPLANAR_METRES = .5;
 const COPLANAR_SPACINGS = .035;
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
-/**
- * Pools an emitter's point sources into cells of `cellMetres` and PROPAGATION.echoCellSeconds, each at
- * its sources' energy-weighted centre, time, and pulse, amplitudes added by energy (class C). Cells of
- * one place differ only in time and share the echo geometry traced from `places`.
- */
+/** Class C. */
 export function sourceCells(sources, cellMetres) {
   const placeIndex = new Map();
   const index = new Map();
@@ -47,7 +27,6 @@ export function sourceCells(sources, cellMetres) {
     let place = placeIndex.get(where);
     if (place === undefined) { place = placeMembers.length; placeIndex.set(where, place); placeMembers.push([]); }
     placeMembers[place].push(source);
-    // A blast's shock, secondary shock, and roar keep cells of their own: they differ in pulse and delay.
     const key = `${where},${Math.floor(sources.emissionSeconds[source] / PROPAGATION.echoCellSeconds)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.flight[source]}`;
     let cell = index.get(key);
     if (cell === undefined) { cell = members.length; index.set(key, cell); members.push([]); placeOf.push(place); }
@@ -86,7 +65,6 @@ export function sourceCells(sources, cellMetres) {
     relaxationRadius: new Float64Array(length),
     sourcePeriodSeconds: new Float64Array(length),
     limitRadii: new Float64Array(length),
-    /** 1 for a boom, whose echoes carry its turbulent front. */
     flight: new Uint8Array(length)
   };
   const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
@@ -111,7 +89,6 @@ export function sourceCells(sources, cellMetres) {
 
 const surfaces = new WeakMap();
 
-/** The echo grid of a terrain surface, with each facet's horizon in HORIZON_AZIMUTHS directions; cached per surface. */
 export function echoSurface(surface) {
   const cached = surfaces.get(surface);
   if (cached) return cached;
@@ -177,11 +154,7 @@ export function echoSurface(surface) {
   return echo;
 }
 
-/**
- * Whether the straight line between two points clears the echo grid's ground, sampled once per echo
- * cell. Ground within one echo cell of either end is not checked: a facet stands on it, and finer
- * ground is unknown (class C; refraction does not bend this line).
- */
+/** Class C. */
 export function clearBetween(echo, a, b) {
   const horizontal = Math.hypot(b.x - a.x, b.y - a.y);
   const { spacing } = echo;
@@ -261,15 +234,10 @@ function jacobian(gradient, x, y, step) {
 
 const determinant = matrix => matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
 
-/**
- * Specular points between S and R on the echo surface, by Newton from every grid square that brackets
- * zero. Their energy follows stationary phase, so a concave slope focuses, up to PROPAGATION.maximumFocusing.
- */
 export function specularPoints(echo, S, R, field = null) {
   const { columns, rows, spacing, bounds } = echo;
   const step = spacing * NEWTON_STEP_SPACINGS;
   const surfaceGradient = (x, y) => pathGradient(S, R, x, y, echo.heightAt(x, y), echo.slopeAt(x, y));
-  // With a receiver's field, only the ground it sees can echo, so only that ground is searched.
   const facets = field ? field.visible : Int32Array.from({ length: echo.count }, (_, facet) => facet);
   const seen = field?.seen;
   const gradients = field ? (field.gradients ??= new Float64Array(2 * echo.count)) : new Float64Array(2 * echo.count);
@@ -288,7 +256,6 @@ export function specularPoints(echo, S, R, field = null) {
     if (first % columns === columns - 1 || first >= columns * (rows - 1)) continue;
     {
       const corners = [first, first + 1, first + columns, first + columns + 1];
-      // A specular point the receiver cannot see does not echo; neither does one beside such ground.
       if (seen && !(seen[corners[1]] && seen[corners[2]] && seen[corners[3]])) continue;
       let xNegative = false; let xPositive = false; let yNegative = false; let yPositive = false;
       for (const corner of corners) {
@@ -333,16 +300,10 @@ function onGroundPlane(field, point, normal) {
   return Math.abs(offset) < COPLANAR_METRES + COPLANAR_SPACINGS * field.echo.spacing;
 }
 
-/** Ground samples for the mean plane of an echo leg, fewer than for the direct sound (class C). */
+/** Class C. */
 const LEG_PLANE_SAMPLES = 8;
 
-/**
- * One leg of an echo, timed along the refracted ray, with `floor`, its amplitude factor. A leg through
- * the refraction shadow, judged from the mean ground plane under it as for the direct sound, keeps
- * the shadow floor: turbulence scatters sound into the shadow from the lit air above, with a front
- * as steep as the lit one (class C, as the direct sound's floor; Karzova et al., laboratory N-waves).
- * Without a floor such a leg is null.
- */
+/** Class C, as the direct sound's floor (Karzova et al.). */
 function echoLeg(field, a, b, trace = rayBetween) {
   const { echo } = field;
   const profile = pathProfile(field.profile, a, b);
@@ -372,7 +333,6 @@ function clusterBuffers(field, size) {
   return field.clusters;
 }
 
-/** The strongest `limit` echo paths from a place of source cells at the field's receiver, specular and scattered. */
 export function echoPaths(field, S) {
   const { echo, R, scattering, limit } = field;
   const exclusion = PROPAGATION.exclusionSpacings * echo.spacing;
@@ -411,7 +371,6 @@ export function echoPaths(field, S) {
       if (!visibleFromFacet(echo, facet, { x, y, z }, S)) continue;
       const r2 = field.distance[facet];
       const energy = scattering * area * slopeFactor * cosine * field.exitCosine[facet] / Math.PI * ((r1 + r2) / (r1 * r2)) ** 2;
-      // The patch's own spread of arrival times: its width times how fast the path grows across it.
       const [ax, ay] = pathGradient(S, R, x, y, z, { x: gx, y: gy });
       const spread = Math.hypot(ax, ay) * echo.spacing / field.profile.groundSpeed;
       const key = Math.floor((r1 + r2) * binsPerMetre) * sectors + field.sector[facet];
@@ -442,7 +401,7 @@ export function echoPaths(field, S) {
     if (paths.length >= limit) break;
     const { r1, r2, point } = candidate;
     if (candidate.kind === PATH_SCATTER) {
-      // Scattered energy arrives from a patch, so its direction and length are the straight ones (class C).
+      // Class C.
       const down = echoLeg(field, S, point, rayTiming);
       const up = down && echoLeg(field, point, R, rayTiming);
       if (!up) continue;
@@ -463,7 +422,6 @@ export function echoPaths(field, S) {
     const down = echoLeg(field, S, point);
     const up = down && echoLeg(field, point, R);
     if (!up) continue;
-    // Spreading of the image source in homogeneous air, r₁ + r₂, carried over to refracted legs.
     const spreadMetres = (down.spreadMetres + up.spreadMetres) / Math.sqrt(candidate.energy) / (down.floor * up.floor);
     paths.push({
       kind: PATH_ECHO,
@@ -479,10 +437,6 @@ export function echoPaths(field, S) {
   return paths;
 }
 
-/**
- * Candidates from the strongest at the receiver, energy / (r₁ + r₂)², then by kind, then in their
- * own order: the order a stable sort gives, taken from a heap, since only the first few are used.
- */
 export function* strongestFirst(candidates) {
   const heap = candidates.map((candidate, order) => ({ candidate, order, strength: candidate.energy / (candidate.r1 + candidate.r2) ** 2 }));
   const before = (a, b) => (a.strength !== b.strength ? a.strength > b.strength : a.candidate.kind !== b.candidate.kind ? a.candidate.kind < b.candidate.kind : a.order < b.order);

@@ -1,12 +1,5 @@
 import { RENDER } from '../domain/constants.js';
 
-/**
- * What the listening microphones make together. Omni microphones give their pressure: one is mono,
- * two are a stereo pair, more are one channel each. A binaural microphone gives its sound field,
- * turned to its orientation and decoded for headphones. Binaural and omni microphones together are
- * a stereo mix, with the omni microphones in the centre.
- */
-
 export const LISTENING_LABELS = Object.freeze({
   none: 'No microphone',
   mono: 'Mono',
@@ -16,10 +9,6 @@ export const LISTENING_LABELS = Object.freeze({
   mix: 'Mix'
 });
 
-/**
- * When the first sound is heard: a render starts on a frame boundary, which for long pulses or
- * echoes lies seconds before the earliest arrival.
- */
 function firstSoundSeconds(results, peakPa) {
   return Math.min(...results.map(result => {
     const index = result.samples.findIndex(sample => Math.abs(sample) > RENDER.silenceShare * peakPa);
@@ -49,7 +38,6 @@ export function listeningKind(receivers, ambisonicOrder) {
   return { kind: heads.length === 1 && !omnis.length ? 'binaural' : 'mix', heads, omnis };
 }
 
-/** The listening composition from rendered results; null when nothing listens, a result is missing, or none of them hears anything. */
 export function composeListening(scene, results) {
   const { kind, heads, omnis } = listeningKind(scene.receivers, scene.render.ambisonicOrder);
   const listening = [...heads, ...omnis];

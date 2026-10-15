@@ -1,4 +1,3 @@
-/** Sizes a canvas backing store to its CSS box and returns a context in CSS pixels. */
 export function fitCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(canvas.clientWidth));
@@ -16,7 +15,6 @@ export function fitCanvas(canvas) {
 const MICROPHONE_COLORS = 8;
 const FIREWORK_COLORS = 6;
 
-/** CSS custom properties as canvas colors, read once per draw; `mics` holds one color per receiver slot. */
 export function palette() {
   const style = getComputedStyle(document.documentElement);
   const read = name => style.getPropertyValue(name).trim();
@@ -28,7 +26,6 @@ export function palette() {
   return colors;
 }
 
-/** A round step of 1, 2, or 5 times a power of ten that gives roughly `count` ticks over `span`. */
 export function niceStep(span, count) {
   const raw = span / Math.max(1, count);
   const power = 10 ** Math.floor(Math.log10(raw));

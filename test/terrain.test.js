@@ -67,7 +67,6 @@ test('a rounded ridge follows P.526 and its crest, costs more than a thin edge a
   assert.ok(extra(broad, 1000) > 15 && extra(broad, 1000) > extra(broad, 30));
   const thin = { ...broad, radiusRatio: 0 };
   assert.equal(extra(thin, 1000), 0);
-  // The rounding's response alone, with the thin edge divided out, barely reaches before its arrival.
   const size = 1 << 16;
   const rate = 48000;
   const re = new Float64Array(size);
@@ -117,7 +116,6 @@ test('patches tile the scene frame from the origin, and a range covers the recta
   const range = patchRange({ west: -100, east: side, south: 10, north: 2.5 * side }, 30);
   assert.deepEqual(range, { column0: -1, column1: 0, row0: 0, row1: 2 });
   assert.deepEqual(rangeBounds(range, 30), { west: -side, east: side, south: 0, north: 3 * side });
-  // A patch's cells are centred half a cell in from its corner.
   const patch = buildPatch(1, -1, 30, (x, y) => x + 1000 * y);
   const decoded = decodePatch(patch);
   assert.ok(Math.abs(decoded[0] - (side + 15 + 1000 * (-side + 15))) < .2);
@@ -180,7 +178,6 @@ test('a ridge between a blast and a microphone shields it, and less so at low fr
   const open = blastScene(terrain(() => 100), { refraction: false, ground: false });
   const clear = renderReceiver(prepareScene(open), open.receivers[0], open);
   const drop = 20 * Math.log10(clear.peakPa / shielded.peakPa);
-  // The pulse's energy lies around 50–500 Hz, where the edge costs 10–25 dB.
   const at = frequency => -20 * Math.log10(Math.hypot(...edgeField(edges[0], frequency)));
   assert.ok(drop > at(30) && drop < at(2000), `drop ${drop} dB, edge ${at(30)}–${at(2000)} dB`);
   shielded.samples.forEach(value => assert.ok(Number.isFinite(value)));
@@ -229,7 +226,6 @@ test('the mean ground plane of a sloping plane measures heights at right angles 
 });
 
 test('a microphone on a hilltop hears a source that its own ground alone would put in the refraction shadow', () => {
-  // A hill 300 m high and 3 km across under the microphone, on level ground.
   const hill = (x, y) => 100 + Math.max(0, 300 * (1 - Math.hypot(x, y) / 1500));
   const scene = defaultScene('blast');
   scene.emitters = [{ ...defaultBlast(), positionMetres: { x: -9500, y: 0, z: 500 } }];
@@ -238,7 +234,6 @@ test('a microphone on a hilltop hears a source that its own ground alone would p
   const parsed = parseScene(scene);
   const paths = receiverPaths(prepareScene(parsed), parsed.receivers[0], parsed);
   assert.equal(paths.kind[0], PATH_DIRECT);
-  // Heights from the ground under the microphone alone: 200 m and 1.7 m, which is in the shadow.
   const profile = soundSpeedProfile(parsed.air);
   const surface = terrainSurface(parsed.terrain);
   const summit = surface.heightAt(0, 0);

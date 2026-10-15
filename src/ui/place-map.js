@@ -2,13 +2,6 @@ import { VIEW } from '../domain/constants.js';
 import { fitCanvas, palette } from './canvas.js';
 import { tilePixelMetres, tileX, tileY } from '../domain/terrain.js';
 
-/**
- * A small OpenStreetMap map for choosing the scene's origin: the map moves under a fixed centre
- * that marks the place, with the square of terrain to be loaded around it. Tiles are drawn on one
- * canvas, which the stylesheet tints to the application's palette; the square is drawn on another
- * canvas above it. Drag to move, wheel or pinch to zoom.
- */
-
 const TILE_SIZE = 256;
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 

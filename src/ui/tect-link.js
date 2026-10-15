@@ -1,17 +1,12 @@
 import { TECT_MESSAGES } from '../domain/handoff.js';
 
-/** Echotect beside Boomtect on GitHub Pages; when Boomtect runs locally, Echotect is expected on port 8001. */
 export const ECHOTECT_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://127.0.0.1:8001/' : 'https://janne-s.github.io/Echotect/';
 const READY_SECONDS = 30;
 const ANSWER_SECONDS = 30;
 
 const links = new Map();
 
-/**
- * A link to another tect's window, opened or greeted at once, so it can be called from a click
- * before any waiting: a browser lets a page open a window only then. `send` waits until the tect is
- * ready, posts the message, and resolves when the tect has taken it.
- */
+/** Opened at once from the click: a browser lets a page open a window only then. */
 export function openTect(url, name) {
   const origin = new URL(url).origin;
   let target = links.get(url);

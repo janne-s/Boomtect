@@ -34,7 +34,6 @@ test('the secondary shock arrives its delay after the primary', () => {
   const primary = result.samples.findIndex(sample => sample > .5 * result.peakPa);
   const { delaySeconds, cubeRootKilograms } = secondaryShockFactors('tnt', 10);
   const expected = primary + Math.round(secondaryShockDelay(delaySeconds, cubeRootKilograms, distance) * SAMPLE_RATE);
-  // The steepest rise near the expected arrival.
   let best = 0;
   let at = 0;
   for (let index = expected - 480; index < expected + 480; index += 1) {
@@ -111,7 +110,6 @@ test('convolution adds the linear convolution of two signals, as a direct sum do
   }
 });
 
-/** The direct linear convolution of a signal with a kernel, `length` samples long. */
 function directConvolution(signal, kernel, length) {
   return Float64Array.from({ length }, (_, index) => {
     let sum = 0;
@@ -122,7 +120,6 @@ function directConvolution(signal, kernel, length) {
 
 test('convolution of a long signal in blocks, three signals sharing transforms, matches direct sums', async () => {
   const { convolveAdd } = await import('../src/domain/fft.js');
-  // Far longer than four kernels, so that it runs in several overlapping blocks, and an odd count so one signal goes alone.
   const signals = [0, 1, 2].map(channel => Float64Array.from({ length: 1000 + 37 * channel }, (_, index) => Math.sin(index * (.3 + .2 * channel)) * Math.exp(-index / 600)));
   const kernel = Float64Array.from({ length: 29 }, (_, index) => Math.cos(index * .9) / (index + 1));
   const targets = signals.map(() => new Float64Array(1100).fill(.5));

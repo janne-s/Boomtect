@@ -8,7 +8,6 @@ import { arrivalDistance, fieldArrival, soundHandoff } from '../src/domain/sound
 import { plainScene } from './plain-scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
-/** A first-order field of one sound arriving from (east, north, up). */
 function planeWave(east, north, up, samples = [0, 1, -.5, .25]) {
   const gains = encodeDirection(...ambisonicDirection(east, north, up), 1);
   return Array.from(gains, gain => Float32Array.from(samples, sample => sample * gain));
@@ -52,7 +51,6 @@ test('a blast west of its microphone is handed off from the west at its distance
   const bearing = (Math.atan2(blast.x - receiver.positionMetres.x, blast.y - receiver.positionMetres.y) * 180 / Math.PI + 360) % 360;
   const metres = Math.hypot(blast.x - receiver.positionMetres.x, blast.y - receiver.positionMetres.y);
   assert.ok(Math.abs(handoff.arrival.azimuthDegrees - bearing) < 2, `${handoff.arrival.azimuthDegrees} vs ${bearing}`);
-  // The blast stands 1 m up, the microphone 1.7 m: the direct sound comes from just below level.
   assert.ok(Math.abs(handoff.arrival.elevationDegrees - Math.atan2(blast.z - receiver.positionMetres.z, metres) * 180 / Math.PI) < .5);
   assert.ok(Math.abs(handoff.arrival.distanceMetres - metres) < metres * .02, `${handoff.arrival.distanceMetres} vs ${metres}`);
   assert.deepEqual(handoff.listener.positionMetres, { east: receiver.positionMetres.x, north: receiver.positionMetres.y });

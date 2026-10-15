@@ -2,16 +2,10 @@ import { VIEW } from '../domain/constants.js';
 import { mapTiles } from '../domain/terrain.js';
 import { palette } from './canvas.js';
 
-/** OpenTopoMap: topographic tiles over OpenStreetMap data, as Echotect and GeoFlute use. */
 const TILE_URL = 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
 
 const rgb = hex => [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16));
 
-/**
- * A tile in Boomtect's palette: its lightness turned over, so that the light map lies dark on the
- * panel's ground and its lines and lettering show in the muted ink, and water as a dim shift
- * toward the colour of water names. Drawn once per tile into a canvas of its own.
- */
 function styledTile(image) {
   const colors = palette();
   const ground = rgb(colors.ground);
@@ -27,9 +21,7 @@ function styledTile(image) {
   for (let at = 0; at < data.length; at += 4) {
     const [r, g, b] = [data[at], data[at + 1], data[at + 2]];
     const light = (.299 * r + .587 * g + .114 * b) / 255;
-    // Contours and lettering are the dark parts; light land is the ground.
     const line = Math.min(1, Math.max(0, (VIEW.map.lightLand - light) / (VIEW.map.lightLand - VIEW.map.darkLine)));
-    // Water is the blue that is bluer than it is red and no less blue than green.
     const wet = b - r > VIEW.map.waterBlue && b >= g;
     for (let channel = 0; channel < 3; channel += 1) {
       data[at + channel] = ground[channel] + ((wet ? water[channel] : ink[channel]) - ground[channel]) * (wet ? VIEW.map.waterShare : line);
@@ -39,12 +31,6 @@ function styledTile(image) {
   return canvas;
 }
 
-/**
- * The map at a geographic anchor, independent of terrain. Only an explicit area can load tiles.
- * Until the new tiles
- * have all arrived, those of the area before stay under them, so that zooming does not blank the
- * floor. `onLoad` runs as each tile arrives, so the view can draw it. A tile that fails stays empty.
- */
 export function createMapLayer(onLoad) {
   let key = null;
   let anchorKey = null;
@@ -74,8 +60,7 @@ export function createMapLayer(onLoad) {
       entry = { image, ready: false, finished: false };
       cache.set(id, entry);
       image.onload = () => {
-        // A tile that cannot be read (no CORS) is drawn as it is.
-        try { entry.image = styledTile(image); } catch { /* Drawn unstyled. */ }
+        try { entry.image = styledTile(image); } catch {}
         entry.ready = true;
         entry.finished = true;
         if (active.has(id)) onLoad();

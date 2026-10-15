@@ -1,6 +1,5 @@
 import { applyEar } from './domain/ear.js';
 
-/** The ear model off the page: each part's channels processed with one setting, in the order given. */
 self.addEventListener('message', ({ data }) => {
   const { sampleRate, reflex, loudness, capOnsets, parts } = data;
   try {

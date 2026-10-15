@@ -1,8 +1,4 @@
-/**
- * Ambisonic encoding in AmbiX: ACN channel order and SN3D normalization, orders 0–3. The sound
- * field is encoded in the world frame with x toward north, y toward west, and z up, so a listener's
- * heading is a rotation applied when the field is heard, not a property of the render.
- */
+/** AmbiX (ACN, SN3D), orders 0–3, encoded in the world frame: x north, y west, z up. */
 
 export const MAXIMUM_AMBISONIC_ORDER = 3;
 
@@ -13,13 +9,9 @@ const SQRT15 = Math.sqrt(15);
 const SQRT5_8 = Math.sqrt(5 / 8);
 const SQRT3_8 = Math.sqrt(3 / 8);
 
-/** World east/north/up components to the ambisonic frame (north, west, up). */
 export const ambisonicDirection = (east, north, up) => [north, -east, up];
 
-/**
- * Class A: real spherical harmonics, SN3D, ACN order, for a unit direction (x, y, z). Writes the
- * (order + 1)² gains into `target`.
- */
+/** Class A. */
 export function encodeDirection(x, y, z, order, target = new Float64Array(channelCount(order))) {
   target[0] = 1;
   if (order >= 1) {
@@ -78,13 +70,7 @@ function solve(a, b) {
   return x;
 }
 
-/**
- * The field rotation for a listener facing `headingDegrees` (compass, clockwise from north) and
- * looking `pitchDegrees` up, so that the look direction becomes the front. As a list of
- * { from, to, gain } terms. Each degree's (2n + 1)² block is fitted by least squares from encoded
- * directions and their rotated encodings; spherical harmonics of one degree rotate among
- * themselves, so the fit is exact up to rounding.
- */
+/** Least squares per degree, exact up to rounding: harmonics of one degree rotate among themselves. */
 export function orientationRotation(headingDegrees, pitchDegrees, order) {
   const heading = headingDegrees * Math.PI / 180;
   const pitch = pitchDegrees * Math.PI / 180;

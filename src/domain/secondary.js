@@ -2,30 +2,11 @@ import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, UPPER_AIR } from '
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { carlsonBoom } from './flight.js';
 
-/**
- * Secondary booms: the part of a body's boom that leaves it upward, turns back down in the
- * stratosphere, and reaches the ground far beyond the carpet, as Concorde's did 100–200 km away
- * (Rickley & Pierce 1980, FAA-EE-80-22). The stratopause is no warmer than the ground, so the rays
- * come back only downwind of the upper wind, whose effective sound speed there exceeds the ground's.
- *
- * - Air (class B/C): the scene's layered temperature, warmed above 20 km as the US Standard
- *   Atmosphere 1976 is over its 216.65 K (ISO 2533 above the tropopause), up to UPPER_AIR.topMetres.
- *   The thermosphere's returns, from above 100 km, lose all but infrasound and are not traced.
- * - Wind (class C): the scene's wind and shear up to the tropopause, then held, plus the upper wind,
- *   a jet around UPPER_AIR.jetHeightMetres; the effective sound speed c + u·n along the ray's
- *   horizontal direction (class B as an approximation).
- * - Rays (class A on that profile): in a stratified medium the horizontal slowness q is kept, so the
- *   range, time, and length of a ray up to its turning height and back down are integrals over
- *   height, closed-form on each linear piece of the profile. The arrival is stationary in emission
- *   time, as for the primary boom (`stationaryArrivals`).
- * - Pressure (class C): Carlson's boom over the ray's length, its spreading across the ray tube in
- *   the vertical plane against a straight ray's, and its focusing along the path as the primary
- *   boom's; absorption along the ray, which runs mostly near its top.
- */
+/** Air class B/C, wind class C, rays class A on that profile, pressure class C (Rickley & Pierce 1980, FAA-EE-80-22). */
 
 const C_FACTOR = GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN;
 
-/** US Standard Atmosphere 1976 above 20 km: base height (m), base temperature (K), lapse (K/m, rising). */
+/** US Standard Atmosphere 1976 above 20 km. */
 const US76 = Object.freeze([
   [20000, 216.65, .001],
   [32000, 228.65, .0028],
@@ -46,7 +27,6 @@ function upperWarmingKelvin(heightMetres) {
 
 export const upperTemperatureKelvin = (air, heightMetres) => temperatureAtHeightKelvin(air, heightMetres) + upperWarmingKelvin(heightMetres);
 
-/** The wind at a height as [east, north] m/s: the scene's below the tropopause and the upper jet. */
 function upperWind(air, heightMetres) {
   const toward = degrees => [-Math.sin(degrees * Math.PI / 180), -Math.cos(degrees * Math.PI / 180)];
   const [gx, gy] = toward(air.windFromDegrees);
@@ -72,12 +52,6 @@ function speedOn(speeds, heightMetres) {
   return speeds[level] + (speeds[level + 1] - speeds[level]) * (at - level);
 }
 
-/**
- * One leg of a ray of slowness q from height `low` up to its turning height `top`: its horizontal
- * range, time, and length, and its absorption at UPPER_AIR.absorptionReferenceHz (`alphaAt`, Np/m by
- * level). On each linear piece c = c₁ + g·(z − z₁), with s = √(1 − q²c²): range (s₁ − s₂)/(g·q), time
- * ln(c₂(1 + s₁)/(c₁(1 + s₂)))/g, length (asin qc₂ − asin qc₁)/(g·q).
- */
 function leg(speeds, alphaAt, q, low, top) {
   let range = 0;
   let seconds = 0;
@@ -109,16 +83,10 @@ function leg(speeds, alphaAt, q, low, top) {
   return { range, seconds, metres, nepers };
 }
 
-/**
- * The rays from height `zs` that turn below UPPER_AIR.topMetres and come down to height `zr`, for
- * sound heading along (nx, ny): rows of slowness q, turning height, range X, time, length,
- * absorption, and the sines of the ray's elevation where it leaves and arrives, in order of q.
- */
 function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
   const speeds = effectiveSpeeds(air, nx, ny);
   const low = Math.min(zs, zr);
   const high = Math.max(zs, zr);
-  // Below its turning height the ray must stay steeper than horizontal: c < 1/q all the way.
   let limit = 0;
   for (let level = 0; level < LEVELS; level += 1) {
     const height = level * UPPER_AIR.stepMetres;
@@ -130,11 +98,9 @@ function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
   const rows = [];
   if (!(ceiling > limit)) return rows;
   for (let ray = 0; ray < rays; ray += 1) {
-    // Phase speeds from just above the limit to the ceiling, denser near the limit where the range changes fastest.
     const share = ((ray + .5) / rays) ** 2;
     const phase = limit + (ceiling - limit) * share;
     const q = 1 / phase;
-    // The turning height: the first height above both ends where the speed reaches the phase speed.
     let top = NaN;
     for (let level = Math.floor(high / UPPER_AIR.stepMetres); level < LEVELS - 1; level += 1) {
       const z1 = Math.max(high, level * UPPER_AIR.stepMetres);
@@ -155,10 +121,6 @@ function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
   return rows;
 }
 
-/**
- * A table's rows split where the range turns back on itself (at a caustic): each run of rows over
- * which the range only grows or only falls is a branch, numbered in order of q.
- */
 function branches(rows) {
   const runs = [];
   let first = 0;
@@ -171,12 +133,10 @@ function branches(rows) {
 
 const RAY_KEYS = Object.freeze(['seconds', 'metres', 'nepers', 'top', 'q', 'departureSine', 'arrivalSine', 'sourceSpeed', 'rangeSlope']);
 
-/** The ray of a table's branch that covers the range, interpolated between its rows, with ∂X/∂q; null where none does. */
 function rayOn(table, branch, range) {
   const run = table.branches[branch];
   if (!run) return null;
   const { rows } = table;
-  // The range is monotonic along a branch: bisect for the pair of rows around it.
   const rising = rows[run[1]].range > rows[run[0]].range;
   const below = index => (rows[index].range < range) === rising;
   if (below(run[0]) === below(run[1])) return null;
@@ -194,7 +154,6 @@ function rayOn(table, branch, range) {
   return ray;
 }
 
-// Tables are kept across receivers and calls, the most recently used UPPER_AIR.cachedTables of them.
 const cache = new Map();
 
 function cached(key, make) {
@@ -216,16 +175,9 @@ function mixRays(rays, weights) {
   return mixed;
 }
 
-/**
- * The secondary booms of a flight path at a receiver (heights above the datum), as `flightBooms` gives
- * the primary ones, each `secondary`, with its turning height and `absorptionExcess`, the share by which
- * its absorption exceeds the mean up to that height. On each branch the arrival t + T is stationary where
- * 1 + q·ṙ − ż·sin θ/c = 0 (dT/dX = q along a ray). None in homogeneous air.
- */
 export function secondaryBooms(path, flight, receiver, air) {
   const count = path.seconds.length;
   if (!air.refraction || count < 3) return [];
-  // Absorption at the reference frequency by level, for this receiver's rays.
   const reference = UPPER_AIR.absorptionReferenceHz;
   const alphas = Float64Array.from({ length: LEVELS }, (_, level) => (air.absorption ? atmosphericAbsorptionNepersPerMetre(reference, airAtHeight(air, level * UPPER_AIR.stepMetres)) : 0));
   const alphaAt = height => speedOn(alphas, height);
@@ -244,7 +196,6 @@ export function secondaryBooms(path, flight, receiver, air) {
     tables.add(entry);
     return entry;
   };
-  // The nearest range a coarse table's rays come down at, less a margin, below which a fine one is not needed.
   const reach = (azimuthStep, heightStep) => cached(`${signature}|${azimuthStep}:${heightStep}|coarse`, () => (
     (1 - UPPER_AIR.reachMargin) * Math.min(Infinity, ...make(azimuthStep, heightStep, UPPER_AIR.coarseRays).map(row => row.range))
   ));
@@ -259,7 +210,6 @@ export function secondaryBooms(path, flight, receiver, air) {
     const z = Math.floor(height);
     const wa = azimuth - a;
     const wz = height - z;
-    // Only the tables that weigh in, so that a body at a level height needs one row of them.
     const corners = [[a, z, (1 - wa) * (1 - wz)], [a + 1, z, wa * (1 - wz)], [a, z + 1, (1 - wa) * wz], [a + 1, z + 1, wa * wz]].filter(corner => corner[2] > 0);
     if (corners.every(([at, up]) => range < reach(at, up))) return null;
     return { range, nx: dx / range, ny: dy / range, tables: corners.map(([at, up]) => table(at, up)), weights: corners.map(corner => corner[2]) };
@@ -269,7 +219,6 @@ export function secondaryBooms(path, flight, receiver, air) {
   const h = path.step;
   for (let branch = 0; branch < most; branch += 1) {
     const rays = places.map(place => place && mixRays(place.tables.map(entry => rayOn(entry, branch, place.range)), place.weights));
-    // d(t + T)/dt along the path.
     const slope = rays.map((ray, index) => {
       if (!ray) return NaN;
       const { nx, ny } = places[index];
@@ -301,7 +250,6 @@ function secondaryBoom(path, flight, receiver, air, ray, blend, curvature, alpha
     mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
     vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
   });
-  // Across the ray tube in the vertical plane: |∂X/∂θ₀|·sin ψ against a straight ray's length, with ∂q/∂θ₀ = −sin θ₀/c.
   const width = Math.abs(ray.rangeSlope) * ray.departureSine / ray.sourceSpeed * ray.arrivalSine;
   const spreading = Math.min(FLIGHT.focusLimit, Math.sqrt(ray.metres / Math.max(width, ray.metres / FLIGHT.focusLimit ** 2)));
   const meanSpeed = ray.metres / ray.seconds;
@@ -309,7 +257,6 @@ function secondaryBoom(path, flight, receiver, air, ray, blend, curvature, alpha
   const focus = Math.min(FLIGHT.focusLimit, Math.sqrt(steady / Math.max(curvature, steady / FLIGHT.focusLimit ** 2)));
   const departureCos = Math.sqrt(1 - ray.departureSine ** 2);
   const arrivalCos = Math.sqrt(1 - ray.arrivalSine ** 2);
-  // The mean absorption the render takes between the receiver and the turning height, over the ray's length.
   const low = Math.max(0, receiver.z);
   let integral = 0;
   const pieces = Math.max(1, Math.ceil((ray.top - low) / UPPER_AIR.stepMetres));

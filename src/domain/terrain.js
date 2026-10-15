@@ -1,15 +1,5 @@
 import { GROUND, VIEW } from './constants.js';
 
-/**
- * Terrain from Terrarium elevation tiles as a heightfield in the scene frame: x east and y north
- * in metres from the scene origin, row 0 in the south. Heights are metres above sea level, lowered
- * onto the tangent plane at the origin for the Earth's curvature.
- *
- * Adopted from Echotect `src/terrain-tiles.js` and `src/terrain-space.js` at commit cb712ef
- * (tile arithmetic, Terrarium decoding, the capture plan, the heightfield resampling, and the
- * base64 encoding), with Boomtect's units and square patches on a grid anchored at the origin.
- */
-
 export const TERRAIN_PROVIDER = Object.freeze({
   id: 'aws-terrain-tiles-terrarium',
   url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
@@ -29,10 +19,8 @@ const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, v
 
 export const metresPerDegree = latitude => ({ north: METRES_PER_DEGREE, east: METRES_PER_DEGREE * Math.cos(latitude * Math.PI / 180) });
 
-/** Terrarium encodes elevation as red·256 + green + blue/256 − 32768 metres. */
 export const decodeTerrarium = (red, green, blue) => red * 256 + green + blue / 256 - 32768;
 
-/** Drop of a level surface below the tangent plane at the origin, in metres. */
 export const curvatureDropMetres = horizontalMetres => horizontalMetres ** 2 / (2 * EARTH_RADIUS_METRES);
 
 export const tileX = (longitude, zoom) => (longitude + 180) / 360 * 2 ** zoom;
@@ -55,12 +43,6 @@ function tileRange(bounds, zoom) {
 
 const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zoom))) * 180 / Math.PI;
 
-/**
- * The map tiles covering a rectangle of the scene frame (`bounds`: west, east, south, north in metres
- * from the origin at `latitude`, `longitude`), each with its north-west, north-east, and south-west
- * corners in the scene frame. The zoom is the finest at which about VIEW.map.pixelsAcross pixels span
- * the rectangle's longer side, within GROUND.terrain.maximumTileRequests tiles.
- */
 export function mapTiles({ latitude, longitude, bounds, maximumZoom = VIEW.map.maximumZoom, pixelsAcross = VIEW.map.pixelsAcross }) {
   const { north, east } = metresPerDegree(latitude);
   const degrees = { west: longitude + bounds.west / east, east: longitude + bounds.east / east, south: latitude + bounds.south / north, north: latitude + bounds.north / north };
@@ -76,17 +58,11 @@ export function mapTiles({ latitude, longitude, bounds, maximumZoom = VIEW.map.m
   return { zoom, tiles };
 }
 
-/**
- * Terrain comes in square patches of GROUND.terrain.patchCells cells on a grid anchored at the scene
- * origin: patch (column, row) covers x from column·side to (column + 1)·side, and y likewise. A scene
- * holds a rectangle of whole patches, so that the ground it needs is loaded and no more.
- */
 export const patchMetres = cellMetres => GROUND.terrain.patchCells * cellMetres;
 
 export function patchRange({ west, east, south, north }, cellMetres) {
   const side = patchMetres(cellMetres);
   const first = value => Math.floor(value / side);
-  // A rectangle that ends on a patch's edge does not reach into the next one.
   const last = value => Math.ceil(value / side) - 1;
   return { column0: first(west), column1: Math.max(first(west), last(east)), row0: first(south), row1: Math.max(first(south), last(north)) };
 }
@@ -104,10 +80,6 @@ export function rangeBounds(range, cellMetres) {
   return { west: range.column0 * side, east: (range.column1 + 1) * side, south: range.row0 * side, north: (range.row1 + 1) * side };
 }
 
-/**
- * The tiles and zoom for fetching a rectangle: the coarsest whose pixels are no larger than the
- * cell, within GROUND.terrain.maximumTileRequests.
- */
 export function tilePlan({ latitude, longitude }, bounds, cellMetres) {
   const { north, east } = metresPerDegree(latitude);
   const degrees = { west: longitude + bounds.west / east, east: longitude + bounds.east / east, south: latitude + bounds.south / north, north: latitude + bounds.north / north };
@@ -122,11 +94,6 @@ export function tilePixel({ latitude, longitude }, x, y, zoom) {
   return { x: tileX(longitude + x / east, zoom) * TILE_SIZE - .5, y: tileY(latitude + y / north, zoom) * TILE_SIZE - .5 };
 }
 
-/**
- * A patch: `heightAt(x, y)` in metres above sea level at its cell centres, row 0 in the south,
- * stored as 16-bit steps above its lowest cell, each step its height range over 65 535 (at least
- * GROUND.terrain.minimumHeightStepMetres): millimetres on gentle ground, decimetres in high mountains.
- */
 export function buildPatch(column, row, cellMetres, heightAt) {
   const cells = GROUND.terrain.patchCells;
   const values = new Float32Array(cells * cells);
@@ -169,7 +136,6 @@ export function terrainRange(terrain) {
 const surfaces = new Map();
 const MAXIMUM_CACHED_SURFACES = 4;
 
-/** Each patch list's key, so that a terrain drawn every frame is hashed once (scenes replace their patches, never change them). */
 const patchKeys = new WeakMap();
 
 function terrainKey(terrain) {
@@ -188,7 +154,6 @@ function hashTerrain(terrain) {
   return `${hash >>> 0}:${terrain.patches.length}`;
 }
 
-/** The terrain surface of a scene, heights relative to the datum (z = 0) with edge heights continued; the plane z = 0 without terrain. */
 export function terrainSurface(terrain) {
   if (!terrain?.enabled || !terrain.patches?.length) return FLAT_SURFACE;
   const key = terrainKey(terrain);
@@ -224,7 +189,6 @@ export function terrainSurface(terrain) {
     datumMetres,
     cellMetres,
     heightAt: (x, y) => sample(x, y) - datumMetres,
-    /** The highest ground above the datum, m: nothing above it can be under the ground. */
     highestMetres: highest - datumMetres,
     normalAt: (x, y) => {
       const gx = (sample(x + cellMetres, y) - sample(x - cellMetres, y)) / (2 * cellMetres);
@@ -232,7 +196,6 @@ export function terrainSurface(terrain) {
       const length = Math.hypot(gx, gy, 1);
       return { x: -gx / length, y: -gy / length, z: 1 / length };
     },
-    /** The loaded rectangle of the scene frame; its grid's cell (0, 0) has its corner at west, south. */
     bounds,
     values,
     columns,
