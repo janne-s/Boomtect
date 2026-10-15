@@ -1,0 +1,22 @@
+# Boomtect
+
+> Boomtect is a browser app that simulates the sound of lightning, blasts, and sonic booms from their physics. A scene places sources (flashes, storms, blasts, barrages, fireworks, supersonic flights, meteors, whips, falling boosters) and microphones in 3D over real terrain and layered air, and renders what each microphone hears. It is a creative tool for sound design: a result is a plausible event, not a reconstruction or a measurement, and levels are uncalibrated model values in pascals.
+
+Boomtect runs entirely in the browser, with no account and no server of its own. Every source is a set of points, each with a position, an emission time, and a pressure pulse; each pulse travels to each microphone with its own delay and loss, and the microphone hears their sum. Every part of the model is marked A (first principles), B (literature), or C (heuristic or synthetic).
+
+Exports are 32-bit float WAV at one full scale in pascals, recorded in the scene JSON; per-microphone files start at the same moment. A scene is JSON with `"format": "boomtect.scene"` and opens again as a scene. A sound sent to Echotect is mono pressure without terrain echoes with a `tect.handoff` JSON: positions in metres east, north, and up from the place's geographic point, angles in compass degrees clockwise from north. A handoff reader fills in missing fields with defaults and never refuses an older or newer version.
+
+## Docs
+
+- [README](https://github.com/janne-s/Boomtect/blob/main/README.md): what every control does, the export files, and the model table with sources and classes
+- [Live app](https://janne-s.github.io/Boomtect/)
+
+## Formats
+
+- [Scene](https://github.com/janne-s/Boomtect/blob/main/src/domain/scene.js): every parameter with its default and range
+- [Handoff](https://github.com/janne-s/Boomtect/blob/main/src/domain/handoff.js): the `tect.handoff` format shared with Echotect
+- [Constants](https://github.com/janne-s/Boomtect/blob/main/src/domain/constants.js): the model's tuning values and limits
+
+## Optional
+
+- [Echotect](https://janne-s.github.io/Echotect/llms.txt): echoes from buildings, streets, and terrain for a sound, including one sent from Boomtect
