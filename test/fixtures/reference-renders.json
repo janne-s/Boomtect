@@ -1,0 +1,32 @@
+{
+  "commit": "9053315",
+  "cases": {
+    "lightning-flat": "f4b78f42ae8444168184de77edf058315c564a05c4df62d8fdfb014fe9a3e387",
+    "lightning-terrain": "df2d1a60017cd2165366c60af014d4e6b237b1a5704f1e85bf3bd687951bea41",
+    "cloudFlash-flat": "0a4df6f7b262c20f40969ac0ca2c34118487fae25880dc2aadac4fb22aca3658",
+    "cloudFlash-terrain": "3c7f9982f43f08720de25d9eab0ff6a2d96543415e590dcfc11583a7849e37f0",
+    "storm-flat": "26bfd3487c3a69ef00f67f3bf1fb34092b24da756d41d4d4f06dfc6228189fdf",
+    "storm-terrain": "3a2e25fbb83d63a13421ba8d6c9031ec1df1bec5f9c190948643baa1d4789d3b",
+    "blast-flat": "437f7a64733eb417b122fdaf0aa38f36360a48195dcd894980e930a3ebe18646",
+    "blast-terrain": "e120ae37f1555b8e981853ecd9d410d141b7dc1af9e33d2e3a494bc293f62b8d",
+    "barrage-flat": "e17422b5bd642d9bf211eef6b977b31e589d70809a8afa143dee139ecfe8b796",
+    "barrage-terrain": "9aa2ade410032e8f46c1eac243fe564a404a8564f5a437f983c2defed1591832",
+    "fireworks-flat": "a482638739a9174a8a3789c917aa45294b4725dda26068f9cf03c8975fdf1b5a",
+    "fireworks-terrain": "0a72352f9f437689f46c13aeaafbc77506bb8dbd6288be4487ec518d7a46676e",
+    "flight-flat": "697c7194b1420233824587a969e8f3a11bba3c5085b151e0affb19aef62bb48d",
+    "flight-terrain": "20a2c8ab845ca071e5ffe8803c6e08b472c926914f9e86810b75fd89c24ff50f",
+    "formation-flat": "838aff6ae54e8e977c0d28c29dc0a76b02de9513eaee162f8a28f50f1dbaa113",
+    "formation-terrain": "56c7da75db7437fab16cc38c5d3eb1781f25014147f3f3fb8576e234f347b4e1",
+    "whip-flat": "51891cb15d549f9c385f11ccb843326b39d51020ab61bc7953948057cbabd377",
+    "whip-terrain": "ebc4d95fab9dab8ea42d8e6d008fa66beaf90b6487a200e32a31b6f17c7ab4c7",
+    "booster-flat": "3425df4b4f4237258271034dcdf59f642b797b698cfbc730bb2641cb21e0e29f",
+    "booster-terrain": "a0018c1f999396f7d6705fbff96f6903284c0295f0752e59fe3bb537bfbb2b0c",
+    "meteor-flat": "904ed5d48c6025fb67ca780e6da1498e81e6082bb0cfed58c2e0a46358e8cc4a",
+    "meteor-terrain": "009461e12705d2f50bc29f1fdb6737c45f62d7d61053cd1b8b3c04faed6f5bcd",
+    "shower-flat": "8dbfe383d25fc4afb42b1965025010fb15c5b7d9593e8d85d10c118e5fc504cf",
+    "shower-terrain": "bb2899c753b0e624b3353e865bc04567b9ffdb0235397f2c94b0c2587a8764ea",
+    "thunder-preview": "b09a3ee1afcc9779be74cb2bd23fcdd5b5bcf80a35e6e6f27ae9ac368b22fbe9",
+    "blast-preview": "9c0dc881e35f2be683f3b3d1eebfc585f73ebdc13bfe878df5694dc286447822",
+    "sonic-preview": "188b1e41ce46698414e6b810a5b4dbfac592f2a4776188cdd8c57caa988c715e"
+  }
+}
