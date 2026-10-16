@@ -281,6 +281,7 @@ export function createCubeView(canvas, options) {
   }
 
   const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
+  const heightStep = box => Math.min(boxStep(box), niceStep(box.z1 - box.z0, 4));
 
   function heightLevels(bounds, spacing) {
     const surface = currentSurface();
@@ -315,7 +316,7 @@ export function createCubeView(canvas, options) {
       if (currentSurface().flat) line({ x: box.x0, y, z: box.z0 }, { x: box.x1, y, z: box.z0 });
       line({ x: farX, y, z: box.z0 }, { x: farX, y, z: box.z1 });
     }
-    for (const { z } of heightLevels(box, step)) {
+    for (const { z } of heightLevels(box, heightStep(box))) {
       line({ x: farX, y: box.y0, z }, { x: farX, y: box.y1, z });
       line({ x: box.x0, y: farY, z }, { x: box.x1, y: farY, z });
     }
@@ -336,7 +337,7 @@ export function createCubeView(canvas, options) {
     context.textAlign = 'right';
     for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: box.z0 }, -6, 12);
     context.textAlign = 'left';
-    for (const { z, metres } of heightLevels(box, step)) label(formatMetres(metres), { x: farX, y: farY, z }, 4, -2);
+    for (const { z, metres } of heightLevels(box, heightStep(box))) label(formatMetres(metres), { x: farX, y: farY, z }, 4, -2);
     const origin = frame.project({ x: 0, y: 0, z: ground(0, 0) });
     context.strokeStyle = colors.muted;
     context.beginPath();
