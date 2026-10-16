@@ -19,7 +19,8 @@ import { actionField, checkboxField, numberField, pointFields, seedField, select
 import { capturePatches, fetchPlaceNames, searchPlace } from './shared/ui/terrain-loader.js';
 import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from './shared/domain/terrain.js';
 import { createPlaceMap } from './shared/ui/place-map.js';
-import { createCubeView } from './ui/cube-view.js';
+import { createCubeView } from './shared/ui/cube-view.js';
+import { kindViews } from './ui/kind-views.js';
 import { createMapLayer } from './shared/ui/map-layer.js';
 import { createLatestTask } from './shared/ui/latest-task.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
@@ -158,6 +159,7 @@ document.addEventListener('pointerdown', () => { delete document.documentElement
 const mapLayer = createMapLayer(() => redrawViews());
 
 const views = [createCubeView($('cube'), {
+  kinds: kindViews(),
   onView: next => { state.preferences.cubeViews = { ...state.preferences.cubeViews, [state.scene.mode]: next }; savePreferences(); },
   onViewChange: () => orientationBall?.draw(),
   onSelect: selection => { select(selection); refreshPanel(); },

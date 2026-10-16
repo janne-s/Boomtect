@@ -1,13 +1,8 @@
-import { FIREWORKS, RENDER, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW } from '../domain/constants.js';
-import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
-import { emissionSeconds } from '../domain/lightning.js';
-import { createRandom } from '../shared/domain/random.js';
-import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../shared/domain/refraction.js';
-import { meanPlaneFrame } from '../shared/domain/terrain-propagation.js';
-import { fitCanvas, formatMetres, niceStep, palette } from '../shared/ui/canvas.js';
-import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isTrackKind, useTerrain } from './geometry-cache.js';
-
-const DISC_POINTS = 64;
+import { RENDER, VIEW } from '../domain/constants.js';
+import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
+import { meanPlaneFrame } from '../domain/terrain-propagation.js';
+import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
+import { currentSurface, useTerrain } from './geometry-cache.js';
 
 const OUTLINE_STEPS = 48;
 const OUTLINE_DIRECTIONS = Object.freeze(Array.from({ length: OUTLINE_STEPS }, (_, step) => {
@@ -69,10 +64,7 @@ function addPolygon(path, points, bounds) {
   }
 }
 
-const flashPoints = new WeakMap();
-const channelPaths = new WeakMap();
 const extents = new WeakMap();
-const soundTravel = new WeakMap();
 const listIds = new WeakMap();
 let nextListId = 0;
 
@@ -84,16 +76,8 @@ function pointsKey(lists) {
   }).join(';');
 }
 
-function emitterPoints(emitter) {
-  if (emitter.kind === 'blast') return [placed(emitter.positionMetres)];
-  const flashes = cachedFlashes(emitter);
-  if (!flashPoints.has(flashes)) flashPoints.set(flashes, flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
-  return flashPoints.get(flashes);
-}
-
 const ground = (x, y) => currentSurface().heightAt(x, y);
 const placed = point => ({ ...point, z: ground(point.x, point.y) + point.z });
-const channelBase = emitter => (emitter.flashType === 'cloud-to-ground' ? placed(emitter.baseMetres) : emitter.baseMetres);
 
 function facingTip(receiver, box) {
   const length = Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare;
@@ -105,34 +89,9 @@ function facingTip(receiver, box) {
   return { x, y, z: Math.max(ground(x, y), base.z + Math.sin(pitch) * length) };
 }
 
-function handles(scene, box) {
+function handles(scene, box, kinds, tools) {
   const list = [];
-  for (const emitter of scene.emitters) {
-    if (isTrackKind(emitter)) {
-      const start = emitter.kind === 'booster' ? placed(emitter.padMetres) : emitter.kind === 'whip' ? placed(emitter.startMetres) : emitter.startMetres;
-      if (emitter.kind === 'booster') list.push({ type: 'emitter', id: emitter.id, field: 'padMetres', point: start, onGround: true, role: 'start' });
-      else list.push({ type: 'emitter', id: emitter.id, field: 'startMetres', point: start, role: 'start' });
-      const reach = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) * VIEW.box.facingLengthShare : 1000;
-      const heading = emitter.headingDegrees * Math.PI / 180;
-      list.push({ type: 'emitter', id: emitter.id, field: 'flightHeading', point: { x: start.x + reach * Math.sin(heading), y: start.y + reach * Math.cos(heading), z: start.z }, role: 'end', ownPlaneOnly: true });
-      continue;
-    }
-    if (emitter.kind === 'blast') list.push({ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' });
-    else if (isFieldKind(emitter)) {
-      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
-      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
-    } else if (emitter.kind === 'storm') {
-      list.push({ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' });
-      list.push({ type: 'emitter', id: emitter.id, field: 'radiusMetres', point: placed({ x: emitter.centreMetres.x + emitter.radiusMetres, y: emitter.centreMetres.y, z: 0 }), onGround: true, role: 'radius' });
-      for (const field of ['cloudBaseMetres', 'cloudTopMetres']) {
-        list.push({ type: 'emitter', id: emitter.id, field, point: { x: emitter.centreMetres.x - emitter.radiusMetres, y: emitter.centreMetres.y, z: emitter[field] }, role: 'level', verticalOnly: true, ownPlaneOnly: true });
-      }
-    }
-    else {
-      list.push({ type: 'emitter', id: emitter.id, field: 'baseMetres', point: channelBase(emitter), onGround: emitter.flashType === 'cloud-to-ground', role: 'start' });
-      list.push({ type: 'emitter', id: emitter.id, field: 'topMetres', point: emitter.topMetres, role: 'end' });
-    }
-  }
+  for (const emitter of scene.emitters) list.push(...kinds[emitter.kind].handles(emitter, box, tools));
   for (const receiver of scene.receivers) {
     list.push({ type: 'receiver', id: receiver.id, field: 'positionMetres', point: placed(receiver.positionMetres), role: 'receiver', listening: receiver.listen });
     if (receiver.type === 'binaural' && box) {
@@ -142,25 +101,8 @@ function handles(scene, box) {
   return list;
 }
 
-function flicker(seed, elapsed) {
-  const level = knot => {
-    if (knot <= 0) return 1;
-    let value = Math.imul((seed >>> 0) ^ Math.imul(knot, 0x9e3779b1), 0x85ebca6b) >>> 0;
-    value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35) >>> 0;
-    return .35 + .65 * ((value ^ (value >>> 16)) >>> 0) / 4294967296;
-  };
-  const position = Math.max(0, elapsed) / VIEW.flash.flickerSeconds;
-  const knot = Math.floor(position);
-  const t = position - knot;
-  const eased = t * t * (3 - 2 * t);
-  return level(knot) + (level(knot + 1) - level(knot)) * eased;
-}
-
-function frontArc(step, elapsed, routeLength) {
-  return step.fromArc + elapsed / VIEW.flash.traverseSeconds * routeLength - step.offsetMetres;
-}
-
-export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onViewChange, focus, contours = () => false, names = () => false, clouds = () => false, map = () => false, mapTiles: loadMapTiles = () => [] }) {
+export function createCubeView(canvas, options) {
+  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [] } = options;
   let scene = null;
   let selection = null;
   let view = { ...VIEW.box.defaultView };
@@ -177,8 +119,22 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   let relief = null;
   let shadowOutline = null;
   let shadowLayer = null;
-  const cloudLayers = new Map();
-  let cloudLight = null;
+
+  const tools = {
+    get frame() { return frame; },
+    get scene() { return scene; },
+    get view() { return view; },
+    canvas,
+    placed,
+    ground,
+    polygon: (context, points) => polygon(context, points),
+    strokePoints: (context, points, toScreen) => strokePoints(context, points, toScreen),
+    shadowProjectors: () => shadowProjectors(),
+    sized: layer => sized(layer),
+    mixColors: (a, b, t) => mixColors(a, b, t),
+    rgb: hex => rgb(hex),
+    option: name => options[name]?.()
+  };
 
   function sceneBox() {
     let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
@@ -202,40 +158,12 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       include({ x: extent.minX, y: extent.minY, z: extent.maxZ });
       include({ x: extent.maxX, y: extent.maxY, z: extent.maxZ });
     };
-    for (const emitter of scene.emitters) {
-      if (emitter.kind === 'blast') { include(placed(emitter.positionMetres)); continue; }
-      if (isTrackKind(emitter)) {
-        const paths = cachedTracks(emitter, scene.air);
-        includeExtent(paths, () => {
-          const points = [];
-          for (const path of paths) {
-            for (let index = 0; index < path.x.length; index += 10) points.push({ x: path.x[index], y: path.y[index], z: path.z[index] });
-            points.push({ x: path.x.at(-1), y: path.y.at(-1), z: path.z.at(-1) });
-          }
-          return points;
-        });
-        continue;
-      }
-      if (isFieldKind(emitter)) {
-        const { x, y } = emitter.centreMetres;
-        include({ x: x - emitter.radiusMetres, y: y - emitter.radiusMetres, z: 0 });
-        include({ x: x + emitter.radiusMetres, y: y + emitter.radiusMetres, z: 0 });
-        cachedRounds(emitter, scene.air).forEach(round => include(placed(round.positionMetres)));
-        continue;
-      }
-      if (emitter.kind === 'storm') {
-        const { x, y } = emitter.centreMetres;
-        const r = emitter.radiusMetres;
-        include({ x: x - r, y: y - r, z: emitter.cloudTopMetres });
-        include({ x: x + r, y: y + r, z: 0 });
-      }
-      const flashes = cachedFlashes(emitter);
-      includeExtent(flashes, () => flashes.flatMap(flash => flash.channels.flatMap(channel => channel.points)));
-    }
+    const extentTools = { ...tools, include, includeExtent };
+    for (const emitter of scene.emitters) kinds[emitter.kind].extent(emitter, extentTools);
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
     const surface = currentSurface();
     const enabled = scene.emitters.filter(emitter => emitter.enabled);
-    const span = enabled.length && enabled.every(emitter => emitter.kind === 'whip') ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
+    const span = enabled.length && enabled.every(emitter => kinds[emitter.kind].close) ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
     const pad = Math.max(span, maxX - minX, maxY - minY, maxZ) * VIEW.box.padding;
     const grow = (low, high) => {
       const half = Math.max(high - low, span) / 2 + pad;
@@ -441,135 +369,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       onWall('x', frame.farX, ['y', 'z']),
       onWall('y', frame.farY, ['x', 'z'])
     ];
-  }
-
-  function pointsUpTo(channel, fromArc, toArc) {
-    const result = [];
-    const { points, arcs } = channel;
-    for (let index = 0; index < points.length; index += 1) {
-      if (arcs[index] < fromArc) continue;
-      if (arcs[index] > toArc) {
-        if (index > 0 && arcs[index - 1] < toArc) {
-          const a = points[index - 1]; const b = points[index];
-          const t = (toArc - arcs[index - 1]) / (arcs[index] - arcs[index - 1]);
-          result.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
-        }
-        break;
-      }
-      result.push(points[index]);
-    }
-    return result;
-  }
-
-  function drawChannels(context, emitter, colors, selected, strokes) {
-    const shadows = shadowProjectors();
-    const flashes = cachedFlashes(emitter);
-    context.lineJoin = 'round';
-    let paths = channelPaths.get(flashes);
-    if (paths?.key !== frame.key) {
-      const shadowPath = new Path2D();
-      const styles = new Map();
-      const addLine = (path, points, toScreen) => points.forEach((point, index) => {
-        const p = toScreen(point);
-        if (index) path.lineTo(p.x, p.y); else path.moveTo(p.x, p.y);
-      });
-      for (const flash of flashes) {
-        for (const channel of flash.channels) {
-          if (channel.main) shadows.forEach(shadow => addLine(shadowPath, channel.points, shadow));
-          const style = channel.main ? 'main' : channel.level;
-          if (!styles.has(style)) styles.set(style, { main: channel.main, level: channel.level, path: new Path2D() });
-          addLine(styles.get(style).path, channel.points, frame.project);
-        }
-      }
-      paths = { key: frame.key, shadowPath, styles: [...styles.values()] };
-      channelPaths.set(flashes, paths);
-    }
-    const alpha = context.globalAlpha;
-    context.strokeStyle = colors.shadow;
-    context.lineWidth = .6;
-    context.stroke(paths.shadowPath);
-    context.strokeStyle = colors.lightning;
-    for (const { main, level, path } of paths.styles) {
-      context.globalAlpha = alpha * (main ? 1 : Math.max(.35, .8 - .2 * level));
-      context.lineWidth = main ? (selected ? 1.6 : 1.1) : Math.max(.4, .8 - .15 * level);
-      context.stroke(path);
-    }
-    context.globalAlpha = alpha;
-    for (const stroke of strokes ?? []) {
-      const flash = flashes[stroke.flash];
-      if (!flash) continue;
-      const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
-      const fade = stroke.elapsed > VIEW.flash.traverseSeconds ? Math.exp(-(stroke.elapsed - VIEW.flash.traverseSeconds) / VIEW.flash.fadeSeconds) : 1;
-      context.shadowColor = colors.glow;
-      context.strokeStyle = colors.flash;
-      for (const step of stroke.route) {
-        const channel = flash.channels[step.channel];
-        const reached = frontArc(step, stroke.elapsed, routeLength);
-        if (reached <= step.fromArc) continue;
-        const lit = pointsUpTo(channel, step.fromArc, reached);
-        if (lit.length < 2) continue;
-        context.globalAlpha = fade;
-        context.shadowBlur = 18 * fade;
-        context.lineWidth = channel.main ? 2.6 : 1.3;
-        strokePoints(context, lit);
-        context.shadowBlur = 0;
-        context.globalAlpha = .35 * fade;
-        context.lineWidth = channel.main ? 1.2 : .6;
-        shadows.forEach(shadow => strokePoints(context, lit, shadow));
-      }
-      context.globalAlpha = emitter.enabled ? 1 : .35;
-    }
-  }
-
-  function drawSoundGlow(context, emitter, colors, sound) {
-    const levels = [[], [], [], []];
-    const { seconds, travelSeconds, key } = sound;
-    const travel = channel => {
-      const kept = soundTravel.get(channel);
-      if (kept?.key === key) return kept.seconds;
-      const values = Float64Array.from(channel.points, travelSeconds);
-      soundTravel.set(channel, { key, seconds: values });
-      return values;
-    };
-    const glow = arrival => {
-      const age = seconds - arrival;
-      return age >= 0 && age < VIEW.soundGlowSeconds ? 1 - age / VIEW.soundGlowSeconds : 0;
-    };
-    for (const flash of cachedFlashes(emitter)) {
-      for (const stroke of flash.strokes) {
-        if (seconds < flash.startSeconds + stroke.offsetSeconds) continue;
-        for (const step of stroke.route) {
-          const channel = flash.channels[step.channel];
-          const travelled = travel(channel);
-          let previous = null;
-          channel.points.forEach((point, index) => {
-            const arc = channel.arcs[index];
-            if (arc < step.fromArc) return;
-            const level = glow(emissionSeconds(flash, stroke, step, arc) + travelled[index]);
-            if (previous && level > .02) levels[Math.min(3, Math.floor(level * 4))].push(previous, point);
-            previous = point;
-          });
-        }
-      }
-    }
-    context.strokeStyle = colors.flash;
-    context.shadowColor = colors.glow;
-    levels.forEach((pairs, level) => {
-      if (!pairs.length) return;
-      context.globalAlpha = (level + 1) / 4;
-      context.shadowBlur = 6 + 4 * level;
-      context.lineWidth = 1.2 + .6 * level;
-      context.beginPath();
-      for (let index = 0; index < pairs.length; index += 2) {
-        const a = frame.project(pairs[index]);
-        const b = frame.project(pairs[index + 1]);
-        context.moveTo(a.x, a.y);
-        context.lineTo(b.x, b.y);
-      }
-      context.stroke();
-    });
-    context.shadowBlur = 0;
-    context.globalAlpha = 1;
   }
 
   /** The cut also strokes every edge: where two edges nearly coincide the coverage stays below one and leaves a seam. */
@@ -801,10 +600,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       return receiver ? [placed(receiver.positionMetres)] : [];
     }
     const emitter = selection?.type === 'emitter' ? scene.emitters.find(item => item.id === selection.id) : null;
-    if (!emitter || emitter.kind === 'storm' || isFieldKind(emitter)) return [];
-    if (emitter.kind === 'booster') return [placed(emitter.padMetres)];
-    if (isTrackKind(emitter)) return [emitter.startMetres];
-    return emitter.kind === 'blast' ? [placed(emitter.positionMetres)] : [channelBase(emitter), emitter.topMetres];
+    return emitter ? kinds[emitter.kind].selectedPoints(emitter, tools) : [];
   }
 
   function drawShadowBoundary(context, colors) {
@@ -813,7 +609,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     const leastGradient = profile.gradient - (profile.shear ? Math.hypot(profile.shear.x, profile.shear.y) : 0);
     if (!(leastGradient < 0) || !receiver) return;
     const chosen = selection?.type === 'emitter' ? scene.emitters.filter(emitter => emitter.id === selection.id) : scene.emitters.filter(emitter => emitter.enabled);
-    const pointSets = chosen.map(emitterPoints);
+    const pointSets = chosen.map(emitter => kinds[emitter.kind].shadowPoints(emitter, tools));
     const points = pointSets.flat();
     if (!points.length) return;
     const key = `${pointsKey(pointSets)}|${JSON.stringify(scene.air)}|${receiver.positionMetres.z}`;
@@ -1061,227 +857,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.restore();
   }
 
-  function drawStorm(context, emitter, colors, selected) {
-    const { x, y } = emitter.centreMetres;
-    const ring = z => Array.from({ length: DISC_POINTS }, (_, index) => {
-      const angle = 2 * Math.PI * index / DISC_POINTS;
-      return { x: x + emitter.radiusMetres * Math.cos(angle), y: y + emitter.radiusMetres * Math.sin(angle), z };
-    });
-    if (!clouds()) {
-      context.fillStyle = colors.cloud;
-      polygon(context, ring(emitter.cloudBaseMetres)); context.fill();
-      polygon(context, ring(emitter.cloudTopMetres)); context.fill();
-    }
-    context.strokeStyle = selected ? colors.accent : colors.lightning;
-    context.lineWidth = selected ? 1.4 : 1.2;
-    polygon(context, ring(0).map(point => ({ ...point, z: ground(point.x, point.y) }))); context.stroke();
-  }
-
-  function cloudPuffs(emitter) {
-    const random = createRandom(emitter.seed ^ 0x5c10d);
-    const { x, y } = emitter.centreMetres;
-    const base = emitter.cloudBaseMetres;
-    const depth = emitter.cloudTopMetres - base;
-    return Array.from({ length: VIEW.cloud.puffs }, () => {
-      const share = random() ** 1.4;
-      const reach = emitter.radiusMetres * (.75 + VIEW.cloud.anvilSpread * share ** 4);
-      const angle = 2 * Math.PI * random();
-      const distance = reach * Math.sqrt(random());
-      return {
-        centre: { x: x + distance * Math.cos(angle), y: y + distance * Math.sin(angle), z: base + depth * share },
-        radius: Math.max(depth * (.22 + .22 * random()), emitter.radiusMetres * .18),
-        share
-      };
-    });
-  }
-
-  function drawCloud(context, emitter, colors) {
-    const key = [view.yaw, view.pitch, view.zoom, view.panU, view.panV, canvas.width, canvas.height, emitter.seed, emitter.centreMetres.x, emitter.centreMetres.y, emitter.radiusMetres, emitter.cloudBaseMetres, emitter.cloudTopMetres, colors['storm-base'], colors['storm-top'], frame.box.x0, frame.box.x1, frame.box.z1].join('|');
-    let layer = cloudLayers.get(emitter.id);
-    if (layer?.key !== key) {
-      const canvasLayer = sized(layer?.canvas);
-      const paint = canvasLayer.getContext('2d');
-      const ratio = window.devicePixelRatio || 1;
-      paint.setTransform(ratio, 0, 0, ratio, 0, 0);
-      const dark = rgb(colors['storm-base']);
-      const light = rgb(colors['storm-top']);
-      const puffs = cloudPuffs(emitter).map(puff => {
-        const p = frame.project(puff.centre);
-        const edge = frame.project({ ...puff.centre, z: puff.centre.z + puff.radius });
-        return { ...puff, p, size: Math.hypot(edge.x - p.x, edge.y - p.y) };
-      }).sort((a, b) => b.p.depth - a.p.depth);
-      for (const { p, size, share } of puffs) {
-        const [r, g, b] = mixColors(dark, light, share ** 1.5);
-        const gradient = paint.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-        gradient.addColorStop(0, `rgba(${r},${g},${b},${VIEW.cloud.puffAlpha})`);
-        gradient.addColorStop(.6, `rgba(${r},${g},${b},${VIEW.cloud.puffAlpha * .5})`);
-        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-        paint.fillStyle = gradient;
-        paint.beginPath();
-        paint.arc(p.x, p.y, size, 0, 2 * Math.PI);
-        paint.fill();
-      }
-      layer = { key, canvas: canvasLayer };
-      cloudLayers.set(emitter.id, layer);
-    }
-    context.save();
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.drawImage(layer.canvas, 0, 0);
-    context.restore();
-  }
-
-  function drawCloudLight(context, emitter, colors, strokes) {
-    const layer = cloudLayers.get(emitter.id);
-    if (!layer || !strokes?.length) return;
-    const flashes = cachedFlashes(emitter);
-    const depth = emitter.cloudTopMetres - emitter.cloudBaseMetres;
-    cloudLight = { light: sized(cloudLight?.light), mask: sized(cloudLight?.mask) };
-    const { light, mask } = cloudLight;
-    const ratio = window.devicePixelRatio || 1;
-    const glow = light.getContext('2d');
-    glow.setTransform(ratio, 0, 0, ratio, 0, 0);
-    glow.globalCompositeOperation = 'lighter';
-    const [r, g, b] = rgb(colors.flash);
-    let lit = false;
-    for (const stroke of strokes) {
-      const flash = flashes[stroke.flash];
-      if (!flash) continue;
-      const fade = stroke.elapsed > VIEW.flash.traverseSeconds ? Math.exp(-(stroke.elapsed - VIEW.flash.traverseSeconds) / VIEW.flash.fadeSeconds) : 1;
-      const intensity = VIEW.cloud.flashAlpha * fade * flicker(emitter.seed + stroke.flash * 7919, stroke.elapsed);
-      if (intensity < .01) continue;
-      const routeLength = Math.max(...stroke.route.map(step => step.offsetMetres + flash.channels[step.channel].arcs.at(-1) - step.fromArc));
-      const inCloud = stroke.route.flatMap(step => {
-        const reached = frontArc(step, stroke.elapsed, routeLength);
-        return reached > step.fromArc ? pointsUpTo(flash.channels[step.channel], step.fromArc, reached) : [];
-      }).filter(point => point.z >= emitter.cloudBaseMetres);
-      const along = inCloud.length ? inCloud : [flash.channels[0].points.at(-1)];
-      const random = createRandom((emitter.seed ^ Math.imul(stroke.flash + 1, 0x27d4eb2d)) >>> 0);
-      for (let blob = 0; blob < VIEW.cloud.flashBlobs; blob += 1) {
-        const at = along[Math.min(along.length - 1, Math.floor((blob + random()) / VIEW.cloud.flashBlobs * along.length))];
-        const offset = depth * VIEW.cloud.blobScatter;
-        const centre = { x: at.x + offset * (random() - .5), y: at.y + offset * (random() - .5), z: at.z + offset * (random() - .5) };
-        const p = frame.project(centre);
-        const edge = frame.project({ ...centre, z: centre.z + depth * VIEW.cloud.flashReach * (.6 + .8 * random()) });
-        const size = Math.hypot(edge.x - p.x, edge.y - p.y);
-        const gradient = glow.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-        const alpha = intensity / VIEW.cloud.flashBlobs * 2.2;
-        gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
-        gradient.addColorStop(.45, `rgba(${r},${g},${b},${alpha * .45})`);
-        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-        glow.fillStyle = gradient;
-        glow.beginPath();
-        glow.arc(p.x, p.y, size, 0, 2 * Math.PI);
-        glow.fill();
-        lit = true;
-      }
-    }
-    if (!lit) return;
-    const shape = mask.getContext('2d');
-    shape.drawImage(layer.canvas, 0, 0);
-    shape.globalCompositeOperation = 'source-in';
-    shape.drawImage(light, 0, 0);
-    context.save();
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.globalCompositeOperation = 'lighter';
-    context.drawImage(mask, 0, 0);
-    context.restore();
-  }
-
-  function drawBlast(context, emitter, colors, state) {
-    const stroke = state?.strokes.get(emitter.id)?.[0];
-    if (stroke) drawBurst(context, frame.project(placed(emitter.positionMetres)), stroke, colors);
-  }
-
-  function drawBarrage(context, emitter, colors, selected, state) {
-    const { x, y } = emitter.centreMetres;
-    context.strokeStyle = selected ? colors.accent : colors.end;
-    context.lineWidth = selected ? 1.4 : 1.2;
-    polygon(context, Array.from({ length: DISC_POINTS }, (_, index) => {
-      const angle = 2 * Math.PI * index / DISC_POINTS;
-      const px = x + emitter.radiusMetres * Math.cos(angle);
-      const py = y + emitter.radiusMetres * Math.sin(angle);
-      return { x: px, y: py, z: ground(px, py) };
-    }));
-    context.stroke();
-    context.fillStyle = colors.end;
-    const alpha = context.globalAlpha;
-    context.globalAlpha = alpha * .5;
-    const rounds = cachedRounds(emitter, scene.air);
-    for (const round of rounds) {
-      const p = frame.project(placed(round.positionMetres));
-      context.beginPath(); context.arc(p.x, p.y, 1.5, 0, 2 * Math.PI); context.fill();
-    }
-    if (emitter.kind === 'fireworks') {
-      context.lineWidth = .8;
-      const mortars = new Map(rounds.filter(round => round.id.endsWith(':thump')).map(round => [round.id.slice(0, -':thump'.length), round]));
-      context.beginPath();
-      for (const round of rounds) {
-        const mortar = round.id.endsWith(':burst') ? mortars.get(round.id.slice(0, -':burst'.length)) : null;
-        if (!mortar) continue;
-        const from = frame.project(placed(mortar.positionMetres));
-        const to = frame.project(placed(round.positionMetres));
-        context.moveTo(from.x, from.y); context.lineTo(to.x, to.y);
-      }
-      context.stroke();
-    }
-    context.globalAlpha = alpha;
-    for (const stroke of state?.strokes.get(emitter.id) ?? []) {
-      if (stroke.shell === null || stroke.shell === undefined) {
-        drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
-        continue;
-      }
-      const color = colors.fireworks[stroke.shell % colors.fireworks.length];
-      drawStars(context, placed(stroke.position), stroke, color);
-      drawBurst(context, frame.project(placed(stroke.position)), stroke, colors, color);
-    }
-  }
-
-  function drawStars(context, centre, stroke, color) {
-    const { stars, burnSeconds } = VIEW.fireworks;
-    const t = stroke.elapsed;
-    if (t >= burnSeconds) return;
-    const pull = airDensityKilogramsPerCubicMetre(scene.air.pressureKpa * 1000, scene.air.temperatureCelsius) / (2 * FIREWORKS.starKilogramsPerSquareMetre);
-    const reach = Math.log1p(pull * FIREWORKS.starMetresPerSecond * t) / pull;
-    const sag = STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED * t * t / 2;
-    const turn = stroke.shell / 0x100000000 * 2 * Math.PI;
-    const alpha = context.globalAlpha;
-    context.globalAlpha = alpha * (1 - t / burnSeconds) ** 1.5;
-    context.fillStyle = color;
-    context.beginPath();
-    for (let star = 0; star < stars; star += 1) {
-      const up = 1 - 2 * (star + .5) / stars;
-      const around = turn + star * Math.PI * (3 - Math.sqrt(5));
-      const across = Math.sqrt(1 - up * up);
-      const p = frame.project({ x: centre.x + reach * across * Math.cos(around), y: centre.y + reach * across * Math.sin(around), z: centre.z + reach * up - sag });
-      context.moveTo(p.x + 1.6, p.y);
-      context.arc(p.x, p.y, 1.6, 0, 2 * Math.PI);
-    }
-    context.fill();
-    context.globalAlpha = alpha;
-  }
-
-  function drawFlight(context, emitter, colors, selected, state) {
-    context.strokeStyle = selected ? colors.accent : colors.end;
-    context.lineWidth = selected ? 1.4 : 1.2;
-    for (const path of cachedTracks(emitter, scene.air)) {
-      context.beginPath();
-      for (let index = 0; index < path.x.length; index += 1) {
-        const p = frame.project({ x: path.x[index], y: path.y[index], z: path.z[index] });
-        if (index === 0) context.moveTo(p.x, p.y); else context.lineTo(p.x, p.y);
-      }
-      context.stroke();
-    }
-    for (const body of state?.flights?.get(emitter.id) ?? []) {
-      const p = frame.project(body);
-      context.fillStyle = colors.flash;
-      context.shadowColor = colors.glow;
-      context.shadowBlur = 12;
-      context.beginPath(); context.arc(p.x, p.y, 5, 0, 2 * Math.PI); context.fill();
-      context.shadowBlur = 0;
-    }
-    for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(stroke.position), stroke, colors);
-  }
-
   function drawCones(context, cones, colors) {
     const { box } = frame;
     const terrain = currentSurface().bounds;
@@ -1342,18 +917,6 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.globalAlpha = alpha * VIEW.cone.alpha * (index + 1) / VIEW.cone.levels;
       context.stroke(level);
     });
-    context.globalAlpha = alpha;
-  }
-
-  function drawBurst(context, centre, stroke, colors, glow = colors.glow) {
-    const alpha = context.globalAlpha;
-    const level = Math.exp(-stroke.elapsed / VIEW.flash.fadeSeconds);
-    context.fillStyle = colors.flash;
-    context.shadowColor = glow;
-    context.shadowBlur = 30 * level;
-    context.globalAlpha = alpha * level;
-    context.beginPath(); context.arc(centre.x, centre.y, 4 + 12 * level, 0, 2 * Math.PI); context.fill();
-    context.shadowBlur = 0;
     context.globalAlpha = alpha;
   }
 
@@ -1476,23 +1039,10 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     for (const emitter of scene.emitters) {
       const selected = selection?.type === 'emitter' && selection.id === emitter.id;
       context.globalAlpha = emitter.enabled ? 1 : .35;
-      if (emitter.kind === 'storm') drawStorm(context, emitter, colors, selected);
-      if (emitter.kind === 'blast') drawBlast(context, emitter, colors, state);
-      else if (isFieldKind(emitter)) drawBarrage(context, emitter, colors, selected, state);
-      else if (isTrackKind(emitter)) drawFlight(context, emitter, colors, selected, state);
-      else {
-        drawChannels(context, emitter, colors, selected, state?.strokes.get(emitter.id));
-        if (state?.sound && emitter.enabled) drawSoundGlow(context, emitter, colors, state.sound);
-      }
+      kinds[emitter.kind].draw(context, emitter, tools, { colors, selected, state });
       context.globalAlpha = 1;
     }
-    if (clouds()) {
-      for (const emitter of scene.emitters) {
-        if (emitter.kind !== 'storm' || !emitter.enabled) continue;
-        drawCloud(context, emitter, colors);
-        drawCloudLight(context, emitter, colors, state?.strokes.get(emitter.id));
-      }
-    }
+    for (const emitter of scene.emitters) kinds[emitter.kind].overlay?.(context, emitter, tools, { colors, state });
     for (const point of selectedPoints()) drawProjectionLines(context, colors, point);
     for (const receiver of scene.receivers) {
       const level = state?.receivers.get(receiver.id) ?? 0;
@@ -1518,7 +1068,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
       context.beginPath(); context.moveTo(a.x + ux * VIEW.box.microphoneRadius, a.y + uy * VIEW.box.microphoneRadius); context.lineTo(b.x, b.y); context.stroke();
     }
     context.globalAlpha = 1;
-    for (const handle of handles(scene, frame.box)) {
+    for (const handle of handles(scene, frame.box, kinds, tools)) {
       const selected = selection?.type === handle.type && selection.id === handle.id;
       const owner = handle.type === 'emitter' ? scene.emitters.find(emitter => emitter.id === handle.id) : null;
       context.globalAlpha = (owner && !owner.enabled) || handle.listening === false ? .35 : 1;
@@ -1528,9 +1078,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
     context.font = '11px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     for (const emitter of scene.emitters) {
-      const anchor = emitter.kind === 'blast' ? placed(emitter.positionMetres) : emitter.kind === 'storm' || isFieldKind(emitter) ? placed(emitter.centreMetres)
-        : emitter.kind === 'booster' ? placed(emitter.padMetres) : isTrackKind(emitter) ? emitter.startMetres : emitter.topMetres;
-      const p = frame.project(anchor);
+      const p = frame.project(kinds[emitter.kind].label(emitter, tools));
       context.fillText(emitter.name, p.x + 9, p.y - 8);
     }
     for (const receiver of scene.receivers) {
@@ -1542,7 +1090,7 @@ export function createCubeView(canvas, { onSelect, onMove, onCommit, onView, onV
   function hit(x, y) {
     let best = null;
     const usable = planes().filter(planeUsable);
-    for (const handle of handles(scene, frame.box)) {
+    for (const handle of handles(scene, frame.box, kinds, tools)) {
       if (handle.verticalOnly) {
         const p = frame.project(handle.point);
         const distance = Math.hypot(p.x - x, p.y - y);
