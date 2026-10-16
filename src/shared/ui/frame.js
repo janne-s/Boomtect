@@ -716,7 +716,7 @@ export function startFrame(tect) {
   }
 
   const emitterKindLabel = emitter => kinds[emitter.kind].label(emitter);
-  const emitterSummary = emitter => kinds[emitter.kind].summary(emitter);
+  const emitterSummary = emitter => kinds[emitter.kind].summary(emitter, state.scene);
 
   const updateEmitter = (id, change) => commit(scene => change(scene.emitters.find(emitter => emitter.id === id)));
   const updateReceiver = (id, change) => commit(scene => change(scene.receivers.find(receiver => receiver.id === id)));
@@ -1015,7 +1015,7 @@ export function startFrame(tect) {
     $('details-title').textContent = kind === emitter.name ? emitter.name : `${emitter.name} · ${kind}`;
     const body = $('details-body');
     const scroll = body.scrollTop;
-    body.replaceChildren(...kinds[emitter.kind].details(emitter, { updateEmitter }).map(({ title, build }) => {
+    body.replaceChildren(...kinds[emitter.kind].details(emitter, { updateEmitter, scene: state.scene }).map(({ title, build }) => {
       const group = element('section', 'details-section');
       group.append(element('h3', '', title));
       const fields = element('div', 'fields');
