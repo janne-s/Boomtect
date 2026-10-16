@@ -1,42 +1,10 @@
 import { VIEW } from '../domain/constants.js';
 import { PARAMETERS } from '../domain/scene.js';
+import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
 
-const logPosition = (value, [low, high]) => Math.log(value / low) / Math.log(high / low);
-const logValue = (t, [low, high]) => low * (high / low) ** t;
-const clamp01 = value => Math.min(1, Math.max(0, value));
+export { entryText, parseEntry } from '../shared/ui/macros.js';
+
 const range = key => [PARAMETERS[key].minimum, PARAMETERS[key].maximum];
-
-const percent = t => `${Math.round(t * 100)} %`;
-const kilo = (value, unit) => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} k${unit}` : `${+value.toPrecision(3)} ${unit}`);
-const metres = value => (value >= 1000 ? `${+(value / 1000).toPrecision(3)} km` : value >= 10 ? `${Math.round(value)} m` : `${+value.toPrecision(2)} m`);
-
-const UNITS = Object.freeze({
-  metres: Object.freeze({ m: 1, km: 1000 }),
-  charge: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6 })
-});
-
-export function entryText(entry, item) {
-  const value = entry.get(item);
-  if (entry.units === 'metres') return metres(value);
-  if (entry.units === 'charge') return formatCharge(value).replace(/ TNT$/, '');
-  return `${+value.toPrecision(6)}${entry.unit ? ` ${entry.unit}` : ''}`;
-}
-
-export function parseEntry(entry, text, item) {
-  const match = /^\s*([-+]?(?:\d+[.,]?\d*|[.,]\d+)(?:e[-+]?\d+)?)\s*(.*?)\s*$/i.exec(text);
-  if (!match) throw new Error(`${text.trim() || 'An empty value'} is not a number.`);
-  let value = Number(match[1].replace(',', '.'));
-  const unit = match[2];
-  if (entry.units) {
-    const units = UNITS[entry.units];
-    const shown = entryText(entry, item).split(' ').at(-1);
-    const factor = units[unit || shown];
-    if (factor === undefined) throw new Error(`Use ${Object.keys(units).join(', ')}.`);
-    value *= factor;
-  } else if (unit && unit !== entry.unit) throw new Error(entry.unit ? `Use ${entry.unit}.` : 'Give a plain number.');
-  if (!Number.isFinite(value)) throw new Error(`${text.trim()} is not a number.`);
-  return entry.integer ? Math.round(value) : value;
-}
 
 const energy = {
   label: 'Energy',
@@ -102,7 +70,7 @@ const stormSize = {
   read: item => clamp01(logPosition(Math.max(500, item.radiusMetres), [500, 30000])),
   write: (item, t) => { item.radiusMetres = Math.round(logValue(t, [500, 30000])); },
   show: item => `${metres(item.radiusMetres)} radius`,
-  entry: { units: 'metres', get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
+  entry: { units: METRES, get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
 };
 
 const stormDuration = {
@@ -150,12 +118,14 @@ export function formatCharge(kilograms) {
   return `${+(kilograms / 1e6).toPrecision(3)} kt TNT`;
 }
 
+const CHARGE = Object.freeze({ factors: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6 }), show: value => formatCharge(value).replace(/ TNT$/, '') });
+
 const charge = {
   label: 'Charge',
   read: item => clamp01(logPosition(item.chargeKilograms, range('chargeKilograms'))),
   write: (item, t) => { item.chargeKilograms = +logValue(t, range('chargeKilograms')).toPrecision(3); },
   show: item => formatCharge(item.chargeKilograms),
-  entry: { units: 'charge', get: item => item.chargeKilograms, set: (item, value) => { item.chargeKilograms = value; } }
+  entry: { units: CHARGE, get: item => item.chargeKilograms, set: (item, value) => { item.chargeKilograms = value; } }
 };
 
 const blastHeight = {
@@ -163,7 +133,7 @@ const blastHeight = {
   read: item => clamp01(logPosition(Math.max(.5, item.positionMetres.z), [.5, 5000])),
   write: (item, t) => { item.positionMetres = { ...item.positionMetres, z: +logValue(t, [.5, 5000]).toPrecision(3) }; },
   show: item => metres(item.positionMetres.z),
-  entry: { units: 'metres', get: item => item.positionMetres.z, set: (item, value) => { item.positionMetres = { ...item.positionMetres, z: value }; } }
+  entry: { units: METRES, get: item => item.positionMetres.z, set: (item, value) => { item.positionMetres = { ...item.positionMetres, z: value }; } }
 };
 
 const fireball = {
@@ -179,7 +149,7 @@ const barrageSize = {
   read: item => clamp01(logPosition(Math.max(10, item.radiusMetres), [10, 5000])),
   write: (item, t) => { item.radiusMetres = Math.round(logValue(t, [10, 5000])); },
   show: item => `${metres(item.radiusMetres)} radius`,
-  entry: { units: 'metres', get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
+  entry: { units: METRES, get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
 };
 
 const barrageRounds = {
@@ -216,7 +186,7 @@ const flightHeight = {
   },
   show: item => metres(item.startMetres.z),
   entry: {
-    units: 'metres',
+    units: METRES,
     get: item => item.startMetres.z,
     set: (item, value) => {
       item.startMetres = { ...item.startMetres, z: value };
@@ -287,7 +257,7 @@ const meteorDiameter = {
   read: item => clamp01(logPosition(item.diameterMetres, [.001, 50])),
   write: (item, t) => { item.diameterMetres = +logValue(t, [.001, 50]).toPrecision(2); },
   show: item => metres(item.diameterMetres),
-  entry: { units: 'metres', get: item => item.diameterMetres, set: (item, value) => { item.diameterMetres = value; } }
+  entry: { units: METRES, get: item => item.diameterMetres, set: (item, value) => { item.diameterMetres = value; } }
 };
 
 const meteorEntry = {
@@ -303,7 +273,7 @@ const meteorEnd = {
   read: item => clamp01(item.endHeightMetres / Math.max(1, item.startMetres.z)),
   write: (item, t) => { item.endHeightMetres = Math.min(item.startMetres.z - 1000, Math.round(t * item.startMetres.z / 100) * 100); },
   show: item => metres(item.endHeightMetres),
-  entry: { units: 'metres', get: item => item.endHeightMetres, set: (item, value) => { item.endHeightMetres = value; } }
+  entry: { units: METRES, get: item => item.endHeightMetres, set: (item, value) => { item.endHeightMetres = value; } }
 };
 
 const showerCount = {
@@ -319,7 +289,7 @@ const showerSize = {
   read: item => clamp01(logPosition(Math.max(1000, item.radiusMetres), [1000, 30000])),
   write: (item, t) => { item.radiusMetres = Math.round(logValue(t, [1000, 30000])); },
   show: item => `${metres(item.radiusMetres)} radius`,
-  entry: { units: 'metres', get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
+  entry: { units: METRES, get: item => item.radiusMetres, set: (item, value) => { item.radiusMetres = value; } }
 };
 
 const whipMach = {
@@ -335,7 +305,7 @@ const whipHeight = {
   read: item => clamp01(logPosition(Math.max(.1, item.startMetres.z), [.1, 10])),
   write: (item, t) => { item.startMetres = { ...item.startMetres, z: +logValue(t, [.1, 10]).toPrecision(2) }; },
   show: item => metres(item.startMetres.z),
-  entry: { units: 'metres', get: item => item.startMetres.z, set: (item, value) => { item.startMetres = { ...item.startMetres, z: value }; } }
+  entry: { units: METRES, get: item => item.startMetres.z, set: (item, value) => { item.startMetres = { ...item.startMetres, z: value }; } }
 };
 
 const whipCracker = {
@@ -343,7 +313,7 @@ const whipCracker = {
   read: item => clamp01(logPosition(item.crackerLengthMetres, range('crackerLengthMetres'))),
   write: (item, t) => { item.crackerLengthMetres = +logValue(t, range('crackerLengthMetres')).toPrecision(2); },
   show: item => metres(item.crackerLengthMetres),
-  entry: { units: 'metres', get: item => item.crackerLengthMetres, set: (item, value) => { item.crackerLengthMetres = value; } }
+  entry: { units: METRES, get: item => item.crackerLengthMetres, set: (item, value) => { item.crackerLengthMetres = value; } }
 };
 
 const onset = {
@@ -391,7 +361,7 @@ const boosterHeight = {
   read: item => clamp01(logPosition(item.startHeightMetres, range('startHeightMetres'))),
   write: (item, t) => { item.startHeightMetres = Math.round(logValue(t, range('startHeightMetres')) / 100) * 100; },
   show: item => metres(item.startHeightMetres),
-  entry: { units: 'metres', get: item => item.startHeightMetres, set: (item, value) => { item.startHeightMetres = value; } }
+  entry: { units: METRES, get: item => item.startHeightMetres, set: (item, value) => { item.startHeightMetres = value; } }
 };
 
 const boosterMach = {

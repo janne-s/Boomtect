@@ -1,42 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ambisonicDirection, encodeDirection } from '../src/shared/domain/ambisonics.js';
 import { readHandoff } from '../src/shared/domain/handoff.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
-import { arrivalDistance, fieldArrival, soundHandoff } from '../src/domain/sound-handoff.js';
+import { fieldArrival, soundHandoff } from '../src/shared/domain/sound-handoff.js';
 import { plainScene } from './plain-scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
-
-function planeWave(east, north, up, samples = [0, 1, -.5, .25]) {
-  const gains = encodeDirection(...ambisonicDirection(east, north, up), 1);
-  return Array.from(gains, gain => Float32Array.from(samples, sample => sample * gain));
-}
-
-test('a single sound arrives from its own direction, in compass degrees and elevation', () => {
-  const cases = [[[0, 1, 0], 0, 0], [[1, 0, 0], 90, 0], [[0, -1, 0], 180, 0], [[-1, 0, 0], 270, 0], [[1, 0, 1], 90, 45]];
-  for (const [direction, azimuth, elevation] of cases) {
-    const found = fieldArrival(planeWave(...direction));
-    assert.ok(Math.abs(found.azimuthDegrees - azimuth) < 1e-6, `${direction}`);
-    assert.ok(Math.abs(found.elevationDegrees - elevation) < 1e-6, `${direction}`);
-  }
-  assert.equal(fieldArrival(planeWave(0, 1, 0).slice(0, 1)), null);
-  assert.equal(fieldArrival(planeWave(0, 1, 0, [0, 0])), null);
-});
-
-test('two sounds give the direction of the stronger, weighted by energy', () => {
-  const east = planeWave(1, 0, 0, [0, 1, 0, 0]);
-  const north = planeWave(0, 1, 0, [0, 0, 0, .5]);
-  const found = fieldArrival(east.map((channel, index) => channel.map((value, sample) => value + north[index][sample])));
-  // Energy 1 from the east and .25 from the north: atan(1 / .25) from north.
-  assert.ok(Math.abs(found.azimuthDegrees - Math.atan2(1, .25) * 180 / Math.PI) < 1e-6);
-});
-
-test('the distance is the energy-weighted length of the paths', () => {
-  assert.equal(arrivalDistance({ count: 2, levels: [0, 0], metres: [100, 300], kinds: [0, 1] }), 200);
-  assert.ok(Math.abs(arrivalDistance({ count: 2, levels: [0, -10], metres: [100, 1200], kinds: [0, 0] }) - 200) < 1e-9);
-  assert.equal(arrivalDistance({ count: 0, levels: [], metres: [], kinds: [] }), null);
-});
 
 test('a blast west of its microphone is handed off from the west at its distance, with what the sound holds', () => {
   const scene = parseScene(plainScene('blast'));

@@ -11,9 +11,9 @@ import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, sceneInMode, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './shared/ui/export-package.js';
-import { soundHandoff } from './domain/sound-handoff.js';
+import { soundHandoff } from './shared/domain/sound-handoff.js';
 import { handoffMessage } from './shared/domain/handoff.js';
-import { ECHOTECT_URL, openTect } from './ui/tect-link.js';
+import { ECHOTECT_URL, openTect } from './shared/ui/tect-link.js';
 import { formatMetres, formatSeconds, microphoneColor } from './shared/ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './shared/ui/terrain-loader.js';
@@ -28,10 +28,10 @@ import { meteorBoom, showerMembers } from './domain/meteor.js';
 import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './shared/ui/listening.js';
 import { createOrientationBall } from './shared/ui/orientation-ball.js';
-import { createMobileLayout } from './ui/mobile.js';
+import { createMobileLayout } from './shared/ui/mobile.js';
 import { createSettings } from './shared/ui/settings.js';
 import { createPlayer } from './shared/ui/player.js';
-import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
+import { drawArrivals, drawWaveform, plotSeconds } from './shared/ui/plots.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { attachTimelineSeek } from './shared/ui/timeline.js';
 import { createRenderMarker, unfinishedRenderText } from './shared/ui/render-marker.js';
@@ -101,7 +101,8 @@ const state = {
 state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
 const player = createPlayer();
-const mobile = createMobileLayout({ onResults: () => drawResults() });
+const MODE_ICONS = Object.freeze({ thunder: 'fa-bolt', blast: 'fa-explosion', sonic: 'fa-jet-fighter' });
+const mobile = createMobileLayout({ onResults: () => drawResults(), icons: MODE_ICONS });
 createSettings({
   read: () => ({
     quality: state.scene.render.quality,

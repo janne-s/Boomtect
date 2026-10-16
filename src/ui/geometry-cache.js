@@ -2,39 +2,14 @@ import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
 import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flight.js';
 import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
-import { FLAT_SURFACE, terrainSurface } from '../shared/domain/terrain.js';
+import { arcs, cached, currentSurface } from '../shared/ui/geometry-cache.js';
+
+export { currentSurface, useTerrain } from '../shared/ui/geometry-cache.js';
 
 const caches = new WeakMap();
-let surface = FLAT_SURFACE;
-
-export function useTerrain(terrain) {
-  surface = terrainSurface(terrain);
-  return surface;
-}
-
-export const currentSurface = () => surface;
-
-function arcs(points) {
-  const values = new Float64Array(points.length);
-  for (let index = 1; index < points.length; index += 1) {
-    const a = points[index - 1];
-    const b = points[index];
-    values[index] = values[index - 1] + Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-  }
-  return values;
-}
-
-function cached(cache, emitter, extra, compute) {
-  const { name: _name, enabled: _enabled, ...shape } = emitter;
-  const key = JSON.stringify([shape, extra]);
-  const entry = cache.get(emitter.id);
-  if (entry?.key === key) return entry.value;
-  const value = compute();
-  cache.set(emitter.id, { key, value });
-  return value;
-}
 
 export function cachedFlashes(emitter) {
+  const surface = currentSurface();
   if (!caches.has(surface)) caches.set(surface, new Map());
   return cached(caches.get(surface), emitter, null, () => {
     let flashes;
@@ -48,6 +23,7 @@ const tracks = new Map();
 const trackSurfaces = new Map();
 
 export function cachedTracks(emitter, air) {
+  const surface = currentSurface();
   if (trackSurfaces.get(emitter.id) !== surface) tracks.delete(emitter.id);
   trackSurfaces.set(emitter.id, surface);
   return cached(tracks, emitter, air, () => (emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]

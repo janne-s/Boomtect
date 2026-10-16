@@ -1,4 +1,4 @@
-import { TECT_MESSAGES } from '../shared/domain/handoff.js';
+import { TECT_MESSAGES } from '../domain/handoff.js';
 
 export const ECHOTECT_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://127.0.0.1:8001/' : 'https://janne-s.github.io/Echotect/';
 const READY_SECONDS = 30;
