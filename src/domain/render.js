@@ -9,7 +9,7 @@ import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
 import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
-import { previewQuality } from './render-cost.js';
+import { previewQuality } from '../shared/domain/render-cost.js';
 import { secondaryBooms } from './secondary.js';
 import { onGround, terrainSurface } from '../shared/domain/terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from '../shared/domain/terrain-echoes.js';

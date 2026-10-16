@@ -8,7 +8,7 @@ import { newSeed } from './shared/domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './shared/domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, sceneInMode, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './shared/ui/export-package.js';
 import { soundHandoff } from './domain/sound-handoff.js';
@@ -22,7 +22,6 @@ import { createPlaceMap } from './shared/ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
 import { createMapLayer } from './shared/ui/map-layer.js';
 import { createLatestTask } from './shared/ui/latest-task.js';
-import { sceneInMode } from './domain/scene-mode.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, showerMembers } from './domain/meteor.js';
@@ -30,7 +29,7 @@ import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './shared/ui/listening.js';
 import { createOrientationBall } from './shared/ui/orientation-ball.js';
 import { createMobileLayout } from './ui/mobile.js';
-import { createSettings } from './ui/settings.js';
+import { createSettings } from './shared/ui/settings.js';
 import { createPlayer } from './shared/ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
 import { attachSplitters } from './shared/ui/splitters.js';

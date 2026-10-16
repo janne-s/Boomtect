@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { sceneInMode } from '../src/domain/scene-mode.js';
+import { defaultScene, readScene, sceneInMode, serializeScene } from '../src/domain/scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
 test('mode changes carry place and terrain while preserving each mode’s source scene', () => {

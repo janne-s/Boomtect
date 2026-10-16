@@ -12,7 +12,6 @@ import { stormFlashes, stormFlashSequence } from './storm.js';
 import { sourceTable, sourceTableBuilder } from './source-table.js';
 import { onGround } from '../shared/domain/terrain.js';
 
-export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster', 'fireworks']);
 
 /** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
 const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
