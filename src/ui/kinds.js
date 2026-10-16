@@ -2,7 +2,8 @@ import { BLAST, FLIGHT, THUNDER, VIEW } from '../domain/constants.js';
 import { blastSources, emitterSources } from '../domain/emitters.js';
 import { EXPLOSIVE_TYPES } from '../domain/explosives.js';
 import { emissionSeconds } from '../domain/lightning.js';
-import { BODY_TYPES, carlsonBoom, machCone } from '../domain/flight.js';
+import { BODY_TYPES, carlsonBoom } from '../domain/flight.js';
+import { machCone } from '../shared/domain/trajectory.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultWhip, PARAMETERS

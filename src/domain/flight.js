@@ -1,6 +1,6 @@
-import { BOOSTER, FLIGHT, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
+import { BOOSTER, FLIGHT, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, WHIP } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
-import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from '../shared/domain/refraction.js';
+import { inShadow, pathProfile, rayBetween, shadowPath, travelSeconds } from '../shared/domain/refraction.js';
 import { onGround } from '../shared/domain/terrain.js';
 import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
@@ -32,10 +32,6 @@ export function flightMembers(emitter) {
 }
 
 
-const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
-  const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
-  return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
-}));
 
 export function whipPath(whip, air, surface = null) {
   const climb = whip.climbDegrees * Math.PI / 180;
@@ -186,50 +182,3 @@ export function flightBooms(path, flight, receiver, profile, air) {
   return booms;
 }
 
-export function machCone(path, now, profile) {
-  const count = path.seconds.length;
-  const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
-  if (last < 1) return null;
-  const at = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
-  const speedAround = index => {
-    const from = Math.max(0, index - 1);
-    const to = Math.min(count - 1, index + 1);
-    return Math.hypot(path.x[to] - path.x[from], path.y[to] - path.y[from], path.z[to] - path.z[from]) / ((to - from) * path.step);
-  };
-  const supersonic = index => speedAround(index) > speedAt(localProfile(profile, path.z[index]), path.z[index]);
-  let end = last;
-  while (end > 0 && !supersonic(end)) end -= 1;
-  if (end < 1) return null;
-  const flying = (now - path.seconds[0]) / path.step <= count - 1;
-  const apex = flying && end === last;
-  const rings = [];
-  const radii = [];
-  for (let ring = apex ? 1 : 0; ring <= VIEW.cone.rings; ring += 1) {
-    const index = Math.round(end * (1 - ring / VIEW.cone.rings));
-    const before = at(Math.max(0, index - 1));
-    const after = at(Math.min(count - 1, index + 1));
-    const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
-    const d = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
-    const length = Math.hypot(d.x, d.y, d.z);
-    const point = at(index);
-    const local = localProfile(profile, point.z);
-    const cosine = speedAt(local, point.z) / (length / span);
-    if (!(length > 0 && cosine < 1)) continue;
-    const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
-    const across = Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
-    const norm = Math.hypot(across.x, across.y, across.z);
-    const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };
-    const second = { x: unit.y * first.z - unit.z * first.y, y: unit.z * first.x - unit.x * first.z, z: unit.x * first.y - unit.y * first.x };
-    const { centre, radiusMetres } = wavefront(local, point, now - path.seconds[index]);
-    const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
-    const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
-    radii.push(radiusMetres);
-    rings.push(CONE_RING.map(({ cos, sin }) => {
-      const a = radius * cos;
-      const b = radius * sin;
-      return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };
-    }));
-  }
-  if (!rings.length) return null;
-  return { apex: apex ? at(last) : null, rings, radii };
-}

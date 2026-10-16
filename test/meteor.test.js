@@ -155,7 +155,7 @@ test('a shower’s meteors come from one radiant, seeded, at their count and ove
 });
 
 test('a meteor’s cone is drawn with the speed of sound at its height, not the linear fit extended far above it', async () => {
-  const { machCone } = await import('../src/domain/flight.js');
+  const { machCone } = await import('../src/shared/domain/trajectory.js');
   const { meteorTrack } = await import('../src/domain/meteor.js');
   const { soundSpeedProfile } = await import('../src/shared/domain/refraction.js');
   const parsed = parseScene(plainScene('sonic'));

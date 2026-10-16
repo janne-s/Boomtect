@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { carlsonBoom, flightBooms, machCone } from '../src/domain/flight.js';
-import { flightPath, withApproach } from '../src/shared/domain/trajectory.js';
+import { carlsonBoom, flightBooms } from '../src/domain/flight.js';
+import { flightPath, machCone, withApproach } from '../src/shared/domain/trajectory.js';
 import { soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultFlight, parseScene } from '../src/domain/scene.js';

@@ -182,12 +182,24 @@ export function createPlayer() {
     silence?.pause();
   }
 
-  /** Call it first thing in a user gesture: audio may start only shortly after one. */
-  function unlock(sampleRate) {
+  let stale = false;
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => { stale = true; });
+
+  /** Safari can leave a context running but silent after sleep or an output change, so a fresh start takes a new one. */
+  function contextFor(sampleRate, fresh) {
     declarePlayback();
+    if (context && !current && (fresh || stale || context.state === 'closed' || context.state === 'interrupted')) {
+      const old = context;
+      setTimeout(() => old.close().catch(() => {}), RENDER.fadeSeconds * 2000 + 50);
+      context = null;
+    }
+    stale = false;
     context ??= new AudioContext({ sampleRate });
     return context.resume();
   }
+
+  /** Call it first thing in a user gesture: audio may start only shortly after one. */
+  const unlock = sampleRate => contextFor(sampleRate, true);
 
   // iOS suspends the context during a call or in the background ("interrupted") and does not resume it by itself.
   const wake = () => {
@@ -198,7 +210,7 @@ export function createPlayer() {
 
   async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null, continuing = false }) {
     const ticket = request += 1;
-    await unlock(composition.sampleRate);
+    await contextFor(composition.sampleRate, false);
     if (!continuing) release();
     const fader = context.createGain();
     fader.connect(context.destination);

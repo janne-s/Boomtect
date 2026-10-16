@@ -104,7 +104,7 @@ test('a booster’s scene round-trips, and its pad lies on the ground', () => {
 });
 
 test('a booster below the speed of sound leaves its Mach cone: no apex, and the cone keeps its rings', async () => {
-  const { machCone } = await import('../src/domain/flight.js');
+  const { machCone } = await import('../src/shared/domain/trajectory.js');
   const scene = boosterScene();
   const booster = scene.emitters[0];
   const path = boosterPath(booster, scene.air);
