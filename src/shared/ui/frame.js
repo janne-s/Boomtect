@@ -895,14 +895,15 @@ export function startFrame(tect) {
       card.append(macros);
       const actions = element('div', 'card-actions');
       actions.append(button('Details…', () => openDetails(emitter.id)));
-      if (kinds[emitter.kind].seeded(emitter)) {
-        actions.append(button('New shape', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
-        actions.append(button('Variant', () => addEmitter(next => {
-          const source = next.emitters.find(item => item.id === emitter.id);
-          source.enabled = false;
-          return { ...structuredClone(source), id: uniqueId(source.kind, next.emitters), name: `${source.name} variant`.slice(0, 64), seed: newSeed(), enabled: true };
-        }), { disabled: scene.emitters.length >= RENDER.maximumEmitters, title: 'Copy with a new seed; the original is switched off' }));
+      const seeded = kinds[emitter.kind].seeded(emitter);
+      if (seeded) {
+        actions.append(button(kinds[emitter.kind].reseedLabel?.(emitter) ?? 'New seed', () => updateEmitter(emitter.id, item => { item.seed = newSeed(); }), { title: 'Same parameters, new seed' }));
       }
+      actions.append(button('Variant', () => addEmitter(next => {
+        const source = next.emitters.find(item => item.id === emitter.id);
+        source.enabled = false;
+        return { ...structuredClone(source), id: uniqueId(source.kind, next.emitters), name: `${source.name} variant`.slice(0, 64), ...(seeded ? { seed: newSeed() } : {}), enabled: true };
+      }), { disabled: scene.emitters.length >= RENDER.maximumEmitters, title: seeded ? 'Copy with a new seed; the original is switched off' : 'Copy to change; the original is switched off' }));
       card.append(actions);
     }
     container.append(card);
@@ -1619,9 +1620,10 @@ export function startFrame(tect) {
   function wavefrontSpheres(now, profile) {
     return wavefrontCandidates(state.scene)
       .filter(candidate => now > candidate.emitted)
-      .map(({ point, emitted, group, order, amplitude, frequencyHz }) => {
+      .map(({ point, emitted, group, order, amplitude, frequencyHz, spacingSeconds = 0 }) => {
         const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
-        front.strength = frontStrength(amplitude, front.radiusMetres, frequencyHz);
+        const reach = front.radiusMetres * Math.max(1, spacingSeconds / (now - emitted));
+        front.strength = frontStrength(amplitude, reach, frequencyHz);
         if (!profile.wind) return { source: point, group, order, ...front };
         // Drawn only, class C.
         const seconds = now - emitted;

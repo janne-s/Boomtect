@@ -326,6 +326,7 @@ export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [k
   macros: macrosFor,
   details: detailSections,
   seeded: hasSeed,
+  reseedLabel: emitter => (emitter.kind === 'lightning' || emitter.kind === 'storm' ? 'New shape' : 'New seed'),
   anchorName,
   info,
   bounds,
