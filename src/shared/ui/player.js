@@ -1,5 +1,5 @@
-import Omnitone from '../../assets/vendor/omnitone/omnitone.min.esm.js';
-import { channelCount, orientationRotation, rotationTerms } from '../shared/domain/ambisonics.js';
+import Omnitone from '../vendor/omnitone/omnitone.min.esm.js';
+import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
 import { RENDER } from '../domain/constants.js';
 
 /** iOS mutes Web Audio with the silent switch unless the session is playback (Safari 16.4+); older iOS needs a looping silent audio element. */

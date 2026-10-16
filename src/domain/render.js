@@ -1,9 +1,9 @@
-import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { ambisonicDirection, channelCount, encodeDirection } from '../shared/domain/ambisonics.js';
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSourceTable } from './emitters.js';
-import { edgeField } from './diffraction.js';
-import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
+import { edgeField } from '../shared/domain/diffraction.js';
+import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from '../shared/domain/forest.js';
 import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { secondaryShockDelay } from './explosives.js';
 import { fireballSamples } from './fireball.js';
@@ -11,18 +11,18 @@ import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { previewQuality } from './render-cost.js';
 import { secondaryBooms } from './secondary.js';
-import { onGround, terrainSurface } from './terrain.js';
-import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
-import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
+import { onGround, terrainSurface } from '../shared/domain/terrain.js';
+import { arrivalSector, echoField, echoPaths, sourceCells } from '../shared/domain/terrain-echoes.js';
+import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from '../shared/domain/terrain-propagation.js';
 import { convolveAdd, fft, nextPowerOfTwo } from '../shared/domain/fft.js';
-import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
-import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
+import { creepingTransitionHz, cubeRootExponent, softExponent } from '../shared/domain/creeping.js';
+import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from '../shared/domain/ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
 import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
-} from './refraction.js';
+} from '../shared/domain/refraction.js';
 
 const PRE_ROLL_SAMPLES = 512;
 const MAXIMUM_EDGES = 3;

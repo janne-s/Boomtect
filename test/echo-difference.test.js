@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PATH_ECHO } from '../src/domain/refraction.js';
+import { PATH_ECHO } from '../src/shared/domain/refraction.js';
 import { prepareScene, renderReceiver, resultDifference } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';

@@ -1,7 +1,7 @@
 export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, up = up';
-import { wavByteLength, encodeFloat32Wav } from '../shared/domain/wav.js';
-import { serializeHandoff } from '../shared/domain/handoff.js';
-import { zipStore } from '../shared/domain/zip.js';
+import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
+import { serializeHandoff } from '../domain/handoff.js';
+import { zipStore } from '../domain/zip.js';
 import { composeListening } from './listening.js';
 import { renderComposition } from './player.js';
 

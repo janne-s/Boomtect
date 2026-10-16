@@ -1,5 +1,5 @@
 import { VIEW } from '../domain/constants.js';
-import { fitCanvas, palette } from '../shared/ui/canvas.js';
+import { fitCanvas, palette } from './canvas.js';
 
 const CIRCLE_POINTS = 72;
 const toRadians = degrees => degrees * Math.PI / 180;

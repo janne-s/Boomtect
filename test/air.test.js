@@ -4,7 +4,7 @@ import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultScene } from '../src/domain/scene.js';
 import {
   airAtHeight, airDensityKilogramsPerCubicMetre, atmosphericAbsorptionDbPerMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond
-} from '../src/domain/air.js';
+} from '../src/shared/domain/air.js';
 
 test('speed of sound follows sqrt(γRT)', () => {
   assert.ok(Math.abs(speedOfSoundMetresPerSecond(20) - 343.23) < .01);
@@ -68,7 +68,7 @@ test('near the ground, layered absorption renders a blast within 0.05 dB of the 
 });
 
 test('above the tropopause the standard atmosphere keeps 216.65 K and its pressure falls exponentially', async () => {
-  const { temperatureAtHeightKelvin } = await import('../src/domain/air.js');
+  const { temperatureAtHeightKelvin } = await import('../src/shared/domain/air.js');
   const isa = { temperatureCelsius: 15, pressureKpa: 101.325, lapseRateKelvinPerMetre: .0065, tropopauseMetres: 11000 };
   assert.ok(Math.abs(temperatureAtHeightKelvin(isa, 12000) - 216.65) < 1e-9);
   // ISO 2533: 22 632 Pa at 11 km and 12 045 Pa at 15 km.

@@ -1,5 +1,5 @@
 import { FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, UPPER_AIR } from './constants.js';
-import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { carlsonBoom } from './flight.js';
 
 /** Air class B/C, wind class C, rays class A on that profile, pressure class C (Rickley & Pierce 1980, FAA-EE-80-22). */

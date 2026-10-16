@@ -1,4 +1,4 @@
-import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from './air.js';
+import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { THUNDER } from './constants.js';
 import { nWaveDurationForPeak } from './pulses.js';
 import { createRandom, normalDeviate, uniform } from '../shared/domain/random.js';

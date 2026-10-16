@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/domain/air.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/shared/domain/air.js';
 import { BOOSTER, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED } from '../src/domain/constants.js';
 import { boosterPath, flightBooms } from '../src/domain/flight.js';
 import { tripleSpectrum } from '../src/domain/pulses.js';
-import { soundSpeedProfile } from '../src/domain/refraction.js';
+import { soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBooster, defaultScene, parseScene, serializeScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';

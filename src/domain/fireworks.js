@@ -1,5 +1,5 @@
 import { BLAST, FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED } from './constants.js';
-import { airDensityKilogramsPerCubicMetre } from './air.js';
+import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 const G = STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED;

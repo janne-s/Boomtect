@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BLAST, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from '../src/domain/constants.js';
-import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/domain/air.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/shared/domain/air.js';
 import { meteorBlast, meteorBoom, meteorBursts, meteorKineticEnergy, meteorTrail, showerMembers } from '../src/domain/meteor.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
@@ -157,7 +157,7 @@ test('a shower’s meteors come from one radiant, seeded, at their count and ove
 test('a meteor’s cone is drawn with the speed of sound at its height, not the linear fit extended far above it', async () => {
   const { machCone } = await import('../src/domain/flight.js');
   const { meteorTrack } = await import('../src/domain/meteor.js');
-  const { soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const { soundSpeedProfile } = await import('../src/shared/domain/refraction.js');
   const parsed = parseScene(plainScene('sonic'));
   const meteor = { ...defaultMeteor(), endHeightMetres: 60000 };
   const track = meteorTrack(meteor);

@@ -2,7 +2,7 @@ import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
 import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flight.js';
 import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
-import { FLAT_SURFACE, terrainSurface } from '../domain/terrain.js';
+import { FLAT_SURFACE, terrainSurface } from '../shared/domain/terrain.js';
 
 const caches = new WeakMap();
 let surface = FLAT_SURFACE;

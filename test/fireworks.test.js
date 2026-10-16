@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { airDensityKilogramsPerCubicMetre } from '../src/domain/air.js';
+import { airDensityKilogramsPerCubicMetre } from '../src/shared/domain/air.js';
 import { FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { fireworksBlasts, fireworksShells, shellFlight, shellPops } from '../src/domain/fireworks.js';

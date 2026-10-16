@@ -1,5 +1,5 @@
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, METEOR, THUNDER, TNT_JOULES_PER_KILOGRAM } from './constants.js';
-import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { stationaryArrivals } from './flight.js';
 import { weakShockPulse } from './lightning.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';

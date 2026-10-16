@@ -131,7 +131,7 @@ test('convolution of a long signal in blocks, three signals sharing transforms, 
 });
 
 test('the surroundings hear the forest tail, and stretches of the pressure sum to the tails of the whole', async () => {
-  const { diffuseTails } = await import('../src/domain/forest.js');
+  const { diffuseTails } = await import('../src/shared/domain/forest.js');
   const pressure = Float64Array.from({ length: 700 }, (_, index) => (index < 650 ? Math.sin(index * .3) * Math.exp(-index / 300) : 0));
   const kernels = (length, scale) => [0, 1, 2].map(channel => Float64Array.from({ length }, (_, index) => Math.exp(-index / (scale + channel)) * Math.cos(index * .7)));
   const responses = { forest: kernels(30, 5), surroundings: kernels(90, 20) };
@@ -154,7 +154,7 @@ test('the surroundings hear the forest tail, and stretches of the pressure sum t
 });
 
 test('a diffuse tail adds the omnidirectional pressure convolved with each channel own response, in blocks', async () => {
-  const { addForestTail } = await import('../src/domain/forest.js');
+  const { addForestTail } = await import('../src/shared/domain/forest.js');
   const outputs = [0, 1, 2].map(channel => Float64Array.from({ length: 900 }, (_, index) => (index < 600 ? Math.sin(index * (.4 + .1 * channel)) : 0)));
   const pressure = outputs[0].slice();
   const responses = [0, 1, 2].map(channel => Float64Array.from({ length: 40 }, (_, index) => Math.exp(-index / (8 + channel)) * Math.cos(index * .5)));

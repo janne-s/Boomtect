@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
+import { speedOfSoundMetresPerSecond } from '../src/shared/domain/air.js';
 import { THUNDER } from '../src/domain/constants.js';
 import { blastSources, emitterSources, kinneyGrahamOverpressureRatio } from '../src/domain/emitters.js';
 import { lightningEmitterFlashes, relaxationRadiusMetres, segmentsFromPoints, tortuousPath, weakShockPulse } from '../src/domain/lightning.js';

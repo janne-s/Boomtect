@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { composeListening } from '../src/ui/listening.js';
+import { composeListening } from '../src/shared/ui/listening.js';
 import { defaultScene, parseScene } from '../src/domain/scene.js';
 
 test('playback without the real delay starts at the first sound, not at the render frame before it', () => {

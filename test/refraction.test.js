@@ -4,7 +4,7 @@ import { prepareScene, receiverPaths } from '../src/domain/render.js';
 import { defaultScene } from '../src/domain/scene.js';
 import {
   alongProfile, creepingCoefficient, firstArrival, grazingRange, inShadow, PATH_DIRECT, PATH_SHADOW, multipleReflections, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt, travelSeconds, wavefront
-} from '../src/domain/refraction.js';
+} from '../src/shared/domain/refraction.js';
 
 const air = (overrides = {}) => ({
   temperatureCelsius: 15, relativeHumidityPercent: 70, pressureKpa: 101.325, lapseRateKelvinPerMetre: .0065, refraction: true, ...overrides
@@ -317,8 +317,8 @@ test('the spreading of rays with several contacts equals the ray tube of neighbo
 });
 
 test('a path above the fit height takes the true time of the layered air on a straight vertical path, and lower paths keep the profile', async () => {
-  const { pathProfile } = await import('../src/domain/refraction.js');
-  const { temperatureAtHeightKelvin } = await import('../src/domain/air.js');
+  const { pathProfile } = await import('../src/shared/domain/refraction.js');
+  const { temperatureAtHeightKelvin } = await import('../src/shared/domain/air.js');
   const layered = air({ tropopauseMetres: 11000 });
   const profile = soundSpeedProfile(layered);
   const top = { x: 0, y: 0, z: 14000 };

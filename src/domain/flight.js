@@ -1,7 +1,7 @@
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
-import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from './refraction.js';
-import { onGround } from './terrain.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
+import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from '../shared/domain/refraction.js';
+import { onGround } from '../shared/domain/terrain.js';
 
 /** Booms where the arrival is stationary, class A; Carlson's simplified method (NASA TP-1122, 1978), class B with K_p = K_t = 1 class C; focusing class B, its limit class C. */
 

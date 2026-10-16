@@ -1,9 +1,9 @@
 import { FIREWORKS, RENDER, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW } from '../domain/constants.js';
-import { airDensityKilogramsPerCubicMetre } from '../domain/air.js';
+import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
-import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domain/refraction.js';
-import { meanPlaneFrame } from '../domain/terrain-propagation.js';
+import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../shared/domain/refraction.js';
+import { meanPlaneFrame } from '../shared/domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from '../shared/ui/canvas.js';
 import { cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isTrackKind, useTerrain } from './geometry-cache.js';
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { airy } from '../src/shared/domain/airy.js';
 import { GROUND } from '../src/domain/constants.js';
-import { creepingLossRatios, creepingTransitionHz, modeRoot, SOFT_RATIO } from '../src/domain/creeping.js';
+import { creepingLossRatios, creepingTransitionHz, modeRoot, SOFT_RATIO } from '../src/shared/domain/creeping.js';
 import { fft } from '../src/shared/domain/fft.js';
 import { shadowResponse } from '../src/domain/render.js';
 

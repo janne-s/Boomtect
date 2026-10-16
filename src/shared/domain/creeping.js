@@ -1,4 +1,4 @@
-import { airy, divide, multiply } from '../shared/domain/airy.js';
+import { airy, divide, multiply } from './airy.js';
 import { PROPAGATION } from './constants.js';
 import { delanyBazleyImpedance } from './ground.js';
 

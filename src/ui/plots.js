@@ -1,5 +1,5 @@
 import { VIEW } from '../domain/constants.js';
-import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
+import { PATH_DIRECT, PATH_SHADOW } from '../shared/domain/refraction.js';
 import { fitCanvas, formatSeconds, niceStep, palette } from '../shared/ui/canvas.js';
 
 function resultWindow(result) {

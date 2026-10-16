@@ -3,10 +3,10 @@ import { MAXIMUM_AMBISONIC_ORDER } from '../shared/domain/ambisonics.js';
 import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
-import { GROUND_TYPES } from './ground.js';
+import { GROUND_TYPES } from '../shared/domain/ground.js';
 import { FLASH_TYPES } from './lightning.js';
 import { isSeed } from '../shared/domain/random.js';
-import { patchCount, rangeBounds, terrainRange } from './terrain.js';
+import { patchCount, rangeBounds, terrainRange } from '../shared/domain/terrain.js';
 
 const SCENE_FORMAT = 'boomtect.scene';
 const SCENE_VERSION = 29;

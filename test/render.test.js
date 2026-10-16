@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
-import { sphericalReflectionCoefficient } from '../src/domain/ground.js';
+import { speedOfSoundMetresPerSecond } from '../src/shared/domain/air.js';
+import { sphericalReflectionCoefficient } from '../src/shared/domain/ground.js';
 import { airShockImpedance, arrivalTable, blastStretch, combineSegments, compactPaths, partitionSeconds, prepareScene, receiverPaths, renderReceiver, renderReceiverRange } from '../src/domain/render.js';
 import { defaultBlast, defaultLightning, defaultReceiver, parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -205,7 +205,7 @@ test('the omnidirectional channel is the pressure and a source in the east sound
 });
 
 test('with refraction a lit blast arrives at the ray travel time and keeps its free-field level within 1 dB', async () => {
-  const { rayBetween, soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const { rayBetween, soundSpeedProfile } = await import('../src/shared/domain/refraction.js');
   const source = { x: 0, y: 0, z: 1000 };
   const mic = { x: 5000, y: 0, z: 1.7 };
   const bent = scene({ emitter: smallBlast(source), receivers: [receiverAt('mic', mic)], refraction: true });
@@ -244,7 +244,7 @@ test('an inversion brings a ground reflection to a distant microphone that refra
 
 test('the shadow response is causal, lossless at low frequencies, f^(1/3) creeping above, and ends in its frame tail', async () => {
   const { shadowResponse, shadowTailSeconds } = await import('../src/domain/render.js');
-  const { creepingCoefficient, soundSpeedProfile } = await import('../src/domain/refraction.js');
+  const { creepingCoefficient, soundSpeedProfile } = await import('../src/shared/domain/refraction.js');
   const { fft } = await import('../src/shared/domain/fft.js');
   const coefficient = creepingCoefficient(soundSpeedProfile({ temperatureCelsius: 15, lapseRateKelvinPerMetre: .0065, refraction: true }));
   const floor = 10 ** (-25 / 20);

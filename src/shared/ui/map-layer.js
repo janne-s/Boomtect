@@ -1,6 +1,6 @@
 import { VIEW } from '../domain/constants.js';
 import { mapTiles } from '../domain/terrain.js';
-import { palette } from '../shared/ui/canvas.js';
+import { palette } from './canvas.js';
 
 const TILE_URL = 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
 

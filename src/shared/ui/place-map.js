@@ -1,5 +1,5 @@
 import { VIEW } from '../domain/constants.js';
-import { fitCanvas, palette } from '../shared/ui/canvas.js';
+import { fitCanvas, palette } from './canvas.js';
 import { tilePixelMetres, tileX, tileY } from '../domain/terrain.js';
 
 const TILE_SIZE = 256;

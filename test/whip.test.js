@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { WHIP } from '../src/domain/constants.js';
 import { carlsonBoom, flightBooms, whipBody, whipPath } from '../src/domain/flight.js';
-import { soundSpeedProfile } from '../src/domain/refraction.js';
+import { soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultScene, defaultWhip, parseScene, serializeScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';

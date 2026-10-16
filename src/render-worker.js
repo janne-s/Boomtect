@@ -1,4 +1,4 @@
-import { diffuseTails } from './domain/forest.js';
+import { diffuseTails } from './shared/domain/forest.js';
 import { prepareScene, renderReceiverRange, tailResponses, tracePart } from './domain/render.js';
 import { parseScene } from './domain/scene.js';
 

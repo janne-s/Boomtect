@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PROPAGATION } from '../src/domain/constants.js';
 import { assemblePaths, prepareScene, receiverPaths, renderReceiver, tracePart } from '../src/domain/render.js';
-import { PATH_ECHO, PATH_SCATTER } from '../src/domain/refraction.js';
+import { PATH_ECHO, PATH_SCATTER } from '../src/shared/domain/refraction.js';
 import { defaultBlast, defaultFlight, defaultLightning, parseScene } from '../src/domain/scene.js';
 import { sourceTable } from '../src/domain/source-table.js';
-import { terrainSurface } from '../src/domain/terrain.js';
+import { terrainSurface } from '../src/shared/domain/terrain.js';
 import { syntheticTerrain } from './terrain-fixture.js';
-import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
+import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/shared/domain/terrain-echoes.js';
 import { createRandom } from '../src/shared/domain/random.js';
 import { plainScene } from './plain-scene.js';
 
@@ -285,7 +285,7 @@ test('a boom over hills echoes from them, after it and from where it left the fl
 });
 
 test('echo candidates come strongest at the receiver first, ties by kind and then in their own order', async () => {
-  const { strongestFirst } = await import('../src/domain/terrain-echoes.js');
+  const { strongestFirst } = await import('../src/shared/domain/terrain-echoes.js');
   const random = createRandom(7);
   const candidates = Array.from({ length: 500 }, (_, index) => ({
     index,

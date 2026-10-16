@@ -1,39 +1,39 @@
-import { atmosphericAbsorptionNepersPerMetre } from './domain/air.js';
+import { atmosphericAbsorptionNepersPerMetre } from './shared/domain/air.js';
 import { APP_VERSION, BLAST, FLIGHT, GROUND, MODEL_VERSION, REFERENCE_SOUND_PRESSURE_PA, RENDER, RENDER_COST, THUNDER, VIEW } from './domain/constants.js';
 import { blastSources, emitterSources } from './domain/emitters.js';
 import { EXPLOSIVE_TYPES } from './domain/explosives.js';
-import { GROUND_LABELS, GROUND_TYPES } from './domain/ground.js';
+import { GROUND_LABELS, GROUND_TYPES } from './shared/domain/ground.js';
 import { emissionSeconds } from './domain/lightning.js';
 import { newSeed } from './shared/domain/random.js';
-import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './domain/refraction.js';
+import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from './shared/domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, prepareScene, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from './domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultMeteor, defaultShower, defaultWhip, defaultLightning, defaultReceiver, defaultScene, defaultStorm, emitterAnchor, headingToward, MODES, PARAMETERS, parseScene, placeLabel, readScene, serializeScene, TERRAIN_DEFAULTS
 } from './domain/scene.js';
-import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './ui/export-package.js';
+import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './shared/ui/export-package.js';
 import { soundHandoff } from './domain/sound-handoff.js';
 import { handoffMessage } from './shared/domain/handoff.js';
 import { ECHOTECT_URL, openTect } from './ui/tect-link.js';
 import { formatMetres, formatSeconds, microphoneColor } from './shared/ui/canvas.js';
 import { actionField, checkboxField, numberField, pointFields, seedField, selectField, textField } from './ui/fields.js';
-import { capturePatches, fetchPlaceNames, searchPlace } from './ui/terrain-loader.js';
-import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from './domain/terrain.js';
-import { createPlaceMap } from './ui/place-map.js';
+import { capturePatches, fetchPlaceNames, searchPlace } from './shared/ui/terrain-loader.js';
+import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from './shared/domain/terrain.js';
+import { createPlaceMap } from './shared/ui/place-map.js';
 import { createCubeView } from './ui/cube-view.js';
-import { createMapLayer } from './ui/map-layer.js';
+import { createMapLayer } from './shared/ui/map-layer.js';
 import { createLatestTask } from './shared/ui/latest-task.js';
 import { sceneInMode } from './domain/scene-mode.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, currentSurface, isFieldKind, isFlightKind, isTrackKind, useTerrain } from './ui/geometry-cache.js';
 import { BODY_TYPES, carlsonBoom, machCone } from './domain/flight.js';
 import { meteorBoom, showerMembers } from './domain/meteor.js';
 import { entryText, formatCharge, macrosFor, parseEntry } from './ui/macros.js';
-import { composeListening, LISTENING_LABELS, listeningKind } from './ui/listening.js';
-import { createOrientationBall } from './ui/orientation-ball.js';
+import { composeListening, LISTENING_LABELS, listeningKind } from './shared/ui/listening.js';
+import { createOrientationBall } from './shared/ui/orientation-ball.js';
 import { createMobileLayout } from './ui/mobile.js';
 import { createSettings } from './ui/settings.js';
-import { createPlayer } from './ui/player.js';
+import { createPlayer } from './shared/ui/player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './ui/plots.js';
-import { attachSplitters } from './ui/splitters.js';
+import { attachSplitters } from './shared/ui/splitters.js';
 import { attachTimelineSeek } from './shared/ui/timeline.js';
 import { createRenderMarker, unfinishedRenderText } from './shared/ui/render-marker.js';
 
@@ -611,7 +611,7 @@ const earCache = new Map();
 
 function earOnWorker(parts, sampleRate, setting) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./ear-worker.js', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('./shared/ear-worker.js', import.meta.url), { type: 'module' });
     worker.addEventListener('message', ({ data }) => {
       worker.terminate();
       if (data.type === 'error') reject(new Error(data.message));

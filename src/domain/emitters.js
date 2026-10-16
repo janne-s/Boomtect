@@ -7,10 +7,10 @@ import { flightMembers } from './flight.js';
 import { meteorBursts, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from './pulses.js';
-import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
+import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { stormFlashes, stormFlashSequence } from './storm.js';
 import { sourceTable, sourceTableBuilder } from './source-table.js';
-import { onGround } from './terrain.js';
+import { onGround } from '../shared/domain/terrain.js';
 
 export const EMITTER_KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster', 'fireworks']);
 

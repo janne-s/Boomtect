@@ -1,5 +1,5 @@
 import { GROUND } from './constants.js';
-import { faddeeva } from '../shared/domain/faddeeva.js';
+import { faddeeva } from './faddeeva.js';
 
 /** Class A for a calm surface. */
 const REFLECTING_GROUNDS = Object.freeze(['rigid', 'water']);

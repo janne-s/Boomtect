@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
 import { fft } from '../src/shared/domain/fft.js';
-import { deygoutEdges, edgeField, fresnelIntegrals, knifeEdge, roundingDecibels } from '../src/domain/diffraction.js';
+import { deygoutEdges, edgeField, fresnelIntegrals, knifeEdge, roundingDecibels } from '../src/shared/domain/diffraction.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
-import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';
+import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { defaultBlast, defaultReceiver, defaultScene, parseScene } from '../src/domain/scene.js';
-import { buildPatch, decodePatch, encodePatch, mapTiles, patchMetres, patchRange, rangeBounds, terrainSurface, tilePlan } from '../src/domain/terrain.js';
+import { buildPatch, decodePatch, encodePatch, mapTiles, patchMetres, patchRange, rangeBounds, terrainSurface, tilePlan } from '../src/shared/domain/terrain.js';
 import { syntheticTerrain } from './terrain-fixture.js';
-import { meanPlaneFrame, shieldingEdges, shiftedProfile, terrainReflection } from '../src/domain/terrain-propagation.js';
+import { meanPlaneFrame, shieldingEdges, shiftedProfile, terrainReflection } from '../src/shared/domain/terrain-propagation.js';
 
 const terrain = (height, options = {}) => syntheticTerrain(height, { echoes: false, echoLimit: 200, ...options });
 

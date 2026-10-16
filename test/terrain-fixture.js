@@ -1,6 +1,6 @@
 import { GROUND } from '../src/domain/constants.js';
 import { DEFAULT_PLACE, TERRAIN_DEFAULTS } from '../src/domain/scene.js';
-import { buildPatch, patchRange, rangePatches } from '../src/domain/terrain.js';
+import { buildPatch, patchRange, rangePatches } from '../src/shared/domain/terrain.js';
 
 export function syntheticTerrain(height, { cells = 100, extentMetres = 4000, ...settings } = {}) {
   const half = extentMetres / 2;
