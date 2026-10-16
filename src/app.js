@@ -20,13 +20,17 @@ startFrame({
   anchor: emitterAnchor,
   add: ADD_EMITTERS,
   modes: {
-    thunder: { icon: 'fa-bolt' },
-    blast: { icon: 'fa-explosion', arrivalsByDirection: true },
-    sonic: { icon: 'fa-jet-fighter', upperWind: true }
+    thunder: { label: 'Thunder', button: 'fa-bolt', icon: 'fa-bolt' },
+    blast: { label: 'Blast', button: 'fa-explosion', icon: 'fa-explosion', arrivalsByDirection: true },
+    sonic: { label: 'Sonic', button: 'fa-wave-square', icon: 'fa-jet-fighter', upperWind: true }
   },
   preferences: { cone: true, clouds: true },
   toggles: {
-    cone: { hidden: scene => scene.mode !== 'sonic' },
-    clouds: { hidden: scene => !scene.emitters.some(emitter => emitter.kind === 'storm') }
+    cone: {
+      label: 'Mach cone',
+      icon: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="18" cy="12" rx="3" ry="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M18 4 3 12l15 8M3 12h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+      hidden: scene => scene.mode !== 'sonic'
+    },
+    clouds: { label: 'Cloud', icon: '<i class="fa-solid fa-cloud" aria-hidden="true"></i>', hidden: scene => !scene.emitters.some(emitter => emitter.kind === 'storm') }
   }
 });

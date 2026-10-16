@@ -22,18 +22,15 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="assets/vendor/fontawesome/css/fontawesome.min.css" />
     <link rel="stylesheet" href="assets/vendor/fontawesome/css/solid.min.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="src/shared/styles.css" />
+    <link rel="stylesheet" href="theme.css" />
     <script type="module" src="src/shared/app-reset.js"></script>
     <script type="module" src="src/app.js"></script>
   </head>
   <body>
     <header class="bar">
       <span class="brand">Boomtect</span>
-      <div class="modes" role="radiogroup" aria-label="Mode">
-        <button type="button" role="radio" data-mode="thunder" aria-checked="true" aria-label="Thunder" title="Thunder"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Thunder</span></button>
-        <button type="button" role="radio" data-mode="blast" aria-checked="false" aria-label="Blast" title="Blast"><i class="fa-solid fa-explosion" aria-hidden="true"></i><span>Blast</span></button>
-        <button type="button" role="radio" data-mode="sonic" aria-checked="false" aria-label="Sonic" title="Sonic"><i class="fa-solid fa-wave-square" aria-hidden="true"></i><span>Sonic</span></button>
-      </div>
+      <div class="modes" role="radiogroup" aria-label="Mode"></div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false">Play</button>
       <button type="button" class="icon-toggle" id="settings" data-recovery-dialog="settings-dialog" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
       <div class="icon-toggles" role="group" aria-label="Rendering and playback">
@@ -62,8 +59,6 @@
         <div class="view-side">
           <div class="icon-toggles view-tools" role="toolbar" aria-label="View" aria-orientation="vertical">
             <button type="button" class="icon-toggle" id="wavefront" aria-pressed="false" aria-label="Wavefronts" title="Wavefronts"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></button>
-            <button type="button" class="icon-toggle" id="cone" aria-pressed="false" aria-label="Mach cone" title="Mach cone" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="18" cy="12" rx="3" ry="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M18 4 3 12l15 8M3 12h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
-            <button type="button" class="icon-toggle" id="clouds" aria-pressed="false" aria-label="Cloud" title="Cloud" hidden><i class="fa-solid fa-cloud" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="names" aria-pressed="false" aria-label="Place names" title="Place names" hidden><i class="fa-solid fa-tag" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="map" aria-pressed="false" aria-label="Map" title="Map" hidden><i class="fa-solid fa-map" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="zoom-in" aria-label="Zoom in" title="Zoom in" hidden><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
@@ -105,21 +100,8 @@
           <button type="button" id="sheet-close" class="primary">Done</button>
         </header>
         <section data-sheet="emitters">
-          <h2><i class="fa-solid fa-bolt emitter-icon" aria-hidden="true"></i>Emitters</h2>
-          <div class="row-buttons add-row">
-            <button type="button" id="add-lightning" data-mode="thunder">+ Ground flash</button>
-            <button type="button" id="add-cloud" data-mode="thunder">+ Cloud flash</button>
-            <button type="button" id="add-storm" data-mode="thunder">+ Storm</button>
-            <button type="button" id="add-blast" data-mode="blast">+ Blast</button>
-            <button type="button" id="add-barrage" data-mode="blast">+ Barrage</button>
-            <button type="button" id="add-fireworks" data-mode="blast">+ Fireworks</button>
-            <button type="button" id="add-flight" data-mode="sonic">+ Flight</button>
-            <button type="button" id="add-formation" data-mode="sonic">+ Formation</button>
-            <button type="button" id="add-meteor" data-mode="sonic">+ Meteor</button>
-            <button type="button" id="add-shower" data-mode="sonic">+ Shower</button>
-            <button type="button" id="add-whip" data-mode="sonic">+ Whip</button>
-            <button type="button" id="add-booster" data-mode="sonic">+ Booster</button>
-          </div>
+          <h2><i class="fa-solid emitter-icon" aria-hidden="true"></i>Emitters</h2>
+          <div class="row-buttons add-row"></div>
           <div class="list" id="emitter-list"></div>
         </section>
         <section data-sheet="receivers">
@@ -161,7 +143,7 @@
         </figure>
       </section>
       <nav class="sheet-tabs" aria-label="Panels">
-        <button type="button" data-sheet="emitters" aria-label="Emitters" title="Emitters"><i class="fa-solid fa-bolt emitter-icon" aria-hidden="true"></i></button>
+        <button type="button" data-sheet="emitters" aria-label="Emitters" title="Emitters"><i class="fa-solid emitter-icon" aria-hidden="true"></i></button>
         <button type="button" data-sheet="receivers" aria-label="Microphones" title="Microphones"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
         <button type="button" data-sheet="environment" aria-label="Air and ground" title="Air and ground"><i class="fa-solid fa-wind" aria-hidden="true"></i></button>
         <button type="button" data-sheet="terrain" aria-label="Terrain" title="Terrain"><i class="fa-solid fa-mountain" aria-hidden="true"></i></button>

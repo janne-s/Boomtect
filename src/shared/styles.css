@@ -1,47 +1,5 @@
 :root {
   color-scheme: dark;
-  --bg: #11161c;
-  --panel: #19212a;
-  --panel-dim: #141a21;
-  --raised: #222c37;
-  --band-hover: #0d1116;
-  --line: #2e3a46;
-  --ink: #e3e9ef;
-  --muted: #8b99a8;
-  --faint: #56636f;
-  --accent: #ff9a45;
-  --accent-soft: rgba(255, 154, 69, .16);
-  --accent-hover: #ffad66;
-  --ground: #18212b;
-  --wall: #151c24;
-  --grid: #222c37;
-  --shadow: rgba(139, 160, 186, .22);
-  --cloud: rgba(150, 175, 205, .07);
-  --storm-base: #10161d;
-  --storm-top: #46525f;
-  --lightning: #8fb6e6;
-  --flash: #f2f8ff;
-  --glow: #9cc9ff;
-  --start: #0c1015;
-  --end: #f3f6fa;
-  --receiver: #dfe6ee;
-  --direct: #8fb6e6;
-  --reflected: #6c7c8e;
-  --cloud-handle: #7d95b3;
-  --mic-1: #e3e9ef;
-  --mic-2: #8fb6e6;
-  --mic-3: #7fcfc0;
-  --mic-4: #b7a6ec;
-  --mic-5: #e59ab5;
-  --mic-6: #b5d67a;
-  --mic-7: #6fd3e8;
-  --mic-8: #93a4b8;
-  --firework-1: #ff5a4f;
-  --firework-2: #52e07a;
-  --firework-3: #5b8cff;
-  --firework-4: #ffc94a;
-  --firework-5: #e9eef5;
-  --firework-6: #c77dff;
   font-family:
     Inter,
     ui-sans-serif,
@@ -91,7 +49,7 @@ button:disabled {
 button.primary {
   min-width: 64px;
   background: var(--accent);
-  color: #1a1208;
+  color: var(--on-accent);
   font-weight: 600;
 }
 button.primary:hover:not(:disabled) {
@@ -155,7 +113,7 @@ input[type="checkbox"] {
 input[type="checkbox"]::before {
   width: 8px;
   height: 8px;
-  background: #1a1208;
+  background: var(--on-accent);
   clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
   content: "";
   transform: scale(0);
@@ -834,7 +792,7 @@ dialog {
   padding: 0;
 }
 dialog::backdrop {
-  background: rgba(8, 11, 15, .6);
+  background: var(--backdrop);
 }
 .details-header {
   display: flex;

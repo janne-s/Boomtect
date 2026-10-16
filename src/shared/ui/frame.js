@@ -22,7 +22,7 @@ import { composeListening, LISTENING_LABELS, listeningKind } from './listening.j
 import { createOrientationBall } from './orientation-ball.js';
 import { createMobileLayout } from './mobile.js';
 import { createSettings } from './settings.js';
-import { createPlayer } from './player.js';
+import { createPlayer, renderComposition } from './player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './plots.js';
 import { attachSplitters } from './splitters.js';
 import { attachTimelineSeek } from './timeline.js';
@@ -35,6 +35,14 @@ export function startFrame(tect) {
   } = tect;
   const { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene } = tect.scene;
   const { actionField, checkboxField, numberField, pointFields, selectField, textField } = tect.fields;
+
+  for (const [mode, { label, button: icon }] of Object.entries(MODE_SETTINGS)) {
+    document.querySelector('.modes').insertAdjacentHTML('beforeend', `<button type="button" role="radio" data-mode="${mode}" aria-checked="${mode === MODES[0]}" aria-label="${label}" title="${label}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${label}</span></button>`);
+  }
+  for (const [id, { mode, label }] of Object.entries(ADD_EMITTERS)) {
+    document.querySelector('.add-row').insertAdjacentHTML('beforeend', `<button type="button" id="add-${id}" data-mode="${mode}">+ ${label}</button>`);
+  }
+  document.getElementById('wavefront').insertAdjacentHTML('afterend', Object.entries(tectToggles).map(([id, { label, icon }]) => `<button type="button" class="icon-toggle" id="${id}" aria-pressed="false" aria-label="${label}" title="${label}" hidden>${icon}</button>`).join(''));
 
   const sceneStorageKey = mode => `${prefix}.scene.${mode}`;
   const PREFERENCES_STORAGE_KEY = `${prefix}.preferences`;
@@ -669,13 +677,38 @@ export function startFrame(tect) {
     listening().catch(error => setStatus(`Ear model failed: ${error.message}`, true));
   }
 
+  const decodedPeaks = new WeakMap();
+
+  /** The binaural decoder changes both peak and level with the content and the order, so the heard peak is measured after it. */
+  function decodedPeak(composition) {
+    if (!decodedPeaks.has(state.results)) decodedPeaks.set(state.results, new Map());
+    const peaks = decodedPeaks.get(state.results);
+    const key = [composition.kind, composition.order, composition.peakPa, composition.startSeconds, composition.length,
+      ...composition.heads.map(head => `${head.receiverId}:${head.headingDegrees}:${head.pitchDegrees}`), ...composition.omnis.map(omni => omni.receiverId)].join('|');
+    if (!peaks.has(key)) {
+      const peak = renderComposition(composition, 1).then(channels => {
+        let value = 0;
+        for (const channel of channels) for (const sample of channel) value = Math.max(value, Math.abs(sample));
+        return value;
+      });
+      peak.catch(() => { if (peaks.get(key) === peak) peaks.delete(key); });
+      peaks.set(key, peak);
+    }
+    return peaks.get(key);
+  }
+
   async function listening() {
     const composition = await earApplied(composeListening(state.scene, state.results));
     if (!composition) return null;
     let gain = outputGainForPeak(composition.peakPa);
     if (composition.heads.length) gain *= RENDER.binauralHeadroom;
     if (composition.kind === 'mix') gain /= Math.sqrt(composition.parts);
-    return { composition, gain };
+    let playbackGain = gain;
+    if (composition.heads.length) {
+      const peak = await decodedPeak(composition);
+      if (peak > 0) playbackGain = outputGainForPeak(composition.peakPa) * composition.peakPa / peak;
+    }
+    return { composition, gain, playbackGain };
   }
 
   function savePreferences() {
@@ -1649,7 +1682,7 @@ export function startFrame(tect) {
       const clock = player.clock();
       if (!player.playing() || !clock) return;
       if (!current) { player.stop(); syncPlayButton(); return; }
-      started = await player.play(current.composition, current.gain, {
+      started = await player.play(current.composition, current.playbackGain, {
         realDelay: state.preferences.realDelay, onEnded: syncPlayButton, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
       });
     } catch (error) {
@@ -1666,9 +1699,9 @@ export function startFrame(tect) {
 
   /** Call it first thing in a user gesture, which the audio context needs. */
   async function startPlayback() {
-    const unlocked = player.unlock(state.scene.render.sampleRate);
     const { results } = state;
     try {
+      const unlocked = player.unlock(state.scene.render.sampleRate);
       let current;
       let scene;
       do {
@@ -1682,7 +1715,7 @@ export function startFrame(tect) {
       state.pause = null;
       const options = { realDelay: state.preferences.realDelay, onEnded: syncPlayButton };
       if (from) Object.assign(options, { atSceneSeconds: from.seconds, skippedSeconds: from.skippedSeconds });
-      if (await player.play(current.composition, current.gain, options)) showPlaying();
+      if (await player.play(current.composition, current.playbackGain, options)) showPlaying();
     } catch (error) {
       player.stop();
       syncPlayButton();
@@ -2139,8 +2172,8 @@ export function startFrame(tect) {
     $('attribution-text').hidden = !open;
     $('attribution-button').setAttribute('aria-expanded', String(open));
   });
-  for (const [idPrefix, [create, base]] of Object.entries(ADD_EMITTERS)) {
-    $(`add-${idPrefix}`).addEventListener('click', () => addEmitter(scene => create(uniqueId(idPrefix, scene.emitters), `${base} ${scene.emitters.length + 1}`, newSeed())));
+  for (const [idPrefix, { create, label }] of Object.entries(ADD_EMITTERS)) {
+    $(`add-${idPrefix}`).addEventListener('click', () => addEmitter(scene => create(uniqueId(idPrefix, scene.emitters), `${label} ${scene.emitters.length + 1}`, newSeed())));
   }
   $('add-receiver').addEventListener('click', () => commit(scene => {
     const receiver = defaultReceiver(uniqueId('receiver', scene.receivers), `Mic ${scene.receivers.length + 1}`);

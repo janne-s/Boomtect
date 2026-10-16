@@ -341,8 +341,19 @@ export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [k
   eventSeconds: VIEW.flash.traverseSeconds + VIEW.flash.visibleSeconds
 })])));
 
+const add = (create, label, mode) => Object.freeze({ create, label, mode });
+
 export const ADD_EMITTERS = Object.freeze({
-  lightning: [defaultLightning, 'Ground flash'], cloud: [defaultCloudFlash, 'Cloud flash'], storm: [defaultStorm, 'Storm'],
-  meteor: [defaultMeteor, 'Meteor'], shower: [defaultShower, 'Shower'], formation: [defaultFormation, 'Formation'], booster: [defaultBooster, 'Booster'],
-  whip: [defaultWhip, 'Whip'], flight: [defaultFlight, 'Flight'], fireworks: [defaultFireworks, 'Fireworks'], barrage: [defaultBarrage, 'Barrage'], blast: [defaultBlast, 'Blast']
+  lightning: add(defaultLightning, 'Ground flash', 'thunder'),
+  cloud: add(defaultCloudFlash, 'Cloud flash', 'thunder'),
+  storm: add(defaultStorm, 'Storm', 'thunder'),
+  blast: add(defaultBlast, 'Blast', 'blast'),
+  barrage: add(defaultBarrage, 'Barrage', 'blast'),
+  fireworks: add(defaultFireworks, 'Fireworks', 'blast'),
+  flight: add(defaultFlight, 'Flight', 'sonic'),
+  formation: add(defaultFormation, 'Formation', 'sonic'),
+  meteor: add(defaultMeteor, 'Meteor', 'sonic'),
+  shower: add(defaultShower, 'Shower', 'sonic'),
+  whip: add(defaultWhip, 'Whip', 'sonic'),
+  booster: add(defaultBooster, 'Booster', 'sonic')
 });

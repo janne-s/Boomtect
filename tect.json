@@ -1,0 +1,10 @@
+{
+  "name": "Boomtect",
+  "storage": "boomtect",
+  "title": "Boomtect · Make your own thunder",
+  "description": "Boomtect simulates the sound of lightning, blasts, and sonic booms from their physics: shape them in 3D, place microphones, and hear what arrives.",
+  "socialDescription": "Simulate the sound of lightning, blasts, and sonic booms from their physics. Shape a flash or a storm in 3D, place microphones over real terrain, and listen in stereo, binaurally, or export Ambisonics.",
+  "imageAlt": "Boomtect showing a branching lightning channel in 3D above a microphone, with its thunder's waveform",
+  "url": "https://janne-s.github.io/Boomtect/",
+  "repository": "https://github.com/janne-s/Boomtect"
+}
