@@ -48,6 +48,35 @@ export function withApproach(path, air) {
   return approach;
 }
 
+const CONE_TURN_RADIANS = 15 * Math.PI / 180;
+const MOST_CONE_RINGS = 64;
+const turns = new WeakMap();
+const powerOfTwoAbove = value => 2 ** Math.max(0, Math.ceil(Math.log2(Math.max(1, value))));
+
+function largestTurn(path) {
+  if (turns.has(path)) return turns.get(path);
+  const along = (index, axis) => path[axis][index + 1] - path[axis][index];
+  let turn = 0;
+  for (let index = 1; index < path.seconds.length - 1; index += 1) {
+    const [ax, ay, az, bx, by, bz] = [along(index - 1, 'x'), along(index - 1, 'y'), along(index - 1, 'z'), along(index, 'x'), along(index, 'y'), along(index, 'z')];
+    const cosine = (ax * bx + ay * by + az * bz) / (Math.hypot(ax, ay, az) * Math.hypot(bx, by, bz) || 1);
+    turn = Math.max(turn, Math.acos(Math.max(-1, Math.min(1, cosine))));
+  }
+  turns.set(path, turn);
+  return turn;
+}
+
+/**
+ * Rings sit on a grid of the path whose spacing is a power of two in samples, so that each keeps its emission
+ * point as the cone grows and the grid changes only when the flight so far doubles; a turn takes them closer.
+ */
+function coneStride(path, end) {
+  const turn = largestTurn(path);
+  const even = 2 ** Math.max(0, Math.floor(Math.log2(Math.max(1, end / VIEW.cone.rings))));
+  const turning = turn > 0 ? 2 ** Math.floor(Math.log2(Math.max(1, CONE_TURN_RADIANS / turn))) : even;
+  return Math.max(powerOfTwoAbove(end / MOST_CONE_RINGS), Math.min(even, turning));
+}
+
 export function machCone(path, now, profile) {
   const count = path.seconds.length;
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
@@ -66,8 +95,11 @@ export function machCone(path, now, profile) {
   const apex = flying && end === last;
   const rings = [];
   const radii = [];
-  for (let ring = apex ? 1 : 0; ring <= VIEW.cone.rings; ring += 1) {
-    const index = Math.round(end * (1 - ring / VIEW.cone.rings));
+  const stride = coneStride(path, end);
+  const indices = [];
+  if (!apex) indices.push(end);
+  for (let index = Math.floor(end / stride) * stride; index >= 0; index -= stride) if (index !== end) indices.push(index);
+  for (const index of indices) {
     const before = at(Math.max(0, index - 1));
     const after = at(Math.min(count - 1, index + 1));
     const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
