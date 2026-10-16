@@ -1,7 +1,8 @@
-import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
+import { BOOSTER, FLIGHT, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW, WHIP } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { inShadow, localProfile, pathProfile, rayBetween, shadowPath, speedAt, travelSeconds, wavefront } from '../shared/domain/refraction.js';
 import { onGround } from '../shared/domain/terrain.js';
+import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
 /** Booms where the arrival is stationary, class A; Carlson's simplified method (NASA TP-1122, 1978), class B with K_p = K_t = 1 class C; focusing class B, its limit class C. */
 
@@ -30,37 +31,11 @@ export function flightMembers(emitter) {
   });
 }
 
-const STEP_SECONDS = .05;
-const MAXIMUM_STEPS = 12000;
-const STOPPED_METRES_PER_SECOND = 1;
 
 const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_, step) => {
   const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
   return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
 }));
-const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
-
-export function flightPath(flight, air) {
-  const steps = Math.min(MAXIMUM_STEPS, Math.max(2, Math.ceil(flight.durationSeconds / STEP_SECONDS)));
-  const step = flight.durationSeconds / steps;
-  const climb = flight.climbDegrees * Math.PI / 180;
-  const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step };
-  let { x, y, z } = flight.startMetres;
-  let speed = flight.mach * soundSpeedAt(air, z);
-  for (let index = 0; index <= steps; index += 1) {
-    const t = index * step;
-    const heading = (flight.headingDegrees + flight.turnDegreesPerSecond * t) * Math.PI / 180;
-    const vx = speed * Math.cos(climb) * Math.sin(heading);
-    const vy = speed * Math.cos(climb) * Math.cos(heading);
-    const vz = speed * Math.sin(climb);
-    path.seconds.push(flight.startSeconds + t); path.x.push(x); path.y.push(y); path.z.push(z);
-    path.vx.push(vx); path.vy.push(vy); path.vz.push(vz); path.speed.push(speed);
-    x += vx * step; y += vy * step; z += vz * step;
-    speed += flight.accelerationMetresPerSecondSquared * step;
-    if (z < 0 || speed < STOPPED_METRES_PER_SECOND) break;
-  }
-  return path;
-}
 
 export function whipPath(whip, air, surface = null) {
   const climb = whip.climbDegrees * Math.PI / 180;
@@ -159,23 +134,6 @@ export function boosterPath(booster, air, surface = null) {
 }
 
 export const whipBody = whip => ({ lengthMetres: whip.crackerLengthMetres, shapeFactor: whip.crackerShapeFactor });
-
-export function withApproach(path, air) {
-  const speed = path.speed[0];
-  const mach = speed / soundSpeedAt(air, path.z[0]);
-  if (!(mach > 1)) return path;
-  const metres = FLIGHT.approachHeights * Math.max(0, path.z[0]) / Math.sqrt(mach * mach - 1) + FLIGHT.approachMetres;
-  const steps = Math.min(MAXIMUM_STEPS, Math.ceil(metres / speed / path.step));
-  const approach = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step: path.step };
-  for (let index = steps; index >= 1; index -= 1) {
-    const t = index * path.step;
-    approach.seconds.push(path.seconds[0] - t);
-    approach.x.push(path.x[0] - path.vx[0] * t); approach.y.push(path.y[0] - path.vy[0] * t); approach.z.push(path.z[0] - path.vz[0] * t);
-    approach.vx.push(path.vx[0]); approach.vy.push(path.vy[0]); approach.vz.push(path.vz[0]); approach.speed.push(speed);
-  }
-  for (const key of ['seconds', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'speed']) approach[key].push(...path[key]);
-  return approach;
-}
 
 export function carlsonBoom({ mach, vehiclePressurePa, groundPressurePa, vehicleSoundSpeed, lengthMetres, shapeFactor, distanceMetres, pressureFactor = 1, durationFactor = 1, reflectionFactor = 1 }) {
   const beta = mach * mach - 1;

@@ -1,7 +1,8 @@
 import { BOOSTER, FLIGHT } from './constants.js';
 import { emitterSourceTable } from './emitters.js';
 import { fireballSamples } from './fireball.js';
-import { boosterPath, flightBooms, flightMembers, flightPath, whipBody, whipPath, withApproach } from './flight.js';
+import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './flight.js';
+import { flightPath, withApproach } from '../shared/domain/trajectory.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { secondaryBooms } from './secondary.js';
 

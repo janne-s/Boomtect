@@ -114,6 +114,15 @@ export const PROPAGATION = Object.freeze({
 });
 
 /** Class B: acoustic reflex (verify against Borg 1976), Stevens' exponent, Zwicker & Fastl integration; class C as a playback mapping. */
+export const TRAJECTORY = Object.freeze({
+  stepSeconds: .05,
+  maximumSteps: 12000,
+  stoppedMetresPerSecond: 1,
+  /** Class C: a supersonic path starts this far back, so that its first booms are heard whole. */
+  approachHeights: 2,
+  approachMetres: 20000
+});
+
 export const EAR = Object.freeze({
   referencePressurePa: REFERENCE_SOUND_PRESSURE_PA,
   envelopeSeconds: .01,

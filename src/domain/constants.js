@@ -120,9 +120,6 @@ export const FLIGHT = Object.freeze({
   }),
   /** Class C. */
   focusLimit: 5,
-  /** Class C. */
-  approachHeights: 2,
-  approachMetres: 20000,
   /** Class C, not fitted. */
   turbulentFront: Object.freeze({
     arrivals: 24,

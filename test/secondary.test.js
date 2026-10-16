@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { flightMembers, flightPath, withApproach } from '../src/domain/flight.js';
+import { flightMembers } from '../src/domain/flight.js';
+import { flightPath, withApproach } from '../src/shared/domain/trajectory.js';
 import { prepareScene, receiverPaths } from '../src/domain/render.js';
 import { defaultScene } from '../src/domain/scene.js';
 import { secondaryBooms, upperTemperatureKelvin } from '../src/domain/secondary.js';

@@ -1,6 +1,7 @@
 import { barrageRounds } from '../domain/barrage.js';
 import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
-import { boosterPath, flightMembers, flightPath, whipPath } from '../domain/flight.js';
+import { boosterPath, flightMembers, whipPath } from '../domain/flight.js';
+import { flightPath } from '../shared/domain/trajectory.js';
 import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
 import { arcs, cached, currentSurface } from '../shared/ui/geometry-cache.js';
 
