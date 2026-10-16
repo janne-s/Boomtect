@@ -8,7 +8,7 @@ import { sourceTable } from '../src/domain/source-table.js';
 import { terrainSurface } from '../src/domain/terrain.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/domain/terrain-echoes.js';
-import { createRandom } from '../src/domain/random.js';
+import { createRandom } from '../src/shared/domain/random.js';
 import { plainScene } from './plain-scene.js';
 
 const terrain = syntheticTerrain;
@@ -222,7 +222,7 @@ test('an echo whose legs pass through the refraction shadow keeps the shadow flo
 });
 
 test('scattered echoes spread over their patches rather than arriving as clicks', async () => {
-  const { fft, nextPowerOfTwo } = await import('../src/domain/fft.js');
+  const { fft, nextPowerOfTwo } = await import('../src/shared/domain/fft.js');
   const hills = (x, y) => 200 + 180 * Math.sin(x / 450) * Math.cos(y / 380) + 90 * Math.sin((x + y) / 210);
   const scene = plainScene('blast');
   scene.terrain = terrain(hills, { cells: 120, extentMetres: 6000, scattering: 1 });

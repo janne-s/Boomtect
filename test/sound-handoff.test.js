@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ambisonicDirection, encodeDirection } from '../src/domain/ambisonics.js';
-import { readHandoff } from '../src/domain/handoff.js';
+import { ambisonicDirection, encodeDirection } from '../src/shared/domain/ambisonics.js';
+import { readHandoff } from '../src/shared/domain/handoff.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { arrivalDistance, fieldArrival, soundHandoff } from '../src/domain/sound-handoff.js';

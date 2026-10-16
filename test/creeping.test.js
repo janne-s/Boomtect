@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { airy } from '../src/domain/airy.js';
+import { airy } from '../src/shared/domain/airy.js';
 import { GROUND } from '../src/domain/constants.js';
 import { creepingLossRatios, creepingTransitionHz, modeRoot, SOFT_RATIO } from '../src/domain/creeping.js';
-import { fft } from '../src/domain/fft.js';
+import { fft } from '../src/shared/domain/fft.js';
 import { shadowResponse } from '../src/domain/render.js';
 
 const close = (actual, expected, tolerance, label) => assert.ok(Math.abs(actual - expected) < tolerance, `${label}: ${actual} vs ${expected}`);

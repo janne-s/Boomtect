@@ -1,5 +1,5 @@
 import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
-import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
+import { ambisonicDirection, channelCount, encodeDirection } from '../shared/domain/ambisonics.js';
 import { BOOSTER, FLIGHT, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, MODEL_VERSION, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { emitterSourceTable } from './emitters.js';
 import { edgeField } from './diffraction.js';
@@ -14,12 +14,12 @@ import { secondaryBooms } from './secondary.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
 import { meanPlaneFrame, shieldingEdges, terrainMultipleReflections, terrainReflection } from './terrain-propagation.js';
-import { convolveAdd, fft, nextPowerOfTwo } from './fft.js';
+import { convolveAdd, fft, nextPowerOfTwo } from '../shared/domain/fft.js';
 import { creepingTransitionHz, cubeRootExponent, softExponent } from './creeping.js';
 import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient } from './ground.js';
 import { weakShockPulse } from './lightning.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';

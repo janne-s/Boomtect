@@ -228,7 +228,7 @@ test('the view\u2019s travel time equals the first arrival\u2019s, lit and in th
 });
 
 test('every path is finite or absent for random and edge-case geometry in all three kinds of air', async () => {
-  const { createRandom } = await import('../src/domain/random.js');
+  const { createRandom } = await import('../src/shared/domain/random.js');
   const random = createRandom(42);
   const profiles = [isa, inversion, soundSpeedProfile(air({ refraction: false })), soundSpeedProfile(air({ lapseRateKelvinPerMetre: .012 })), soundSpeedProfile(air({ lapseRateKelvinPerMetre: -.02 }))];
   const finite = path => [path.seconds, path.metres, path.departure.x, path.departure.z, path.arrival.x, path.arrival.z].every(Number.isFinite) && path.spreadMetres > 0;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
+import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { DEFAULT_QUALITY, defaultScene, parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';

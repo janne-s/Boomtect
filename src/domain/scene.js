@@ -1,11 +1,11 @@
 import { FLIGHT, GROUND, ISA_LAPSE_RATE_KELVIN_PER_METRE, MODEL_VERSION, PROPAGATION, RENDER, SAMPLE_RATE_HZ, THUNDER } from './constants.js';
-import { MAXIMUM_AMBISONIC_ORDER } from './ambisonics.js';
+import { MAXIMUM_AMBISONIC_ORDER } from '../shared/domain/ambisonics.js';
 import { BLAST_PULSE, EMITTER_KINDS } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
 import { GROUND_TYPES } from './ground.js';
 import { FLASH_TYPES } from './lightning.js';
-import { isSeed } from './random.js';
+import { isSeed } from '../shared/domain/random.js';
 import { patchCount, rangeBounds, terrainRange } from './terrain.js';
 
 const SCENE_FORMAT = 'boomtect.scene';

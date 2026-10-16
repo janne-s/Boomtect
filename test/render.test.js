@@ -245,7 +245,7 @@ test('an inversion brings a ground reflection to a distant microphone that refra
 test('the shadow response is causal, lossless at low frequencies, f^(1/3) creeping above, and ends in its frame tail', async () => {
   const { shadowResponse, shadowTailSeconds } = await import('../src/domain/render.js');
   const { creepingCoefficient, soundSpeedProfile } = await import('../src/domain/refraction.js');
-  const { fft } = await import('../src/domain/fft.js');
+  const { fft } = await import('../src/shared/domain/fft.js');
   const coefficient = creepingCoefficient(soundSpeedProfile({ temperatureCelsius: 15, lapseRateKelvinPerMetre: .0065, refraction: true }));
   const floor = 10 ** (-25 / 20);
   for (const creep of [1000, 8000, 30000]) {

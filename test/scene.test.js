@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultBlast, defaultCloudFlash, defaultScene, defaultStorm, parseScene, SceneError, serializeScene } from '../src/domain/scene.js';
-import { encodeFloat32Wav, wavByteLength } from '../src/domain/wav.js';
+import { encodeFloat32Wav, wavByteLength } from '../src/shared/domain/wav.js';
 
 test('the default scene is valid and round-trips without loss', () => {
   const scene = defaultScene();

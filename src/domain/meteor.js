@@ -2,7 +2,7 @@ import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, METEOR, THUNDER, TNT_JOULE
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from './air.js';
 import { stationaryArrivals } from './flight.js';
 import { weakShockPulse } from './lightning.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 /** Class B: ReVelle 1976 as restated by Silber et al. 2015 (eq. 4b); constant speed class C; impedance scaling class B. */
 

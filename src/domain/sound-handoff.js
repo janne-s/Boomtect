@@ -1,4 +1,4 @@
-import { readHandoff } from './handoff.js';
+import { readHandoff } from '../shared/domain/handoff.js';
 import { PATH_DIRECT, PATH_SHADOW } from './refraction.js';
 
 /** Class C: one mean direction stands for sound that arrives from many. */

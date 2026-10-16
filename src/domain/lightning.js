@@ -1,8 +1,8 @@
 import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from './air.js';
 import { THUNDER } from './constants.js';
 import { nWaveDurationForPeak } from './pulses.js';
-import { createRandom, normalDeviate, uniform } from './random.js';
-import { add, deflected, distance, length, scaled, subtract, unit } from './vector.js';
+import { createRandom, normalDeviate, uniform } from '../shared/domain/random.js';
+import { add, deflected, distance, length, scaled, subtract, unit } from '../shared/domain/vector.js';
 
 export const FLASH_TYPES = Object.freeze(['cloud-to-ground', 'intra-cloud']);
 

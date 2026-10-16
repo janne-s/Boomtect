@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { faddeeva } from '../src/domain/faddeeva.js';
-import { fft } from '../src/domain/fft.js';
+import { faddeeva } from '../src/shared/domain/faddeeva.js';
+import { fft } from '../src/shared/domain/fft.js';
 import { friedlanderSpanSeconds, friedlanderSpectrum, nWaveDurationForPeak, nWaveSpectrum } from '../src/domain/pulses.js';
 
 const close = (actual, expected, tolerance, message) => assert.ok(Math.abs(actual - expected) <= tolerance, `${message}: ${actual} vs ${expected}`);

@@ -1,6 +1,6 @@
 import { BLAST, FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED } from './constants.js';
 import { airDensityKilogramsPerCubicMetre } from './air.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 const G = STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED;
 const DIAMETER_RANGE = Object.freeze([.03, .4]);

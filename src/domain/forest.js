@@ -1,7 +1,7 @@
 import { GROUND } from './constants.js';
 import { cubeRootExponent } from './creeping.js';
-import { fft, nextPowerOfTwo, overlapSize, silent } from './fft.js';
-import { createRandom, normalDeviate } from './random.js';
+import { fft, nextPowerOfTwo, overlapSize, silent } from '../shared/domain/fft.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 const FOLIAGE_SCALE = GROUND.foliageDecibelsPerCubeRootHertz * Math.LN10 / 20 / (Math.cbrt(2 * Math.PI) * Math.cos(Math.PI / 6));
 

@@ -1,5 +1,5 @@
 import { BLAST } from './constants.js';
-import { createRandom, normalDeviate } from './random.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 export const GROUND_BURST_METRES = 1;
 

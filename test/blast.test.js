@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BLAST } from '../src/domain/constants.js';
 import { secondaryShockDelay, secondaryShockFactors } from '../src/domain/explosives.js';
-import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
+import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { fireballSamples } from '../src/domain/fireball.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
@@ -98,7 +98,7 @@ test('at the microphone the roar peaks its Fireball level below the shock’s li
 });
 
 test('convolution adds the linear convolution of two signals, as a direct sum does', async () => {
-  const { convolveAdd } = await import('../src/domain/fft.js');
+  const { convolveAdd } = await import('../src/shared/domain/fft.js');
   const signal = Float64Array.from({ length: 37 }, (_, index) => Math.sin(index * .7) + (index % 5));
   const kernel = Float64Array.from({ length: 23 }, (_, index) => Math.cos(index * 1.3) / (index + 1));
   const target = new Float64Array(70).fill(1);
@@ -119,7 +119,7 @@ function directConvolution(signal, kernel, length) {
 }
 
 test('convolution of a long signal in blocks, three signals sharing transforms, matches direct sums', async () => {
-  const { convolveAdd } = await import('../src/domain/fft.js');
+  const { convolveAdd } = await import('../src/shared/domain/fft.js');
   const signals = [0, 1, 2].map(channel => Float64Array.from({ length: 1000 + 37 * channel }, (_, index) => Math.sin(index * (.3 + .2 * channel)) * Math.exp(-index / 600)));
   const kernel = Float64Array.from({ length: 29 }, (_, index) => Math.cos(index * .9) / (index + 1));
   const targets = signals.map(() => new Float64Array(1100).fill(.5));

@@ -1,6 +1,6 @@
 import { VIEW } from '../domain/constants.js';
 import { PATH_DIRECT, PATH_SHADOW } from '../domain/refraction.js';
-import { fitCanvas, formatSeconds, niceStep, palette } from './canvas.js';
+import { fitCanvas, formatSeconds, niceStep, palette } from '../shared/ui/canvas.js';
 
 function resultWindow(result) {
   return { start: result.startSeconds, end: result.startSeconds + result.samples.length / result.sampleRate };

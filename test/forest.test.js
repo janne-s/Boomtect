@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
-import { fft, nextPowerOfTwo } from '../src/domain/fft.js';
+import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { foliageExponent, foliageMetres, forestResponses } from '../src/domain/forest.js';
 import { combineWithTails, joinResponses, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange, tailResponses } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';

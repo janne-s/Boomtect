@@ -1,6 +1,6 @@
 import { GROUND } from '../domain/constants.js';
-import { decodePngRgb } from '../domain/png.js';
-import { mapLabels } from '../domain/map-labels.js';
+import { decodePngRgb } from '../shared/domain/png.js';
+import { mapLabels } from '../shared/domain/map-labels.js';
 import { buildPatch, curvatureDropMetres, decodeTerrarium, metresPerDegree, mapTiles, rangeBounds, TERRAIN_PROVIDER, terrainRange, tilePixel, tilePlan, TILE_SIZE } from '../domain/terrain.js';
 
 const PLACE_TILEJSON_URL = 'https://tiles.openfreemap.org/planet/latest';

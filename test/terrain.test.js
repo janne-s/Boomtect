@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
-import { fft } from '../src/domain/fft.js';
+import { fft } from '../src/shared/domain/fft.js';
 import { deygoutEdges, edgeField, fresnelIntegrals, knifeEdge, roundingDecibels } from '../src/domain/diffraction.js';
 import { prepareScene, receiverPaths, renderReceiver } from '../src/domain/render.js';
 import { inShadow, PATH_DIRECT, soundSpeedProfile } from '../src/domain/refraction.js';

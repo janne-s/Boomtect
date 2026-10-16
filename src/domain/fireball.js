@@ -1,6 +1,6 @@
 import { BLAST } from './constants.js';
-import { fft, nextPowerOfTwo } from './fft.js';
-import { createRandom, normalDeviate } from './random.js';
+import { fft, nextPowerOfTwo } from '../shared/domain/fft.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 /** Class C, fitted to open-field charge recordings (FBI video, Doc/reference/audio). */
 

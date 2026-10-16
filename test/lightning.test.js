@@ -4,7 +4,7 @@ import { speedOfSoundMetresPerSecond } from '../src/domain/air.js';
 import { THUNDER } from '../src/domain/constants.js';
 import { blastSources, emitterSources, kinneyGrahamOverpressureRatio } from '../src/domain/emitters.js';
 import { lightningEmitterFlashes, relaxationRadiusMetres, segmentsFromPoints, tortuousPath, weakShockPulse } from '../src/domain/lightning.js';
-import { createRandom } from '../src/domain/random.js';
+import { createRandom } from '../src/shared/domain/random.js';
 import { defaultBlast, defaultCloudFlash, defaultLightning, defaultScene, defaultStorm } from '../src/domain/scene.js';
 import { stormFlashes } from '../src/domain/storm.js';
 
