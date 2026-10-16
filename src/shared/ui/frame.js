@@ -144,7 +144,7 @@ export function startFrame(tect) {
     }
     return all ? scattered / all : 0;
   }
-  const liveFields = { receiver: null, orientation: null };
+  const liveFields = { receiver: null, orientation: null, warnings: null };
 
   function panelOnNextFrame() {
     if (panelOnNextFrame.pending) return;
@@ -717,12 +717,14 @@ export function startFrame(tect) {
 
   const emitterKindLabel = emitter => kinds[emitter.kind].label(emitter);
   const emitterSummary = emitter => kinds[emitter.kind].summary(emitter, state.scene);
+  const emitterWarnings = emitter => kinds[emitter.kind].warnings?.(emitter, state.scene) ?? [];
 
   const updateEmitter = (id, change) => commit(scene => change(scene.emitters.find(emitter => emitter.id === id)));
   const updateReceiver = (id, change) => commit(scene => change(scene.receivers.find(receiver => receiver.id === id)));
 
   function preview(change) {
     change(state.scene);
+    liveFields.warnings?.();
     invalidateResults();
     redrawViews();
     drawInfo();
@@ -881,6 +883,13 @@ export function startFrame(tect) {
     }, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
     if (selected) {
       card.append(element('p', 'card-summary', emitterSummary(emitter)));
+      if (kinds[emitter.kind].warnings) {
+        const warnings = element('div', 'card-warnings');
+        const fillWarnings = () => warnings.replaceChildren(...emitterWarnings(state.scene.emitters.find(item => item.id === emitter.id) ?? emitter).map(text => element('p', 'card-warning', text)));
+        fillWarnings();
+        liveFields.warnings = fillWarnings;
+        card.append(warnings);
+      }
       const macros = element('div', 'macros');
       kinds[emitter.kind].macros(emitter, { onset: scene.emitters.length > 1 || emitter.startSeconds > 0 }).forEach(macro => macroRow(macros, emitter, macro));
       card.append(macros);
@@ -1296,6 +1305,7 @@ export function startFrame(tect) {
     useTerrain(state.scene.terrain);
     const { scene, selection } = state;
     const emitterList = $('emitter-list');
+    liveFields.warnings = null;
     emitterList.replaceChildren();
     scene.emitters.forEach(emitter => emitterCard(emitterList, emitter, selection.type === 'emitter' && selection.id === emitter.id));
 
@@ -1398,6 +1408,7 @@ export function startFrame(tect) {
       selectedInfo.append(element('strong', '', selected.name));
       if (kind !== selected.name || !selected.enabled) selectedInfo.append(element('span', '', kind + (selected.enabled ? '' : ' · off')));
       selectedInfo.append(element('span', '', emitterSummary(selected)));
+      for (const text of emitterWarnings(selected)) selectedInfo.append(element('span', 'warning', text));
       const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
       const anchorName = kinds[selected.kind].anchorName(selected);
       selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
