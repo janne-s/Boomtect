@@ -110,7 +110,20 @@ export const PROPAGATION = Object.freeze({
   /** Class C: sub-arrival delays end at this many rise times. */
   longestRises: 8,
   /** Class B: ReVelle's weak-shock theory (1974, 1976), from x = r/R₀ = 10. */
-  weakShock: Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 })
+  weakShock: Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 }),
+  /**
+   * Class C: the slow level fluctuation of a long sound through turbulence, a part shared by all bands and a part
+   * of each, fitted to Rumbletect's jet recordings (0.2–2 s fluctuation about 2.3 dB, inter-band correlation
+   * 0.5–0.75). Applied to grains only: a pulse is over before it changes.
+   */
+  scintillation: Object.freeze({
+    decibels: 3.5,
+    bandShare: .45,
+    seconds: .2,
+    bandsHz: Object.freeze([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000])
+  }),
+  /** A grain: a sine-windowed frame of this many samples at half overlap. */
+  grainSamples: 4096
 });
 
 /** Class B: acoustic reflex (verify against Borg 1976), Stevens' exponent, Zwicker & Fastl integration; class C as a playback mapping. */

@@ -3,7 +3,8 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
-import { PULSE_FRIEDLANDER, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
+import { PULSE_FRIEDLANDER, PULSE_GRAIN, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
+import { createScintillation } from './scintillation.js';
 import { previewQuality } from './render-cost.js';
 import { onGround, terrainSurface } from './terrain.js';
 import { arrivalSector, echoField, echoPaths, sourceCells } from './terrain-echoes.js';
@@ -72,8 +73,8 @@ export function prepareScene(scene, kinds) {
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const kind = kinds[emitter.kind];
-    const { sources, rows } = kind.sources(emitter, scene, surface);
-    const base = { emitter, sources, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null };
+    const { sources, rows, emission = null } = kind.sources(emitter, scene, surface);
+    const base = { emitter, sources, emission, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null };
     if (kind.tracks) {
       const { tracks, echoRows = [] } = kind.tracks(emitter, scene, surface, rows);
       return { ...base, cells: null, echoRows, tracks };
@@ -98,7 +99,7 @@ function receiverImpedanceFactor(air, profile, heightMetres) {
   return Math.sqrt(density * speedAt(profile, heightMetres) / profile.groundSpeed);
 }
 
-const PATH_WIDTHS = Object.freeze({ direction: 3, edges: MAXIMUM_EDGES * EDGE_WIDTH, endLift: 2, endSine: 2 });
+const PATH_WIDTHS = Object.freeze({ direction: 3, departure: 3, edges: MAXIMUM_EDGES * EDGE_WIDTH, endLift: 2, endSine: 2 });
 
 const PATH_ARRAYS = Object.freeze({
   emitter: Uint16Array,
@@ -114,6 +115,7 @@ const PATH_ARRAYS = Object.freeze({
   duration: Float64Array,
   amplitudeScale: Float64Array,
   direction: Float64Array,
+  departure: Float64Array,
   edgeCount: Uint8Array,
   edges: Float64Array,
   bounces: Uint8Array,
@@ -202,6 +204,7 @@ function pathWriter(frame, scene, paths) {
     paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
       : foliageMetres(path.metres, from.z - surface.heightAt(from.x, from.y), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
+    if (departure) paths.departure.set([departure.x, departure.y, departure.z], 3 * index);
     if (path.durationSeconds !== undefined) {
       paths.duration[index] = path.durationSeconds;
       paths.amplitudeScale[index] = path.overpressurePa * path.spreadMetres;
@@ -592,7 +595,7 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
   for (let bin = 0; bin < bins; bin += 1) {
     const frequency = bin * sampleRate / size;
     absorption[bin] = scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(frequency, scene.air) : 0;
-    smoothing[bin] = riseSmoothing(frequency, prepared.emitter.riseTimeSeconds / (prepared.turbulentFront ? prepared.turbulentFront.riseRatio : 1));
+    smoothing[bin] = riseSmoothing(frequency, (prepared.emitter.riseTimeSeconds ?? 0) / (prepared.turbulentFront ? prepared.turbulentFront.riseRatio : 1));
     if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
@@ -607,7 +610,7 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
     for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
     if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
-  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds, turbulentFront: prepared.turbulentFront, cutoff: cutoffNepers(scene) };
+  return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds ?? 0, turbulentFront: prepared.turbulentFront, cutoff: cutoffNepers(scene), scintillationBands: scintillationBands(bins, sampleRate / size) };
 }
 
 /** Class B per layer: ISO 9613-1. */
@@ -716,7 +719,7 @@ function shadowFromExponent(loss, lag, beta, floor) {
   return [magnitude * Math.cos(phase) + floor, magnitude * Math.sin(phase)];
 }
 
-function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ, shared = null) {
+function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ, shared = null, grain = null) {
   const channels = spectra.length;
   const metres = paths.metres[index];
   if (plan.layered) pathAbsorption(plan.layered, paths.height[index], receiverZ);
@@ -739,7 +742,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   const pulseKind = sources.pulse[sourceIndex];
-  const shock = pulseKind === PULSE_NOISE || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
+  const shock = pulseKind === PULSE_NOISE || pulseKind === PULSE_GRAIN || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
   const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
   const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(plan.cutoff / 2) / (Math.PI * shockSigma * binHz)) : 0;
@@ -828,7 +831,10 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     const omega = omegaStep * bin;
     let re;
     let im;
-    if (noise) {
+    if (grain) {
+      re = grain.re[bin];
+      im = grain.im[bin];
+    } else if (noise) {
       re = 1 / (binHz * size);
       im = 0;
     } else if (nWave) {
@@ -859,6 +865,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
     let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (finestForest ? foliage.loss[bin] * underCanopy : 0));
+    if (grain?.levels) factor *= scintillationGain(plan.scintillationBands, grain.levels, bin);
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
@@ -1123,6 +1130,45 @@ function synthesizeFrame(real, imaginary, size, sampleRate) {
   return real;
 }
 
+const GRAIN_HOP_SECONDS = sampleRate => PROPAGATION.grainSamples / 2 / sampleRate;
+
+function scintillationBands(bins, binHz) {
+  const bands = PROPAGATION.scintillation.bandsHz;
+  const logBands = bands.map(Math.log);
+  const lower = new Uint8Array(bins);
+  const share = new Float64Array(bins);
+  for (let bin = 0; bin < bins; bin += 1) {
+    const at = Math.log(Math.max(bin * binHz, bands[0]));
+    let upper = logBands.findIndex(value => value >= at);
+    if (upper < 0) upper = bands.length - 1;
+    lower[bin] = Math.max(0, upper - 1);
+    share[bin] = upper === lower[bin] ? 0 : Math.min(1, (at - logBands[lower[bin]]) / (logBands[upper] - logBands[lower[bin]]));
+  }
+  return { lower, share };
+}
+
+const SCINTILLATION_NEPERS = Math.LN10 / 20;
+const SCINTILLATION_BIAS = (SCINTILLATION_NEPERS * PROPAGATION.scintillation.decibels) ** 2;
+
+function scintillationGain({ lower, share }, levels, bin) {
+  const low = lower[bin];
+  const high = Math.min(levels.length - 1, low + 1);
+  return Math.exp(SCINTILLATION_NEPERS * (levels[low] + share[bin] * (levels[high] - levels[low])) - SCINTILLATION_BIAS);
+}
+
+/** The grain's spectrum toward the path's departure from the kind, centred one grain after the path's time; a long sound's scintillation, class C, comes with it. */
+function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations) {
+  const departure = { x: paths.departure[3 * index], y: paths.departure[3 * index + 1], z: paths.departure[3 * index + 2] };
+  const spectrum = prepared.emission(sources.noiseSeed[paths.source[index]], departure, plan);
+  if (!(scene.air.turbulenceStrength > 0)) return spectrum;
+  const key = prepared.emitter.id;
+  if (!scintillations.has(key)) {
+    scintillations.set(key, createScintillation({ seed: (forestSeed(receiver.id) ^ Math.imul(prepared.emitter.seed + 1, 0x27d4eb2f)) >>> 0, hopSeconds: GRAIN_HOP_SECONDS(sampleRate) }));
+  }
+  const centre = paths.seconds[index] + PROPAGATION.grainSamples / sampleRate;
+  return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
+}
+
 export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
@@ -1173,6 +1219,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
   const shared = scene.render.quality.sharedScatter ? sharedScatter(channels, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
+  const scintillations = new Map();
   const weightOf = index => RENDER.progressWeights[frameGroup(paths, index) % FRAME_GROUPS];
   const totalWeight = selected.reduce((sum, index) => sum + weightOf(index), 0);
   let doneWeight = 0;
@@ -1189,7 +1236,9 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const sources = pathSources(preparedEmitters, paths, index);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
-      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared);
+      const grain = sources.pulse[paths.source[index]] === PULSE_GRAIN
+        ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations) : null;
+      accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared, grain);
       doneWeight += weightOf(index);
       cursor += 1;
     }

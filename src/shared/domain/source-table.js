@@ -74,6 +74,7 @@ export const PULSE_NWAVE = 0;
 export const PULSE_FRIEDLANDER = 1;
 export const PULSE_NOISE = 2;
 export const PULSE_TRIPLE = 3;
-const PULSE_CODES = Object.freeze({ 'n-wave': PULSE_NWAVE, friedlander: PULSE_FRIEDLANDER, noise: PULSE_NOISE, triple: PULSE_TRIPLE });
+export const PULSE_GRAIN = 4;
+const PULSE_CODES = Object.freeze({ 'n-wave': PULSE_NWAVE, friedlander: PULSE_FRIEDLANDER, noise: PULSE_NOISE, triple: PULSE_TRIPLE, grain: PULSE_GRAIN });
 
 export const sourcePosition = (table, index) => ({ x: table.x[index], y: table.y[index], z: table.z[index] });
