@@ -4,7 +4,7 @@ const SOURCE_COLUMNS = Object.freeze({
   elementMetres: Float64Array, emissionSeconds: Float64Array, amplitudePaMetres: Float64Array,
   pulse: Uint8Array, noiseSeed: Uint32Array,
   secondaryDelaySeconds: Float64Array, secondaryCubeRoot: Float64Array,
-  flight: Uint8Array,
+  turbulentFront: Uint8Array, middleShare: Float64Array, middleRatio: Float64Array,
   durationSeconds: Float64Array, decay: Float64Array, spanSeconds: Float64Array, linearRadiusMetres: Float64Array,
   relaxationRadius: Float64Array, sourcePeriodSeconds: Float64Array, limitRadii: Float64Array
 });
@@ -40,7 +40,9 @@ export function sourceTableBuilder(capacity = 1024) {
       columns.amplitudePaMetres[index] = source.amplitudePaMetres;
       columns.pulse[index] = PULSE_CODES[source.pulse];
       columns.noiseSeed[index] = source.noiseSeed ?? 0;
-      columns.flight[index] = source.flight ? 1 : 0;
+      columns.turbulentFront[index] = source.turbulentFront ? 1 : 0;
+      columns.middleShare[index] = source.middleShare ?? 0;
+      columns.middleRatio[index] = source.middleRatio ?? 0;
       if (source.secondaryShock) {
         columns.secondaryDelaySeconds[index] = source.secondaryShock.delaySeconds;
         columns.secondaryCubeRoot[index] = source.secondaryShock.cubeRootKilograms;

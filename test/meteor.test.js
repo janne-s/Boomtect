@@ -108,7 +108,7 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   const sources = emitterSources(meteor, air).sources;
   const places = meteorBursts(meteor, air);
   assert.equal(sources.length, 1 + places.length);
-  assert.ok(sources[0].flight && sources.slice(1).every(source => source.pulse === 'friedlander'));
+  assert.ok(sources[0].turbulentFront && sources.slice(1).every(source => source.pulse === 'friedlander'));
   const burst = sources.at(-1);
   const place = places.at(-1);
   const scale = air.pressureKpa * 1000 / pressureAtHeightPa(air, place.positionMetres.z);

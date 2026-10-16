@@ -12,8 +12,6 @@ export const THUNDER = Object.freeze({
   maximumSegmentsPerEmitter: 100000,
   stormSegmentBudget: 600000,
   minimumCloudDepthMetres: 100,
-  /** Class B: ReVelle's weak-shock theory (1974, 1976), from x = r/R₀ = 10. */
-  weakShock: Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 }),
   /** Class C. */
   channel: Object.freeze({
     branchJunctionRange: Object.freeze([.1, .95]),
@@ -130,8 +128,7 @@ export const FLIGHT = Object.freeze({
     arrivals: 24,
     frontShare: .5,
     referenceTurbulence: 1e-6,
-    riseRatio: 10,
-    longestRises: 8
+    riseRatio: 10
   })
 });
 

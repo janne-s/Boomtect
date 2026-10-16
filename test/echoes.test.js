@@ -4,7 +4,7 @@ import { PROPAGATION } from '../src/domain/constants.js';
 import { assemblePaths, prepareScene, receiverPaths, renderReceiver, tracePart } from '../src/domain/render.js';
 import { PATH_ECHO, PATH_SCATTER } from '../src/shared/domain/refraction.js';
 import { defaultBlast, defaultFlight, defaultLightning, parseScene } from '../src/domain/scene.js';
-import { sourceTable } from '../src/domain/source-table.js';
+import { sourceTable } from '../src/shared/domain/source-table.js';
 import { terrainSurface } from '../src/shared/domain/terrain.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 import { clearBetween, echoField, echoPaths, echoSurface, sourceCells, specularPoints } from '../src/shared/domain/terrain-echoes.js';

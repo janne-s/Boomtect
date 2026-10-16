@@ -106,7 +106,11 @@ export const PROPAGATION = Object.freeze({
   sharedClassesPerOctave: 1,
   sharedVariants: 2,
   exclusionSpacings: 1.5,
-  maximumFocusing: 10
+  maximumFocusing: 10,
+  /** Class C: sub-arrival delays end at this many rise times. */
+  longestRises: 8,
+  /** Class B: ReVelle's weak-shock theory (1974, 1976), from x = r/R₀ = 10. */
+  weakShock: Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 })
 });
 
 /** Class B: acoustic reflex (verify against Borg 1976), Stevens' exponent, Zwicker & Fastl integration; class C as a playback mapping. */

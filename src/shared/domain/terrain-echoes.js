@@ -27,7 +27,7 @@ export function sourceCells(sources, cellMetres) {
     let place = placeIndex.get(where);
     if (place === undefined) { place = placeMembers.length; placeIndex.set(where, place); placeMembers.push([]); }
     placeMembers[place].push(source);
-    const key = `${where},${Math.floor(sources.emissionSeconds[source] / PROPAGATION.echoCellSeconds)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.flight[source]}`;
+    const key = `${where},${Math.floor(sources.emissionSeconds[source] / PROPAGATION.echoCellSeconds)},${sources.pulse[source]},${sources.secondaryDelaySeconds[source] > 0},${sources.turbulentFront[source]}`;
     let cell = index.get(key);
     if (cell === undefined) { cell = members.length; index.set(key, cell); members.push([]); placeOf.push(place); }
     members[cell].push(source);
@@ -65,7 +65,9 @@ export function sourceCells(sources, cellMetres) {
     relaxationRadius: new Float64Array(length),
     sourcePeriodSeconds: new Float64Array(length),
     limitRadii: new Float64Array(length),
-    flight: new Uint8Array(length)
+    turbulentFront: new Uint8Array(length),
+    middleShare: new Float64Array(length),
+    middleRatio: new Float64Array(length)
   };
   const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
   members.forEach((list, cell) => {
@@ -78,7 +80,7 @@ export function sourceCells(sources, cellMetres) {
       table[key][cell] = sum;
     }
     table.amplitudePaMetres[cell] = Math.sqrt(energy);
-    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'flight']) table[key][cell] = sources[key][list[0]];
+    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'turbulentFront', 'middleShare', 'middleRatio']) table[key][cell] = sources[key][list[0]];
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BLAST } from '../src/domain/constants.js';
-import { secondaryShockDelay, secondaryShockFactors } from '../src/domain/explosives.js';
+import { secondaryShockFactors } from '../src/domain/explosives.js';
+import { secondaryShockDelay } from '../src/shared/domain/shocks.js';
 import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { fireballSamples } from '../src/domain/fireball.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';

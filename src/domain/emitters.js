@@ -1,4 +1,4 @@
-import { BLAST } from './constants.js';
+import { BLAST, BOOSTER } from './constants.js';
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
 import { fireworksBlasts } from './fireworks.js';
@@ -6,10 +6,10 @@ import { secondaryShockFactors } from './explosives.js';
 import { flightMembers } from './flight.js';
 import { meteorBursts, showerMembers } from './meteor.js';
 import { fireballSpanSeconds } from './fireball.js';
-import { friedlanderSpanSeconds } from './pulses.js';
+import { friedlanderSpanSeconds } from '../shared/domain/pulses.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { stormFlashes, stormFlashSequence } from './storm.js';
-import { sourceTable, sourceTableBuilder } from './source-table.js';
+import { sourceTable, sourceTableBuilder } from '../shared/domain/source-table.js';
 import { onGround } from '../shared/domain/terrain.js';
 
 
@@ -25,7 +25,7 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
 function flightSource(flight, flash = 0, pulse = 'n-wave') {
   return {
     flash, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
-    amplitudePaMetres: 1, pulse, durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, flight: true
+    amplitudePaMetres: 1, pulse, durationSeconds: .1, decay: 0, spanSeconds: 0, linearRadiusMetres: 0, turbulentFront: true
   };
 }
 
@@ -102,7 +102,7 @@ export function emitterSources(emitter, air, surface = null, quality = null) {
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'whip') return { flashes: [], sources: [flightSource(emitter)] };
-  if (emitter.kind === 'booster') return { flashes: [], sources: [{ ...flightSource(emitter, 0, 'triple'), positionMetres: emitter.padMetres }] };
+  if (emitter.kind === 'booster') return { flashes: [], sources: [{ ...flightSource(emitter, 0, 'triple'), positionMetres: emitter.padMetres, middleShare: BOOSTER.middleShare, middleRatio: BOOSTER.middleRatio }] };
   if (emitter.kind === 'barrage') return { flashes: [], sources: barrageRounds(emitter).flatMap(round => blastSources(round, air, surface)) };
   if (emitter.kind === 'fireworks') return { flashes: [], sources: fireworksSources(emitter, air, surface) };
   const flashes = emitterFlashes(emitter, surface);

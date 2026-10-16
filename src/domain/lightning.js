@@ -1,6 +1,6 @@
 import { airDensityKilogramsPerCubicMetre, pressureAtHeightPa, speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
-import { THUNDER } from './constants.js';
-import { nWaveDurationForPeak } from './pulses.js';
+import { PROPAGATION, THUNDER } from './constants.js';
+import { weakShockPulse } from '../shared/domain/shocks.js';
 import { createRandom, normalDeviate, uniform } from '../shared/domain/random.js';
 import { add, deflected, distance, length, scaled, subtract, unit } from '../shared/domain/vector.js';
 
@@ -221,15 +221,6 @@ export function segmentEnergyShare(flash, channel, segment) {
 /** Class B: Few's relaxation radius. */
 export const relaxationRadiusMetres = (energyJoulesPerMetre, pressurePa) => Math.sqrt(energyJoulesPerMetre / (Math.PI * pressurePa));
 
-export function weakShockPulse(relaxationRadius, sourcePeriodSeconds, metres, limitRadii) {
-  const x = Math.min(limitRadii, Math.max(THUNDER.weakShock.startRadii, metres / relaxationRadius));
-  const period = THUNDER.weakShock.periodGrowth * sourcePeriodSeconds * x ** THUNDER.weakShock.periodExponent;
-  return {
-    durationSeconds: nWaveDurationForPeak(1 / period),
-    amplitudeScale: (x / THUNDER.weakShock.startRadii) ** THUNDER.weakShock.extraDecayExponent
-  };
-}
-
 /** Class B: ReVelle's period; amplitude and directivity class C. */
 export function flashSources(flashes, physics, air, sources = [], firstFlash = 0) {
   const speed = speedOfSoundMetresPerSecond(air.temperatureCelsius);
@@ -270,7 +261,7 @@ export function flashSources(flashes, physics, air, sources = [], firstFlash = 0
             durationSeconds: reference.durationSeconds,
             decay: 0,
             spanSeconds: weakShockPulse(radius, sourcePeriodSeconds, Infinity, physics.weakShockLimitRadii).durationSeconds,
-            linearRadiusMetres: radius * THUNDER.weakShock.startRadii
+            linearRadiusMetres: radius * PROPAGATION.weakShock.startRadii
           });
         });
       }

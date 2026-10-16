@@ -1,12 +1,12 @@
-import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, METEOR, THUNDER, TNT_JOULES_PER_KILOGRAM } from './constants.js';
+import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, METEOR, PROPAGATION, TNT_JOULES_PER_KILOGRAM } from './constants.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { stationaryArrivals } from './flight.js';
-import { weakShockPulse } from './lightning.js';
+import { weakShockPulse } from '../shared/domain/shocks.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 /** Class B: ReVelle 1976 as restated by Silber et al. 2015 (eq. 4b); constant speed class C; impedance scaling class B. */
 
-const START_RADII = THUNDER.weakShock.startRadii;
+const START_RADII = PROPAGATION.weakShock.startRadii;
 const START_OVERPRESSURE_RATIO = 2 * GAMMA_AIR / (GAMMA_AIR + 1) * .4503 / ((1 + 4.803 * START_RADII ** 2) ** (3 / 8) - 1);
 const TRACK_STEP_SECONDS = .02;
 

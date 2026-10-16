@@ -24,7 +24,7 @@ export function nWaveSpectrum(frequencyHz, durationSeconds) {
   return [firstRe + scale * tailRe, firstIm + scale * tailIm];
 }
 
-/** Class C as a shape, see BOOSTER. */
+/** Class C as a shape; the middle shock's share and ratio come with the source. */
 export function tripleSpectrum(frequencyHz, durationSeconds, middleShare, middleRatio) {
   const [nRe, nIm] = nWaveSpectrum(frequencyHz, durationSeconds);
   const omega = 2 * Math.PI * frequencyHz;
