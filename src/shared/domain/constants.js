@@ -256,6 +256,8 @@ export const VIEW = Object.freeze({
     localProfileTolerance: .05,
     rippleAlphas: Object.freeze([.5, .3, .16, .07]),
     rippleSpacingShare: .018,
+    /** A continuous source's lit ring waits at its shadow edge this many front spacings, so the lit edge of nearly concentric fronts never steps back. */
+    shadowHoldSpacings: 1.5,
     terrainSpheres: 80,
     visibleAlpha: 1 / 255
   }),

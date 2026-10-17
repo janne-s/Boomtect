@@ -1624,11 +1624,11 @@ export function startFrame(tect) {
         const front = { ...wavefront(localProfile(profile, point.z), point, now - emitted) };
         const reach = front.radiusMetres * Math.max(1, spacingSeconds / (now - emitted));
         front.strength = frontStrength(amplitude, reach, frequencyHz);
-        if (!profile.wind) return { source: point, group, order, ...front };
+        if (!profile.wind) return { source: point, group, order, spacingSeconds, ...front };
         // Drawn only, class C.
         const seconds = now - emitted;
         const drift = axis => (profile.wind[axis] + profile.shear[axis] * point.z) * seconds;
-        return { source: point, group, order, ...front, centre: { ...front.centre, x: front.centre.x + drift('x'), y: front.centre.y + drift('y') } };
+        return { source: point, group, order, spacingSeconds, ...front, centre: { ...front.centre, x: front.centre.x + drift('x'), y: front.centre.y + drift('y') } };
       });
   }
 

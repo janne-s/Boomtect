@@ -695,7 +695,8 @@ export function createCubeView(canvas, options) {
   }
 
   function drawWavefronts(context, colors, { profile, spheres, total }) {
-    // A flash is dropped whole: dropping a single sphere would uncover the edges it hides.
+    // A flash is dropped whole: dropping a single sphere would uncover the edges it hides. A continuous source's later
+    // fronts are fronts of their own, so only its passed ones go.
     const { box } = frame;
     const innermost = (VIEW.wavefront.rippleAlphas.length - 1) * rippleSpacing();
     const terrain = currentSurface().bounds;
@@ -706,7 +707,10 @@ export function createCubeView(canvas, options) {
     for (const sphere of spheres) {
       const { centre, radiusMetres } = sphere;
       const farthest = Math.hypot(Math.max(centre.x - bounds.x0, bounds.x1 - centre.x), Math.max(centre.y - bounds.y0, bounds.y1 - centre.y), Math.max(centre.z - box.z0, box.z1 - centre.z));
-      if (radiusMetres - innermost > farthest) passed.add(sphere.group);
+      if (radiusMetres - innermost > farthest) {
+        if (!(sphere.spacingSeconds > 0)) passed.add(sphere.group);
+        continue;
+      }
       if (!groups.has(sphere.group)) groups.set(sphere.group, []);
       groups.get(sphere.group).push(sphere);
     }
@@ -745,13 +749,16 @@ export function createCubeView(canvas, options) {
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
         const parts = [{ circles: [], alpha: alpha * strength }, { circles: [], alpha: alpha * strength * VIEW.wavefront.shadowShare }];
-        for (const { source, centre, radiusMetres } of spheres) {
+        for (const { source, centre, radiusMetres, spacingSeconds = 0 } of spheres) {
           const sphere = radiusMetres - ring * spacing;
           const offset = face.value - centre[face.fixed];
           if (!(sphere > Math.abs(offset))) continue;
           const radius = Math.sqrt(sphere ** 2 - offset ** 2);
           if (!(radius > 0)) continue;
-          parts[face.fixed === 'z' && profile.gradient < 0 && radius > grazingRange(profile, source.z) ? 1 : 0].circles.push({ u: centre[u], v: centre[v], radius });
+          const edge = face.fixed === 'z' && profile.gradient < 0 ? grazingRange(profile, source.z) : Infinity;
+          if (!(radius > edge)) { parts[0].circles.push({ u: centre[u], v: centre[v], radius }); continue; }
+          parts[1].circles.push({ u: centre[u], v: centre[v], radius });
+          if (radius - edge < spacingSeconds * profile.groundSpeed * VIEW.wavefront.shadowHoldSpacings) parts[0].circles.push({ u: centre[u], v: centre[v], radius: edge });
         }
         for (const part of parts) {
           if (!part.circles.length || part.alpha < VIEW.wavefront.visibleAlpha) continue;
