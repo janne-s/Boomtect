@@ -177,6 +177,8 @@ export const RENDER_COST = Object.freeze({
 
 export const RENDER = Object.freeze({
   maximumSeconds: 400,
+  /** Sound arriving after `maximumSeconds` is left out, the kept end faded over this long. */
+  truncationFadeSeconds: .05,
   maximumSources: 1500000,
   maximumEmitters: 8,
   maximumReceivers: 8,

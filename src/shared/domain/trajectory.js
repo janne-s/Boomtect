@@ -127,3 +127,29 @@ export function machCone(path, now, profile) {
   if (!rings.length) return null;
   return { apex: apex ? at(last) : null, rings, radii };
 }
+
+/**
+ * Class C as a pattern: a V behind the leader, members alternating left and right of its heading, each rank
+ * `lateralSpacingMetres` aside and `trailSpacingMetres` back, at the leader's height. Each member keeps the leader's
+ * fields with its own id `<leader id>:<index>`; the leader is member 0.
+ */
+export function formationMembers(leader, count, lateralSpacingMetres, trailSpacingMetres) {
+  const heading = leader.headingDegrees * Math.PI / 180;
+  const across = { x: Math.cos(heading), y: -Math.sin(heading) };
+  const along = { x: Math.sin(heading), y: Math.cos(heading) };
+  return Array.from({ length: count }, (_, index) => {
+    const rank = Math.ceil(index / 2);
+    const side = index % 2 ? 1 : -1;
+    const lateral = side * rank * lateralSpacingMetres;
+    const back = rank * trailSpacingMetres;
+    return {
+      ...leader,
+      id: `${leader.id}:${index}`,
+      startMetres: {
+        x: leader.startMetres.x + across.x * lateral - along.x * back,
+        y: leader.startMetres.y + across.y * lateral - along.y * back,
+        z: leader.startMetres.z
+      }
+    };
+  });
+}

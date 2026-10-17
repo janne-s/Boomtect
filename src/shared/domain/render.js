@@ -1169,7 +1169,13 @@ function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, s
   return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
 }
 
-export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null } = {}) {
+export function earliestArrival(paths) {
+  let earliest = Infinity;
+  for (let index = 0; index < paths.count; index += 1) earliest = Math.min(earliest, paths.seconds[index]);
+  return earliest;
+}
+
+export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null, earliestSeconds = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
   const speed = profile.groundSpeed;
@@ -1181,9 +1187,13 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const group = FRAME_GROUPS * emitterIndex + part;
     return framePlan(prepared, group, extentOf[group], paths, sampleRate, profile, scene, receiverZ);
   }));
+  const cutoff = (earliestSeconds ?? earliestArrival(paths)) + RENDER.maximumSeconds;
   const selected = [];
+  let beyond = 0;
   for (let index = 0; index < paths.count; index += 1) {
-    if (paths.seconds[index] >= fromSeconds && paths.seconds[index] < toSeconds) selected.push(index);
+    if (paths.seconds[index] < fromSeconds || paths.seconds[index] >= toSeconds) continue;
+    if (paths.seconds[index] >= cutoff) { beyond += 1; continue; }
+    selected.push(index);
   }
   const frameOf = new Float64Array(paths.count);
   let first = Infinity;
@@ -1199,10 +1209,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   }
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
-  if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0 };
-  if ((last - first) / sampleRate > RENDER.maximumSeconds) {
-    throw new RangeError(`Arrivals at ${receiver.name} span ${((last - first) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
-  }
+  if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0, truncated: beyond > 0 };
   // Class C: a noise source radiates from a whole volume, so its reflection does not interfere with it.
   const noises = preparedEmitters.map(({ sources, noise }) => {
     let index = 0;
@@ -1266,7 +1273,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       if (impulses) convolveAdd(outputs, impulses, samples);
     }
   }
-  return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length };
+  return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length, truncated: beyond > 0 };
 }
 
 export function hasTails(scene) {
@@ -1295,20 +1302,27 @@ export const tailSamples = responses => (responses?.forest?.[0].length ?? 0) + (
 export function sumSegments(segments, sampleRate, room = 0) {
   const present = segments.filter(segment => segment.channels[0].length);
   const count = segments[0]?.channels.length ?? 1;
-  if (!present.length) return { startSample: 0, channels: Array.from({ length: count }, () => new Float64Array(0)) };
+  const cut = segments.some(segment => segment.truncated);
+  if (!present.length) return { startSample: 0, channels: Array.from({ length: count }, () => new Float64Array(0)), truncated: cut };
   const start = Math.min(...present.map(segment => segment.startSample));
-  const end = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length));
-  if ((end - start) / sampleRate > RENDER.maximumSeconds) throw new RangeError(`The arrivals span ${((end - start) / sampleRate).toFixed(1)} s; the limit is ${RENDER.maximumSeconds} s.`);
+  const longest = Math.round(RENDER.maximumSeconds * sampleRate);
+  const reach = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length)) - start;
+  const length = Math.min(reach, longest);
   const channels = Array.from({ length: count }, (_, channel) => {
-    const sum = new Float64Array(end - start + room);
+    const sum = new Float64Array(length + room);
     for (const segment of present) {
       const offset = segment.startSample - start;
       const samples = segment.channels[channel];
-      for (let index = 0; index < samples.length; index += 1) sum[offset + index] += samples[index];
+      const kept = Math.min(samples.length, length - offset);
+      for (let index = 0; index < kept; index += 1) sum[offset + index] += samples[index];
+    }
+    if (reach > longest) {
+      const fade = Math.min(length, Math.round(RENDER.truncationFadeSeconds * sampleRate));
+      for (let index = 0; index < fade; index += 1) sum[length - fade + index] *= 1 - (index + 1) / fade;
     }
     return sum;
   });
-  return { startSample: start, channels };
+  return { startSample: start, channels, truncated: cut || reach > longest };
 }
 
 export function tailStretches(length, count, shortest = 1) {
@@ -1334,7 +1348,7 @@ export function finishSum(sum, sampleRate) {
     }
     return result;
   });
-  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa };
+  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa, truncated: Boolean(sum.truncated) };
 }
 
 export function combineSegments(segments, sampleRate) {

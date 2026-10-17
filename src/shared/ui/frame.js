@@ -3,7 +3,7 @@ import { GROUND, REFERENCE_SOUND_PRESSURE_PA, RENDER, RENDER_COST, VIEW } from '
 import { GROUND_LABELS, GROUND_TYPES } from '../domain/ground.js';
 import { newSeed } from '../domain/random.js';
 import { localProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from '../domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from '../domain/render.js';
+import { addTails, arrivalTable, assemblePaths, earliestArrival, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from '../domain/render.js';
 import { defaultReceiver, headingToward, placeLabel, TERRAIN_DEFAULTS } from '../domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './export-package.js';
 import { soundHandoff } from '../domain/sound-handoff.js';
@@ -144,7 +144,7 @@ export function startFrame(tect) {
     }
     return all ? scattered / all : 0;
   }
-  const liveFields = { receiver: null, orientation: null, warnings: null };
+  const liveFields = { receiver: null, orientation: null, warnings: null, summary: null };
 
   function panelOnNextFrame() {
     if (panelOnNextFrame.pending) return;
@@ -488,7 +488,7 @@ export function startFrame(tect) {
       const whole = !Number.isFinite(job.fromSeconds) && !Number.isFinite(job.toSeconds);
       const paths = job.receivers.map(receiver => (whole ? tracedPaths[receiver] : pathRange(tracedPaths[receiver], job.fromSeconds, job.toSeconds)));
       const transfer = paths.flatMap(table => Object.values(table).filter(ArrayBuffer.isView).map(array => array.buffer));
-      spawnWorker(revision, { type: 'render', scene, ...job, paths, extents: job.receivers.map(receiver => extents[receiver]) }, {
+      spawnWorker(revision, { type: 'render', scene, ...job, paths, extents: job.receivers.map(receiver => extents[receiver]), earliest: job.receivers.map(receiver => earliestArrival(tracedPaths[receiver])) }, {
         onProgress: fraction => {
           progress[index] = fraction;
           operation('render', 'Rendering', { share: progress.reduce((a, b) => a + b, 0) / jobs.length });
@@ -786,6 +786,8 @@ export function startFrame(tect) {
     field.select();
   }
 
+  const macroRows = new WeakMap();
+
   function macroRow(container, emitter, macro) {
     const id = `macro-${emitter.id}-${macro.label}`;
     const label = element('label', '', macro.label);
@@ -806,11 +808,18 @@ export function startFrame(tect) {
       input.value = String(Math.round(position * steps));
       return input;
     };
+    const showValue = item => {
+      value.textContent = macro.show(item);
+      if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
+    };
+    const siblings = macroRows.get(container) ?? [];
+    macroRows.set(container, siblings);
     const apply = read => preview(scene => {
       const item = scene.emitters.find(candidate => candidate.id === emitter.id);
       macro.write(item, ...read());
-      value.textContent = macro.show(item);
-      if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
+      showValue(item);
+      for (const row of siblings) if (row.macro !== macro) row.sync(item);
+      liveFields.summary?.(item);
     });
     if (macro.dual) {
       const [low, high] = macro.read(emitter);
@@ -828,6 +837,7 @@ export function startFrame(tect) {
       // Safari does not pass custom properties from a parent on to a slider's track, so both inputs carry them.
       const paint = () => { const [from, to] = read(); paintTrack(lower, from, to); paintTrack(upper, from, to); };
       paint();
+      siblings.push({ macro, sync: item => { const [a, b] = macro.read(item); lower.value = String(Math.round(a * steps)); upper.value = String(Math.round(b * steps)); paint(); showValue(item); } });
       for (const input of [lower, upper]) {
         input.addEventListener('input', () => { holdViews(true); paint(); apply(read); });
         input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
@@ -839,6 +849,7 @@ export function startFrame(tect) {
     const input = slider(macro.read(emitter));
     input.id = id;
     paintTrack(input, 0, Number(input.value) / steps);
+    siblings.push({ macro, sync: item => { input.value = String(Math.round(macro.read(item) * steps)); paintTrack(input, 0, Number(input.value) / steps); showValue(item); } });
     input.addEventListener('input', () => { holdViews(true); paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
     input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
     container.append(label, input, value);
@@ -882,7 +893,9 @@ export function startFrame(tect) {
       onToggle: () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); }
     }, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
     if (selected) {
-      card.append(element('p', 'card-summary', emitterSummary(emitter)));
+      const summary = element('p', 'card-summary', emitterSummary(emitter));
+      liveFields.summary = item => { summary.textContent = emitterSummary(item); };
+      card.append(summary);
       if (kinds[emitter.kind].warnings) {
         const warnings = element('div', 'card-warnings');
         const fillWarnings = () => warnings.replaceChildren(...emitterWarnings(state.scene.emitters.find(item => item.id === emitter.id) ?? emitter).map(text => element('p', 'card-warning', text)));
@@ -1307,6 +1320,7 @@ export function startFrame(tect) {
     const { scene, selection } = state;
     const emitterList = $('emitter-list');
     liveFields.warnings = null;
+    liveFields.summary = null;
     emitterList.replaceChildren();
     scene.emitters.forEach(emitter => emitterCard(emitterList, emitter, selection.type === 'emitter' && selection.id === emitter.id));
 
@@ -1450,6 +1464,7 @@ export function startFrame(tect) {
       const share = shadowed / sources * 100;
       if (shadowed) listenInfo.append(element('span', '', shadowed === sources ? 'All sources in the refraction shadow' : `${share < 1 ? '<1' : Math.round(share)} % of sources in the refraction shadow`));
       if (result.nonlinearPaths) listenInfo.append(element('span', 'warning', `${result.nonlinearPaths} paths start in the nonlinear zone`));
+      if (result.truncated) listenInfo.append(element('span', 'warning', `Sound after ${RENDER.maximumSeconds} s is left out`));
       const over = 20 * Math.log10(playedPeakPa() / scene.render.fullScalePa);
       if (scene.render.levelMode === 'fixed' && over > 0) {
         const severe = over >= RENDER.breakUpDecibels;
