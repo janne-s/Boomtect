@@ -74,7 +74,7 @@ export function prepareScene(scene, kinds) {
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const kind = kinds[emitter.kind];
     const { sources, rows, emission = null } = kind.sources(emitter, scene, surface);
-    const base = { emitter, sources, emission, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null };
+    const base = { emitter, sources, emission, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null, highestFrequencyHz: kind.highestFrequencyHz ?? null };
     if (kind.tracks) {
       const { tracks, echoRows = [] } = kind.tracks(emitter, scene, surface, rows);
       return { ...base, cells: null, echoRows, tracks };
@@ -591,23 +591,24 @@ function framePlan(prepared, group, extent, paths, sampleRate, profile, scene, r
   const gridPosition = new Float64Array(bins);
   const lowest = sampleRate / size;
   const ratio = Math.log((sampleRate / 2) / lowest);
-  let smoothingLimit = bins;
-  for (let bin = 0; bin < bins; bin += 1) {
+  const active = prepared.highestFrequencyHz ? Math.min(bins, Math.ceil(prepared.highestFrequencyHz * size / sampleRate) + 2) : bins;
+  let smoothingLimit = active;
+  for (let bin = 0; bin < active; bin += 1) {
     const frequency = bin * sampleRate / size;
     absorption[bin] = scene.air.absorption ? atmosphericAbsorptionNepersPerMetre(frequency, scene.air) : 0;
     smoothing[bin] = riseSmoothing(frequency, (prepared.emitter.riseTimeSeconds ?? 0) / (prepared.turbulentFront ? prepared.turbulentFront.riseRatio : 1));
-    if (smoothingLimit === bins && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
+    if (smoothingLimit === active && smoothing[bin] < NEGLIGIBLE_SMOOTHING) smoothingLimit = bin;
     gridPosition[bin] = bin === 0 ? 0 : Math.min(GROUND_GRID_POINTS - 1.000001, Math.log(frequency / lowest) / ratio * (GROUND_GRID_POINTS - 1));
   }
   const foliage = scene.ground.forest ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
-  if (foliage) for (let bin = 1; bin < bins; bin += 1) [foliage.loss[bin], foliage.lag[bin]] = foliageExponent(bin * sampleRate / size);
+  if (foliage) for (let bin = 1; bin < active; bin += 1) [foliage.loss[bin], foliage.lag[bin]] = foliageExponent(bin * sampleRate / size);
   const groundFrequencies = Float64Array.from({ length: GROUND_GRID_POINTS }, (_, index) => lowest * Math.exp(ratio * index / (GROUND_GRID_POINTS - 1)));
   if (foliage) foliage.grid = Array.from(groundFrequencies, foliageExponent);
   const layered = scene.air.absorption && scene.air.refraction ? layeredAbsorption(scene.air, lowest, sampleRate / 2, bins, sampleRate / size, highest) : null;
   const shadowFloor = 10 ** (-scene.air.shadowFloorDecibels / 20);
   const shadow = largestCreep > 0 ? { loss: new Float64Array(bins), lag: new Float64Array(bins) } : null;
   if (shadow) {
-    for (let bin = 1; bin < bins; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
+    for (let bin = 1; bin < active; bin += 1) [shadow.loss[bin], shadow.lag[bin]] = shadowExponent(bin * sampleRate / size);
     if (soft) shadow.ground = groundCreeping(scene.ground.type, speed, smallestRadius, largestRadius);
   }
   return { preRoll, hop, size, bins, absorption, layered, foliage, shadow, shadowFloor, smoothing, smoothingLimit, gridPosition, groundFrequencies, binHz: sampleRate / size, riseSeconds: prepared.emitter.riseTimeSeconds ?? 0, turbulentFront: prepared.turbulentFront, cutoff: cutoffNepers(scene), scintillationBands: scintillationBands(bins, sampleRate / size) };
@@ -1156,7 +1157,7 @@ function scintillationGain({ lower, share }, levels, bin) {
   return Math.exp(SCINTILLATION_NEPERS * (levels[low] + share[bin] * (levels[high] - levels[low])) - SCINTILLATION_BIAS);
 }
 
-/** The grain's spectrum toward the path's departure from the kind, centred one grain after the path's time; a long sound's scintillation, class C, comes with it. */
+/** The grain's spectrum toward the path's departure from the kind, centred one grain length (its source's duration) after the path's time; a long sound's scintillation, class C, comes with it. */
 function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations) {
   const departure = { x: paths.departure[3 * index], y: paths.departure[3 * index + 1], z: paths.departure[3 * index + 2] };
   const spectrum = prepared.emission(sources.noiseSeed[paths.source[index]], departure, plan);
@@ -1165,7 +1166,7 @@ function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, s
   if (!scintillations.has(key)) {
     scintillations.set(key, createScintillation({ seed: (forestSeed(receiver.id) ^ Math.imul(prepared.emitter.seed + 1, 0x27d4eb2f)) >>> 0, hopSeconds: GRAIN_HOP_SECONDS(sampleRate) }));
   }
-  const centre = paths.seconds[index] + PROPAGATION.grainSamples / sampleRate;
+  const centre = paths.seconds[index] + sources.durationSeconds[paths.source[index]];
   return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
 }
 
