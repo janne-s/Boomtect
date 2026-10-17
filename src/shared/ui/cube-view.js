@@ -536,12 +536,14 @@ export function createCubeView(canvas, options) {
     const { box, width, height, scale } = frame;
     const z = box.z0;
     const centre = fromScreen({ fixed: 'z', free: ['x', 'y'] }, { x: 0, y: 0, z }, width / 2, height / 2) ?? { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
-    const seen = Math.max(width, height) / scale / Math.max(VIEW.map.minimumSine, Math.abs(Math.sin(view.pitch))) * VIEW.map.viewMargin;
-    const side = 2 ** Math.ceil(Math.log2(Math.max(seen, box.x1 - box.x0, box.y1 - box.y0)));
+    const across = Math.max(width, height) / scale;
+    const seen = across / Math.max(VIEW.map.minimumSine, Math.abs(Math.sin(view.pitch))) * VIEW.map.viewMargin;
+    const side = 2 ** (Math.ceil(4 * Math.log2(seen)) / 4);
+    const pixelMetres = 2 ** (Math.floor(2 * Math.log2(across / Math.max(width, height))) / 2);
     const step = side / 4;
     const x = Math.round(centre.x / step) * step;
     const y = Math.round(centre.y / step) * step;
-    return { west: x - side / 2, east: x + side / 2, south: y - side / 2, north: y + side / 2 };
+    return { west: x - side / 2, east: x + side / 2, south: y - side / 2, north: y + side / 2, pixelMetres };
   }
 
   function drawMap(context, tiles, area) {

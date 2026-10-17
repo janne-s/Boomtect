@@ -264,7 +264,10 @@ export const VIEW = Object.freeze({
     visibleAlpha: 1 / 255
   }),
   map: Object.freeze({
-    cachedTiles: 144,
+    cachedTiles: 320,
+    /** Tiles requested for one view of the map, and the wait before a failed tile is asked for once more. */
+    maximumTiles: 120,
+    retryMilliseconds: 1500,
     viewMargin: 1.25,
     minimumSine: .25,
     maximumZoom: 17,

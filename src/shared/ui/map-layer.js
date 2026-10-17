@@ -45,7 +45,7 @@ export function createMapLayer(onLoad) {
     if (location !== anchorKey) previous = [];
     else if (ready.length) previous = ready;
     anchorKey = location;
-    const plan = mapTiles({ ...anchor, bounds }).tiles;
+    const plan = mapTiles({ ...anchor, bounds, pixelMetres: bounds.pixelMetres ?? null, maximumTiles: VIEW.map.maximumTiles }).tiles;
     active = new Set(plan.map(tile => `${tile.zoom}/${tile.x}/${tile.y}`));
     tiles = plan.map(tile => {
       const id = `${tile.zoom}/${tile.x}/${tile.y}`;
@@ -65,8 +65,17 @@ export function createMapLayer(onLoad) {
         entry.finished = true;
         if (active.has(id)) onLoad();
       };
-      image.onerror = () => { entry.finished = true; if (active.has(id)) onLoad(); };
-      image.src = TILE_URL.replace('{z}', tile.zoom).replace('{x}', tile.x).replace('{y}', tile.y);
+      const url = TILE_URL.replace('{z}', tile.zoom).replace('{x}', tile.x).replace('{y}', tile.y);
+      image.onerror = () => {
+        if (!entry.retried) {
+          entry.retried = true;
+          entry.timer = setTimeout(() => { if (cache.get(id) === entry) image.src = `${url}?retry`; }, VIEW.map.retryMilliseconds);
+          return;
+        }
+        entry.finished = true;
+        if (active.has(id)) onLoad();
+      };
+      image.src = url;
       return { ...tile, get image() { return entry.image; }, get ready() { return entry.ready; }, get finished() { return entry.finished; } };
     });
     for (const [id, entry] of cache) {
@@ -74,6 +83,7 @@ export function createMapLayer(onLoad) {
       if (active.has(id)) continue;
       entry.image.onload = null;
       entry.image.onerror = null;
+      clearTimeout(entry.timer);
       if (!entry.finished) entry.image.src = '';
       cache.delete(id);
     }
@@ -83,7 +93,7 @@ export function createMapLayer(onLoad) {
     tiles(anchor, area) {
       if (!area) return [];
       const bounds = area;
-      const next = [anchor.latitude, anchor.longitude, bounds.west, bounds.east, bounds.south, bounds.north].join(',');
+      const next = [anchor.latitude, anchor.longitude, bounds.west, bounds.east, bounds.south, bounds.north, bounds.pixelMetres].join(',');
       if (key !== next) {
         key = next;
         load(anchor, bounds);
@@ -96,6 +106,7 @@ export function createMapLayer(onLoad) {
       for (const entry of cache.values()) {
         entry.image.onload = null;
         entry.image.onerror = null;
+        clearTimeout(entry.timer);
         if (!entry.finished) entry.image.src = '';
       }
       cache.clear();
