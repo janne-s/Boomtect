@@ -1799,6 +1799,14 @@ export function startFrame(tect) {
     startPlayback();
   });
 
+  document.addEventListener('keydown', event => {
+    if (event.code !== 'Space' || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target;
+    if (document.querySelector('dialog[open]') || target.isContentEditable || target.closest('input, textarea, select, button, a[href], [role="button"]')) return;
+    event.preventDefault();
+    if (!event.repeat) $('play').click();
+  });
+
   $('plot-play').addEventListener('click', () => {
     if (player.busy()) { pausePlayback(); player.stop(); setStatus(''); }
     else if (player.playing()) pausePlayback();

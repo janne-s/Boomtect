@@ -104,6 +104,7 @@ microphone along the Mach cone.
 
 ## Listening
 
+- **Space** — Runs the main Render / Play / Stop action outside controls and dialogs.
 - **Render** and **Play** — The button renders the scene when it has changed,
   then plays it: it flashes the sources and plays what the listening microphones
   hear.
