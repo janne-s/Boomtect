@@ -193,6 +193,7 @@ export const RENDER = Object.freeze({
   binauralHeadroom: 10 ** (-3 / 20),
   scheduleLeadSeconds: .08,
   fadeSeconds: .05,
+  audioResumeSeconds: 8,
   breakUpDecibels: 20,
   shortenedLeadSeconds: .5,
   silenceShare: 1e-4

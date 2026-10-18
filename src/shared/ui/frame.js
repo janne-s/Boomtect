@@ -106,7 +106,15 @@ export function startFrame(tect) {
   };
   state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
-  const player = createPlayer();
+  const player = createPlayer({
+    onChange: () => syncPlayButton(),
+    onInterrupted(position, message) {
+      state.pause = position;
+      drawStill();
+      setStatus(message, true);
+    }
+  });
+  window.addEventListener('app-reset', () => player.dispose());
   const MODE_ICONS = Object.fromEntries(MODES.map(mode => [mode, MODE_SETTINGS[mode].icon]));
   const mobile = createMobileLayout({ onResults: () => drawResults(), icons: MODE_ICONS });
   createSettings({
@@ -317,17 +325,18 @@ export function startFrame(tect) {
   function syncPlayButton() {
     const button = $('play');
     const playing = player.playing();
+    const starting = player.busy();
     const rendering = operations.has('render');
-    const busy = !playing && rendering;
-    button.textContent = playing ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
+    const busy = !playing && !starting && rendering;
+    button.textContent = starting ? 'Cancel' : playing ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
     button.setAttribute('aria-label', busy ? 'Rendering' : button.textContent);
-    if (busy) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
-    button.disabled = !playing && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
+    if (busy || starting) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
+    button.disabled = !playing && !starting && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
     button.setAttribute('aria-pressed', playing ? 'true' : 'false');
     const pause = $('plot-play');
     pause.disabled = !state.results;
-    pause.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-    pause.classList.toggle('playing', playing);
+    pause.setAttribute('aria-label', starting ? 'Cancel' : playing ? 'Pause' : 'Play');
+    pause.classList.toggle('playing', playing || starting);
     $('results').classList.toggle('playable', Boolean(state.results));
   }
 
@@ -924,6 +933,7 @@ export function startFrame(tect) {
 
   function commitListening(change) {
     if (!applyScene(change)) return;
+    if (player.busy() && !player.playing()) { player.stop(); setStatus(''); }
     refreshPanel();
     drawInfo();
     if (player.playing()) resumePlayback();
@@ -1704,20 +1714,26 @@ export function startFrame(tect) {
     if (resuming) { resuming.again = true; return; }
     if (!player.playing() || !player.clock()) return;
     resuming = { again: false };
+    const start = player.unlock(state.scene.render.sampleRate, { continuing: true });
     let started = false;
     try {
-      const current = await listening();
+      const [current] = await start.wait(Promise.all([listening(), start.ready]));
       const clock = player.clock();
-      if (!player.playing() || !clock) return;
+      if (!start.current() || !player.playing() || !clock) return;
       if (!current) { player.stop(); syncPlayButton(); return; }
       started = await player.play(current.composition, current.playbackGain, {
-        realDelay: state.preferences.realDelay, onEnded: syncPlayButton, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
+        start, realDelay: state.preferences.realDelay, onEnded: syncPlayButton, atSceneSeconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds, continuing: true
       });
     } catch (error) {
-      player.stop();
-      syncPlayButton();
-      setStatus(`Playback failed: ${error.message}`, true);
+      if (start.current()) {
+        const clock = player.clock();
+        if (clock) state.pause = { seconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds };
+        player.stop();
+        drawStill();
+        setStatus(`Playback failed: ${error.message}`, true);
+      }
     } finally {
+      start.cancel();
       const { again } = resuming;
       resuming = null;
       if (started) showPlaying();
@@ -1728,26 +1744,32 @@ export function startFrame(tect) {
   /** Call it first thing in a user gesture, which the audio context needs. */
   async function startPlayback() {
     const { results } = state;
+    const start = player.unlock(state.scene.render.sampleRate);
+    setStatus('Starting audio…');
     try {
-      const unlocked = player.unlock(state.scene.render.sampleRate);
       let current;
       let scene;
       do {
         scene = state.scene;
-        current = await listening();
-        if (results !== state.results) return;
+        [current] = await start.wait(Promise.all([listening(), start.ready]));
+        if (!start.current() || results !== state.results) return;
       } while (scene !== state.scene);
       if (!current) { setStatus('No sound reaches the listening microphones'); return; }
-      await unlocked;
       const from = state.pause;
-      state.pause = null;
-      const options = { realDelay: state.preferences.realDelay, onEnded: syncPlayButton };
+      const options = { start, realDelay: state.preferences.realDelay, onEnded: syncPlayButton };
       if (from) Object.assign(options, { atSceneSeconds: from.seconds, skippedSeconds: from.skippedSeconds });
-      if (await player.play(current.composition, current.playbackGain, options)) showPlaying();
+      if (await player.play(current.composition, current.playbackGain, options)) {
+        state.pause = null;
+        setStatus('');
+        showPlaying();
+      }
     } catch (error) {
-      player.stop();
-      syncPlayButton();
-      setStatus(`Playback failed: ${error.message}`, true);
+      if (start.current()) {
+        player.stop();
+        setStatus(`Playback failed: ${error.message}`, true);
+      }
+    } finally {
+      start.cancel();
     }
   }
 
@@ -1760,9 +1782,10 @@ export function startFrame(tect) {
   }
 
   $('play').addEventListener('click', () => {
-    if (player.playing()) {
+    if (player.busy() || player.playing()) {
       state.pause = null;
       player.stop();
+      setStatus('');
       syncPlayButton();
       return;
     }
@@ -1777,7 +1800,8 @@ export function startFrame(tect) {
   });
 
   $('plot-play').addEventListener('click', () => {
-    if (player.playing()) pausePlayback();
+    if (player.busy()) { pausePlayback(); player.stop(); setStatus(''); }
+    else if (player.playing()) pausePlayback();
     else if (state.results) startPlayback();
   });
 
@@ -1800,7 +1824,7 @@ export function startFrame(tect) {
       if (seconds === null) return;
       const clock = player.clock();
       const skippedSeconds = clock ? clock.skippedSeconds : state.pause?.skippedSeconds ?? null;
-      if (player.playing()) { player.stop(); syncPlayButton(); }
+      if (player.busy() || player.playing()) { player.stop(); syncPlayButton(); }
       state.pause = { seconds, skippedSeconds };
       drawStill();
       canvas.setPointerCapture(event.pointerId);

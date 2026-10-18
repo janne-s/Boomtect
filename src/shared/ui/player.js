@@ -2,19 +2,6 @@ import Omnitone from '../vendor/omnitone/omnitone.min.esm.js';
 import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
 import { RENDER } from '../domain/constants.js';
 
-/** iOS mutes Web Audio with the silent switch unless the session is playback (Safari 16.4+); older iOS needs a looping silent audio element. */
-const AUDIO_SESSION = typeof navigator !== 'undefined' && 'audioSession' in navigator;
-let silence = null;
-
-function declarePlayback() {
-  if (AUDIO_SESSION) {
-    try { navigator.audioSession.type = 'playback'; } catch {}
-    return;
-  }
-  silence ??= silentLoop();
-  silence.play().catch(() => {});
-}
-
 function silentLoop() {
   const rate = 8000;
   const samples = rate / 2;
@@ -90,13 +77,14 @@ function bufferSource(context, channels, gain, sampleRate) {
   return source;
 }
 
-async function connectComposition(context, composition, gain, destination, { live, input = destination, fieldInput = null }) {
+async function connectComposition(context, composition, gain, destination, { live, input = destination, fieldInput = null, signal = null }) {
   const { kind, sampleRate, order } = composition;
   const sources = [];
   const rotations = new Map();
   const nodes = [];
   if (kind === 'binaural' || kind === 'mix') {
     const renderer = await binauralRenderer(context, order);
+    signal?.throwIfAborted();
     if (fieldInput) fieldInput.connect(renderer.input);
     for (const head of composition.heads) {
       const source = bufferSource(context, head.channels, gain, sampleRate);
@@ -146,11 +134,44 @@ export async function renderComposition(composition, gain) {
   return [0, 1].map(index => new Float32Array(rendered.getChannelData(index)));
 }
 
-export function createPlayer() {
+function waitForAudio(promise, signal, timeoutSeconds = null) {
+  return new Promise((resolve, reject) => {
+    let remaining = timeoutSeconds === null ? null : timeoutSeconds * 1000;
+    let since = null;
+    let timer = null;
+    const finish = (settle, value) => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      document.removeEventListener('visibilitychange', visibility);
+      settle(value);
+    };
+    const abort = () => finish(reject, signal.reason);
+    const visibility = () => {
+      clearTimeout(timer);
+      if (since !== null) remaining -= performance.now() - since;
+      since = null;
+      if (remaining !== null && document.visibilityState === 'visible') {
+        since = performance.now();
+        timer = setTimeout(() => finish(reject, new Error('Audio did not start. Press Play to retry.')), Math.max(0, remaining));
+      }
+    };
+    Promise.resolve(promise).then(value => finish(resolve, value), error => finish(reject, error));
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener('abort', abort, { once: true });
+    if (remaining !== null) {
+      document.addEventListener('visibilitychange', visibility);
+      visibility();
+    }
+  });
+}
+
+export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } = {}) {
   let context = null;
   let current = null;
   let clock = null;
-  let request = 0;
+  let pending = null;
+  let silence = null;
+  let detachContext = null;
 
   function disconnect({ sources, nodes, faders }) {
     sources.forEach(source => source.disconnect());
@@ -161,6 +182,7 @@ export function createPlayer() {
   function release(at = context?.currentTime) {
     if (current) {
       const playback = current;
+      const playingContext = playback.context;
       for (const fader of playback.faders) {
         fader.gain.cancelScheduledValues(at);
         fader.gain.setValueAtTime(1, at);
@@ -170,60 +192,113 @@ export function createPlayer() {
         source.onended = null;
         try { source.stop(at + RENDER.fadeSeconds); } catch {}
       }
-      setTimeout(() => disconnect(playback), (at - context.currentTime + RENDER.fadeSeconds * 2) * 1000);
+      setTimeout(() => disconnect(playback), Math.max(0, at - playingContext.currentTime + RENDER.fadeSeconds * 2) * 1000);
     }
     current = null;
     clock = null;
   }
 
   function stop() {
-    request += 1;
+    const abandoned = pending;
+    pending = null;
+    abandoned?.abort();
     release();
     silence?.pause();
+    const retired = context;
+    detachContext?.();
+    detachContext = null;
+    context = null;
+    if (retired) setTimeout(() => retired.close().catch(() => {}), RENDER.fadeSeconds * 2000 + 50);
+    onChange();
   }
 
-  let stale = false;
-  navigator.mediaDevices?.addEventListener?.('devicechange', () => { stale = true; });
-
-  /** Safari can leave a context running but silent after sleep or an output change, so a fresh start takes a new one. */
-  function contextFor(sampleRate, fresh) {
-    declarePlayback();
-    if (context && !current && (fresh || stale || context.state === 'closed' || context.state === 'interrupted')) {
-      const old = context;
-      setTimeout(() => old.close().catch(() => {}), RENDER.fadeSeconds * 2000 + 50);
-      context = null;
-    }
-    stale = false;
-    context ??= new AudioContext({ sampleRate });
-    return context.resume();
+  function interrupt(message = 'Audio interrupted') {
+    if (!current) return;
+    const position = { seconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds };
+    stop();
+    onInterrupted(position, message);
   }
 
-  /** Call it first thing in a user gesture: audio may start only shortly after one. */
-  const unlock = sampleRate => contextFor(sampleRate, true);
+  function observeContext(ownedContext) {
+    const changed = () => {
+      if (context === ownedContext && ownedContext.state !== 'running') interrupt();
+    };
+    ownedContext.addEventListener('statechange', changed);
+    detachContext = () => ownedContext.removeEventListener('statechange', changed);
+  }
 
-  // iOS suspends the context during a call or in the background ("interrupted") and does not resume it by itself.
   const wake = () => {
-    if (document.visibilityState === 'visible' && current && context && context.state !== 'running') context.resume().catch(() => {});
+    if (document.visibilityState === 'visible' && current && context?.state !== 'running') interrupt();
   };
+  const sessionChanged = () => { if (navigator.audioSession?.state === 'interrupted') interrupt(); };
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);
+  navigator.audioSession?.addEventListener('statechange', sessionChanged);
 
-  async function play(composition, gain, { realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null, continuing = false }) {
-    const ticket = request += 1;
-    await contextFor(composition.sampleRate, false);
-    if (!continuing) release();
-    const fader = context.createGain();
-    fader.connect(context.destination);
-    const fieldFader = context.createGain();
+  /** Keep session activation and resume synchronous with the Play gesture. */
+  function unlock(sampleRate, { continuing = false } = {}) {
+    if (!continuing) stop();
+    pending?.abort();
+    const controller = new AbortController();
+    const attempt = {
+      abort: () => controller.abort(),
+      current: () => pending === attempt && !controller.signal.aborted,
+      wait: (promise, timeoutSeconds = null) => waitForAudio(promise, controller.signal, timeoutSeconds),
+      cancel: () => { if (attempt.current()) stop(); },
+      signal: controller.signal,
+      context: null,
+      ready: null
+    };
+    pending = attempt;
+    try {
+      let sessionReady;
+      if (!continuing) {
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+        else {
+          silence ??= silentLoop();
+          sessionReady = silence.play();
+        }
+        // Recreate on explicit starts: Safari can report running while its output is silent after sleep.
+        context = new AudioContext({ sampleRate });
+        observeContext(context);
+      }
+      attempt.context = context;
+      const resumed = context.resume();
+      attempt.ready = waitForAudio(Promise.all([resumed, sessionReady]), controller.signal, RENDER.audioResumeSeconds);
+    } catch (error) {
+      attempt.ready = Promise.reject(error);
+    }
+    attempt.ready.catch(() => {});
+    onChange();
+    return attempt;
+  }
+
+  async function play(composition, gain, { start, realDelay, onEnded, atSceneSeconds = null, skippedSeconds = null, continuing = false }) {
+    await start.ready;
+    if (!start.current()) return false;
+    const ownedContext = start.context;
+    if (ownedContext !== context || ownedContext.state !== 'running') throw new Error('Audio is interrupted. Press Play to retry.');
+    const fader = ownedContext.createGain();
+    fader.connect(ownedContext.destination);
+    const fieldFader = ownedContext.createGain();
     fieldFader.channelCount = channelCount(composition.order || 1);
     fieldFader.channelCountMode = 'explicit';
     fieldFader.channelInterpretation = 'discrete';
-    const connected = { ...await connectComposition(context, composition, gain, context.destination, { live: true, input: fader, fieldInput: fieldFader }), faders: [fader, fieldFader] };
-    if (ticket !== request) {
-      disconnect(connected);
-      return false;
+    let connected;
+    try {
+      const connecting = connectComposition(ownedContext, composition, gain, ownedContext.destination, { live: true, input: fader, fieldInput: fieldFader, signal: start.signal }).then(graph => {
+        const playback = { ...graph, context: ownedContext, faders: [fader, fieldFader] };
+        if (!start.current()) disconnect(playback);
+        return playback;
+      });
+      connected = await start.wait(connecting, RENDER.audioResumeSeconds);
+    } catch (error) {
+      fader.disconnect();
+      fieldFader.disconnect();
+      throw error;
     }
-    const at = context.currentTime + RENDER.scheduleLeadSeconds;
+    if (!start.current()) { disconnect(connected); return false; }
+    const at = ownedContext.currentTime + RENDER.scheduleLeadSeconds;
     const previous = continuing ? clock : null;
     const skipped = previous?.skippedSeconds ?? skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds));
     const origin = previous?.origin ?? at - (atSceneSeconds ?? skipped);
@@ -242,7 +317,10 @@ export function createPlayer() {
       stop();
       onEnded?.();
     };
-    clock = { skippedSeconds: skipped, origin, sceneSeconds: () => context.currentTime - origin };
+    clock = { skippedSeconds: skipped, origin, sceneSeconds: () => ownedContext.currentTime - origin };
+    pending = null;
+    start.abort();
+    onChange();
     return true;
   }
 
@@ -250,6 +328,13 @@ export function createPlayer() {
     unlock,
     play,
     stop,
+    busy: () => pending !== null,
+    dispose() {
+      stop();
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('pageshow', wake);
+      navigator.audioSession?.removeEventListener('statechange', sessionChanged);
+    },
     clock: () => clock,
     playing: () => current !== null,
     setOrientation(receiverId, headingDegrees, pitchDegrees) { current?.rotations.get(receiverId)?.setOrientation(headingDegrees, pitchDegrees); }
