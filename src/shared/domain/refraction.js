@@ -431,6 +431,12 @@ export function localProfile(profile, heightMetres) {
   return Math.abs(speedAt(profile, heightMetres) - speed) <= VIEW.wavefront.localProfileTolerance * speed ? profile : { groundSpeed: speed, gradient: 0 };
 }
 
+/** Class C: extend the front's linear fit continuously through the source's actual atmospheric speed. */
+export function frontProfile(profile, heightMetres) {
+  if (!profile.layered || !(heightMetres > profile.layered.fitHeight)) return profile;
+  return { ...profile, gradient: (profile.layered.trueSpeed(heightMetres) - profile.groundSpeed) / heightMetres };
+}
+
 export function wavefront(profile, source, seconds) {
   const cs = speedAt(profile, source.z);
   if (flat(profile)) return { centre: source, radiusMetres: cs * seconds };

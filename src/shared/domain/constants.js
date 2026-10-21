@@ -84,6 +84,8 @@ export const PROPAGATION = Object.freeze({
   softCreepLag: 3.5,
   /** Class C: the steady-shock 1/Δp law, constant to verify against Pierce & Kang 1990 and Blackstock. */
   shockRisePascalSeconds: .005,
+  /** Class C: a crackling grain's shocks are its peaks, this many times its rms pressure. */
+  crackleCrest: 4,
   /** Class B criterion a = sin ψ/√(2βε) (Baskar, Coulouvrat & Marchiano 2007); the blend is class C. */
   mergedParameter: 1,
   linearParameter: 2,

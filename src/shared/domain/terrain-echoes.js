@@ -67,7 +67,8 @@ export function sourceCells(sources, cellMetres) {
     limitRadii: new Float64Array(length),
     turbulentFront: new Uint8Array(length),
     middleShare: new Float64Array(length),
-    middleRatio: new Float64Array(length)
+    middleRatio: new Float64Array(length),
+    shockShare: new Float64Array(length)
   };
   const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
   members.forEach((list, cell) => {
@@ -80,7 +81,7 @@ export function sourceCells(sources, cellMetres) {
       table[key][cell] = sum;
     }
     table.amplitudePaMetres[cell] = Math.sqrt(energy);
-    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'turbulentFront', 'middleShare', 'middleRatio']) table[key][cell] = sources[key][list[0]];
+    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'turbulentFront', 'middleShare', 'middleRatio', 'shockShare']) table[key][cell] = sources[key][list[0]];
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);

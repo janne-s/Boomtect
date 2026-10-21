@@ -743,10 +743,16 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   const pulseKind = sources.pulse[sourceIndex];
+  const crackling = pulseKind === PULSE_GRAIN && !paths.aloft[index] ? sources.shockShare[sourceIndex] : 0;
   const shock = pulseKind === PULSE_NOISE || pulseKind === PULSE_GRAIN || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
-  const shockSigma = riseSeconds / RISE_TIME_PER_SIGMA;
-  const pathLoss = (bin, linear) => (shock > 0 ? linear - shock * Math.max(0, linear - 2 * (Math.PI * shockSigma * bin * binHz) ** 2) : linear);
-  const shockLimit = shock > 0 ? Math.ceil(Math.sqrt(plan.cutoff / 2) / (Math.PI * shockSigma * binHz)) : 0;
+  const shockSigma = (crackling > 0 ? riseSeconds / PROPAGATION.crackleCrest : riseSeconds) / RISE_TIME_PER_SIGMA;
+  const shockLoss = bin => 2 * (Math.PI * shockSigma * bin * binHz) ** 2;
+  // Class C: a crackling grain's share of its power travels in shocks whose own rise, not absorption, sets their high end.
+  const pathLoss = (bin, linear) => {
+    if (crackling > 0) return linear > shockLoss(bin) ? -Math.log((1 - crackling) * Math.exp(-linear) + crackling * Math.exp(-shockLoss(bin))) : linear;
+    return shock > 0 ? linear - shock * Math.max(0, linear - shockLoss(bin)) : linear;
+  };
+  const shockLimit = shock > 0 || crackling > 0 ? Math.ceil(Math.sqrt(plan.cutoff / 2) / (Math.PI * shockSigma * binHz)) : 0;
   const absorbingMetres = metres * (1 + paths.absorptionExcess[index]);
   const { highestFrequencyHz } = scene.render.quality;
   const limit = Math.min(plan.smoothingLimit, Math.max(absorptionLimit(plan, absorbingMetres), shockLimit), highestFrequencyHz < scene.render.sampleRate / 2 ? Math.ceil(highestFrequencyHz / binHz) : Infinity);

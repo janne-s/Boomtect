@@ -6,6 +6,10 @@ const CONE_RING = Object.freeze(Array.from({ length: VIEW.cone.ringPoints }, (_,
   const angle = 2 * Math.PI * step / VIEW.cone.ringPoints;
   return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
 }));
+const ENVELOPE_RING = Object.freeze(Array.from({ length: 2 * VIEW.cone.ringPoints }, (_, step) => {
+  const angle = Math.PI * step / VIEW.cone.ringPoints;
+  return Object.freeze({ cos: Math.cos(angle), sin: Math.sin(angle) });
+}));
 
 export const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
 
@@ -77,7 +81,7 @@ function coneStride(path, end) {
   return Math.max(powerOfTwoAbove(end / MOST_CONE_RINGS), Math.min(even, turning));
 }
 
-export function machCone(path, now, profile) {
+export function machCone(path, now, profile, { profileAt = localProfile, envelope = false } = {}) {
   const count = path.seconds.length;
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
   if (last < 1) return null;
@@ -87,7 +91,19 @@ export function machCone(path, now, profile) {
     const to = Math.min(count - 1, index + 1);
     return Math.hypot(path.x[to] - path.x[from], path.y[to] - path.y[from], path.z[to] - path.z[from]) / ((to - from) * path.step);
   };
-  const supersonic = index => speedAround(index) > speedAt(localProfile(profile, path.z[index]), path.z[index]);
+  const supersonic = index => speedAround(index) > speedAt(profileAt(profile, path.z[index]), path.z[index]);
+  const fronts = new Map();
+  const frontAt = index => {
+    if (fronts.has(index)) return fronts.get(index);
+    const point = at(index);
+    const age = now - path.seconds[index];
+    const front = wavefront(profileAt(profile, point.z), point, age);
+    if (envelope && profile.wind) {
+      front.centre = { ...front.centre, x: front.centre.x + (profile.wind.x + profile.shear.x * point.z) * age, y: front.centre.y + (profile.wind.y + profile.shear.y * point.z) * age };
+    }
+    fronts.set(index, front);
+    return front;
+  };
   let end = last;
   while (end > 0 && !supersonic(end)) end -= 1;
   if (end < 1) return null;
@@ -103,29 +119,37 @@ export function machCone(path, now, profile) {
     const before = at(Math.max(0, index - 1));
     const after = at(Math.min(count - 1, index + 1));
     const span = (Math.min(count - 1, index + 1) - Math.max(0, index - 1)) * path.step;
-    const d = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
-    const length = Math.hypot(d.x, d.y, d.z);
+    let d = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
+    let length = Math.hypot(d.x, d.y, d.z);
     const point = at(index);
-    const local = localProfile(profile, point.z);
-    const cosine = speedAt(local, point.z) / (length / span);
-    if (!(length > 0 && cosine < 1)) continue;
+    const local = profileAt(profile, point.z);
+    let cosine = speedAt(local, point.z) / (length / span);
+    if (envelope) {
+      const left = frontAt(Math.max(0, index - 1));
+      const right = frontAt(Math.min(count - 1, index + 1));
+      d = { x: right.centre.x - left.centre.x, y: right.centre.y - left.centre.y, z: right.centre.z - left.centre.z };
+      length = Math.hypot(d.x, d.y, d.z);
+      // Sphere-envelope tangency: (x − centre) · centre' = −radius · radius'.
+      cosine = (left.radiusMetres - right.radiusMetres) / length;
+    }
+    if (!(length > 0 && Math.abs(cosine) < 1)) continue;
     const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
     const across = Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
     const norm = Math.hypot(across.x, across.y, across.z);
     const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };
     const second = { x: unit.y * first.z - unit.z * first.y, y: unit.z * first.x - unit.x * first.z, z: unit.x * first.y - unit.y * first.x };
-    const { centre, radiusMetres } = wavefront(local, point, now - path.seconds[index]);
+    const { centre, radiusMetres } = frontAt(index);
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
     radii.push(radiusMetres);
-    rings.push(CONE_RING.map(({ cos, sin }) => {
+    rings.push((envelope ? ENVELOPE_RING : CONE_RING).map(({ cos, sin }) => {
       const a = radius * cos;
       const b = radius * sin;
       return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };
     }));
   }
   if (!rings.length) return null;
-  return { apex: apex ? at(last) : null, rings, radii };
+  return { apex: apex ? at(last) : null, rings, radii, ...(envelope ? { lineEvery: 2 * VIEW.cone.lineEvery } : {}) };
 }
 
 /**
