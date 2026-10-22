@@ -396,6 +396,14 @@ const volcanoSize = {
   entry: { unit: 'Pa', get: item => item.pressureAtKilometrePa, set: (item, value) => { item.pressureAtKilometrePa = value; } }
 };
 
+const volcanoHeight = {
+  label: 'Vent height',
+  read: item => clamp01(Math.sqrt(item.positionMetres.z / VIEW.macros.volcanoHeightMetres)),
+  write: (item, t) => { item.positionMetres = { ...item.positionMetres, z: Math.round(t * t * VIEW.macros.volcanoHeightMetres / 10) * 10 }; },
+  show: item => metres(item.positionMetres.z),
+  entry: { units: METRES, get: item => item.positionMetres.z, set: (item, value) => { item.positionMetres = { ...item.positionMetres, z: value }; } }
+};
+
 const volcanoSharpness = {
   label: 'Sharpness',
   read: item => clamp01(1 - logPosition(item.riseTimeSeconds, VIEW.macros.volcanoRiseRange)),
@@ -439,7 +447,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
-  if (emitter.kind === 'volcano') return timed([volcanoSize, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
+  if (emitter.kind === 'volcano') return timed([volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

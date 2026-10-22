@@ -30,12 +30,14 @@ function energyAbove(samples, frequencyHz) {
   return sum;
 }
 
-test('a volcano opens as a Vulcanian explosion on the ground, and its scene round-trips', () => {
+test('a volcano opens as a Vulcanian explosion on the ground, keeps a raised vent, and its scene round-trips', () => {
   const volcano = defaultVolcano();
   assert.equal(eruptionOf(volcano), 'vulcanian');
   assert.equal(volcano.positionMetres.z, 0);
   const scene = { ...defaultScene('blast'), emitters: [volcano] };
   assert.deepEqual(readScene(JSON.parse(serializeScene(parseScene(scene)))).emitters, [volcano]);
+  const raised = { ...volcano, positionMetres: { x: 0, y: 0, z: 1200 } };
+  assert.equal(readScene(JSON.parse(serializeScene(parseScene({ ...scene, emitters: [raised] })))).emitters[0].positionMetres.z, 1200);
 });
 
 test('a volcano missing a field takes its default, and one out of range is brought into it', () => {

@@ -54,7 +54,8 @@ microphone along the Mach cone.
   mortar's thump on the ground, the shell's burst high in the air a flight time
   later, and, for a share of the shells, crackling stars as a swarm of tiny
   pops around the burst. In the scene each shell bursts in its own color.
-- **Volcano** — An explosion from a vent: a long pressure pulse, set by its
+- **Volcano** — An explosion from a vent, on the ground or raised to a
+  summit's height above it: a long pressure pulse, set by its
   pressure 1 km away, and the roar and low thumps of the ash and gas that
   follow it. Strombolian, Vulcanian, and strong Vulcanian types set it; the
   rise time runs from a soft thump to a crack.
@@ -86,8 +87,8 @@ microphone along the Mach cone.
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
   salvo, charge, and fireball for a barrage; size, duration, shells, shells per
-  salvo, shell size, and crackle for a fireworks display; size, sharpness,
-  coda, coda length, and thumps for a volcano, each with its onset when the scene
+  salvo, shell size, and crackle for a fireworks display; size, vent height,
+  sharpness, coda, coda length, and thumps for a volcano, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height

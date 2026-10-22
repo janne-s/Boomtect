@@ -420,7 +420,7 @@ const KINDS = Object.freeze({
   storm: { defaults: () => defaultStorm(), read: readStorm },
   blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres') },
   barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres'), 'centreMetres', path) },
-  volcano: { defaults: () => defaultVolcano(), read: (value, { check, point, numbers }, path) => onGround(check, { positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path) }, 'positionMetres', path) },
+  volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path) }) },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },

@@ -192,7 +192,8 @@ export const VIEW = Object.freeze({
     fineTortuosity: Object.freeze([4, 28]),
     cloudRange: Object.freeze([200, 18000]),
     volcanoPressureRange: Object.freeze([1, 10000]),
-    volcanoRiseRange: Object.freeze([2e-5, 3e-3])
+    volcanoRiseRange: Object.freeze([2e-5, 3e-3]),
+    volcanoHeightMetres: 6000
   }),
   flash: Object.freeze({
     traverseSeconds: .12,

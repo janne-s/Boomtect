@@ -178,7 +178,7 @@ function detailSections(emitter, { updateEmitter }) {
     return [
       section('Placement', container => {
         placement(container);
-        pointFields(container, { label: 'Vent', point: emitter.positionMetres, axes: ['x', 'y'], onCommit: set('positionMetres') });
+        pointFields(container, { label: 'Vent', point: emitter.positionMetres, onCommit: set('positionMetres') });
       }),
       section('Source', container => {
         selectField(container, {
