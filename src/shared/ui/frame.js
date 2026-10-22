@@ -17,7 +17,7 @@ import { createMapLayer } from './map-layer.js';
 import { createLatestTask } from './latest-task.js';
 import { currentSurface, useTerrain } from './geometry-cache.js';
 import { entryText, parseEntry, resetMacro } from './macros.js';
-import { composeListening, LISTENING_LABELS, listeningKind } from './listening.js';
+import { composeListening, firstArrivalSeconds, LISTENING_LABELS, listeningKind } from './listening.js';
 import { createOrientationBall } from './orientation-ball.js';
 import { createMobileLayout } from './mobile.js';
 import { createSettings } from './settings.js';
@@ -576,7 +576,7 @@ export function startFrame(tect) {
     $('export').disabled = false;
     drawResults();
     drawInfo();
-    prepareEar();
+    prepareListening();
     state.fullRender?.resolve();
     state.fullRender = null;
   }
@@ -682,10 +682,10 @@ export function startFrame(tect) {
     return state.playedPeak?.results === state.results && state.playedPeak.key === key ? state.playedPeak.peakPa : raw;
   }
 
-  function prepareEar() {
-    const { earReflex, earLoudness } = state.scene.render;
-    if (!state.results || (!earReflex && !earLoudness)) return;
-    listening().catch(error => setStatus(`Ear model failed: ${error.message}`, true));
+  /** Composes what Play will hear as soon as there is a result, so Play neither waits for it nor starts beside it. */
+  function prepareListening() {
+    if (!state.results) return;
+    listening().catch(error => setStatus(`Preparing playback failed: ${error.message}`, true));
   }
 
   const decodedPeaks = new WeakMap();
@@ -945,7 +945,7 @@ export function startFrame(tect) {
     refreshPanel();
     drawInfo();
     if (player.playing()) resumePlayback();
-    else prepareEar();
+    else prepareListening();
   }
 
   function orient(receiverId, headingDegrees, pitchDegrees) {
@@ -1698,7 +1698,7 @@ export function startFrame(tect) {
     const end = result.startSeconds + result.samples.length / result.sampleRate;
     const share = value => `${Math.min(100, Math.max(0, value / end * 100))}%`;
     $('cube-timeline-time').textContent = `${Math.max(0, seconds).toFixed(2)} s`;
-    $('cube-timeline-arrival').style.left = share(result.startSeconds);
+    $('cube-timeline-arrival').style.left = share(firstArrivalSeconds(result));
     $('cube-timeline-progress').style.width = share(seconds);
     const seek = $('cube-timeline-seek');
     seek.max = String(end);

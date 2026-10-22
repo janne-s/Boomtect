@@ -1,5 +1,3 @@
-import { RENDER } from '../domain/constants.js';
-
 export const LISTENING_LABELS = Object.freeze({
   none: 'No microphone',
   mono: 'Mono',
@@ -9,11 +7,13 @@ export const LISTENING_LABELS = Object.freeze({
   mix: 'Mix'
 });
 
-function firstSoundSeconds(results, peakPa) {
-  return Math.min(...results.map(result => {
-    const index = result.samples.findIndex(sample => Math.abs(sample) > RENDER.silenceShare * peakPa);
-    return index < 0 ? Infinity : result.startSeconds + index / result.sampleRate;
-  }));
+/** When the first wavefront reaches a microphone: its earliest path. Nothing before it is sound, only the render's numerics. */
+export function firstArrivalSeconds(result) {
+  const arrivals = result?.arrivals;
+  if (!arrivals?.count) return result?.startSeconds ?? Infinity;
+  let first = Infinity;
+  for (let index = 0; index < arrivals.count; index += 1) first = Math.min(first, arrivals.seconds[index]);
+  return Math.max(result.startSeconds, first);
 }
 
 function aligned(results, channelCount) {
@@ -54,7 +54,7 @@ export function composeListening(scene, results) {
     order,
     sampleRate: timeline.sampleRate,
     startSeconds: timeline.startSeconds,
-    firstSoundSeconds: Math.max(timeline.startSeconds, firstSoundSeconds(listening.map(receiver => results.get(receiver.id)), peakPa)),
+    firstSoundSeconds: Math.max(timeline.startSeconds, Math.min(...listening.map(receiver => firstArrivalSeconds(results.get(receiver.id))))),
     length: timeline.length,
     heads: heads.map(receiver => ({
       receiverId: receiver.id,

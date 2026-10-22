@@ -300,9 +300,9 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     if (!start.current()) { disconnect(connected); return false; }
     const at = ownedContext.currentTime + RENDER.scheduleLeadSeconds;
     const previous = continuing ? clock : null;
-    // Sound can begin before the scene's zero (a long grain straddles a source's start); playback then begins before it.
+    // Shortened playback begins with the first wavefront; sound can arrive before the scene's zero (a long grain straddles a source's start).
     const early = composition.firstSoundSeconds < 0;
-    const leadIn = early ? composition.firstSoundSeconds - RENDER.shortenedLeadSeconds : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds);
+    const leadIn = early ? composition.firstSoundSeconds : Math.max(0, composition.firstSoundSeconds);
     const skipped = previous?.skippedSeconds ?? skippedSeconds ?? (realDelay ? 0 : leadIn);
     const origin = previous?.origin ?? at - (atSceneSeconds ?? (realDelay && early ? leadIn : skipped));
     release(at);

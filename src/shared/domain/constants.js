@@ -200,12 +200,10 @@ export const RENDER = Object.freeze({
   autoDelayMilliseconds: 200,
   peakTarget: 10 ** (-3 / 20),
   binauralHeadroom: 10 ** (-3 / 20),
-  scheduleLeadSeconds: .08,
+  scheduleLeadSeconds: .2,
   fadeSeconds: .05,
   audioResumeSeconds: 8,
-  breakUpDecibels: 20,
-  shortenedLeadSeconds: .5,
-  silenceShare: 1e-4
+  breakUpDecibels: 20
 });
 
 export const VIEW = Object.freeze({
