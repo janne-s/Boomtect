@@ -380,7 +380,7 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
   });
   const specularCount = parts.reduce((sum, part) => sum + part.specular.reduce((total, table) => total + (table?.count ?? 0), 0), 0);
   const scatteredCount = merged.reduce((sum, sums) => sum + sums.size, 0);
-  if (parts.length === 1 && !specularCount && !scatteredCount) return { ...parts[0].direct, cells: frame.cells };
+  if (parts.length === 1 && !specularCount && !scatteredCount) return withNearest({ ...parts[0].direct, cells: frame.cells });
   const paths = pathTable(parts.reduce((sum, part) => sum + part.direct.count, 0) + specularCount + scatteredCount);
   for (const part of parts) appendPaths(paths, part.direct);
   const add = pathWriter(frame, scene, paths);
@@ -389,7 +389,24 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
     for (const sum of merged[emitterIndex].values()) add(emitterIndex, sum.cell, table, PATH_SCATTER, mergedPath(sum, table));
   });
   paths.cells = frame.cells;
+  return withNearest(paths);
+}
+
+/** The shortest spreading distance of a receiver's paths, from which a Distance loss under 100 % eases spreading. */
+function withNearest(paths) {
+  let nearest = Infinity;
+  for (let index = 0; index < paths.count; index += 1) nearest = Math.min(nearest, paths.spreadMetres[index]);
+  paths.nearestSpreadMetres = nearest;
   return paths;
+}
+
+/**
+ * Class C, a creative departure: beyond the receiver's nearest path, spreading falls as r^share instead of r, so a
+ * Distance loss of 50 % halves the decibels a source loses with distance. Absorption, shocks and all else keep the true path.
+ */
+export function distanceLossFactor(spreadMetres, nearestMetres, distanceLossPercent = 100) {
+  if (!(distanceLossPercent < 100) || !(spreadMetres > nearestMetres) || !(nearestMetres > 0)) return 1;
+  return (spreadMetres / nearestMetres) ** (1 - distanceLossPercent / 100);
 }
 
 export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = null } = {}) {
@@ -397,7 +414,7 @@ export function receiverPaths(preparedEmitters, receiver, scene, { onProgress = 
 }
 
 export function compactPaths(paths) {
-  const compact = { count: paths.count, cells: paths.cells };
+  const compact = { count: paths.count, cells: paths.cells, nearestSpreadMetres: paths.nearestSpreadMetres };
   for (const [key, array] of Object.entries(paths)) {
     if (ArrayBuffer.isView(array)) compact[key] = array.subarray(0, paths.count * (PATH_WIDTHS[key] ?? 1));
   }
@@ -505,7 +522,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
     heights[index] = paths.height[index];
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     elevations[index] = Math.asin(Math.max(-1, Math.min(1, paths.direction[3 * index + 2]))) * 180 / Math.PI;
-    levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3))
+    levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3) * distanceLossFactor(paths.spreadMetres[index], paths.nearestSpreadMetres, scene.render.distanceLossPercent))
       + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(VIEW.arrivalDiagramHz, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
       + edgeDecibels(paths, index, VIEW.arrivalDiagramHz);
   }
@@ -569,6 +586,7 @@ export function pathRange(paths, fromSeconds, toSeconds) {
   range.origin = Uint32Array.from(chosen, index => (paths.origin ? paths.origin[index] : index));
   range.count = chosen.length;
   range.cells = paths.cells;
+  range.nearestSpreadMetres = paths.nearestSpreadMetres;
   return range;
 }
 
@@ -749,6 +767,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   const finestForest = underCanopy > 0 && !coarseForest;
   const gain = sources.amplitudePaMetres[sourceIndex] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], Number.MIN_VALUE);
   if (!(gain > 0)) return;
+  const heardGain = gain * distanceLossFactor(paths.spreadMetres[index], paths.nearestSpreadMetres, scene.render.distanceLossPercent);
   const mach = gain / (GAMMA_AIR * scene.air.pressureKpa * 1000);
   // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
@@ -882,7 +901,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       re = inverseRe - (inverseRe * inverseRe - inverseIm * inverseIm) / duration;
       im = inverseIm - 2 * inverseRe * inverseIm / duration;
     }
-    let factor = gain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (finestForest ? foliage.loss[bin] * underCanopy : 0));
+    let factor = heardGain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (finestForest ? foliage.loss[bin] * underCanopy : 0));
     if (grain?.levels) factor *= scintillationGain(plan.scintillationBands, grain.levels, bin);
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);

@@ -54,6 +54,7 @@ export const PARAMETERS = Object.freeze({
   coordinateMetres: { minimum: -RENDER.sceneExtentMetres, maximum: RENDER.sceneExtentMetres, unit: 'm', reliability: null },
   heightMetres: { minimum: 0, maximum: RENDER.maximumHeightMetres, unit: 'm', reliability: null },
   fullScalePa: { minimum: .01, maximum: 1e5, unit: 'Pa', label: 'Full scale', reliability: null },
+  distanceLossPercent: { minimum: 0, maximum: 100, unit: '%', label: 'Distance loss', reliability: 'C' },
   ambisonicOrder: { minimum: 0, maximum: MAXIMUM_AMBISONIC_ORDER, unit: '', label: 'Ambisonic order', reliability: null, integer: true },
   cutoffDecibels: { minimum: -140, maximum: -60, unit: 'dB', label: 'Cutoff level', reliability: null },
   highestFrequencyHz: { minimum: 1000, maximum: SAMPLE_RATE_HZ / 2, unit: 'Hz', label: 'Highest frequency', reliability: null },
@@ -159,7 +160,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
       terrain: null,
       emitters: [emitter],
       receivers: [receiver],
-      render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true, quality: { ...DEFAULT_QUALITY } }
+      render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, distanceLossPercent: 100, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true, quality: { ...DEFAULT_QUALITY } }
     };
   }
 
@@ -286,6 +287,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
         sampleRate: render.sampleRate,
         levelMode: render.levelMode,
         fullScalePa: number(render.fullScalePa, 'fullScalePa', 'render.fullScalePa'),
+        distanceLossPercent: number(render.distanceLossPercent, 'distanceLossPercent', 'render.distanceLossPercent'),
         ambisonicOrder: number(render.ambisonicOrder, 'ambisonicOrder', 'render.ambisonicOrder'),
         earReflex: render.earReflex,
         earLoudness: render.earLoudness,

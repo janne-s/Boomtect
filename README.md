@@ -188,6 +188,9 @@ microphone along the Mach cone.
   as a boom's front, louder than it was: the level it follows lags the onset,
   so the quiet's boost would carry into it. On at first.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
+- **Distance loss** — 100 % is physical; less eases how fast a source fades
+  with distance beyond the microphone's nearest path, keeping air absorption
+  and ground.
   A fixed scale keeps sounds as loud as each other as they are outdoors. A
   boom or a near blast reaches 100–1 000 Pa (134–154 dB), far beyond what
   speakers or headphones play; Ear reflex and Loudness give some of what the

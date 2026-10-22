@@ -330,14 +330,14 @@ export function startFrame(tect) {
     const starting = player.busy();
     const rendering = operations.has('render');
     const busy = !playing && !starting && rendering;
-    button.textContent = starting ? 'Cancel' : playing ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
+    button.textContent = playing || starting ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
     button.setAttribute('aria-label', busy ? 'Rendering' : button.textContent);
     if (busy || starting) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
     button.disabled = !playing && !starting && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
     button.setAttribute('aria-pressed', playing ? 'true' : 'false');
     const pause = $('plot-play');
     pause.disabled = !state.results;
-    pause.setAttribute('aria-label', starting ? 'Cancel' : playing ? 'Pause' : 'Play');
+    pause.setAttribute('aria-label', playing || starting ? 'Pause' : 'Play');
     pause.classList.toggle('playing', playing || starting);
     $('results').classList.toggle('playable', Boolean(state.results));
   }
@@ -1394,6 +1394,7 @@ export function startFrame(tect) {
     }
     checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
     checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
+    numberField(output, { key: 'distanceLossPercent', value: scene.render.distanceLossPercent, onCommit: value => commit(next => { next.render.distanceLossPercent = value; }) });
     if (scene.render.earLoudness) checkboxField(output, { label: 'Cap onsets', value: scene.render.earCapOnsets, reliability: 'C', onCommit: value => commitListening(next => { next.render.earCapOnsets = value; }) });
     selectField(output, {
       label: 'Spatial', value: String(scene.render.ambisonicOrder),
