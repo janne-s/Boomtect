@@ -5,7 +5,7 @@ import { emissionSeconds } from '../domain/lightning.js';
 import { BODY_TYPES, carlsonBoom } from '../domain/flight.js';
 import { machCone } from '../shared/domain/trajectory.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
-import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoSources } from '../domain/volcano.js';
+import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
@@ -13,7 +13,9 @@ import { newSeed } from '../shared/domain/random.js';
 import { formatMetres } from '../shared/ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './fields.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, isFieldKind, isFlightKind, isTrackKind } from './geometry-cache.js';
-import { formatCharge, macrosFor } from './macros.js';
+import { macrosFor } from './macros.js';
+import { formatAtKilometre, formatCharge, formatPressure } from '../shared/ui/levels.js';
+import { blastPressureAtKilometrePa } from '../domain/blast-pulse.js';
 
 const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
@@ -31,7 +33,7 @@ function emitterKindLabel(emitter) {
 
 function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
-  if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${+emitter.pressureAtKilometrePa.toPrecision(3)} Pa at 1 km`;
+  if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
@@ -315,7 +317,13 @@ function measure(item, scene, at) {
 
 const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'vent' : isTrackKind(selected) ? 'start' : 'blast');
 
-const info = selected => (selected.kind === 'storm' ? [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`] : []);
+function info(selected) {
+  if (selected.kind === 'storm') return [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`];
+  if (selected.kind === 'blast') return [formatAtKilometre(formatPressure(blastPressureAtKilometrePa(selected.chargeKilograms)))];
+  if (selected.kind === 'barrage') return [`${formatAtKilometre(formatPressure(blastPressureAtKilometrePa(selected.chargeKilograms)))} per round`];
+  if (selected.kind === 'volcano') return [formatAtKilometre(formatPressure(volcanoPaMetres(selected) / VOLCANO.referenceMetres))];
+  return [];
+}
 
 function move(handle, item, point) {
   if (handle.field === 'cloudBaseMetres' || handle.field === 'cloudTopMetres') {

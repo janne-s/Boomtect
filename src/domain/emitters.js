@@ -1,4 +1,5 @@
 import { BLAST, BOOSTER } from './constants.js';
+import { BLAST_PULSE, kinneyGrahamOverpressureRatio } from './blast-pulse.js';
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
 import { fireworksBlasts } from './fireworks.js';
@@ -14,15 +15,6 @@ import { sourceTable, sourceTableBuilder } from '../shared/domain/source-table.j
 import { onGround } from '../shared/domain/terrain.js';
 
 
-/** Class B: Kinney & Graham (1985) peak overpressure fit, ΔP/P = f(Z) with Z in m/kg^(1/3). */
-const KINNEY_GRAHAM = Object.freeze({ scale: 808, numerator: 4.5, denominators: [.048, .32, 1.35] });
-
-export function kinneyGrahamOverpressureRatio(scaledDistance) {
-  const { scale, numerator, denominators } = KINNEY_GRAHAM;
-  const top = scale * (1 + (scaledDistance / numerator) ** 2);
-  return top / denominators.reduce((product, value) => product * Math.sqrt(1 + (scaledDistance / value) ** 2), 1);
-}
-
 function flightSource(flight, flash = 0, pulse = 'n-wave') {
   return {
     flash, positionMetres: flight.startMetres, direction: null, elementMetres: 0, emissionSeconds: flight.startSeconds,
@@ -31,8 +23,6 @@ function flightSource(flight, flash = 0, pulse = 'n-wave') {
 }
 
 const FIREBALL_OFF_DECIBELS = -60;
-
-export const BLAST_PULSE = Object.freeze({ linearScaledDistance: 20, durationSecondsPerCubeRootKilogram: .006, decay: 1 });
 
 /** Class B, Sachs scaling; temperature neglected. */
 function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, air, flash) {

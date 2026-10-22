@@ -1,4 +1,6 @@
-import { VIEW } from '../domain/constants.js';
+import { VIEW, VOLCANO } from '../domain/constants.js';
+import { applyEruption, ERUPTION_TYPES, eruptionOf } from '../domain/volcano.js';
+import { formatCharge } from '../shared/ui/levels.js';
 import { PARAMETERS } from '../domain/scene.js';
 import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
 
@@ -111,14 +113,7 @@ const stormCloud = {
   show: item => `${metres(item.cloudBaseMetres)}–${metres(item.cloudTopMetres)}`
 };
 
-export function formatCharge(kilograms) {
-  if (kilograms < 1) return `${+(kilograms * 1000).toPrecision(3)} g TNT`;
-  if (kilograms < 1000) return `${+kilograms.toPrecision(3)} kg TNT`;
-  if (kilograms < 1e6) return `${+(kilograms / 1000).toPrecision(3)} t TNT`;
-  return `${+(kilograms / 1e6).toPrecision(3)} kt TNT`;
-}
-
-const CHARGE = Object.freeze({ factors: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6 }), show: value => formatCharge(value).replace(/ TNT$/, '') });
+const CHARGE = Object.freeze({ factors: Object.freeze({ g: .001, kg: 1, t: 1000, kt: 1e6, Mt: 1e9 }), show: value => formatCharge(value).replace(/ TNT$/, '') });
 
 const charge = {
   label: 'Charge',
@@ -388,12 +383,29 @@ const boosterBallistic = {
   entry: { unit: 'kg/m²', get: item => item.ballisticKilogramsPerSquareMetre, set: (item, value) => { item.ballisticKilogramsPerSquareMetre = value; } }
 };
 
+const eruptionIndex = item => {
+  const type = eruptionOf(item);
+  if (type !== 'custom') return ERUPTION_TYPES.indexOf(type);
+  const distance = type => Math.abs(Math.log(VOLCANO.eruptions[type].equivalentChargeKilograms / item.equivalentChargeKilograms));
+  return ERUPTION_TYPES.indexOf(ERUPTION_TYPES.reduce((best, type) => (distance(type) < distance(best) ? type : best)));
+};
+
+const volcanoEruption = {
+  label: 'Eruption',
+  read: item => eruptionIndex(item) / (ERUPTION_TYPES.length - 1),
+  write: (item, t) => {
+    const type = ERUPTION_TYPES[Math.round(t * (ERUPTION_TYPES.length - 1))];
+    if (type !== eruptionOf(item)) applyEruption(item, type);
+  },
+  show: item => { const type = eruptionOf(item); return type === 'custom' ? 'Custom' : VOLCANO.eruptions[type].label; }
+};
+
 const volcanoSize = {
   label: 'Size',
-  read: item => clamp01(logPosition(item.pressureAtKilometrePa, VIEW.macros.volcanoPressureRange)),
-  write: (item, t) => { item.pressureAtKilometrePa = +logValue(t, VIEW.macros.volcanoPressureRange).toPrecision(2); },
-  show: item => `${+item.pressureAtKilometrePa.toPrecision(3)} Pa at 1 km`,
-  entry: { unit: 'Pa', get: item => item.pressureAtKilometrePa, set: (item, value) => { item.pressureAtKilometrePa = value; } }
+  read: item => clamp01(logPosition(item.equivalentChargeKilograms, VIEW.macros.volcanoChargeRange)),
+  write: (item, t) => { item.equivalentChargeKilograms = +logValue(t, VIEW.macros.volcanoChargeRange).toPrecision(2); },
+  show: item => formatCharge(item.equivalentChargeKilograms),
+  entry: { units: CHARGE, get: item => item.equivalentChargeKilograms, set: (item, value) => { item.equivalentChargeKilograms = value; } }
 };
 
 const volcanoHeight = {
@@ -447,7 +459,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
-  if (emitter.kind === 'volcano') return timed([volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
+  if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

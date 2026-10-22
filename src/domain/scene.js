@@ -1,6 +1,6 @@
 import { FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
 import { createScene } from '../shared/domain/scene.js';
-import { BLAST_PULSE } from './emitters.js';
+import { BLAST_PULSE } from './blast-pulse.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
 import { FLASH_TYPES } from './lightning.js';
@@ -89,7 +89,7 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
-  pressureAtKilometrePa: { minimum: .1, maximum: 10000, unit: 'Pa', label: 'Pressure at 1 km', reliability: 'B' },
+  equivalentChargeKilograms: { minimum: .001, maximum: 1e7, unit: 'kg TNT', label: 'Equivalent charge', reliability: 'C' },
   pulseSeconds: { minimum: .05, maximum: 10, unit: 's', label: 'Positive phase', reliability: 'B' },
   codaDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Coda', reliability: 'C' },
   codaSeconds: { minimum: .2, maximum: 30, unit: 's', label: 'Coda length', reliability: 'C' },

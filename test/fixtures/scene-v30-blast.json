@@ -127,7 +127,7 @@
         "z": 0
       },
       "startSeconds": 2,
-      "pressureAtKilometrePa": 300,
+      "equivalentChargeKilograms": 3900,
       "pulseSeconds": 2,
       "decay": 1,
       "riseTimeSeconds": 0.0015,

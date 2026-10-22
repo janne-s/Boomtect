@@ -4,10 +4,11 @@ import { friedlanderSpanSeconds } from '../shared/domain/pulses.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
 import { onGround } from '../shared/domain/terrain.js';
+import { paMetresOfEquivalentCharge } from './blast-pulse.js';
 
 export const ERUPTION_TYPES = Object.freeze(Object.keys(VOLCANO.eruptions));
 
-export const ERUPTION_NUMBERS = Object.freeze(['pressureAtKilometrePa', 'pulseSeconds', 'decay', 'riseTimeSeconds', 'codaDecibels', 'codaSeconds', 'thumpShare']);
+export const ERUPTION_NUMBERS = Object.freeze(['equivalentChargeKilograms', 'pulseSeconds', 'decay', 'riseTimeSeconds', 'codaDecibels', 'codaSeconds', 'thumpShare']);
 
 export const eruptionOf = emitter => ERUPTION_TYPES.find(type => ERUPTION_NUMBERS.every(key => VOLCANO.eruptions[type][key] === emitter[key])) ?? 'custom';
 
@@ -61,10 +62,12 @@ export function codaSamples(seed, codaSeconds, sampleRate, emitter) {
   return scaleToLoudestWindow(samples, Math.max(1, Math.round(VOLCANO.coda.windowSeconds * sampleRate)));
 }
 
-/** Class B: the pressure at 1 km scales as 1/r; a Friedlander shape (class C) of the given positive phase. */
+export const volcanoPaMetres = emitter => paMetresOfEquivalentCharge(emitter.equivalentChargeKilograms, emitter.pulseSeconds, emitter.decay);
+
+/** Class B: the pulse falls as 1/r from its equivalent charge (class C); a Friedlander shape (class C) of the given positive phase. */
 export function volcanoSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
-  const amplitudePaMetres = emitter.pressureAtKilometrePa * VOLCANO.referenceMetres;
+  const amplitudePaMetres = volcanoPaMetres(emitter);
   const common = { flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
   const pulse = {
     ...common, amplitudePaMetres, pulse: 'friedlander', durationSeconds: emitter.pulseSeconds, decay: emitter.decay,
