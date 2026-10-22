@@ -2,9 +2,9 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.76.0';
+export const APP_VERSION = '0.77.0';
 
-export const MODEL_VERSION = '33.5.0';
+export const MODEL_VERSION = '34.0.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 
@@ -87,7 +87,7 @@ export const FIREWORKS = Object.freeze({
   liftShare: .1,
   thumpShare: .01,
   thumpSeconds: .005,
-  burstShare: .15,
+  burstShare: .2,
   starMetresPerSecond: 40,
   starKilogramsPerSquareMetre: 50,
   crackleDelaySeconds: .5,
@@ -101,9 +101,9 @@ export const VOLCANO = Object.freeze({
   /** Class C: linear propagation from where the pulse is this share of the air pressure, as a Blast's Z = 20 gives about 4 %. */
   linearPressureShare: .04,
   eruptions: Object.freeze({
-    strombolian: Object.freeze({ label: 'Strombolian', equivalentChargeKilograms: 1.1, pulseSeconds: .5, decay: 1, riseTimeSeconds: 5e-5, codaDecibels: -20, codaSeconds: 4, thumpShare: .2 }),
-    vulcanian: Object.freeze({ label: 'Vulcanian', equivalentChargeKilograms: 3900, pulseSeconds: 2, decay: 1, riseTimeSeconds: 1.5e-3, codaDecibels: -20, codaSeconds: 3, thumpShare: .7 }),
-    strongVulcanian: Object.freeze({ label: 'Strong Vulcanian', equivalentChargeKilograms: 2.6e5, pulseSeconds: 3, decay: 1, riseTimeSeconds: 4e-5, codaDecibels: -20, codaSeconds: 5, thumpShare: .3 })
+    strombolian: Object.freeze({ label: 'Strombolian', equivalentChargeKilograms: 1.6, pulseSeconds: .5, decay: 1, riseTimeSeconds: 5e-5, codaDecibels: -20, codaSeconds: 4, thumpShare: .2 }),
+    vulcanian: Object.freeze({ label: 'Vulcanian', equivalentChargeKilograms: 5900, pulseSeconds: 2, decay: 1, riseTimeSeconds: 1.5e-3, codaDecibels: -20, codaSeconds: 3, thumpShare: .7 }),
+    strongVulcanian: Object.freeze({ label: 'Strong Vulcanian', equivalentChargeKilograms: 3.9e5, pulseSeconds: 3, decay: 1, riseTimeSeconds: 4e-5, codaDecibels: -20, codaSeconds: 5, thumpShare: .3 })
   }),
   coda: Object.freeze({
     spectrumHz: Object.freeze([20, 100, 400, 900, 1800, 3500, 7000, 16000]),

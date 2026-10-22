@@ -4,6 +4,7 @@ import { BLAST, GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN } from '../src/domai
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../src/shared/domain/air.js';
 import { meteorBlast, meteorBoom, meteorBursts, meteorKineticEnergy, meteorTrail, showerMembers } from '../src/domain/meteor.js';
 import { emitterSources } from '../src/domain/emitters.js';
+import { BLAST_PULSE } from '../src/domain/blast-pulse.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultMeteor, defaultShower, parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -115,7 +116,7 @@ test('a burst high in thin air is a ground blast scaled by Sachs: larger, longer
   const cubeRoot = Math.cbrt(place.chargeKilograms * scale);
   assert.ok(Math.abs(burst.linearRadiusMetres / (20 * cubeRoot) - 1) < 1e-9);
   const slower = Math.sqrt(temperatureAtHeightKelvin(air, 0) / temperatureAtHeightKelvin(air, place.positionMetres.z));
-  assert.ok(Math.abs(burst.durationSeconds / (.006 * cubeRoot * slower) - 1) < 1e-9);
+  assert.ok(Math.abs(burst.durationSeconds / (BLAST_PULSE.durationSecondsPerCubeRootKilogram * cubeRoot * slower) - 1) < 1e-9);
   const large = { ...meteor, diameterMetres: 50 };
   assert.ok(emitterSources(large, air).sources.slice(1).every(source => source.durationSeconds === BLAST.maximumHighBlastSeconds));
   const scene = plainScene('sonic');

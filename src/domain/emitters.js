@@ -37,7 +37,7 @@ function highBlastSource({ positionMetres, emissionSeconds, chargeKilograms }, a
   return { ...shock, flash, amplitudePaMetres: shock.amplitudePaMetres * Math.sqrt(scale), durationSeconds, spanSeconds: friedlanderSpanSeconds(durationSeconds, BLAST_PULSE.decay) };
 }
 
-/** Class B: Kinney & Graham amplitude, Hopkinson–Cranz duration scaling; the reference duration class C until verified. */
+/** Class B: Kinney & Graham amplitude and reference duration, Hopkinson–Cranz duration scaling. */
 export function blastSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const shock = kilograms => {

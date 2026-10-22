@@ -7,7 +7,17 @@ export function kinneyGrahamOverpressureRatio(scaledDistance) {
   return top / denominators.reduce((product, value) => product * Math.sqrt(1 + (scaledDistance / value) ** 2), 1);
 }
 
-export const BLAST_PULSE = Object.freeze({ linearScaledDistance: 20, durationSecondsPerCubeRootKilogram: .006, decay: 1 });
+/** Class B: Kinney & Graham (1985) positive phase duration per kg^(1/3), with Z in m/kg^(1/3). */
+export const kinneyGrahamDurationSeconds = scaledDistance =>
+  .98 * (1 + (scaledDistance / .54) ** 10) / ((1 + (scaledDistance / .02) ** 3) * (1 + (scaledDistance / .74) ** 6) * Math.sqrt(1 + (scaledDistance / 6.9) ** 2));
+
+const LINEAR_SCALED_DISTANCE = 20;
+
+export const BLAST_PULSE = Object.freeze({
+  linearScaledDistance: LINEAR_SCALED_DISTANCE,
+  durationSecondsPerCubeRootKilogram: +kinneyGrahamDurationSeconds(LINEAR_SCALED_DISTANCE).toPrecision(3),
+  decay: 1
+});
 
 const STANDARD_PRESSURE_PA = 101325;
 

@@ -43,7 +43,7 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   inCloudSpeedMetresPerSecond: { minimum: 1e4, maximum: 1e7, unit: 'm/s', label: 'In-cloud speed', reliability: 'B' },
   chargeKilograms: { minimum: .001, maximum: 3.5e8, unit: 'kg TNT', label: 'Charge', reliability: 'B' },
   linearScaledDistance: { minimum: 5, maximum: 100, unit: 'm/kg^⅓', label: 'Linearization distance', reliability: 'C' },
-  durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'C' },
+  durationSecondsPerCubeRootKilogram: { minimum: 1e-4, maximum: .05, unit: 's/kg^⅓', label: 'Positive phase', reliability: 'B' },
   decay: { minimum: .1, maximum: 5, unit: '', label: 'Decay b', reliability: 'C' },
   roundCount: { minimum: 1, maximum: 200, unit: '', label: 'Rounds', reliability: null, integer: true },
   salvoSize: { minimum: 1, maximum: 24, unit: '', label: 'Rounds per salvo', reliability: null, integer: true },

@@ -341,7 +341,7 @@ B/C marks a part that combines the two.
 | In-cloud channels | sideways channels from a ground flash's top, thinning out | C |
 | Channel shape | seeded two-scale zigzag with branches of branches | C |
 | Lightning level | acoustic share of channel energy | C |
-| Blast | Friedlander pulse, Kinney & Graham overpressure | B |
+| Blast | Friedlander pulse, Kinney & Graham overpressure and positive phase (3.98 ms·W^⅓ where the pulse turns linear, Z = 20 m/kg^⅓; adjustable in Details) | B |
 | Blast aging | weak shock of a spherical wave: positive phase grows as `√(1 + σ·ln(r/r₀))`, peak falls by as much; a merged ground front ages as twice the pressure | B/C |
 | Secondary shock | delay by the explosive's detonation velocity and density (Rigby & Gitterman); a 4 % charge's shock | B |
 | Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
@@ -357,7 +357,7 @@ B/C marks a part that combines the two.
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
 | Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
 | Fireworks burst | TNT blast of 15 % of the shell's mass, fitted to 718 Pa below 4–6 inch shells bursting at 91 m (Maglieri & Henderson 1973); TNT's pulse, longer than their 12 ms signature | C |
-| Volcano pulse | Friedlander pulse whose sound energy equals that of a Blast of its equivalent charge (Vulcanian 3.9 t, about 300 Pa at 1 km; about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
+| Volcano pulse | Friedlander pulse whose sound energy equals that of a Blast of its equivalent charge (Vulcanian 5.9 t, about 300 Pa at 1 km; about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
 | Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |

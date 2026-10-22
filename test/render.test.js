@@ -29,7 +29,7 @@ function peak(result, fromSeconds = -Infinity, toSeconds = Infinity) {
 const uniformChannel = () => ({ ...defaultLightning(), currentDecayHeightMetres: 1e6, inCloudLengthMetres: 0 });
 
 const shockOnly = { secondaryShock: false, fireballDecibels: -60 };
-const smallBlast = position => ({ ...defaultBlast(), ...shockOnly, chargeKilograms: .01, riseTimeSeconds: 1e-4, positionMetres: position });
+const smallBlast = position => ({ ...defaultBlast(), ...shockOnly, chargeKilograms: .01, riseTimeSeconds: 2e-5, positionMetres: position });
 
 function stretch(value, metres) {
   const [{ sources }] = prepareScene(value);
@@ -45,7 +45,7 @@ test('a point blast arrives at R/c and falls off as 1/R, less its weak-shock agi
   assert.ok(Math.abs(far.seconds - 600 / speed) < 2e-4, `far arrival ${far.seconds}`);
   const expected = 2 * stretch(value, 600) / stretch(value, 300);
   assert.ok(expected > 2.02);
-  assert.ok(Math.abs(near.value / far.value - expected) < .01, `ratio ${near.value / far.value}`);
+  assert.ok(Math.abs(near.value / far.value - expected) < .01, `ratio ${near.value / far.value} vs ${expected}`);
 });
 
 test('a vertical channel arrives along t(z) = t_emit + sqrt(d² + z²)/c', () => {

@@ -127,7 +127,7 @@
         "z": 0
       },
       "startSeconds": 2,
-      "equivalentChargeKilograms": 3900,
+      "equivalentChargeKilograms": 5900,
       "pulseSeconds": 2,
       "decay": 1,
       "riseTimeSeconds": 0.0015,
