@@ -1447,7 +1447,7 @@ export function startFrame(tect) {
       const { metres, direction } = bearing(receiver.positionMetres, emitterAnchor(selected));
       const anchorName = kinds[selected.kind].anchorName(selected);
       selectedInfo.append(element('span', '', metres < 1 ? `${receiver.name} is at its ${anchorName}` : `Its ${anchorName} is ${formatMetres(metres)} ${direction} of ${receiver.name}`));
-      for (const line of kinds[selected.kind].info(selected)) selectedInfo.append(element('span', '', line));
+      for (const line of kinds[selected.kind].info(selected, scene)) selectedInfo.append(element('span', '', line));
       if (selected.startSeconds) selectedInfo.append(element('span', '', `Onset ${formatSeconds(selected.startSeconds)}`));
     } else if (selected) {
       const surface = currentSurface();
