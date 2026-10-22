@@ -1229,12 +1229,12 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const channels = channelCount(order);
   if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0, truncated: beyond > 0 };
   // Class C: a noise source radiates from a whole volume, so its reflection does not interfere with it.
-  const noises = preparedEmitters.map(({ sources, noise }) => {
+  const noises = preparedEmitters.map(({ sources, noise, emitter }) => {
     let index = 0;
     while (index < sources.length && sources.pulse[index] !== PULSE_NOISE) index += 1;
     if (index === sources.length) return null;
     const seconds = sources.durationSeconds[index];
-    return [0, 1].map(part => ({ samples: noise((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate), impulses: null }));
+    return [0, 1].map(part => ({ samples: noise((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate, emitter), impulses: null }));
   });
   const noiseLength = Math.max(0, ...noises.map(noisy => (noisy ? noisy[0].samples.length : 0)));
   const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + noiseLength));
