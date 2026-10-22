@@ -15,6 +15,7 @@ import { isReflecting, planeReflectionMagnitude, sphericalReflectionCoefficient 
 import { secondaryShockDelay, weakShockPulse } from './shocks.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
+import { loudestDecibelsA } from './levels.js';
 import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';
@@ -1385,7 +1386,7 @@ export function finishSum(sum, sampleRate) {
     }
     return result;
   });
-  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa, truncated: Boolean(sum.truncated) };
+  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], sampleRate), truncated: Boolean(sum.truncated) };
 }
 
 export function combineSegments(segments, sampleRate) {
@@ -1442,7 +1443,7 @@ export function resultDifference(minuend, subtrahend) {
     if (channel === 0) out.forEach(value => { peakPa = Math.max(peakPa, Math.abs(value)); });
     return out;
   });
-  return { ...minuend, startSeconds: start, channels, samples: channels[0], peakPa };
+  return { ...minuend, startSeconds: start, channels, samples: channels[0], peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], sampleRate) };
 }
 
 export function echoFreeShare(results) {
