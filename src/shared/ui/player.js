@@ -300,8 +300,11 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     if (!start.current()) { disconnect(connected); return false; }
     const at = ownedContext.currentTime + RENDER.scheduleLeadSeconds;
     const previous = continuing ? clock : null;
-    const skipped = previous?.skippedSeconds ?? skippedSeconds ?? (realDelay ? 0 : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds));
-    const origin = previous?.origin ?? at - (atSceneSeconds ?? skipped);
+    // Sound can begin before the scene's zero (a long grain straddles a source's start); playback then begins before it.
+    const early = composition.firstSoundSeconds < 0;
+    const leadIn = early ? composition.firstSoundSeconds - RENDER.shortenedLeadSeconds : Math.max(0, composition.firstSoundSeconds - RENDER.shortenedLeadSeconds);
+    const skipped = previous?.skippedSeconds ?? skippedSeconds ?? (realDelay ? 0 : leadIn);
+    const origin = previous?.origin ?? at - (atSceneSeconds ?? (realDelay && early ? leadIn : skipped));
     release(at);
     current = connected;
     for (const node of connected.faders) {

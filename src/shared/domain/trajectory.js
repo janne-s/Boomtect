@@ -13,6 +13,13 @@ const ENVELOPE_RING = Object.freeze(Array.from({ length: 2 * VIEW.cone.ringPoint
 
 export const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, air.refraction ? heightMetres : 0));
 
+const smoothStep = value => { const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t); };
+
+/** The heading `t` seconds into a flight: a steady turn rate, or with `flight.turn` a bend of its degrees eased between its seconds. */
+const headingAt = (flight, t) => flight.headingDegrees + (flight.turn
+  ? flight.turn.degrees * smoothStep((t - flight.turn.fromSeconds) / Math.max(1e-9, flight.turn.toSeconds - flight.turn.fromSeconds))
+  : flight.turnDegreesPerSecond * t);
+
 export function flightPath(flight, air) {
   const steps = Math.min(TRAJECTORY.maximumSteps, Math.max(2, Math.ceil(flight.durationSeconds / TRAJECTORY.stepSeconds)));
   const step = flight.durationSeconds / steps;
@@ -22,7 +29,7 @@ export function flightPath(flight, air) {
   let speed = flight.mach * soundSpeedAt(air, z);
   for (let index = 0; index <= steps; index += 1) {
     const t = index * step;
-    const heading = (flight.headingDegrees + flight.turnDegreesPerSecond * t) * Math.PI / 180;
+    const heading = headingAt(flight, t) * Math.PI / 180;
     const vx = speed * Math.cos(climb) * Math.sin(heading);
     const vy = speed * Math.cos(climb) * Math.cos(heading);
     const vz = speed * Math.sin(climb);

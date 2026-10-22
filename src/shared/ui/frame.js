@@ -16,7 +16,7 @@ import { createCubeView } from './cube-view.js';
 import { createMapLayer } from './map-layer.js';
 import { createLatestTask } from './latest-task.js';
 import { currentSurface, useTerrain } from './geometry-cache.js';
-import { entryText, parseEntry } from './macros.js';
+import { entryText, parseEntry, resetMacro } from './macros.js';
 import { composeListening, LISTENING_LABELS, listeningKind } from './listening.js';
 import { createOrientationBall } from './orientation-ball.js';
 import { createMobileLayout } from './mobile.js';
@@ -825,6 +825,10 @@ export function startFrame(tect) {
     };
     const siblings = macroRows.get(container) ?? [];
     macroRows.set(container, siblings);
+    const reset = () => {
+      const create = ADD_EMITTERS[emitter.kind]?.create;
+      if (create) commit(scene => resetMacro(macro, scene.emitters.find(item => item.id === emitter.id), create()));
+    };
     const apply = read => preview(scene => {
       const item = scene.emitters.find(candidate => candidate.id === emitter.id);
       macro.write(item, ...read());
@@ -852,6 +856,7 @@ export function startFrame(tect) {
       for (const input of [lower, upper]) {
         input.addEventListener('input', () => { holdViews(true); paint(); apply(read); });
         input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
+        input.addEventListener('dblclick', reset);
       }
       holder.append(lower, upper);
       container.append(label, holder, value);
@@ -863,6 +868,7 @@ export function startFrame(tect) {
     siblings.push({ macro, sync: item => { input.value = String(Math.round(macro.read(item) * steps)); paintTrack(input, 0, Number(input.value) / steps); showValue(item); } });
     input.addEventListener('input', () => { holdViews(true); paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
     input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
+    input.addEventListener('dblclick', reset);
     container.append(label, input, value);
   }
 

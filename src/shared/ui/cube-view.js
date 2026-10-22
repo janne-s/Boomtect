@@ -283,8 +283,24 @@ export function createCubeView(canvas, options) {
     context.closePath();
   }
 
-  const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), 6);
+  const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), VIEW.box.gridLines);
   const heightStep = box => Math.min(boxStep(box), niceStep(box.z1 - box.z0, 4));
+
+  /** Each ground axis its own step, as many lines as its span and drawn length allow. */
+  function axisStep(span, from, to) {
+    const a = frame.project(from);
+    const b = frame.project(to);
+    const fits = Math.hypot(b.x - a.x, b.y - a.y) / VIEW.box.labelSpacingPixels;
+    return niceStep(span, Math.max(1, Math.min(VIEW.box.gridLines, fits)));
+  }
+
+  function axisSteps() {
+    const { box, farX, farY } = frame;
+    return {
+      x: axisStep(box.x1 - box.x0, { x: box.x0, y: farY, z: box.z0 }, { x: box.x1, y: farY, z: box.z0 }),
+      y: axisStep(box.y1 - box.y0, { x: farX, y: box.y0, z: box.z0 }, { x: farX, y: box.y1, z: box.z0 })
+    };
+  }
 
   function heightLevels(bounds, spacing) {
     const surface = currentSurface();
@@ -307,15 +323,15 @@ export function createCubeView(canvas, options) {
     polygon(context, [{ x: box.x0, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y0, z: box.z0 }, { x: box.x1, y: box.y1, z: box.z0 }, { x: box.x0, y: box.y1, z: box.z0 }]);
     context.fill();
 
-    const step = boxStep(box);
+    const steps = axisSteps();
     context.lineWidth = 1;
     context.strokeStyle = colors.grid;
     const line = (a, b) => { const p = frame.project(a); const q = frame.project(b); context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke(); };
-    for (let x = Math.ceil(box.x0 / step) * step; x <= box.x1; x += step) {
+    for (let x = Math.ceil(box.x0 / steps.x) * steps.x; x <= box.x1; x += steps.x) {
       if (currentSurface().flat) line({ x, y: box.y0, z: box.z0 }, { x, y: box.y1, z: box.z0 });
       line({ x, y: farY, z: box.z0 }, { x, y: farY, z: box.z1 });
     }
-    for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) {
+    for (let y = Math.ceil(box.y0 / steps.y) * steps.y; y <= box.y1; y += steps.y) {
       if (currentSurface().flat) line({ x: box.x0, y, z: box.z0 }, { x: box.x1, y, z: box.z0 });
       line({ x: farX, y, z: box.z0 }, { x: farX, y, z: box.z1 });
     }
@@ -331,16 +347,22 @@ export function createCubeView(canvas, options) {
     const { box, farX, farY } = frame;
     const nearX = farX === box.x1 ? box.x0 : box.x1;
     const nearY = farY === box.y1 ? box.y0 : box.y1;
-    const step = boxStep(box);
+    const steps = axisSteps();
     context.lineWidth = 1;
     context.font = '10px system-ui, sans-serif';
     context.fillStyle = colors.faint;
     const label = (text, point, dx = 4, dy = 12) => { const p = frame.project(point); context.fillText(text, p.x + dx, p.y + dy); };
-    for (let x = Math.ceil(box.x0 / step) * step; x <= box.x1; x += step) label(formatMetres(x), { x, y: nearY, z: box.z0 });
+    for (let x = Math.ceil(box.x0 / steps.x) * steps.x; x <= box.x1; x += steps.x) label(formatMetres(x), { x, y: nearY, z: box.z0 });
     context.textAlign = 'right';
-    for (let y = Math.ceil(box.y0 / step) * step; y <= box.y1; y += step) label(formatMetres(y), { x: nearX, y, z: box.z0 }, -6, 12);
+    for (let y = Math.ceil(box.y0 / steps.y) * steps.y; y <= box.y1; y += steps.y) label(formatMetres(y), { x: nearX, y, z: box.z0 }, -6, 12);
+    const corner = frame.project({ x: farX, y: farY, z: box.z0 });
+    const wallEnds = [{ x: farX, y: farY }, { x: nearX, y: farY }, { x: farX, y: nearY }];
+    for (const end of wallEnds) {
+      const outward = frame.project({ ...end, z: box.z0 }).x < corner.x;
+      context.textAlign = outward ? 'right' : 'left';
+      for (const { z, metres } of heightLevels(box, heightStep(box))) label(formatMetres(metres), { ...end, z }, outward ? -4 : 4, -2);
+    }
     context.textAlign = 'left';
-    for (const { z, metres } of heightLevels(box, heightStep(box))) label(formatMetres(metres), { x: farX, y: farY, z }, 4, -2);
     const origin = frame.project({ x: 0, y: 0, z: ground(0, 0) });
     context.strokeStyle = colors.muted;
     context.beginPath();

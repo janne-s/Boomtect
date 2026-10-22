@@ -720,6 +720,16 @@ function shadowFromExponent(loss, lag, beta, floor) {
   return [magnitude * Math.cos(phase) + floor, magnitude * Math.sin(phase)];
 }
 
+/** Class B criterion, C blend: how far a spherical wave of peak pressure × distance `peakPascalMetres` at `hz` has formed its shocks by `metres`. */
+export function shockFormation(peakPascalMetres, hz, metres, air, speed) {
+  if (!(hz > 0)) return 1;
+  const wavelength = speed / hz;
+  if (metres <= wavelength) return 0;
+  const density = air.pressureKpa * 1000 / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * (air.temperatureCelsius + KELVIN_OFFSET));
+  const distortion = AIR_NONLINEARITY * 2 * Math.PI * hz * peakPascalMetres * Math.log(metres / wavelength) / (density * speed ** 3);
+  return smoothStep(distortion / PROPAGATION.formedDistortion);
+}
+
 function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index, offsetSamples, scene, speed, groundRe, groundIm, ends, seed, receiverHeight, receiverZ, shared = null, grain = null) {
   const channels = spectra.length;
   const metres = paths.metres[index];
@@ -743,7 +753,8 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   const pulseKind = sources.pulse[sourceIndex];
-  const crackling = pulseKind === PULSE_GRAIN && !paths.aloft[index] ? sources.shockShare[sourceIndex] : 0;
+  const crackling = pulseKind === PULSE_GRAIN && !paths.aloft[index] && sources.shockShare[sourceIndex] > 0
+    ? sources.shockShare[sourceIndex] * shockFormation(PROPAGATION.crackleCrest * gain * paths.spreadMetres[index], sources.shockHz[sourceIndex], metres, scene.air, speed) : 0;
   const shock = pulseKind === PULSE_NOISE || pulseKind === PULSE_GRAIN || paths.aloft[index] ? 0 : smoothStep((paths.duration[index] / riseSeconds - PROPAGATION.oldAgeDurationRatio) / (PROPAGATION.shockDurationRatio - PROPAGATION.oldAgeDurationRatio));
   const shockSigma = (crackling > 0 ? riseSeconds / PROPAGATION.crackleCrest : riseSeconds) / RISE_TIME_PER_SIGMA;
   const shockLoss = bin => 2 * (Math.PI * shockSigma * bin * binHz) ** 2;

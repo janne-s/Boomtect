@@ -86,6 +86,13 @@ export const PROPAGATION = Object.freeze({
   shockRisePascalSeconds: .005,
   /** Class C: a crackling grain's shocks are its peaks, this many times its rms pressure. */
   crackleCrest: 4,
+  /**
+   * Class B criterion: a spherical wave's shocks form where its distortion σ = β ω p̂ r ln(r/r₀) / (ρ c³) reaches 1
+   * (Hamilton & Blackstock, Nonlinear Acoustics, ch. 4), p̂ r the grain's peak pressure times distance, ω the source's
+   * `shockHz`, r₀ one wavelength there (C). A crackling grain's shock share grows as smoothstep(σ) (C); a source without
+   * `shockHz` keeps its whole share.
+   */
+  formedDistortion: 1,
   /** Class B criterion a = sin ψ/√(2βε) (Baskar, Coulouvrat & Marchiano 2007); the blend is class C. */
   mergedParameter: 1,
   linearParameter: 2,
@@ -221,7 +228,9 @@ export const VIEW = Object.freeze({
     arrowheadPixels: 8,
     facingLengthShare: .1,
     outlinePixels: 1.2,
-    seamPixels: 1
+    seamPixels: 1,
+    gridLines: 6,
+    labelSpacingPixels: 56
   }),
   orientationBall: Object.freeze({
     marginPixels: 12,
