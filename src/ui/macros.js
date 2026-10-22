@@ -388,6 +388,46 @@ const boosterBallistic = {
   entry: { unit: 'kg/m²', get: item => item.ballisticKilogramsPerSquareMetre, set: (item, value) => { item.ballisticKilogramsPerSquareMetre = value; } }
 };
 
+const volcanoSize = {
+  label: 'Size',
+  read: item => clamp01(logPosition(item.pressureAtKilometrePa, VIEW.macros.volcanoPressureRange)),
+  write: (item, t) => { item.pressureAtKilometrePa = +logValue(t, VIEW.macros.volcanoPressureRange).toPrecision(2); },
+  show: item => `${+item.pressureAtKilometrePa.toPrecision(3)} Pa at 1 km`,
+  entry: { unit: 'Pa', get: item => item.pressureAtKilometrePa, set: (item, value) => { item.pressureAtKilometrePa = value; } }
+};
+
+const volcanoSharpness = {
+  label: 'Sharpness',
+  read: item => clamp01(1 - logPosition(item.riseTimeSeconds, VIEW.macros.volcanoRiseRange)),
+  write: (item, t) => { item.riseTimeSeconds = +logValue(1 - t, VIEW.macros.volcanoRiseRange).toPrecision(2); },
+  show: item => `${+(item.riseTimeSeconds * 1000).toPrecision(2)} ms rise`,
+  entry: { unit: 'ms', get: item => item.riseTimeSeconds * 1000, set: (item, value) => { item.riseTimeSeconds = value / 1000; } }
+};
+
+const volcanoCoda = {
+  label: 'Coda',
+  read: item => clamp01((item.codaDecibels - range('codaDecibels')[0]) / (range('codaDecibels')[1] - range('codaDecibels')[0])),
+  write: (item, t) => { const [low, high] = range('codaDecibels'); item.codaDecibels = Math.round(low + t * (high - low)); },
+  show: item => `${item.codaDecibels} dB`,
+  entry: { unit: 'dB', get: item => item.codaDecibels, set: (item, value) => { item.codaDecibels = value; } }
+};
+
+const volcanoCodaLength = {
+  label: 'Coda length',
+  read: item => clamp01(logPosition(item.codaSeconds, range('codaSeconds'))),
+  write: (item, t) => { item.codaSeconds = +logValue(t, range('codaSeconds')).toPrecision(2); },
+  show: item => `${+item.codaSeconds.toPrecision(2)} s`,
+  entry: { unit: 's', get: item => item.codaSeconds, set: (item, value) => { item.codaSeconds = value; } }
+};
+
+const volcanoThumps = {
+  label: 'Thumps',
+  read: item => item.thumpShare,
+  write: (item, t) => { item.thumpShare = Math.round(t * 100) / 100; },
+  show: item => percent(item.thumpShare),
+  entry: { unit: '%', get: item => item.thumpShare * 100, set: (item, value) => { item.thumpShare = value / 100; } }
+};
+
 export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   const timed = list => (withOnset ? [...list, onset] : list);
   if (emitter.kind === 'lightning') return timed([energy, height, branching, jaggedness, crack, strokes]);
@@ -399,6 +439,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'whip') return [whipMach, whipHeight, flightHeading, flightClimb, whipCracker];
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
+  if (emitter.kind === 'volcano') return timed([volcanoSize, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

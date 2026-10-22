@@ -1,6 +1,6 @@
 # Boomtect
 
-> Boomtect is a browser app that simulates the sound of lightning, blasts, and sonic booms from their physics. A scene places sources (flashes, storms, blasts, barrages, fireworks, supersonic flights, meteors, whips, falling boosters) and microphones in 3D over real terrain and layered air, and renders what each microphone hears. It is a creative tool for sound design: a result is a plausible event, not a reconstruction or a measurement, and levels are uncalibrated model values in pascals.
+> Boomtect is a browser app that simulates the sound of lightning, blasts, and sonic booms from their physics. A scene places sources (flashes, storms, blasts, barrages, fireworks, volcanic explosions, supersonic flights, meteors, whips, falling boosters) and microphones in 3D over real terrain and layered air, and renders what each microphone hears. It is a creative tool for sound design: a result is a plausible event, not a reconstruction or a measurement, and levels are uncalibrated model values in pascals.
 
 Boomtect runs entirely in the browser, with no account and no server of its own. Every source is a set of points, each with a position, an emission time, and a pressure pulse; each pulse travels to each microphone with its own delay and loss, and the microphone hears their sum. Every part of the model is marked A (first principles), B (literature), or C (heuristic or synthetic).
 

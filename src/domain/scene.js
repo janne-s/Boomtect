@@ -4,6 +4,7 @@ import { BLAST_PULSE } from './emitters.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
 import { FLASH_TYPES } from './lightning.js';
+import { applyEruption, ERUPTION_NUMBERS } from './volcano.js';
 
 export { DEFAULT_PLACE, DEFAULT_QUALITY, defaultReceiver, headingToward, PLACE_NAME_KINDS, placeLabel, QUALITY_NUMBERS, QUALITY_SWITCHES, SceneError, TERRAIN_DEFAULTS } from '../shared/domain/scene.js';
 
@@ -87,7 +88,12 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   trailSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Trail spacing', reliability: null },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
-  riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' }
+  riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
+  pressureAtKilometrePa: { minimum: .1, maximum: 10000, unit: 'Pa', label: 'Pressure at 1 km', reliability: 'B' },
+  pulseSeconds: { minimum: .05, maximum: 10, unit: 's', label: 'Positive phase', reliability: 'B' },
+  codaDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Coda', reliability: 'C' },
+  codaSeconds: { minimum: .2, maximum: 30, unit: 's', label: 'Coda length', reliability: 'C' },
+  thumpShare: { minimum: 0, maximum: 1, unit: '', label: 'Thumps', reliability: 'C' }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -116,6 +122,8 @@ const FIREWORKS_NUMBERS = Object.freeze([
   'startSeconds', 'radiusMetres', 'durationSeconds', 'shellCount', 'salvoSize', 'salvoSpreadSeconds', 'shellDiameterMillimetres', 'diameterSpread',
   'crackleShare', 'starCount', 'popsPerStar', 'popMilligrams', 'riseTimeSeconds'
 ]);
+
+const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -218,6 +226,12 @@ export function defaultBlast(id = 'blast-1', name = 'Blast', seed = 20261009) {
     ...BLAST_PULSE,
     riseTimeSeconds: 4e-5
   };
+}
+
+export function defaultVolcano(id = 'volcano-1', name = 'Volcano', seed = 20261022) {
+  const volcano = { id, name, kind: 'volcano', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 } };
+  applyEruption(volcano, 'vulcanian');
+  return volcano;
 }
 
 /** Class C as a default. */
@@ -406,6 +420,7 @@ const KINDS = Object.freeze({
   storm: { defaults: () => defaultStorm(), read: readStorm },
   blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres') },
   barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres'), 'centreMetres', path) },
+  volcano: { defaults: () => defaultVolcano(), read: (value, { check, point, numbers }, path) => onGround(check, { positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path) }, 'positionMetres', path) },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
@@ -418,12 +433,12 @@ const KINDS = Object.freeze({
 export const { PARAMETERS, MODES, defaultScene, parseScene, readScene, serializeScene, sceneInMode } = createScene({
   name: 'Boomtect',
   format: 'boomtect.scene',
-  version: 29,
+  version: 30,
   modelVersion: MODEL_VERSION,
   anchor: emitterAnchor,
   modes: {
     thunder: { kinds: ['lightning', 'storm'], emitter: () => defaultLightning(), receiverMetres: { x: 1400, y: 0, z: 1.7 } },
-    blast: { kinds: ['blast', 'barrage', 'fireworks'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
+    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
     sonic: { kinds: ['flight', 'formation', 'meteor', 'shower', 'whip', 'booster'], emitter: () => defaultFlight(), receiverMetres: { x: 0, y: 0, z: 1.7 } }
   },
   kinds: KINDS,

@@ -6,7 +6,7 @@ import {
 } from '../src/domain/render.js';
 import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning,
-  defaultMeteor, defaultReceiver, defaultScene, defaultShower, defaultStorm, defaultWhip, parseScene
+  defaultMeteor, defaultReceiver, defaultScene, defaultShower, defaultStorm, defaultVolcano, defaultWhip, parseScene
 } from '../src/domain/scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
@@ -17,6 +17,7 @@ const EMITTERS = Object.freeze({
   blast: ['blast', () => defaultBlast(), { rich: true }],
   barrage: ['blast', () => ({ ...defaultBarrage(), durationSeconds: 8, roundCount: 6, airburstShare: .5 })],
   fireworks: ['blast', () => ({ ...defaultFireworks(), durationSeconds: 8, shellCount: 4, starCount: 10 })],
+  volcano: ['blast', () => defaultVolcano()],
   flight: ['flights', () => defaultFlight(), { rich: true }],
   formation: ['flights', () => ({ ...defaultFormation(), memberCount: 2 }), { rich: true }],
   whip: ['flights', () => defaultWhip(), { rich: true }],

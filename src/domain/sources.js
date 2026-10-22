@@ -5,6 +5,7 @@ import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './f
 import { flightPath, withApproach } from '../shared/domain/trajectory.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { secondaryBooms } from './secondary.js';
+import { codaSamples } from './volcano.js';
 
 const table = (emitter, scene, surface) => emitterSourceTable(emitter, scene.air, surface, scene.render.quality);
 
@@ -33,6 +34,7 @@ export const SOURCE_KINDS = Object.freeze({
   blast: blasting,
   barrage: blasting,
   fireworks: blasting,
+  volcano: { sources: table, noise: codaSamples },
   flight: moving(flights),
   formation: moving(flights),
   meteor: moving(meteors),

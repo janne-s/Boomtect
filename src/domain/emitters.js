@@ -9,6 +9,7 @@ import { fireballSpanSeconds } from './fireball.js';
 import { friedlanderSpanSeconds } from '../shared/domain/pulses.js';
 import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/air.js';
 import { stormFlashes, stormFlashSequence } from './storm.js';
+import { volcanoSources } from './volcano.js';
 import { sourceTable, sourceTableBuilder } from '../shared/domain/source-table.js';
 import { onGround } from '../shared/domain/terrain.js';
 
@@ -99,6 +100,7 @@ function fireworksSources(emitter, air, surface) {
 
 export function emitterSources(emitter, air, surface = null, quality = null) {
   if (emitter.kind === 'blast') return { flashes: [], sources: blastSources(emitter, air, surface) };
+  if (emitter.kind === 'volcano') return { flashes: [], sources: volcanoSources(emitter, air, surface) };
   if (emitter.kind === 'meteor' || emitter.kind === 'shower') return { flashes: [], sources: meteorSources(emitter, air) };
   if (emitter.kind === 'flight' || emitter.kind === 'formation') return { flashes: [], sources: flightMembers(emitter).map(flightSource) };
   if (emitter.kind === 'whip') return { flashes: [], sources: [flightSource(emitter)] };

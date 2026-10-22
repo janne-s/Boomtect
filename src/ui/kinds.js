@@ -1,12 +1,13 @@
-import { BLAST, FLIGHT, THUNDER, VIEW } from '../domain/constants.js';
+import { BLAST, FLIGHT, THUNDER, VIEW, VOLCANO } from '../domain/constants.js';
 import { blastSources, emitterSources } from '../domain/emitters.js';
 import { EXPLOSIVE_TYPES } from '../domain/explosives.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { BODY_TYPES, carlsonBoom } from '../domain/flight.js';
 import { machCone } from '../shared/domain/trajectory.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
+import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoSources } from '../domain/volcano.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultWhip, PARAMETERS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
 import { newSeed } from '../shared/domain/random.js';
 import { formatMetres } from '../shared/ui/canvas.js';
@@ -14,12 +15,14 @@ import { checkboxField, numberField, pointFields, seedField, selectField, textFi
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, isFieldKind, isFlightKind, isTrackKind } from './geometry-cache.js';
 import { formatCharge, macrosFor } from './macros.js';
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const hasSeed = emitter => !['blast', 'meteor', 'whip', 'booster'].includes(emitter.kind) && !isFlightKind(emitter);
 
-const isBlastKind = emitter => emitter.kind === 'blast' || isFieldKind(emitter);
+const isPointKind = emitter => emitter.kind === 'blast' || emitter.kind === 'volcano';
+const isBlastKind = emitter => isPointKind(emitter) || isFieldKind(emitter);
+const eruptionLabel = emitter => { const type = eruptionOf(emitter); return type === 'custom' ? 'Custom' : VOLCANO.eruptions[type].label; };
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 function emitterKindLabel(emitter) {
@@ -28,6 +31,7 @@ function emitterKindLabel(emitter) {
 
 function emitterSummary(emitter) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
+  if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${+emitter.pressureAtKilometrePa.toPrecision(3)} Pa at 1 km`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
@@ -170,6 +174,22 @@ function detailSections(emitter, { updateEmitter }) {
       section('Source', numbers(['riseTimeSeconds']))
     ];
   }
+  if (emitter.kind === 'volcano') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Vent', point: emitter.positionMetres, axes: ['x', 'y'], onCommit: set('positionMetres') });
+      }),
+      section('Source', container => {
+        selectField(container, {
+          label: 'Eruption', value: eruptionOf(emitter), reliability: 'B',
+          options: [...ERUPTION_TYPES.map(type => [type, VOLCANO.eruptions[type].label]), ['custom', 'Custom']],
+          onCommit: type => { if (type !== 'custom') updateEmitter(emitter.id, item => applyEruption(item, type)); }
+        });
+        numbers(ERUPTION_NUMBERS)(container);
+      })
+    ];
+  }
   if (emitter.kind === 'barrage') {
     return [
       centrePlacement,
@@ -197,7 +217,7 @@ function detailSections(emitter, { updateEmitter }) {
 
 
 function strokeTimeline(emitter, scene, placedPoint) {
-  if (emitter.kind === 'blast') return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres, from: placedPoint(emitter.positionMetres) }];
+  if (isPointKind(emitter)) return [{ flash: 0, time: emitter.startSeconds, route: [], position: emitter.positionMetres, from: placedPoint(emitter.positionMetres) }];
   if (isMeteorKind(emitter)) {
     return cachedBursts(emitter, scene.air).flatMap((places, index) => places.map(burst => ({ flash: index, time: burst.emissionSeconds, route: [], position: burst.positionMetres, from: burst.positionMetres })));
   }
@@ -221,6 +241,7 @@ function wavefrontAmplitudes(emitter, scene, surface) {
     return front(boom.overpressurePa * distanceMetres, boom.durationSeconds);
   };
   if (emitter.kind === 'blast') return new Map([[emitter.id, blastFront(emitter)]]);
+  if (emitter.kind === 'volcano') { const [pulse] = volcanoSources(emitter, air); return new Map([[emitter.id, front(pulse.amplitudePaMetres, pulse.durationSeconds)]]); }
   if (isFlightKind(emitter)) {
     const boom = boomFront(Math.max(1.01, emitter.mach), emitter.lengthMetres, emitter.shapeFactor, 1000);
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom]));
@@ -251,7 +272,7 @@ function wavefrontAmplitudes(emitter, scene, surface) {
 
 
 function wavefrontSourcesOf(emitter, scene, placedPoint, candidates) {
-  if (emitter.kind === 'blast') { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); return; }
+  if (isPointKind(emitter)) { candidates.push({ point: placedPoint(emitter.positionMetres), emitted: emitter.startSeconds, group: emitter.id }); return; }
   if (isTrackKind(emitter)) {
     cachedTracks(emitter, scene.air).forEach((path, member) => {
       const every = Math.max(1, Math.ceil(path.seconds.length / VIEW.wavefront.flightFronts));
@@ -276,7 +297,7 @@ function wavefrontSourcesOf(emitter, scene, placedPoint, candidates) {
 }
 
 function bounds(emitter, scene, include) {
-  if (emitter.kind === 'blast') include(emitter.positionMetres);
+  if (isPointKind(emitter)) include(emitter.positionMetres);
   else if (isTrackKind(emitter)) { for (const path of cachedTracks(emitter, scene.air)) path.x.forEach((x, index) => include({ x, y: path.y[index] })); }
   else if (emitter.kind === 'storm' || isFieldKind(emitter)) {
     const { x, y } = emitter.centreMetres;
@@ -286,13 +307,13 @@ function bounds(emitter, scene, include) {
 }
 
 function measure(item, scene, at) {
-  if (item.kind === 'blast') at(item.positionMetres);
+  if (isPointKind(item)) at(item.positionMetres);
   else if (isFieldKind(item)) cachedRounds(item, scene.air).forEach(round => at(round.positionMetres));
   else if (isTrackKind(item)) { for (const path of cachedTracks(item, scene.air)) path.x.forEach((x, index) => at({ x, y: path.y[index], z: path.z[index] })); }
   else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(at);
 }
 
-const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : isTrackKind(selected) ? 'start' : 'blast');
+const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'vent' : isTrackKind(selected) ? 'start' : 'blast');
 
 const info = selected => (selected.kind === 'storm' ? [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`] : []);
 
@@ -318,7 +339,7 @@ function groundAnchored(field, item) {
   return field === 'positionMetres';
 }
 
-const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
+const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [kind, Object.freeze({
   label: emitterKindLabel,
@@ -352,6 +373,7 @@ export const ADD_EMITTERS = Object.freeze({
   blast: add(defaultBlast, 'Blast', 'blast'),
   barrage: add(defaultBarrage, 'Barrage', 'blast'),
   fireworks: add(defaultFireworks, 'Fireworks', 'blast'),
+  volcano: add(defaultVolcano, 'Volcano', 'blast'),
   flight: add(defaultFlight, 'Flight', 'sonic'),
   formation: add(defaultFormation, 'Formation', 'sonic'),
   meteor: add(defaultMeteor, 'Meteor', 'sonic'),

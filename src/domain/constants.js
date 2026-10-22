@@ -2,9 +2,9 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.74.0';
+export const APP_VERSION = '0.75.0';
 
-export const MODEL_VERSION = '33.3.0';
+export const MODEL_VERSION = '33.4.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 
@@ -95,6 +95,31 @@ export const FIREWORKS = Object.freeze({
   starStepSeconds: .02
 });
 
+/** Levels and pulse lengths class B (Johnson 2003; Sakurajima, Tungurahua; Doc/reviews/2026-10-22-volcano-recordings.md); the rest class C, fitted to the Dukono, Anak Krakatau and Tavurvur 2014 soundtracks. */
+export const VOLCANO = Object.freeze({
+  referenceMetres: 1000,
+  /** Class C: linear propagation from where the pulse is this share of the air pressure, as a Blast's Z = 20 gives about 4 %. */
+  linearPressureShare: .04,
+  eruptions: Object.freeze({
+    strombolian: Object.freeze({ label: 'Strombolian', pressureAtKilometrePa: 10, pulseSeconds: .5, decay: 1, riseTimeSeconds: 5e-5, codaDecibels: -20, codaSeconds: 4, thumpShare: .2 }),
+    vulcanian: Object.freeze({ label: 'Vulcanian', pressureAtKilometrePa: 300, pulseSeconds: 2, decay: 1, riseTimeSeconds: 1.5e-3, codaDecibels: -20, codaSeconds: 3, thumpShare: .7 }),
+    strongVulcanian: Object.freeze({ label: 'Strong Vulcanian', pressureAtKilometrePa: 2000, pulseSeconds: 3, decay: 1, riseTimeSeconds: 4e-5, codaDecibels: -20, codaSeconds: 5, thumpShare: .3 })
+  }),
+  coda: Object.freeze({
+    spectrumHz: Object.freeze([20, 100, 400, 900, 1800, 3500, 7000, 16000]),
+    spectrumDensity: Object.freeze([5, 1, .0625, .0112, 8.8e-4, 1.43e-4, 7.2e-6, 6.3e-8]),
+    riseSeconds: .05,
+    falloffDecibels: 30,
+    windowSeconds: .05
+  }),
+  thumps: Object.freeze({
+    intervalSeconds: Object.freeze([.05, .4]),
+    attackSeconds: .005,
+    decaySeconds: .06,
+    sizeSpread: .5
+  })
+});
+
 /** Class C. */
 export const UPPER_AIR = Object.freeze({
   topMetres: 80000,
@@ -165,7 +190,9 @@ export const VIEW = Object.freeze({
     maximumBranches: 24,
     maximumZigzagDegrees: 45,
     fineTortuosity: Object.freeze([4, 28]),
-    cloudRange: Object.freeze([200, 18000])
+    cloudRange: Object.freeze([200, 18000]),
+    volcanoPressureRange: Object.freeze([1, 10000]),
+    volcanoRiseRange: Object.freeze([2e-5, 3e-3])
   }),
   flash: Object.freeze({
     traverseSeconds: .12,

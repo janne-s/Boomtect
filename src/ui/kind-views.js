@@ -524,6 +524,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
+    volcano: { ...blast, handles: (emitter, box, tools) => { use(tools); return [{ type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), onGround: true, role: 'source' }]; } },
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }

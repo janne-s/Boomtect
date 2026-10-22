@@ -54,6 +54,10 @@ microphone along the Mach cone.
   mortar's thump on the ground, the shell's burst high in the air a flight time
   later, and, for a share of the shells, crackling stars as a swarm of tiny
   pops around the burst. In the scene each shell bursts in its own color.
+- **Volcano** — An explosion from a vent: a long pressure pulse, set by its
+  pressure 1 km away, and the roar and low thumps of the ash and gas that
+  follow it. Strombolian, Vulcanian, and strong Vulcanian types set it; the
+  rise time runs from a soft thump to a crack.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -82,7 +86,8 @@ microphone along the Mach cone.
   flash; size, duration, flashes, ground share, and cloud layer for a storm;
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
   salvo, charge, and fireball for a barrage; size, duration, shells, shells per
-  salvo, shell size, and crackle for a fireworks display, each with its onset when the scene
+  salvo, shell size, and crackle for a fireworks display; size, sharpness,
+  coda, coda length, and thumps for a volcano, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -345,6 +350,9 @@ B/C marks a part that combines the two.
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
 | Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
 | Fireworks burst | TNT blast of 15 % of the shell's mass, fitted to 718 Pa below 4–6 inch shells bursting at 91 m (Maglieri & Henderson 1973); TNT's pulse, longer than their 12 ms signature | C |
+| Volcano pulse | Friedlander pulse of the set pressure at 1 km (about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
+| Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
+| Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
