@@ -8,7 +8,8 @@ import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, expo
 import { soundHandoff } from '../domain/sound-handoff.js';
 import { handoffMessage } from '../domain/handoff.js';
 import { ECHOTECT_URL, openTect } from './tect-link.js';
-import { createPartnerLink } from './partner-link.js';
+import { createPartnerLink, linkedSession } from './partner-link.js';
+import { savedPath } from '../domain/follower.js';
 import { mixedResults, resultsForPartner, sharedKey, sharedPart, withoutEchoes, withShared } from '../domain/partner-mix.js';
 import { formatMetres, formatSeconds, microphoneColor } from './canvas.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './terrain-loader.js';
@@ -35,7 +36,7 @@ import { formatMicrophoneLevels } from './levels.js';
 export function startFrame(tect) {
   const {
     storage: prefix, appVersion: APP_VERSION, modelVersion: MODEL_VERSION, worker: workerUrl, kinds, views: kindViews, add: ADD_EMITTERS, modes: MODE_SETTINGS, anchor: emitterAnchor,
-    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, linkModes = {}
+    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, linkModes = {}, follower = null
   } = tect;
   const { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene } = tect.scene;
   const { actionField, checkboxField, numberField, pointFields, selectField, textField } = tect.fields;
@@ -52,6 +53,13 @@ export function startFrame(tect) {
   document.getElementById('wavefront').insertAdjacentHTML('afterend', Object.entries(tectToggles).map(([id, { label, icon }]) => `<button type="button" class="icon-toggle" id="${id}" aria-pressed="false" aria-label="${label}" title="${label}" hidden>${icon}</button>`).join(''));
 
   const sceneStorageKey = mode => `${prefix}.scene.${mode}`;
+  const linkedStorageKey = mode => `${prefix}.linked.scene.${mode}`;
+  const FRESH_LINK_KEY = 'tect.link.fresh';
+  /** A window the link opened starts with no emitters of its own, and its saved scenes stay as they were. */
+  const freshLink = () => { try { return sessionStorage.getItem(FRESH_LINK_KEY) === '1'; } catch { return false; } };
+  const setFreshLink = on => { try { if (on) sessionStorage.setItem(FRESH_LINK_KEY, '1'); else sessionStorage.removeItem(FRESH_LINK_KEY); } catch {} };
+  const loadedAt = performance.now();
+  const linkedAtLoad = Boolean(linkedSession());
   const PREFERENCES_STORAGE_KEY = `${prefix}.preferences`;
   let resetting = false;
   window.addEventListener('app-reset', () => { resetting = true; });
@@ -80,12 +88,21 @@ export function startFrame(tect) {
     }
   };
 
-  function restoredScene(mode) {
+  function savedScene(key, mode) {
     try {
-      const scene = readScene(storage.read(sceneStorageKey(mode)));
+      const scene = readScene(storage.read(key));
       if (scene.mode === mode) return scene;
     } catch {}
-    return defaultScene(mode);
+    return null;
+  }
+
+  function restoredScene(mode) {
+    if (linkedSession()) {
+      const linkedScene = savedScene(linkedStorageKey(mode), mode);
+      if (linkedScene) return linkedScene;
+      if (freshLink()) return { ...defaultScene(mode), emitters: [] };
+    }
+    return savedScene(sceneStorageKey(mode), mode) ?? defaultScene(mode);
   }
 
   const preferences = {
@@ -113,7 +130,7 @@ export function startFrame(tect) {
     ownKey: null,
     preferences
   };
-  if (!state.preferences.partner) state.preferences.partner = { levelDecibels: 0, manual: false };
+  if (!state.preferences.partner) state.preferences.partner = { levelDecibels: 0 };
   state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
   const player = createPlayer({
@@ -187,17 +204,31 @@ export function startFrame(tect) {
     return sceneKeys.get(scene);
   }
 
-  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve() };
+  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve(), created: new Set() };
 
   const link = createPartnerLink({
     app: appName,
     handlers: {
       onStatus: () => drawLink(),
       onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
-      onUnlinked: () => { Object.assign(linked, { emitters: [], mix: null, held: null, updating: false }); $('link-dialog')?.close(); showResults(); redrawViews(); drawLink(); },
+      onUnlinked: () => {
+        Object.assign(linked, { emitters: [], mix: null, held: null, updating: false });
+        if (!linkedSession()) { setFreshLink(false); storeScene(); }
+        $('link-dialog')?.close();
+        showResults();
+        redrawViews();
+        drawLink();
+      },
       onShared: shared => applyShared(shared),
-      onOffer: (shared, mode) => { if (MODES.includes(mode)) switchMode(mode); applyShared(shared); },
-      onEmitters: emitters => { linked.emitters = Array.isArray(emitters) ? emitters : []; redrawViews(); scheduleTerrainCoverage(); },
+      onOffer: (shared, mode) => {
+        if (window.opener && !linkedAtLoad && performance.now() - loadedAt < VIEW.freshLinkSeconds * 1000) {
+          setFreshLink(true);
+          if (MODES.includes(mode) && mode !== state.scene.mode) switchMode(mode);
+          else { state.scene = { ...state.scene, emitters: [] }; state.selection = { type: null, id: null }; storeScene(); invalidateResults(); refreshPanel(); }
+        } else if (MODES.includes(mode)) switchMode(mode);
+        applyShared(shared);
+      },
+      onEmitters: emitters => { linked.emitters = Array.isArray(emitters) ? emitters : []; redrawViews(); syncFollowers(); scheduleTerrainCoverage(); },
       onMix: message => receiveMix(message),
       onRequest: (variant, key) => { const answer = linked.serving.then(() => serveRequest(variant, key)); linked.serving = answer.catch(() => {}); return answer; },
       onSelect: id => { if (findItem('emitter', id)) { select({ type: 'emitter', id }); refreshPanel(); redrawViews(); } },
@@ -353,7 +384,7 @@ export function startFrame(tect) {
     if (message.state === 'updating') { linked.updating = true; drawLink(); return; }
     linked.updating = false;
     const mix = { key: message.key, results: Array.isArray(message.results) ? message.results : [] };
-    if (state.preferences.partner.manual && linked.mix) linked.held = mix;
+    if (!state.preferences.autoRender && linked.mix) linked.held = mix;
     else { linked.mix = mix; linked.held = null; showResults(); }
     drawLink();
   }
@@ -382,9 +413,10 @@ export function startFrame(tect) {
 
   /** What the linked tect draws of each enabled emitter here: its paths or points, thinned, and where its name goes. */
   function emitterGhosts() {
-    return state.scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
+    return state.scene.emitters.filter(emitter => emitter.enabled && !(emitter.follows && emitter.follows.app === link.partner())).map(emitter => {
       const kind = kinds[emitter.kind];
       const paths = kind.tracks?.(emitter, state.scene) ?? null;
+      const follow = paths && kind.followAs?.(emitter, state.scene);
       const tracks = (paths ?? []).map(path => {
         const stride = thinned(path.x.length, VIEW.linkTrackPoints);
         const points = [];
@@ -396,8 +428,31 @@ export function startFrame(tect) {
       const stride = thinned(all.length, VIEW.linkPoints);
       const dots = all.filter((_, index) => index % stride === 0);
       const anchor = emitterAnchor(emitter);
-      return { id: emitter.id, name: emitter.name, label: kind.label(emitter), tracks, dots, anchor: { x: anchor.x, y: anchor.y, z: anchor.z ?? 0 } };
+      return {
+        id: emitter.id, name: emitter.name, label: kind.label(emitter), tracks, dots, anchor: { x: anchor.x, y: anchor.y, z: anchor.z ?? 0 },
+        follow: follow ? { ...follow, paths: paths.map(savedPath) } : null
+      };
     });
+  }
+
+  /** Keeps one follower here for every emitter of the linked tect this tect can give a sound to; one removed here stays removed. */
+  function syncFollowers() {
+    const partner = link.partner();
+    if (!partner || !follower) return;
+    const followed = new Map(linked.emitters.filter(ghost => ghost.follow).map(ghost => [ghost.id, ghost]));
+    const emitters = state.scene.emitters.filter(emitter => !(emitter.follows?.app === partner && !followed.has(emitter.follows.id)));
+    let changed = emitters.length !== state.scene.emitters.length;
+    for (const ghost of followed.values()) {
+      const index = emitters.findIndex(emitter => emitter.follows?.app === partner && emitter.follows.id === ghost.id);
+      if (index < 0 && linked.created.has(`${partner}:${ghost.id}`)) continue;
+      const made = follower(ghost, index < 0 ? null : emitters[index], { partner, uniqueId: base => uniqueId(base, emitters), scene: state.scene });
+      if (!made) continue;
+      if (index < 0) { emitters.push(made); linked.created.add(`${partner}:${ghost.id}`); changed = true; }
+      else if (JSON.stringify(made) !== JSON.stringify(emitters[index])) { emitters[index] = made; changed = true; }
+    }
+    if (!changed) return;
+    try { parseScene({ ...state.scene, emitters }); } catch { return; }
+    commit(scene => { scene.emitters = emitters; });
   }
 
   function sendEmitters() {
@@ -470,8 +525,15 @@ export function startFrame(tect) {
       });
       return item;
     }));
-    if (partner && linked.held) holder.append(button('Update', adoptHeld, { title: `Take ${partner}'s new sound` }));
-    if (state.preferences.partner.manual && $('link-dialog')?.open) openLinkDialog();
+    if (partner && linked.held) {
+      const update = element('button', 'icon-toggle');
+      update.type = 'button';
+      update.title = `Take ${partner}'s new sound`;
+      update.setAttribute('aria-label', update.title);
+      update.innerHTML = '<i class="fa-solid fa-rotate" aria-hidden="true"></i>';
+      update.addEventListener('click', adoptHeld);
+      holder.append(update);
+    }
   }
 
   const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, null]);
@@ -489,16 +551,7 @@ export function startFrame(tect) {
       options: PARTNER_LEVELS.map(level => [String(level), level === null ? 'Muted' : level === 0 ? '0 dB' : `${level} dB`]),
       onCommit: value => { state.preferences.partner.levelDecibels = value === 'null' ? null : Number(value); savePreferences(); showResults(); redrawViews(); drawLink(); }
     });
-    selectField(grid, {
-      label: 'Update', value: state.preferences.partner.manual ? 'manual' : 'auto', options: [['auto', 'Auto'], ['manual', 'Manual']],
-      onCommit: value => { state.preferences.partner.manual = value === 'manual'; savePreferences(); if (state.preferences.partner.manual) drawLink(); else adoptHeld(); }
-    });
     body.append(grid);
-    if (state.preferences.partner.manual) {
-      const waiting = element('p', 'field-note', linked.held ? `${partner} has a new sound.` : `${partner}'s sound is up to date.`);
-      body.append(waiting);
-      if (linked.held) body.append(button('Update', adoptHeld));
-    }
     const footer = element('footer', 'export-actions');
     footer.append(
       button('Unlink', () => { dialog.close(); link.unlink(); }),
@@ -638,7 +691,10 @@ export function startFrame(tect) {
       showResults();
       return;
     }
-    if (!variant) link.send('mix', { state: 'updating' });
+    if (!variant) {
+      link.send('mix', { state: 'updating' });
+      if (linked.held) { linked.mix = linked.held; linked.held = null; drawLink(); }
+    }
     let sources;
     let prepared;
     let workerCount = workerLimit();
@@ -1208,7 +1264,8 @@ export function startFrame(tect) {
   }
 
   function storeScene() {
-    storage.write(sceneStorageKey(state.scene.mode), state.scene);
+    if (linkedSession()) storage.write(linkedStorageKey(state.scene.mode), state.scene);
+    if (!freshLink()) storage.write(sceneStorageKey(state.scene.mode), state.scene);
     shareScene();
   }
 
@@ -2418,7 +2475,10 @@ export function startFrame(tect) {
     'auto-render': {
       read: () => state.preferences.autoRender,
       write: on => { state.preferences.autoRender = on; },
-      after: () => { if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender(); }
+      after: () => {
+        if (state.preferences.autoRender) adoptHeld();
+        if (state.preferences.autoRender && !state.results && !operations.has('render')) startRender();
+      }
     },
     'real-delay': { read: () => state.preferences.realDelay, write: on => { state.preferences.realDelay = on; } },
     preview: {

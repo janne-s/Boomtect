@@ -4,6 +4,7 @@ import { boosterPath, flightMembers, whipPath } from '../domain/flight.js';
 import { flightPath } from '../shared/domain/trajectory.js';
 import { meteorBursts, meteorTrack, showerMembers } from '../domain/meteor.js';
 import { arcs, cached, currentSurface } from '../shared/ui/geometry-cache.js';
+import { followedPath } from '../shared/domain/follower.js';
 
 export { currentSurface, useTerrain } from '../shared/ui/geometry-cache.js';
 
@@ -28,7 +29,8 @@ export function cachedTracks(emitter, air) {
   if (trackSurfaces.get(emitter.id) !== surface) tracks.delete(emitter.id);
   trackSurfaces.set(emitter.id, surface);
   return cached(tracks, emitter, air, () => (emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]
-    : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack)));
+    : emitter.paths ? emitter.paths.map(followedPath)
+      : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack)));
 }
 
 const bursts = new Map();

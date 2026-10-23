@@ -6,6 +6,7 @@ import { flightPath, withApproach } from '../shared/domain/trajectory.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
 import { secondaryBooms } from './secondary.js';
 import { codaSamples } from './volcano.js';
+import { followedPath } from '../shared/domain/follower.js';
 
 const table = (emitter, scene, surface) => emitterSourceTable(emitter, scene.air, surface, scene.render.quality);
 
@@ -17,7 +18,9 @@ function track(body, path, booms, { secondary = false, shape } = {}) {
 }
 
 const flights = (emitter, scene) => ({
-  tracks: flightMembers(emitter).map(flight => track(flight, withApproach(flightPath(flight, scene.air), scene.air), flightBooms, { secondary: true }))
+  tracks: emitter.paths
+    ? emitter.paths.map(saved => track(emitter, withApproach(followedPath(saved), scene.air), flightBooms, { secondary: true }))
+    : flightMembers(emitter).map(flight => track(flight, withApproach(flightPath(flight, scene.air), scene.air), flightBooms, { secondary: true }))
 });
 
 function meteors(emitter, scene, surface, rows) {

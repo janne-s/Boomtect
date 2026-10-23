@@ -21,6 +21,9 @@ const SESSION_KEY = 'tect.link.partner';
 
 const instanceId = () => crypto.randomUUID();
 
+/** The tect this tab was linked with, kept for the tab's session so that a reload takes the link up again. */
+export const linkedSession = () => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } };
+
 function windowPeer(target, origin) {
   return {
     window: target,
@@ -62,7 +65,7 @@ export function createPartnerLink({ app, handlers }) {
   let offering = null;
   let lastHeard = 0;
 
-  const remembered = () => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } };
+  const remembered = linkedSession;
   const remember = name => { try { if (name) sessionStorage.setItem(SESSION_KEY, name); else sessionStorage.removeItem(SESSION_KEY); } catch {} };
 
   const base = () => ({ app, instance: self });

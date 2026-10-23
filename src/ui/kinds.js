@@ -3,7 +3,8 @@ import { blastSources, emitterSources } from '../domain/emitters.js';
 import { EXPLOSIVE_TYPES } from '../domain/explosives.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { BODY_TYPES, carlsonBoom } from '../domain/flight.js';
-import { machCone } from '../shared/domain/trajectory.js';
+import { machCone, soundSpeedAt } from '../shared/domain/trajectory.js';
+import { followerPlacement, followerSeed } from '../shared/domain/follower.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import {
@@ -38,6 +39,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
   if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
+  if (emitter.follows) return `${FLIGHT.bodies[emitter.body].label} on ${emitter.follows.app}'s ${emitter.follows.name}${emitter.paths.length > 1 ? `, ${emitter.paths.length} paths` : ''}`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'fireworks') return `${emitter.shellCount} shells of about ${Math.round(emitter.shellDiameterMillimetres)} mm over ${emitter.durationSeconds} s, ${Math.round(emitter.crackleShare * 100)} % crackling`;
   if (emitter.kind === 'barrage') {
@@ -142,6 +144,27 @@ function detailSections(emitter, { updateEmitter }) {
       })
     ];
   }
+  const bodySection = () => (
+    section('Body', container => {
+      selectField(container, {
+        label: 'Body', value: emitter.body, reliability: 'B', options: BODY_TYPES.map(type => [type, FLIGHT.bodies[type].label]),
+        onCommit: body => updateEmitter(emitter.id, item => {
+          item.body = body;
+          if (FLIGHT.bodies[body].lengthMetres) Object.assign(item, { lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor });
+        })
+      });
+      for (const key of ['lengthMetres', 'shapeFactor']) {
+        numberField(container, { key, value: emitter[key], onCommit: value => updateEmitter(emitter.id, item => { item[key] = value; item.body = 'custom'; }) });
+      }
+      numbers(['riseTimeSeconds'])(container);
+    })
+  );
+  if (emitter.follows) {
+    return [
+      section('Placement', container => textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') })),
+      bodySection()
+    ];
+  }
   if (isFlightKind(emitter)) {
     return [
       ...(emitter.kind === 'formation' ? [section('Formation', numbers(['memberCount', 'lateralSpacingMetres', 'trailSpacingMetres']))] : []),
@@ -153,19 +176,7 @@ function detailSections(emitter, { updateEmitter }) {
         numbers(['headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond'])(container);
         numberField(container, { key: 'flightSeconds', value: emitter.durationSeconds, onCommit: set('durationSeconds') });
       }),
-      section('Body', container => {
-        selectField(container, {
-          label: 'Body', value: emitter.body, reliability: 'B', options: BODY_TYPES.map(type => [type, FLIGHT.bodies[type].label]),
-          onCommit: body => updateEmitter(emitter.id, item => {
-            item.body = body;
-            if (FLIGHT.bodies[body].lengthMetres) Object.assign(item, { lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor });
-          })
-        });
-        for (const key of ['lengthMetres', 'shapeFactor']) {
-          numberField(container, { key, value: emitter[key], onCommit: value => updateEmitter(emitter.id, item => { item[key] = value; item.body = 'custom'; }) });
-        }
-        numbers(['riseTimeSeconds'])(container);
-      })
+      bodySection()
     ];
   }
   if (emitter.kind === 'fireworks') {
@@ -365,6 +376,7 @@ export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [k
   timeline: strokeTimeline,
   alwaysTimed: emitter => isBlastKind(emitter) || isMeteorKind(emitter),
   tracks: (emitter, scene) => (isTrackKind(emitter) ? cachedTracks(emitter, scene.air) : null),
+  followAs: emitter => (isFlightKind(emitter) && !emitter.follows && emitter.body !== 'rocket' ? { role: 'aircraft', size: emitter.body === 'bomber' ? 'bomber' : 'fighter' } : null),
   cone: machCone,
   amplitudes: wavefrontAmplitudes,
   wavefrontSources: wavefrontSourcesOf,
@@ -389,3 +401,28 @@ export const ADD_EMITTERS = Object.freeze({
   whip: add(defaultWhip, 'Whip', 'sonic'),
   booster: add(defaultBooster, 'Booster', 'sonic')
 });
+
+const within = (key, value) => Math.min(PARAMETERS[key].maximum, Math.max(PARAMETERS[key].minimum, value));
+
+/** A flight on a linked tect's path, so that its booms and Mach cone come from Boomtect; the body is kept once chosen. */
+export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
+  const body = ghost.follow.role === 'rocket' ? 'rocket' : ghost.follow.size === 'bomber' ? 'bomber' : 'reconnaissance';
+  const base = existing ?? {
+    ...defaultFlight(uniqueId('flight'), `${ghost.name} boom`.slice(0, 64), followerSeed(partner, ghost.id)),
+    body, lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor
+  };
+  const placement = followerPlacement(ghost.follow.paths[0]);
+  return {
+    ...base,
+    follows: { app: partner, id: ghost.id, name: ghost.name },
+    paths: ghost.follow.paths,
+    startMetres: placement.startMetres,
+    startSeconds: within('startSeconds', placement.startSeconds),
+    headingDegrees: +within('headingDegrees', placement.headingDegrees).toFixed(1),
+    climbDegrees: +within('climbDegrees', placement.climbDegrees).toFixed(1),
+    mach: +within('mach', placement.topSpeedMetresPerSecond / soundSpeedAt(scene.air, placement.startMetres.z)).toFixed(2),
+    accelerationMetresPerSecondSquared: 0,
+    turnDegreesPerSecond: 0,
+    durationSeconds: +within('flightSeconds', placement.durationSeconds).toFixed(2)
+  };
+}

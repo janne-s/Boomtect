@@ -1,3 +1,4 @@
+import { followerFields } from '../shared/domain/follower.js';
 import { FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
 import { createScene } from '../shared/domain/scene.js';
 import { BLAST_PULSE } from './blast-pulse.js';
@@ -384,6 +385,7 @@ function readMeteor(value, { check, point, numbers }, path) {
 
 function readFlight(value, { number, point, numbers, choice }, path) {
   return {
+    ...followerFields(value),
     body: choice(value.body, BODY_TYPES, defaultFlight().body, `${path}.body`), startMetres: point(value.startMetres, `${path}.startMetres`),
     durationSeconds: number(value.durationSeconds, 'flightSeconds', `${path}.durationSeconds`), ...numbers(value, FLIGHT_NUMBERS, path),
     ...(value.kind === 'formation' ? numbers(value, ['memberCount', 'lateralSpacingMetres', 'trailSpacingMetres'], path) : {})

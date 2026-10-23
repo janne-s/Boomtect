@@ -315,15 +315,27 @@ holds. One direction stands for sound that arrives from many.
 ## Rumbletect
 
 **Open Rumbletect** opens [Rumbletect](https://github.com/janne-s/Rumbletect) in its own
-window with this scene's place, terrain, air, ground, microphones, and render
-settings, and links the two windows. When Rumbletect is already open, the button
-reads **Link Rumbletect**. While linked, a change to these in either window
-reaches the other. Each window renders its own emitters, and the microphones
-hear both: plots, levels, playback, the export, and Echotect get the sum.
-Rumbletect's emitters show dimmed in the scene; a click on one shows it in
-Rumbletect. The button with the linked name brings its window forward, and the
-sliders beside it set Rumbletect's level or mute it, choose whether its new
-sound comes in at once or with **Update**, and unlink. Rumbletect makes the engines of jets, airliners, and rockets, and the roar of an eruption.
+window and links the two windows. When Rumbletect is already open, the button
+reads **Link Rumbletect**. Rumbletect makes the engines of jets, airliners, and
+rockets, and the roar of an eruption.
+
+- **One scene** — The place, terrain, air, ground, microphones, and render
+  settings are the same in both windows, and a change in either reaches the
+  other. A window the link opens starts with no emitters of its own, and its
+  saved scenes stay as they were; after **Unlink** the scene on screen stays.
+- **Heard together** — Each window renders its own emitters, and the
+  microphones hear both: plots, levels, playback, the export, and Echotect get
+  the sum. With **Auto** render on, Rumbletect's new sound comes in at once;
+  with it off, the arrows beside Rumbletect's name take it in.
+- **Followers** — Each supersonic jet or rocket in Rumbletect gets a flight here
+  on its path, named after it, whose booms and Mach cone Boomtect computes; each
+  Boomtect flight gets a jet in Rumbletect for its engines. A follower moves
+  with what it follows and keeps a copy of the path, so it still sounds without
+  the link. Its body is set in Details. Removed, it stays away while both
+  windows are open.
+- **Rumbletect's emitters** — Dimmed in the scene; a click on one shows it in
+  Rumbletect. Rumbletect's name opens its level or mute, a button to bring its window
+  forward, and **Unlink**.
 
 ## Model
 

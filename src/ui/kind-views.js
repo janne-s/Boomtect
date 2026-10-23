@@ -496,6 +496,7 @@ export function kindViews() {
   const track = {
     handles(emitter, box, tools) {
       use(tools);
+      if (emitter.follows) return [];
       const start = trackStart(emitter);
       const list = [emitter.kind === 'booster'
         ? { type: 'emitter', id: emitter.id, field: 'padMetres', point: start, onGround: true, role: 'start' }
