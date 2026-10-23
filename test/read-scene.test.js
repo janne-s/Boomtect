@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { DEFAULT_PLACE, defaultScene, MODES, PARAMETERS, parseScene, readScene, SceneError, serializeScene } from '../src/domain/scene.js';
+import { DEFAULT_PLACE, defaultBarrage, defaultBlast, defaultFlight, defaultLightning, defaultScene, MODES, PARAMETERS, parseScene, readScene, SceneError, serializeScene } from '../src/domain/scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
 // Saved by the version each file names and never regenerated: every one must keep opening.
@@ -103,4 +103,15 @@ test('every scene has a place, with or without terrain, and its terrain lies the
   assert.deepEqual([read.place.latitude, read.place.longitude], [terrain.latitude, terrain.longitude]);
   assert.equal(read.place.name, '63.0964, 29.8061');
   assert.throws(() => readScene({ ...defaultScene(), place: { ...DEFAULT_PLACE, latitude: 'north' } }), SceneError);
+});
+
+test('an explosive, body, or flash type this version does not know takes a default, and an edit refuses it', () => {
+  const field = { blast: 'explosive', barrage: 'explosive', flight: 'body', lightning: 'flashType' };
+  for (const emitter of [defaultBlast(), defaultBarrage(), defaultFlight(), defaultLightning()]) {
+    const mode = MODES.find(name => defaultScene(name).emitters.some(item => item.kind === (emitter.kind === 'barrage' ? 'blast' : emitter.kind)));
+    const scene = { ...JSON.parse(serializeScene(defaultScene(mode))), emitters: [{ ...emitter, [field[emitter.kind]]: 'unknown' }] };
+    const read = readScene(scene).emitters[0];
+    assert.notEqual(read[field[emitter.kind]], 'unknown', emitter.kind);
+    assert.throws(() => parseScene(scene), SceneError, emitter.kind);
+  }
 });

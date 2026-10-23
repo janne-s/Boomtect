@@ -363,10 +363,9 @@ export function defaultFormation(id = 'formation-1', name = 'Formation', seed = 
 
 export const emitterAnchor = emitter => emitter.positionMetres ?? emitter.centreMetres ?? emitter.padMetres ?? emitter.startMetres ?? emitter.baseMetres;
 
-function blastFields({ check, point, numbers }, value, path, numberKeys, place) {
-  check(EXPLOSIVE_TYPES.includes(value.explosive), `${path}.explosive is not supported.`);
+function blastFields({ check, point, numbers, choice }, value, path, numberKeys, place, fallbackExplosive) {
   check(typeof value.secondaryShock === 'boolean', `${path}.secondaryShock must be true or false.`);
-  return { [place]: point(value[place], `${path}.${place}`), explosive: value.explosive, secondaryShock: value.secondaryShock, ...numbers(value, numberKeys, path) };
+  return { [place]: point(value[place], `${path}.${place}`), explosive: choice(value.explosive, EXPLOSIVE_TYPES, fallbackExplosive, `${path}.explosive`), secondaryShock: value.secondaryShock, ...numbers(value, numberKeys, path) };
 }
 
 function onGround(check, item, place, path) {
@@ -383,19 +382,17 @@ function readMeteor(value, { check, point, numbers }, path) {
   return meteor;
 }
 
-function readFlight(value, { check, number, point, numbers }, path) {
-  check(BODY_TYPES.includes(value.body), `${path}.body is not supported.`);
+function readFlight(value, { number, point, numbers, choice }, path) {
   return {
-    body: value.body, startMetres: point(value.startMetres, `${path}.startMetres`),
+    body: choice(value.body, BODY_TYPES, defaultFlight().body, `${path}.body`), startMetres: point(value.startMetres, `${path}.startMetres`),
     durationSeconds: number(value.durationSeconds, 'flightSeconds', `${path}.durationSeconds`), ...numbers(value, FLIGHT_NUMBERS, path),
     ...(value.kind === 'formation' ? numbers(value, ['memberCount', 'lateralSpacingMetres', 'trailSpacingMetres'], path) : {})
   };
 }
 
-function readLightning(value, { check, point, numbers }, path) {
-  check(FLASH_TYPES.includes(value.flashType), `${path}.flashType is not supported.`);
+function readLightning(value, { check, point, numbers, choice }, path) {
   const lightning = {
-    flashType: value.flashType,
+    flashType: choice(value.flashType, FLASH_TYPES, 'intra-cloud', `${path}.flashType`),
     baseMetres: point(value.baseMetres, `${path}.baseMetres`),
     topMetres: point(value.topMetres, `${path}.topMetres`),
     ...numbers(value, LIGHTNING_NUMBERS, path)
@@ -418,8 +415,8 @@ function readStorm(value, { check, point, numbers }, path) {
 const KINDS = Object.freeze({
   lightning: { defaults: value => (value.flashType === 'intra-cloud' ? defaultCloudFlash() : defaultLightning()), read: readLightning },
   storm: { defaults: () => defaultStorm(), read: readStorm },
-  blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres') },
-  barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres'), 'centreMetres', path) },
+  blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres', defaultBlast().explosive) },
+  barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres', defaultBarrage().explosive), 'centreMetres', path) },
   volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path) }) },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
