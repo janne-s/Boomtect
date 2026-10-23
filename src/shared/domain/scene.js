@@ -136,7 +136,13 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
     return Object.fromEntries(keys.map(key => [key, number(value[key], key, `${path}.${key}`)]));
   }
 
-  const fields = Object.freeze({ check, number, point, text, numbers });
+  function choice(value, options, fallback, path) {
+    if (options.includes(value)) return value;
+    check(bringIntoRange, `${path} is not supported.`);
+    return fallback;
+  }
+
+  const fields = Object.freeze({ check, number, point, text, numbers, choice });
 
   function defaultScene(mode = modes[0]) {
     const { emitter: newEmitter, receiverMetres } = modeTable[mode];
