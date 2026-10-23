@@ -14,9 +14,10 @@ Exports are 32-bit float WAV at one full scale in pascals, recorded in the scene
 ## Formats
 
 - [Scene](https://github.com/janne-s/Boomtect/blob/main/src/domain/scene.js): every parameter with its default and range
-- [Handoff](https://github.com/janne-s/Boomtect/blob/main/src/domain/handoff.js): the `tect.handoff` format shared with Echotect
+- [Handoff](https://github.com/janne-s/Boomtect/blob/main/src/shared/domain/handoff.js): the `tect.handoff` format shared with Echotect and Rumbletect
 - [Constants](https://github.com/janne-s/Boomtect/blob/main/src/domain/constants.js): the model's tuning values and limits
 
 ## Optional
 
 - [Echotect](https://janne-s.github.io/Echotect/llms.txt): echoes from buildings, streets, and terrain for a sound, including one sent from Boomtect
+- [Rumbletect](https://janne-s.github.io/Rumbletect/llms.txt): the continuous sound of jets, airliners, rockets, and volcanic eruptions, on the same terrain and air

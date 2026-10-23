@@ -421,7 +421,7 @@ Both are fetched only when asked for.
 
 Binaural decoding uses [Omnitone](https://github.com/GoogleChrome/omnitone)
 1.3.0 with its SADIE HRIRs, under the Apache License 2.0
-([notice](assets/vendor/omnitone/NOTICE)).
+([notice](src/shared/vendor/omnitone/NOTICE)).
 
 Icons are [Font Awesome Free](https://fontawesome.com) 7.3.1, solid style,
 as in Echotect: font under the SIL OFL 1.1, CSS under the MIT License, icons
