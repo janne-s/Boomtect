@@ -170,6 +170,13 @@ figcaption {
 .plot-tabs.plot-balance button {
   color: var(--muted);
 }
+.plot-tabs.plot-balance .plot-unlink {
+  margin-left: 4px;
+  color: var(--faint);
+}
+.plot-tabs.plot-balance .plot-unlink:hover {
+  color: var(--accent);
+}
 .plot-tabs.plot-balance button[aria-pressed="true"] {
   color: var(--accent);
   box-shadow: inset 0 -2px var(--accent);

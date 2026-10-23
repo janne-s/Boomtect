@@ -1864,7 +1864,13 @@ export function startFrame(tect) {
       $('plot-tabs').insertAdjacentHTML('afterend', '<span class="plot-tabs plot-balance" id="plot-balance" role="group" aria-label="Level of the linked sound"></span>');
       holder = $('plot-balance');
     }
-    if (!shown) { holder.replaceChildren(); return; }
+    const partner = link.partner();
+    if (!partner) { holder.replaceChildren(); return; }
+    const unlink = button('', () => link.unlink(), { title: `Unlink ${partner}` });
+    unlink.classList.add('plot-unlink');
+    unlink.setAttribute('aria-label', `Unlink ${partner}`);
+    unlink.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    if (!shown) { holder.replaceChildren(unlink); return; }
     holder.replaceChildren(...Object.entries(BALANCES).map(([value, label]) => {
       const choice = button(label, () => {
         if (state.preferences.partner.balance === value) return;
@@ -1874,7 +1880,7 @@ export function startFrame(tect) {
       }, { title: value === 'real' ? `Both tects at their real pressures` : `${link.partner()} at this tect's loudest level` });
       choice.setAttribute('aria-pressed', String(state.preferences.partner.balance === value));
       return choice;
-    }));
+    }), unlink);
   }
 
   function drawPlotTabs(soloId) {
