@@ -3,6 +3,7 @@ import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
+import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
 const DISC_POINTS = 64;
 
@@ -380,6 +381,24 @@ export function kindViews() {
     context.globalAlpha = alpha;
   }
 
+  /** A short tick across the path wherever it passes the speed of sound of the air at its height, going faster or slower. */
+  function drawSoundBarriers(context, path) {
+    const point = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
+    let before = path.speed[0] >= soundSpeedAt(scene.air, path.z[0]);
+    for (let index = 1; index < path.x.length; index += 1) {
+      const now = path.speed[index] >= soundSpeedAt(scene.air, path.z[index]);
+      if (now === before) continue;
+      before = now;
+      const p = frame.project(point(index));
+      const q = frame.project(point(Math.min(path.x.length - 1, index + 1)));
+      const o = frame.project(point(index - 1));
+      const length = Math.hypot(q.x - o.x, q.y - o.y);
+      if (!(length > 0)) continue;
+      const [nx, ny] = [-(q.y - o.y) / length * VIEW.barrierPixels, (q.x - o.x) / length * VIEW.barrierPixels];
+      context.beginPath(); context.moveTo(p.x - nx, p.y - ny); context.lineTo(p.x + nx, p.y + ny); context.stroke();
+    }
+  }
+
   function drawFlight(context, emitter, colors, selected, state) {
     context.strokeStyle = selected ? colors.accent : colors.end;
     context.lineWidth = selected ? 1.4 : 1.2;
@@ -390,6 +409,7 @@ export function kindViews() {
         if (index === 0) context.moveTo(p.x, p.y); else context.lineTo(p.x, p.y);
       }
       context.stroke();
+      drawSoundBarriers(context, path);
     }
     for (const body of state?.flights?.get(emitter.id) ?? []) {
       const p = frame.project(body);

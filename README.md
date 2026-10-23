@@ -36,6 +36,8 @@ microphone along the Mach cone.
   cloud base and top up and down.
 - **Selection** — Dashed lines lead from a selected microphone, blast, or channel
   end to its shadows on the floor and walls. A click on empty space clears it.
+- **Speed of sound** — A tick across a flight's, booster's, or meteor's path
+  where it passes the speed of sound of the air at its height.
 - **Shadow boundary** — The line on the ground beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 - **Levels** — A microphone shows its peak in pascals and decibels and its
@@ -333,9 +335,17 @@ rockets, and the roar of an eruption.
   with what it follows and keeps a copy of the path, so it still sounds without
   the link. Its body is set in Details. Removed, it stays away while both
   windows are open.
+- **Real and Balanced** — Above the pressure plot while linked: Real plays
+  both tects at their real pressures; Balanced lifts the quieter one to the
+  louder one's loudest A-weighted level, turning nothing down. The plot shows
+  each tect in its own half, scaled to its own peak, with the lift beside its
+  name. The microphone's levels are always the real sum.
+- **Tects** — In the export while linked: Together exports the sum as heard;
+  Separately exports each tect's sound in its own files at its real level, on
+  one full scale and one time axis per microphone, with one scene file.
 - **Rumbletect's emitters** — Dimmed in the scene; a click on one shows it in
-  Rumbletect. Rumbletect's name opens its level or mute, a button to bring its window
-  forward, and **Unlink**.
+  Rumbletect. Rumbletect's name opens a button to bring its window forward and
+  **Unlink**.
 
 ## Model
 

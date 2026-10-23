@@ -164,6 +164,9 @@ figcaption {
   font-size: 11px;
   pointer-events: none;
 }
+.plot-balance {
+  margin-left: 10px;
+}
 .plot-tabs {
   display: inline-flex;
   gap: 2px;
@@ -251,9 +254,6 @@ figcaption {
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-}
-.link-dot.muted {
-  background: var(--faint);
 }
 .link-dot.updating {
   background: var(--faint);

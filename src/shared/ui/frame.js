@@ -10,7 +10,7 @@ import { handoffMessage } from '../domain/handoff.js';
 import { ECHOTECT_URL, openTect } from './tect-link.js';
 import { createPartnerLink, linkedSession } from './partner-link.js';
 import { savedPath } from '../domain/follower.js';
-import { mixedResults, resultsForPartner, sharedKey, sharedPart, withoutEchoes, withShared } from '../domain/partner-mix.js';
+import { balancedGains, mixedResults, resultsForPartner, separateResults, sharedKey, sharedPart, withoutEchoes, withShared } from '../domain/partner-mix.js';
 import { formatMetres, formatSeconds, microphoneColor } from './canvas.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './terrain-loader.js';
 import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from '../domain/terrain.js';
@@ -130,7 +130,7 @@ export function startFrame(tect) {
     ownKey: null,
     preferences
   };
-  if (!state.preferences.partner) state.preferences.partner = { levelDecibels: 0 };
+  if (!['real', 'balanced'].includes(state.preferences.partner?.balance)) state.preferences.partner = { balance: 'balanced' };
   state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
   const player = createPlayer({
@@ -285,7 +285,7 @@ export function startFrame(tect) {
     names: () => state.preferences.names,
     map: () => state.preferences.map,
     mapTiles: area => mapLayer.tiles(state.scene.place, area),
-    ghosts: () => (link.partner() && partnerGain() > 0 ? linked.emitters : []),
+    ghosts: () => (link.partner() ? linked.emitters : []),
     onGhost: ghost => link.send('select', { id: ghost.id }),
     clouds: () => state.preferences.clouds
   })];
@@ -358,7 +358,12 @@ export function startFrame(tect) {
     if (!(peakPa > 0)) for (const value of result.channels[0]) peakPa = Math.max(peakPa, Math.abs(value));
     return { ...result, samples: result.channels[0], peakPa };
   };
-  const partnerGain = () => (state.preferences.partner.levelDecibels === null ? 0 : 10 ** (state.preferences.partner.levelDecibels / 20));
+  /** Real keeps both tects' pressures as they are; Balanced lifts the quieter one to the louder one's loudest A-weighted level. */
+  function linkGains(partner = partnerResults()) {
+    if (state.preferences.partner.balance !== 'balanced' || !partner?.length || !state.ownResults) return { own: 1, partner: 1 };
+    return balancedGains([...state.ownResults.values()], partner);
+  }
+  const gainText = gain => { const decibels = Math.round(20 * Math.log10(gain)); return decibels === 0 ? '0 dB' : `${decibels > 0 ? '+' : '−'}${Math.abs(decibels)} dB`; };
   const partnerResults = () => (linked.mix && linked.mix.key === sceneKey(state.scene) ? linked.mix.results : null);
   const ownSilent = () => !state.scene.emitters.some(emitter => emitter.enabled);
 
@@ -366,7 +371,9 @@ export function startFrame(tect) {
   function showResults() {
     const partner = link.partner() ? partnerResults() : null;
     const ownReady = state.ownResults || (ownSilent() && state.ownKey === sceneKey(state.scene));
-    state.results = ownReady && (state.ownResults || partner) ? mixedResults(state.scene, state.ownResults, partner, partnerGain()) : null;
+    const gains = linkGains(partner);
+    state.realResults = ownReady && (state.ownResults || partner) ? mixedResults(state.scene, state.ownResults, partner, 1) : null;
+    state.results = state.realResults && (gains.own !== 1 || gains.partner !== 1) ? mixedResults(state.scene, state.ownResults, partner, gains.partner, gains.own) : state.realResults;
     $('export').disabled = !state.results;
     if (state.results) {
       state.envelopes = envelopes([...state.results.values()]);
@@ -520,7 +527,7 @@ export function startFrame(tect) {
       const waiting = link.offering() === name;
       item.textContent = partner === name ? name : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
       if (partner === name) {
-        item.prepend(element('span', linked.updating ? 'link-dot updating' : partnerGain() > 0 ? 'link-dot' : 'link-dot muted'));
+        item.prepend(element('span', linked.updating ? 'link-dot updating' : 'link-dot'));
         item.title = linked.updating ? `${name} is updating its sound` : `Linked with ${name}`;
         item.setAttribute('aria-haspopup', 'dialog');
       }
@@ -542,22 +549,12 @@ export function startFrame(tect) {
     }
   }
 
-  const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, -30, -36, null]);
-
   function openLinkDialog() {
     const partner = link.partner();
     if (!partner) return;
     const dialog = $('link-dialog') ?? document.body.appendChild(Object.assign(document.createElement('dialog'), { id: 'link-dialog', className: 'settings-dialog', tabIndex: -1 }));
     const header = element('header', 'details-header');
     header.append(element('h2', '', partner));
-    const body = element('div', 'settings-body');
-    const grid = element('div', 'settings-grid');
-    selectField(grid, {
-      label: 'Level', value: String(state.preferences.partner.levelDecibels),
-      options: PARTNER_LEVELS.map(level => [String(level), level === null ? 'Muted' : level === 0 ? '0 dB' : `${level} dB`]),
-      onCommit: value => { state.preferences.partner.levelDecibels = value === 'null' ? null : Number(value); savePreferences(); showResults(); redrawViews(); drawLink(); }
-    });
-    body.append(grid);
     const footer = element('footer', 'export-actions');
     footer.append(
       button('Unlink', () => { dialog.close(); link.unlink(); }),
@@ -565,7 +562,7 @@ export function startFrame(tect) {
       button('Done', () => dialog.close())
     );
     footer.lastChild.classList.add('primary');
-    dialog.replaceChildren(header, body, footer);
+    dialog.replaceChildren(header, footer);
     if (dialog.open) return;
     dialog.showModal();
     dialog.focus();
@@ -577,6 +574,7 @@ export function startFrame(tect) {
     player.stop();
     state.pause = null;
     state.results = null;
+    state.realResults = null;
     state.ownResults = null;
     $('export').disabled = true;
     syncPlayButton();
@@ -1767,7 +1765,7 @@ export function startFrame(tect) {
       kinds[item.kind].measure(item, scene, measure);
     }
     if (Number.isFinite(nearest)) listenInfo.append(element('span', '', `Nearest source ${formatMetres(nearest)}`));
-    const result = state.results?.get(receiver.id);
+    const result = (state.realResults ?? state.results)?.get(receiver.id);
     if (result?.arrivals.count) {
       let first = Infinity;
       let last = -Infinity;
@@ -1822,11 +1820,14 @@ export function startFrame(tect) {
     const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
     const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
     const partner = link.partner() && state.results ? partnerResults() : null;
+    const gains = partner ? linkGains(partner) : null;
+    const laneLabel = (name, gain) => (gain === 1 ? name : `${name} · ${gainText(gain)}`);
     const lanes = partner ? [
-      { label: appName, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
-      { label: partnerGain() > 0 ? link.partner() : `${link.partner()} · muted`, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner.find(result => result.receiverId === receiver.id)) })) }
+      { label: laneLabel(appName, gains.own), traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
+      { label: laneLabel(link.partner(), gains.partner), traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner.find(result => result.receiverId === receiver.id)) })) }
     ] : null;
-    drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${partnerGain()}:${state.ownKey}` : ''}`, traces, soloId, lanes }, playheadSeconds);
+    drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${gains?.own}:${gains?.partner}:${state.ownKey}` : ''}`, traces, soloId, lanes }, playheadSeconds);
+    if (!frame) drawBalance(Boolean(lanes));
     const byDirection = Boolean(MODE_SETTINGS[state.scene.mode].arrivalsByDirection);
     drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
     if (!frame) {
@@ -1834,6 +1835,27 @@ export function startFrame(tect) {
       $('arrivals-caption').textContent = byDirection ? 'Arrival · direction' : 'Arrival · height';
       $('arrivals').setAttribute('aria-label', byDirection ? 'Arrival time by direction' : 'Arrival time by source height');
     }
+  }
+
+  const BALANCES = Object.freeze({ real: 'Real', balanced: 'Balanced' });
+
+  function drawBalance(shown) {
+    let holder = $('plot-balance');
+    if (!holder) {
+      $('plot-tabs').insertAdjacentHTML('afterend', '<span class="plot-tabs plot-balance" id="plot-balance" role="group" aria-label="Level of the linked sound"></span>');
+      holder = $('plot-balance');
+    }
+    if (!shown) { holder.replaceChildren(); return; }
+    holder.replaceChildren(...Object.entries(BALANCES).map(([value, label]) => {
+      const choice = button(label, () => {
+        if (state.preferences.partner.balance === value) return;
+        state.preferences.partner.balance = value;
+        savePreferences();
+        showResults();
+      }, { title: value === 'real' ? `Both tects at their real pressures` : `${link.partner()} at this tect's loudest level` });
+      choice.setAttribute('aria-pressed', String(state.preferences.partner.balance === value));
+      return choice;
+    }));
   }
 
   function drawPlotTabs(soloId) {
@@ -1898,8 +1920,12 @@ export function startFrame(tect) {
       const paths = kinds[emitter.kind].tracks(emitter, state.scene);
       if (!paths) continue;
       flights.set(emitter.id, paths.flatMap(path => {
-        const index = Math.round((now - path.seconds[0]) / path.step);
-        return index >= 0 && index < path.seconds.length ? [{ x: path.x[index], y: path.y[index], z: path.z[index] }] : [];
+        const position = (now - path.seconds[0]) / path.step;
+        if (!(position >= 0) || position > path.seconds.length - 1) return [];
+        const index = Math.min(path.seconds.length - 2, Math.floor(position));
+        const share = position - index;
+        const between = values => values[index] + ((values[index + 1] ?? values[index]) - values[index]) * share;
+        return [{ x: between(path.x), y: between(path.y), z: between(path.z) }];
       }));
       if (!state.preferences.cone) continue;
       const amplitudes = coneAmplitudes(emitter);
@@ -2199,16 +2225,46 @@ export function startFrame(tect) {
     }
   });
 
+  /** Each tect's sound in its own files at its real level, on one full scale and one time axis per microphone, with one scene file for both. */
+  async function separateFiles(choice, dry, gain, selected, stem, describe) {
+    const withEchoes = { scene: state.scene, own: state.ownResults, partner: partnerResults() };
+    const difference = (a, b) => (a && b ? new Map([...a].map(([id, result]) => [id, b.get(id) ? resultDifference(result, b.get(id)) : result])) : a);
+    let parts;
+    if (choice === 'with') parts = separateResults(state.scene, withEchoes.own, withEchoes.partner);
+    else {
+      const wet = separateResults(state.scene, withEchoes.own, withEchoes.partner);
+      const dryParts = separateResults(dry.scene, dry.own, dry.partner);
+      parts = choice === 'without' ? dryParts : { own: difference(wet.own, dryParts.own), partner: difference(wet.partner, dryParts.partner) };
+    }
+    const audio = new Set([...selected].filter(item => item !== 'scene'));
+    const files = [];
+    let timeline = null;
+    for (const [name, results] of [[appName, parts.own], [link.partner(), parts.partner]]) {
+      const plan = results && exportPlan(state.scene, results, gain);
+      if (!plan) continue;
+      timeline ??= plan.everyone;
+      files.push(...await exportFiles(plan, audio, `${stem}-${fileStem(name)}`, null));
+    }
+    if (!files.length) throw new Error('Nothing is heard to export.');
+    if (selected.has('scene')) {
+      const document = describe({ files: files.map(file => ({ file: file.name })), startSeconds: timeline.startSeconds, sampleRate: timeline.sampleRate });
+      files.unshift({ name: `${stem}.json`, data: new TextEncoder().encode(`${JSON.stringify(document, null, 2)}\n`) });
+    }
+    return files;
+  }
+
   /** The surroundings' rumble stays off too, so that the render with echoes less this one is the echoes alone. */
   async function withoutTerrainEchoes(gain) {
-    if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results };
+    if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results, scene: state.scene, own: state.ownResults, partner: partnerResults() };
     const scene = withoutEchoes(state.scene);
     const partnerDry = link.partner() ? link.request('dry', sceneKey(state.scene)) : null;
     const own = scene.emitters.some(emitter => emitter.enabled) ? await renderFull(scene) : null;
-    const results = partnerDry ? mixedResults(scene, own, await partnerDry, partnerGain()) : own;
+    const partner = partnerDry ? await partnerDry : null;
+    const gains = linkGains();
+    const results = partner ? mixedResults(scene, own, partner, gains.partner, gains.own) : own;
     const plan = results && exportPlan(scene, results, gain);
     if (!plan) throw new Error('Nothing is heard without the terrain echoes.');
-    return { plan, results };
+    return { plan, results, scene, own, partner };
   }
 
   const PLACEMENT_LABELS = Object.freeze({ 'listener-and-source': 'Place', source: 'Direction', none: 'Sound only' });
@@ -2326,6 +2382,16 @@ export function startFrame(tect) {
       row.append(element('span'), text, select);
       options.push(row);
     }
+    if (link.partner() && partnerResults()) {
+      const row = element('label');
+      const select = document.createElement('select');
+      select.id = 'export-tects';
+      for (const [value, label] of [['together', 'Together'], ['separately', 'Separately']]) select.add(new Option(label, value, false, value === (state.preferences.exportTects ?? 'together')));
+      const text = element('span');
+      text.append(element('strong', '', 'Tects'));
+      row.append(element('span'), text, select);
+      options.push(row);
+    }
     $('export-options').replaceChildren(...options);
     const echotectOptions = [];
     if (state.scene.receivers.length > 1) {
@@ -2427,7 +2493,8 @@ export function startFrame(tect) {
         [...state.results].map(([id, result]) => [id, resultDifference(result, dry.results.get(id))])
       ), full.gain);
       if (!plan) throw new Error('Nothing is heard in the terrain echoes alone.');
-      const files = await exportFiles(plan, selected, stem, ({ files: written, startSeconds, sampleRate }) => ({
+      const together = !($('export-tects')?.value === 'separately' && link.partner() && partnerResults());
+      const describe = ({ files: written, startSeconds, sampleRate }) => ({
         ...parseScene(state.scene),
         export: {
           listening: composition.kind,
@@ -2441,12 +2508,19 @@ export function startFrame(tect) {
           fullScalePa: 1 / plan.gain,
           peakPa: plan === full ? composition.peakPa : plan.listening.peakPa,
           terrainEchoContent: echoesActive(state.scene) ? choice : null,
+          linkedSound: link.partner() && partnerResults() ? {
+            app: link.partner(), tects: together ? 'together' : 'separately', level: together ? state.preferences.partner.balance : 'real',
+            ownGainDecibels: together ? +(20 * Math.log10(linkGains().own)).toFixed(1) : 0, linkedGainDecibels: together ? +(20 * Math.log10(linkGains().partner)).toFixed(1) : 0
+          } : null,
           speedOfSoundMetresPerSecond: soundSpeedProfile(state.scene.air).groundSpeed,
           soundSpeedGradientPerSecond: soundSpeedProfile(state.scene.air).gradient,
           modelVersion: MODEL_VERSION,
           exportedAt: new Date().toISOString()
         }
-      }));
+      });
+      const files = together ? await exportFiles(plan, selected, stem, describe) : await separateFiles(choice, dry, full.gain, selected, stem, describe);
+      state.preferences.exportTects = together ? 'together' : 'separately';
+      savePreferences();
       const { name: fileName, blob } = exportDownload(files, stem);
       download(fileName, blob);
       $('export-dialog').close();

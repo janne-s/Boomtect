@@ -184,6 +184,7 @@ export const METEOR = Object.freeze({
 
 export const VIEW = Object.freeze({
   ...SHARED_VIEW,
+  barrierPixels: 4,
   macros: Object.freeze({
     energyRange: Object.freeze([3e3, 3e6]),
     crackStraightRange: Object.freeze([3, .2]),

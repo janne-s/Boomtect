@@ -1,3 +1,4 @@
+import { TRAJECTORY } from './constants.js';
 const SAVED_STEP_SECONDS = .25;
 const MOST_PATHS = 64;
 const MOST_POINTS = 4000;
@@ -16,15 +17,20 @@ export function savedPath(path) {
   };
 }
 
-/** A saved path as the frames sample one: times, positions, velocities, and speeds. */
+/** A saved path as the frames sample one, filled in linearly to `TRAJECTORY.stepSeconds` so that motion and cones run as smoothly as on the own paths. */
 export function followedPath(saved) {
-  const count = saved.x.length;
-  return {
-    seconds: Array.from({ length: count }, (_, index) => saved.startSeconds + index * saved.stepSeconds),
-    ...Object.fromEntries(AXES.map(axis => [axis, saved[axis].slice()])),
-    speed: Array.from({ length: count }, (_, index) => Math.hypot(saved.vx[index], saved.vy[index], saved.vz[index])),
-    step: saved.stepSeconds
-  };
+  const factor = Math.max(1, Math.round(saved.stepSeconds / TRAJECTORY.stepSeconds));
+  const step = saved.stepSeconds / factor;
+  const count = (saved.x.length - 1) * factor + 1;
+  const filled = values => Float64Array.from({ length: count }, (_, index) => {
+    const at = Math.floor(index / factor);
+    const share = index / factor - at;
+    return share > 0 ? values[at] + (values[at + 1] - values[at]) * share : values[at];
+  });
+  const path = { seconds: Array.from({ length: count }, (_, index) => saved.startSeconds + index * step), step };
+  for (const axis of AXES) path[axis] = Array.from(filled(saved[axis]));
+  path.speed = path.vx.map((value, index) => Math.hypot(value, path.vy[index], path.vz[index]));
+  return path;
 }
 
 const text = value => (typeof value === 'string' && value.length > 0 ? value.slice(0, TEXT_LENGTH) : null);
