@@ -35,7 +35,7 @@ import { formatMicrophoneLevels } from './levels.js';
 export function startFrame(tect) {
   const {
     storage: prefix, appVersion: APP_VERSION, modelVersion: MODEL_VERSION, worker: workerUrl, kinds, views: kindViews, add: ADD_EMITTERS, modes: MODE_SETTINGS, anchor: emitterAnchor,
-    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene
+    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, linkModes = {}
   } = tect;
   const { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene } = tect.scene;
   const { actionField, checkboxField, numberField, pointFields, selectField, textField } = tect.fields;
@@ -196,6 +196,7 @@ export function startFrame(tect) {
       onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
       onUnlinked: () => { Object.assign(linked, { emitters: [], mix: null, held: null, updating: false }); $('link-dialog')?.close(); showResults(); redrawViews(); drawLink(); },
       onShared: shared => applyShared(shared),
+      onOffer: (shared, mode) => { if (MODES.includes(mode)) switchMode(mode); applyShared(shared); },
       onEmitters: emitters => { linked.emitters = Array.isArray(emitters) ? emitters : []; redrawViews(); scheduleTerrainCoverage(); },
       onMix: message => receiveMix(message),
       onRequest: (variant, key) => { const answer = linked.serving.then(() => serveRequest(variant, key)); linked.serving = answer.catch(() => {}); return answer; },
@@ -465,7 +466,7 @@ export function startFrame(tect) {
       item.disabled = waiting;
       item.addEventListener('click', () => {
         if (partner === name) { openLinkDialog(); return; }
-        try { link.open(name, sharedPart(state.scene)); } catch (error) { setStatus(error.message, true); }
+        try { link.open(name, sharedPart(state.scene), linkModes[name]?.[state.scene.mode] ?? null); } catch (error) { setStatus(error.message, true); }
       });
       return item;
     }));
@@ -2392,8 +2393,9 @@ export function startFrame(tect) {
   $('details-close').addEventListener('click', () => $('details').close());
   $('details').addEventListener('close', () => { state.detailsId = null; });
 
-  document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEventListener('click', () => {
-    const mode = button.dataset.mode;
+  document.querySelectorAll('.modes [data-mode]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.mode)));
+
+  function switchMode(mode) {
     if (mode === state.scene.mode) return;
     cancelGeographicTasks();
     const shared = sharedPart(state.scene);
@@ -2410,7 +2412,7 @@ export function startFrame(tect) {
     refreshPanel();
     scheduleTerrainCoverage();
     if (state.preferences.autoRender) startRender();
-  }));
+  }
 
   const TOGGLES = Object.freeze({
     'auto-render': {

@@ -122,7 +122,7 @@ export function createPartnerLink({ app, handlers }) {
       case MESSAGE.offer:
         adopt(data.app, data.instance, peerFor(data, source, origin));
         partner.peer.send({ ...base(), type: MESSAGE.accept });
-        handlers.onShared?.(data.shared);
+        handlers.onOffer?.(data.shared, typeof data.mode === 'string' ? data.mode : null);
         return;
       case MESSAGE.accept:
         if (!fromPartner && !(offering && offering.app === data.app && (!offering.window || offering.window === source)) && !(data.resumed && remembered() === data.app)) return;
@@ -196,7 +196,7 @@ export function createPartnerLink({ app, handlers }) {
     present: name => present.has(name),
 
     /** Call it from the click: a browser lets a page open a window only then. */
-    open(name, shared) {
+    open(name, shared, mode = null) {
       if (partner?.app === name) {
         if (partner.peer.window) partner.peer.window.focus();
         else partner.peer.send({ ...base(), type: MESSAGE.focus });
@@ -216,7 +216,7 @@ export function createPartnerLink({ app, handlers }) {
       const started = Date.now();
       const offer = () => {
         if (Date.now() - started > OFFER_SECONDS * 1000) { clearInterval(offering.timer); offering = null; changed(); handlers.onError?.(`${name} did not answer within ${OFFER_SECONDS} s.`); return; }
-        peer.send({ ...base(), type: MESSAGE.offer, shared });
+        peer.send({ ...base(), type: MESSAGE.offer, shared, mode });
       };
       offering = { app: name, window: target, timer: setInterval(offer, OFFER_MILLISECONDS) };
       offer();

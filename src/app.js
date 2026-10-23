@@ -14,6 +14,7 @@ startFrame({
   worker: new URL('./render-worker.js', import.meta.url),
   scene: { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene },
   prepareScene,
+  linkModes: { Rumbletect: { sonic: 'jet', blast: 'volcano', thunder: 'jet' } },
   fields,
   kinds: KIND_PANELS,
   views: kindViews(),
