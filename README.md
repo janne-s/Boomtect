@@ -390,6 +390,10 @@ B/C marks a part that combines the two.
 | Ear reflex | threshold, latency, low-frequency attenuation, adaptation | B/C |
 | Loudness | Stevens' power law on the level envelope | B/C |
 
+Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
+or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
+its stars' burning; and a whip's swish.
+
 Boomtect is a creative tool. Where published models exist it follows them,
 but a result is a plausible event, not a reconstruction or a measurement.
 Levels are model values in pascals and are not calibrated.
