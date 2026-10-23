@@ -12,7 +12,8 @@ const MESSAGE = Object.freeze({
   scene: `${PREFIX}scene`, emitters: `${PREFIX}emitters`, mix: `${PREFIX}mix`, request: `${PREFIX}request`, reply: `${PREFIX}reply`, select: `${PREFIX}select`, focus: `${PREFIX}focus`
 });
 const HEARTBEAT_MILLISECONDS = 3000;
-const SILENT_MILLISECONDS = 10000;
+// A background tab may run its timers once a minute, so a link over the channel waits this long before it counts as gone.
+const CHANNEL_SILENT_MILLISECONDS = 180000;
 const OFFER_MILLISECONDS = 500;
 const OFFER_SECONDS = 30;
 const REQUEST_SECONDS = 600;
@@ -23,6 +24,7 @@ const instanceId = () => crypto.randomUUID();
 function windowPeer(target, origin) {
   return {
     window: target,
+    channel: false,
     send(message, transfer = []) {
       if (target.closed) return;
       if (origin) target.postMessage(message, origin, transfer);
@@ -33,7 +35,7 @@ function windowPeer(target, origin) {
 }
 
 function channelPeer(channel, to) {
-  return { window: null, send: message => channel.postMessage({ ...message, to }), alive: () => true };
+  return { window: null, channel: true, send: message => channel.postMessage({ ...message, to }), alive: () => true };
 }
 
 /** A window opened under `name` earlier is taken over as it is; only a new, blank one is sent to `url`. */
@@ -108,7 +110,10 @@ export function createPartnerLink({ app, handlers }) {
         if (data.ask) channel?.postMessage({ ...base(), type: MESSAGE.present });
         return;
       case MESSAGE.hello:
-        if (fromPartner) return;
+        if (fromPartner) {
+          if (data.with !== self) partner.peer.send({ ...base(), type: MESSAGE.accept, resumed: true });
+          return;
+        }
         if (!partner && data.linked && remembered() === data.app) {
           adopt(data.app, data.instance, peerFor(data, source, origin));
           partner.peer.send({ ...base(), type: MESSAGE.accept, resumed: true });
@@ -167,10 +172,10 @@ export function createPartnerLink({ app, handlers }) {
 
   setInterval(() => {
     channel?.postMessage({ ...base(), type: MESSAGE.present });
-    for (const [name, entry] of present) if (Date.now() - entry.at > SILENT_MILLISECONDS) { present.delete(name); changed(); }
+    for (const [name, entry] of present) if (Date.now() - entry.at > CHANNEL_SILENT_MILLISECONDS) { present.delete(name); changed(); }
     if (partner) {
-      if (!partner.peer.alive() || Date.now() - lastHeard > SILENT_MILLISECONDS) { drop(); return; }
-      partner.peer.send({ ...base(), type: MESSAGE.hello, linked: true });
+      if (!partner.peer.alive() || (partner.peer.channel && Date.now() - lastHeard > CHANNEL_SILENT_MILLISECONDS)) { drop(); return; }
+      partner.peer.send({ ...base(), type: MESSAGE.hello, linked: true, with: partner.instance });
     } else greetRemembered();
   }, HEARTBEAT_MILLISECONDS);
   greetRemembered();

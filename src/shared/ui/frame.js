@@ -194,7 +194,7 @@ export function startFrame(tect) {
     handlers: {
       onStatus: () => drawLink(),
       onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
-      onUnlinked: () => { Object.assign(linked, { emitters: [], mix: null, held: null, updating: false }); showResults(); redrawViews(); drawLink(); },
+      onUnlinked: () => { Object.assign(linked, { emitters: [], mix: null, held: null, updating: false }); $('link-dialog')?.close(); showResults(); redrawViews(); drawLink(); },
       onShared: shared => applyShared(shared),
       onEmitters: emitters => { linked.emitters = Array.isArray(emitters) ? emitters : []; redrawViews(); scheduleTerrainCoverage(); },
       onMix: message => receiveMix(message),
@@ -253,7 +253,7 @@ export function startFrame(tect) {
     names: () => state.preferences.names,
     map: () => state.preferences.map,
     mapTiles: area => mapLayer.tiles(state.scene.place, area),
-    ghosts: () => (link.partner() ? linked.emitters : []),
+    ghosts: () => (link.partner() && partnerGain() > 0 ? linked.emitters : []),
     onGhost: ghost => link.send('select', { id: ghost.id }),
     clouds: () => state.preferences.clouds
   })];
@@ -458,24 +458,19 @@ export function startFrame(tect) {
       const waiting = link.offering() === name;
       item.textContent = partner === name ? name : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
       if (partner === name) {
-        item.prepend(element('span', linked.updating ? 'link-dot updating' : 'link-dot'));
-        item.title = linked.updating ? `${name} is updating its sound` : `Linked with ${name}: show its window`;
+        item.prepend(element('span', linked.updating ? 'link-dot updating' : partnerGain() > 0 ? 'link-dot' : 'link-dot muted'));
+        item.title = linked.updating ? `${name} is updating its sound` : `Linked with ${name}`;
+        item.setAttribute('aria-haspopup', 'dialog');
       }
       item.disabled = waiting;
       item.addEventListener('click', () => {
+        if (partner === name) { openLinkDialog(); return; }
         try { link.open(name, sharedPart(state.scene)); } catch (error) { setStatus(error.message, true); }
       });
       return item;
     }));
-    if (!partner) return;
-    if (linked.held) holder.append(button('Update', adoptHeld, { title: `Take ${partner}'s new sound` }));
-    const options = element('button', 'icon-toggle');
-    options.type = 'button';
-    options.title = `${partner} in this scene`;
-    options.setAttribute('aria-label', options.title);
-    options.innerHTML = '<i class="fa-solid fa-sliders" aria-hidden="true"></i>';
-    options.addEventListener('click', openLinkDialog);
-    holder.append(options);
+    if (partner && linked.held) holder.append(button('Update', adoptHeld, { title: `Take ${partner}'s new sound` }));
+    if (state.preferences.partner.manual && $('link-dialog')?.open) openLinkDialog();
   }
 
   const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, null]);
@@ -491,20 +486,27 @@ export function startFrame(tect) {
     selectField(grid, {
       label: 'Level', value: String(state.preferences.partner.levelDecibels),
       options: PARTNER_LEVELS.map(level => [String(level), level === null ? 'Muted' : level === 0 ? '0 dB' : `${level} dB`]),
-      onCommit: value => { state.preferences.partner.levelDecibels = value === 'null' ? null : Number(value); savePreferences(); showResults(); }
+      onCommit: value => { state.preferences.partner.levelDecibels = value === 'null' ? null : Number(value); savePreferences(); showResults(); redrawViews(); drawLink(); }
     });
     selectField(grid, {
       label: 'Update', value: state.preferences.partner.manual ? 'manual' : 'auto', options: [['auto', 'Auto'], ['manual', 'Manual']],
-      onCommit: value => { state.preferences.partner.manual = value === 'manual'; savePreferences(); if (!state.preferences.partner.manual) adoptHeld(); }
+      onCommit: value => { state.preferences.partner.manual = value === 'manual'; savePreferences(); if (state.preferences.partner.manual) drawLink(); else adoptHeld(); }
     });
     body.append(grid);
+    if (state.preferences.partner.manual) {
+      const waiting = element('p', 'field-note', linked.held ? `${partner} has a new sound.` : `${partner}'s sound is up to date.`);
+      body.append(waiting);
+      if (linked.held) body.append(button('Update', adoptHeld));
+    }
     const footer = element('footer', 'export-actions');
     footer.append(
       button('Unlink', () => { dialog.close(); link.unlink(); }),
+      button(`Show ${partner}`, () => link.open(partner)),
       button('Done', () => dialog.close())
     );
     footer.lastChild.classList.add('primary');
     dialog.replaceChildren(header, body, footer);
+    if (dialog.open) return;
     dialog.showModal();
     dialog.focus();
   }

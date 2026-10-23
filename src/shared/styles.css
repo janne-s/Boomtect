@@ -252,6 +252,9 @@ figcaption {
   border-radius: 50%;
   background: var(--accent);
 }
+.link-dot.muted {
+  background: var(--faint);
+}
 .link-dot.updating {
   background: var(--faint);
   animation: link-pulse 1s ease-in-out infinite alternate;
