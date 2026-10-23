@@ -6,6 +6,8 @@ Boomtect runs entirely in the browser, with no account and no server of its own.
 
 Exports are 32-bit float WAV at one full scale in pascals, recorded in the scene JSON; per-microphone files start at the same moment. A scene is JSON with `"format": "boomtect.scene"` and opens again as a scene. A sound sent to Echotect is mono pressure without terrain echoes with a `tect.handoff` JSON: positions in metres east, north, and up from the place's geographic point, angles in compass degrees clockwise from north. A handoff reader fills in missing fields with defaults and never refuses an older or newer version.
 
+Opened from each other, Boomtect and Rumbletect link their windows: they share the scene's place, terrain, air, ground, microphones, and render settings, each renders only its own emitters, and the microphones hear the sum, which the plots, levels, playback, and export use.
+
 ## Docs
 
 - [README](https://github.com/janne-s/Boomtect/blob/main/README.md): what every control does, the export files, and the model table with sources and classes

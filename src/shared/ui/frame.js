@@ -8,6 +8,8 @@ import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, expo
 import { soundHandoff } from '../domain/sound-handoff.js';
 import { handoffMessage } from '../domain/handoff.js';
 import { ECHOTECT_URL, openTect } from './tect-link.js';
+import { createPartnerLink } from './partner-link.js';
+import { mixedResults, resultsForPartner, sharedKey, sharedPart, withoutEchoes, withShared } from '../domain/partner-mix.js';
 import { formatMetres, formatSeconds, microphoneColor } from './canvas.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './terrain-loader.js';
 import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from '../domain/terrain.js';
@@ -45,6 +47,8 @@ export function startFrame(tect) {
   for (const [id, { mode, label }] of Object.entries(ADD_EMITTERS)) {
     document.querySelector('.add-row').insertAdjacentHTML('beforeend', `<button type="button" id="add-${id}" data-mode="${mode}">+ ${label}</button>`);
   }
+  const appName = prefix[0].toUpperCase() + prefix.slice(1);
+  document.getElementById('open').insertAdjacentHTML('beforebegin', `<span class="link-buttons" id="link-buttons"></span>`);
   document.getElementById('wavefront').insertAdjacentHTML('afterend', Object.entries(tectToggles).map(([id, { label, icon }]) => `<button type="button" class="icon-toggle" id="${id}" aria-pressed="false" aria-label="${label}" title="${label}" hidden>${icon}</button>`).join(''));
 
   const sceneStorageKey = mode => `${prefix}.scene.${mode}`;
@@ -105,8 +109,11 @@ export function startFrame(tect) {
     watchdog: null,
     detailsId: null,
     soloId: null,
+    ownResults: null,
+    ownKey: null,
     preferences
   };
+  if (!state.preferences.partner) state.preferences.partner = { levelDecibels: 0, manual: false };
   state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
 
   const player = createPlayer({
@@ -174,6 +181,30 @@ export function startFrame(tect) {
 
   const mapLayer = createMapLayer(() => redrawViews());
 
+  const sceneKeys = new WeakMap();
+  function sceneKey(scene) {
+    if (!sceneKeys.has(scene)) sceneKeys.set(scene, sharedKey(sharedPart(scene)));
+    return sceneKeys.get(scene);
+  }
+
+  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve() };
+
+  const link = createPartnerLink({
+    app: appName,
+    handlers: {
+      onStatus: () => drawLink(),
+      onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
+      onUnlinked: () => { Object.assign(linked, { emitters: [], mix: null, held: null, updating: false }); showResults(); redrawViews(); drawLink(); },
+      onShared: shared => applyShared(shared),
+      onEmitters: emitters => { linked.emitters = Array.isArray(emitters) ? emitters : []; redrawViews(); scheduleTerrainCoverage(); },
+      onMix: message => receiveMix(message),
+      onRequest: (variant, key) => { const answer = linked.serving.then(() => serveRequest(variant, key)); linked.serving = answer.catch(() => {}); return answer; },
+      onSelect: id => { if (findItem('emitter', id)) { select({ type: 'emitter', id }); refreshPanel(); redrawViews(); } },
+      onError: message => setStatus(message, true)
+    }
+  });
+  drawLink();
+
   const views = [createCubeView($('cube'), {
     kinds: kindViews,
     onView: next => { state.preferences.cubeViews = { ...state.preferences.cubeViews, [state.scene.mode]: next }; savePreferences(); },
@@ -222,6 +253,8 @@ export function startFrame(tect) {
     names: () => state.preferences.names,
     map: () => state.preferences.map,
     mapTiles: area => mapLayer.tiles(state.scene.place, area),
+    ghosts: () => (link.partner() ? linked.emitters : []),
+    onGhost: ghost => link.send('select', { id: ghost.id }),
     clouds: () => state.preferences.clouds
   })];
 
@@ -286,12 +319,203 @@ export function startFrame(tect) {
     requestRender();
   }
 
+
+  const partnerGain = () => (state.preferences.partner.levelDecibels === null ? 0 : 10 ** (state.preferences.partner.levelDecibels / 20));
+  const partnerResults = () => (linked.mix && linked.mix.key === sceneKey(state.scene) ? linked.mix.results : null);
+  const ownSilent = () => !state.scene.emitters.some(emitter => emitter.enabled);
+
+  /** The own render and the linked tect's at the same microphones, summed; everything heard, plotted, and exported comes from this. */
+  function showResults() {
+    const partner = link.partner() ? partnerResults() : null;
+    const ownReady = state.ownResults || (ownSilent() && state.ownKey === sceneKey(state.scene));
+    state.results = ownReady && (state.ownResults || partner) ? mixedResults(state.scene, state.ownResults, partner, partnerGain()) : null;
+    $('export').disabled = !state.results;
+    if (state.results) {
+      state.envelopes = envelopes([...state.results.values()]);
+      earCache.clear();
+    }
+    syncPlayButton();
+    drawResults();
+    drawInfo();
+    if (!state.results) return;
+    prepareListening();
+    if (player.playing()) resumePlayback();
+  }
+
+  function sendMix() {
+    if (!link.partner() || state.ownKey !== sceneKey(state.scene)) return;
+    const results = state.ownResults ? resultsForPartner(state.ownResults) : [];
+    link.send('mix', { state: 'ready', key: state.ownKey, results }, results.flatMap(result => result.channels.map(samples => samples.buffer)));
+  }
+
+  function receiveMix(message) {
+    if (message.state === 'updating') { linked.updating = true; drawLink(); return; }
+    linked.updating = false;
+    const mix = { key: message.key, results: Array.isArray(message.results) ? message.results : [] };
+    if (state.preferences.partner.manual && linked.mix) linked.held = mix;
+    else { linked.mix = mix; linked.held = null; showResults(); }
+    drawLink();
+  }
+
+  function adoptHeld() {
+    if (!linked.held) return;
+    linked.mix = linked.held;
+    linked.held = null;
+    showResults();
+    drawLink();
+  }
+
+  function shareScene() {
+    if (!link.partner()) return;
+    const key = sceneKey(state.scene);
+    if (key !== linked.sentKey) {
+      linked.sentKey = key;
+      clearTimeout(shareScene.timer);
+      shareScene.timer = setTimeout(() => link.send('scene', { shared: sharedPart(state.scene) }), VIEW.linkDelayMilliseconds);
+    }
+    clearTimeout(sendEmitters.timer);
+    sendEmitters.timer = setTimeout(sendEmitters, VIEW.linkDelayMilliseconds);
+  }
+
+  const thinned = (count, limit) => Math.max(1, Math.ceil(count / limit));
+
+  /** What the linked tect draws of each enabled emitter here: its paths or points, thinned, and where its name goes. */
+  function emitterGhosts() {
+    return state.scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
+      const kind = kinds[emitter.kind];
+      const paths = kind.tracks?.(emitter, state.scene) ?? null;
+      const tracks = (paths ?? []).map(path => {
+        const stride = thinned(path.x.length, VIEW.linkTrackPoints);
+        const points = [];
+        for (let index = 0; index < path.x.length; index += stride) points.push({ x: path.x[index], y: path.y[index], z: path.z[index] });
+        return { points, startSeconds: path.seconds[0], stepSeconds: path.step * stride };
+      });
+      const all = [];
+      if (!paths) kind.measure(emitter, state.scene, point => all.push({ x: point.x, y: point.y, z: point.z ?? 0 }));
+      const stride = thinned(all.length, VIEW.linkPoints);
+      const dots = all.filter((_, index) => index % stride === 0);
+      const anchor = emitterAnchor(emitter);
+      return { id: emitter.id, name: emitter.name, label: kind.label(emitter), tracks, dots, anchor: { x: anchor.x, y: anchor.y, z: anchor.z ?? 0 } };
+    });
+  }
+
+  function sendEmitters() {
+    if (!link.partner()) return;
+    try { link.send('emitters', { emitters: emitterGhosts() }); } catch (error) { setStatus(`Linking failed: ${error.message}`, true); }
+  }
+
+  function applyShared(shared) {
+    if (!shared || typeof shared !== 'object') return;
+    let next;
+    try {
+      next = parseScene(withShared(state.scene, shared));
+    } catch (error) {
+      setStatus(`The linked scene was not taken: ${error.message}`, true);
+      return;
+    }
+    const key = sceneKey(next);
+    if (key === sceneKey(state.scene)) return;
+    linked.sentKey = key;
+    state.scene = next;
+    storeScene();
+    scheduleTerrainCoverage();
+    if (state.selection.type && !findItem(state.selection.type, state.selection.id)) state.selection = { type: null, id: null };
+    if (state.soloId && !findItem('receiver', state.soloId)) state.soloId = null;
+    invalidateResults();
+    refreshPanel();
+    requestRender();
+  }
+
+  /** A linked tect asks for this tect's sound in full, or without terrain echoes, for its export. */
+  async function serveRequest(variant, key) {
+    if (key !== sceneKey(state.scene)) throw new Error('its scene is still updating; try again in a moment');
+    if (ownSilent()) return [];
+    if (variant === 'dry' && echoesActive(state.scene)) {
+      const own = await renderFull(withoutEchoes(state.scene));
+      if (!state.ownResults && !operations.has('render')) requestRender();
+      return resultsForPartner(own);
+    }
+    if (!state.ownResults || state.resultsPreview || state.ownKey !== key) await renderFull();
+    return resultsForPartner(state.ownResults);
+  }
+
+  /** Own and linked sound at full quality, for an export or Echotect. */
+  async function fullResults() {
+    const partnerFull = link.partner() ? link.request('full', sceneKey(state.scene)) : null;
+    if (state.resultsPreview || (!state.ownResults && !ownSilent())) await renderFull();
+    if (!partnerFull) return;
+    linked.mix = { key: sceneKey(state.scene), results: (await partnerFull) ?? [] };
+    linked.held = null;
+    showResults();
+  }
+
+  function drawLink() {
+    const holder = $('link-buttons');
+    const partner = link.partner();
+    holder.replaceChildren(...link.others.map(name => {
+      const item = element('button', partner === name ? 'link-button linked' : 'link-button');
+      item.type = 'button';
+      const waiting = link.offering() === name;
+      item.textContent = partner === name ? name : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
+      if (partner === name) {
+        item.prepend(element('span', linked.updating ? 'link-dot updating' : 'link-dot'));
+        item.title = linked.updating ? `${name} is updating its sound` : `Linked with ${name}: show its window`;
+      }
+      item.disabled = waiting;
+      item.addEventListener('click', () => {
+        try { link.open(name, sharedPart(state.scene)); } catch (error) { setStatus(error.message, true); }
+      });
+      return item;
+    }));
+    if (!partner) return;
+    if (linked.held) holder.append(button('Update', adoptHeld, { title: `Take ${partner}'s new sound` }));
+    const options = element('button', 'icon-toggle');
+    options.type = 'button';
+    options.title = `${partner} in this scene`;
+    options.setAttribute('aria-label', options.title);
+    options.innerHTML = '<i class="fa-solid fa-sliders" aria-hidden="true"></i>';
+    options.addEventListener('click', openLinkDialog);
+    holder.append(options);
+  }
+
+  const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, null]);
+
+  function openLinkDialog() {
+    const partner = link.partner();
+    if (!partner) return;
+    const dialog = $('link-dialog') ?? document.body.appendChild(Object.assign(document.createElement('dialog'), { id: 'link-dialog', className: 'settings-dialog', tabIndex: -1 }));
+    const header = element('header', 'details-header');
+    header.append(element('h2', '', partner));
+    const body = element('div', 'settings-body');
+    const grid = element('div', 'settings-grid');
+    selectField(grid, {
+      label: 'Level', value: String(state.preferences.partner.levelDecibels),
+      options: PARTNER_LEVELS.map(level => [String(level), level === null ? 'Muted' : level === 0 ? '0 dB' : `${level} dB`]),
+      onCommit: value => { state.preferences.partner.levelDecibels = value === 'null' ? null : Number(value); savePreferences(); showResults(); }
+    });
+    selectField(grid, {
+      label: 'Update', value: state.preferences.partner.manual ? 'manual' : 'auto', options: [['auto', 'Auto'], ['manual', 'Manual']],
+      onCommit: value => { state.preferences.partner.manual = value === 'manual'; savePreferences(); if (!state.preferences.partner.manual) adoptHeld(); }
+    });
+    body.append(grid);
+    const footer = element('footer', 'export-actions');
+    footer.append(
+      button('Unlink', () => { dialog.close(); link.unlink(); }),
+      button('Done', () => dialog.close())
+    );
+    footer.lastChild.classList.add('primary');
+    dialog.replaceChildren(header, body, footer);
+    dialog.showModal();
+    dialog.focus();
+  }
+
   function invalidateResults() {
     clearTimeout(state.renderTimer);
     stopWorkers();
     player.stop();
     state.pause = null;
     state.results = null;
+    state.ownResults = null;
     $('export').disabled = true;
     syncPlayButton();
   }
@@ -401,11 +625,17 @@ export function startFrame(tect) {
     const revision = state.revision;
     setStatus('');
     const scene = variant ?? (state.preferences.preview && !full ? previewScene(state.scene) : state.scene);
+    if (!variant) state.renderKey = sceneKey(state.scene);
     if (!scene.emitters.some(emitter => emitter.enabled)) {
-      if (scene.emitters.length) setStatus('No emitter is enabled.');
-      drawResults();
+      if (variant) return;
+      state.ownResults = null;
+      state.ownKey = state.renderKey;
+      sendMix();
+      if (scene.emitters.length && !link.partner()) setStatus('No emitter is enabled.');
+      showResults();
       return;
     }
+    if (!variant) link.send('mix', { state: 'updating' });
     let sources;
     let prepared;
     let workerCount = workerLimit();
@@ -567,17 +797,14 @@ export function startFrame(tect) {
       state.fullRender = null;
       return;
     }
-    state.results = results;
+    state.ownResults = results;
+    state.ownKey = state.renderKey;
     state.resultsPreview = Boolean(scene.render.preview);
     state.lastRender = { milliseconds: info.milliseconds, workers: info.workers, quality: scene.render.quality };
-    state.envelopes = envelopes([...state.results.values()]);
-    earCache.clear();
     setStatus(`${state.resultsPreview ? 'Preview: rendered' : 'Rendered'} ${info.sources.toLocaleString('en')} point sources in ${(info.milliseconds / 1000).toFixed(1)} s on ${info.workers} threads`);
     operation('render', null);
-    $('export').disabled = false;
-    drawResults();
-    drawInfo();
-    prepareListening();
+    sendMix();
+    showResults();
     state.fullRender?.resolve();
     state.fullRender = null;
   }
@@ -979,6 +1206,7 @@ export function startFrame(tect) {
 
   function storeScene() {
     storage.write(sceneStorageKey(state.scene.mode), state.scene);
+    shareScene();
   }
 
   const RECEIVER_TYPE_LABELS = Object.freeze({ omni: 'Omni', binaural: 'Binaural' });
@@ -1091,6 +1319,13 @@ export function startFrame(tect) {
     };
     for (const emitter of scene.emitters) kinds[emitter.kind].bounds(emitter, scene, include);
     scene.receivers.forEach(receiver => include(receiver.positionMetres));
+    if (link.partner()) {
+      for (const ghost of linked.emitters) {
+        include(ghost.anchor);
+        ghost.tracks.forEach(track => track.points.forEach(include));
+        ghost.dots.forEach(include);
+      }
+    }
     return bounds;
   }
 
@@ -1606,7 +1841,7 @@ export function startFrame(tect) {
       });
     }
     cones = cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies);
-    return { strokes, receivers, sound, wavefronts, flights, cones };
+    return { seconds: now, strokes, receivers, sound, wavefronts, flights, cones };
   }
 
   const coneCache = new WeakMap();
@@ -1895,11 +2130,11 @@ export function startFrame(tect) {
   /** The surroundings' rumble stays off too, so that the render with echoes less this one is the echoes alone. */
   async function withoutTerrainEchoes(gain) {
     if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results };
-    const scene = structuredClone(state.scene);
-    scene.terrain.echoes = false;
-    scene.ground.surroundings = false;
-    const results = await renderFull(scene);
-    const plan = exportPlan(scene, results, gain);
+    const scene = withoutEchoes(state.scene);
+    const partnerDry = link.partner() ? link.request('dry', sceneKey(state.scene)) : null;
+    const own = scene.emitters.some(emitter => emitter.enabled) ? await renderFull(scene) : null;
+    const results = partnerDry ? mixedResults(scene, own, await partnerDry, partnerGain()) : own;
+    const plan = results && exportPlan(scene, results, gain);
     if (!plan) throw new Error('Nothing is heard without the terrain echoes.');
     return { plan, results };
   }
@@ -1931,7 +2166,7 @@ export function startFrame(tect) {
     trigger.disabled = true;
     operation('send', 'Sending to Echotect');
     try {
-      if (state.resultsPreview) await renderFull();
+      await fullResults();
       const current = await listening();
       if (!current) throw new Error('A microphone must listen to set the level.');
       const { plan, results } = await withoutTerrainEchoes(current.gain);
@@ -1977,9 +2212,9 @@ export function startFrame(tect) {
 
   $('export').addEventListener('click', async () => {
     let current;
-    if (state.resultsPreview) {
+    {
       try {
-        await renderFull();
+        await fullResults();
       } catch (error) {
         setStatus(error.message, true);
         return;
@@ -2159,7 +2394,11 @@ export function startFrame(tect) {
     const mode = button.dataset.mode;
     if (mode === state.scene.mode) return;
     cancelGeographicTasks();
+    const shared = sharedPart(state.scene);
     state.scene = sceneInMode(state.scene, restoredScene(mode));
+    if (link.partner()) {
+      try { state.scene = parseScene(withShared(state.scene, shared)); } catch {}
+    }
     storeScene();
     state.selection = { type: 'emitter', id: state.scene.emitters[0]?.id ?? null };
     state.preferences.mode = mode;

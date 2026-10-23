@@ -304,6 +304,10 @@ export const VIEW = Object.freeze({
     planeSamples: 8
   }),
   statusSeconds: 8,
+  linkDelayMilliseconds: 150,
+  linkTrackPoints: 240,
+  linkPoints: 300,
+  ghostAlpha: .55,
   envelopeSeconds: .01,
   envelopeRangeDb: 40,
   plots: Object.freeze({

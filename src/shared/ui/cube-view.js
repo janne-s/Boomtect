@@ -105,7 +105,7 @@ function handles(scene, box, kinds, tools) {
 }
 
 export function createCubeView(canvas, options) {
-  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [] } = options;
+  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [], ghosts = () => [], onGhost = null } = options;
   let scene = null;
   let selection = null;
   let view = { ...VIEW.box.defaultView };
@@ -164,6 +164,11 @@ export function createCubeView(canvas, options) {
     const extentTools = { ...tools, include, includeExtent };
     for (const emitter of scene.emitters) kinds[emitter.kind].extent(emitter, extentTools);
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
+    for (const ghost of ghosts()) {
+      include(ghost.anchor);
+      ghost.tracks.forEach(track => track.points.forEach(include));
+      ghost.dots.forEach(include);
+    }
     const surface = currentSurface();
     const enabled = scene.emitters.filter(emitter => emitter.enabled);
     const span = enabled.length && enabled.every(emitter => kinds[emitter.kind].close) ? VIEW.box.closeSpanMetres : VIEW.box.minimumSpanMetres;
@@ -1075,6 +1080,7 @@ export function createCubeView(canvas, options) {
     drawShadowBoundary(context, colors);
     if (state?.wavefronts) drawWavefronts(context, colors, state.wavefronts);
     if (state?.cones.length) drawCones(context, state.cones, colors);
+    drawGhosts(context, colors, ghosts(), state);
     for (const emitter of scene.emitters) {
       const selected = selection?.type === 'emitter' && selection.id === emitter.id;
       context.globalAlpha = emitter.enabled ? 1 : .35;
@@ -1124,6 +1130,48 @@ export function createCubeView(canvas, options) {
       const p = frame.project(placed(receiver.positionMetres));
       context.fillText(receiver.name, p.x + 9, p.y - 8);
     }
+  }
+
+  /** A linked tect's emitters, dimmed and not movable here. */
+  function drawGhosts(context, colors, list, state) {
+    if (!list.length) return;
+    context.save();
+    context.globalAlpha = VIEW.ghostAlpha;
+    context.strokeStyle = colors.muted;
+    context.fillStyle = colors.muted;
+    context.lineWidth = 1.2;
+    context.font = '11px system-ui, sans-serif';
+    for (const ghost of list) {
+      context.setLineDash([4, 4]);
+      for (const track of ghost.tracks) strokePoints(context, track.points);
+      context.setLineDash([]);
+      for (const dot of ghost.dots) {
+        const p = frame.project(dot);
+        context.fillRect(p.x - 1, p.y - 1, 2, 2);
+      }
+      const at = frame.project(ghost.anchor);
+      context.beginPath(); context.arc(at.x, at.y, VIEW.box.microphoneRadius, 0, 2 * Math.PI); context.stroke();
+      if (state) {
+        for (const track of ghost.tracks) {
+          const index = Math.round((state.seconds - track.startSeconds) / track.stepSeconds);
+          if (index < 0 || index >= track.points.length) continue;
+          const p = frame.project(track.points[index]);
+          context.beginPath(); context.arc(p.x, p.y, 3.5, 0, 2 * Math.PI); context.fill();
+        }
+      }
+      context.fillText(ghost.name, at.x + 9, at.y - 8);
+    }
+    context.restore();
+  }
+
+  function ghostAt(x, y) {
+    let best = null;
+    for (const ghost of ghosts()) {
+      const p = frame.project(ghost.anchor);
+      const distance = Math.hypot(p.x - x, p.y - y);
+      if (distance <= VIEW.box.hitRadius && (!best || distance < best.distance)) best = { ghost, distance };
+    }
+    return best?.ghost ?? null;
   }
 
   function hit(x, y) {
@@ -1206,6 +1254,12 @@ export function createCubeView(canvas, options) {
       if (touches.size > 2) return;
     }
     const target = event.button === 0 && !event.shiftKey ? hit(x, y) : null;
+    const ghost = !target && event.button === 0 && !event.shiftKey && onGhost ? ghostAt(x, y) : null;
+    if (ghost) {
+      drag = null;
+      onGhost(ghost);
+      return;
+    }
     if (target) {
       onSelect({ type: target.type, id: target.id });
       const grabbed = fromScreen(target.plane, onPlane(target.point, target.plane), x, y);

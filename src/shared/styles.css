@@ -236,6 +236,29 @@ figcaption {
 .github-link:hover {
   color: var(--accent);
 }
+.link-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.link-dot.updating {
+  background: var(--faint);
+  animation: link-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes link-pulse {
+  to { opacity: .3; }
+}
 .github-link svg {
   width: 18px;
   height: 18px;
@@ -1259,6 +1282,7 @@ details summary {
   .bar #save,
   .bar #export,
   .listen-label,
+  .link-buttons,
   .spacer {
     display: none;
   }

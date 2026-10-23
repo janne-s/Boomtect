@@ -312,6 +312,19 @@ came from; with Direction, only its Source moves; with Sound only, its scene
 stays as it is. Echotect absorbs only the air beyond what the sound already
 holds. One direction stands for sound that arrives from many.
 
+## Rumbletect
+
+**Open Rumbletect** opens [Rumbletect](https://github.com/janne-s/Rumbletect) in its own
+window with this scene's place, terrain, air, ground, microphones, and render
+settings, and links the two windows. When Rumbletect is already open, the button
+reads **Link Rumbletect**. While linked, a change to these in either window
+reaches the other. Each window renders its own emitters, and the microphones
+hear both: plots, levels, playback, the export, and Echotect get the sum.
+Rumbletect's emitters show dimmed in the scene; a click on one shows it in
+Rumbletect. The button with the linked name brings its window forward, and the
+sliders beside it set Rumbletect's level or mute it, choose whether its new
+sound comes in at once or with **Update**, and unlink. Rumbletect makes the engines of jets, airliners, and rockets, and the roar of an eruption.
+
 ## Model
 
 Every part of the model is marked with a class that says how far it can be
