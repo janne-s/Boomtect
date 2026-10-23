@@ -256,8 +256,7 @@ export const VIEW = Object.freeze({
     pieces: 12,
     alpha: .45,
     bodies: 24,
-    levels: 12,
-    ringShare: .5
+    levels: 12
   }),
   wavefront: Object.freeze({
     spheres: 360,

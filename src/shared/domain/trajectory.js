@@ -156,7 +156,7 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
     }));
   }
   if (!rings.length) return null;
-  return { apex: apex ? at(last) : null, rings, radii, ...(envelope ? { lineEvery: 2 * VIEW.cone.lineEvery } : {}) };
+  return { apex: apex ? at(last) : null, rings, radii, ...(envelope ? { lineEvery: VIEW.cone.lineEvery } : {}) };
 }
 
 /**

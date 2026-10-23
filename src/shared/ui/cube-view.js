@@ -780,7 +780,8 @@ export function createCubeView(canvas, options) {
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
-        const parts = [{ circles: [], alpha: alpha * strength }, { circles: [], alpha: alpha * strength * shadowShare }];
+        // One boundary for all of a source's fronts; a front out in the refraction shadow only draws dimmer.
+        const circles = [];
         for (const { source, centre, radiusMetres, spacingSeconds = 0 } of spheres) {
           const sphere = radiusMetres - ring * spacing;
           const offset = face.value - centre[face.fixed];
@@ -788,34 +789,42 @@ export function createCubeView(canvas, options) {
           const radius = Math.sqrt(sphere ** 2 - offset ** 2);
           if (!(radius > 0)) continue;
           const edge = shadowShare !== 1 && face.fixed === 'z' && profile.gradient < 0 ? grazingRange(profile, source.z) : Infinity;
-          if (!(radius > edge)) { parts[0].circles.push({ u: centre[u], v: centre[v], radius }); continue; }
-          parts[1].circles.push({ u: centre[u], v: centre[v], radius });
-          if (radius - edge < spacingSeconds * profile.groundSpeed * VIEW.wavefront.shadowHoldSpacings) parts[0].circles.push({ u: centre[u], v: centre[v], radius: edge });
+          circles.push({ u: centre[u], v: centre[v], radius, shaded: radius > edge });
+          if (radius > edge && radius - edge < spacingSeconds * profile.groundSpeed * VIEW.wavefront.shadowHoldSpacings) circles.push({ u: centre[u], v: centre[v], radius: edge, shaded: false });
         }
-        for (const part of parts) {
-          if (!part.circles.length || part.alpha < VIEW.wavefront.visibleAlpha) continue;
-          if (part.circles.some(circle => face.corners.every(([a, b]) => Math.hypot(a - circle.u, b - circle.v) <= circle.radius))) continue;
-          strokeUnion(context, outerCircles(part.circles), [ux, uy, vx, vy, origin.x, origin.y], colors.glow, part.alpha);
-        }
+        if (!circles.length || alpha * strength * shadowShare < VIEW.wavefront.visibleAlpha && circles.every(circle => circle.shaded)) return;
+        if (circles.some(circle => face.corners.every(([a, b]) => Math.hypot(a - circle.u, b - circle.v) <= circle.radius))) return;
+        strokeUnion(context, outerCircles(circles), [ux, uy, vx, vy, origin.x, origin.y], colors.glow, circle => alpha * strength * (circle.shaded ? shadowShare : 1));
       });
       context.restore();
     }
   }
 
+  /** The union's outline of `circles`, each arc at its circle's alpha: a number for all, or a function of the circle. */
   function strokeUnion(context, circles, mapping, color, alpha) {
-    context.save();
-    context.transform(...mapping);
-    context.beginPath();
-    for (const [{ u, v, radius }, from, to] of unionArcs(circles)) {
-      context.moveTo(u + radius * Math.cos(from), v + radius * Math.sin(from));
-      context.arc(u, v, radius, from, to);
+    const alphaOf = typeof alpha === 'function' ? alpha : () => alpha;
+    const strokes = new Map();
+    for (const arc of unionArcs(circles)) {
+      const value = alphaOf(arc[0]);
+      if (!(value >= VIEW.wavefront.visibleAlpha)) continue;
+      if (!strokes.has(value)) strokes.set(value, []);
+      strokes.get(value).push(arc);
     }
-    context.restore();
-    context.lineWidth = VIEW.box.outlinePixels;
-    context.lineCap = 'round';
-    context.strokeStyle = color;
-    context.globalAlpha = alpha;
-    context.stroke();
+    for (const [value, arcs] of strokes) {
+      context.save();
+      context.transform(...mapping);
+      context.beginPath();
+      for (const [{ u, v, radius }, from, to] of arcs) {
+        context.moveTo(u + radius * Math.cos(from), v + radius * Math.sin(from));
+        context.arc(u, v, radius, from, to);
+      }
+      context.restore();
+      context.lineWidth = VIEW.box.outlinePixels;
+      context.lineCap = 'round';
+      context.strokeStyle = color;
+      context.globalAlpha = value;
+      context.stroke();
+    }
     context.globalAlpha = 1;
   }
 
@@ -944,7 +953,7 @@ export function createCubeView(canvas, options) {
       rings.forEach((ring, index) => {
         const strength = strengths?.[index] ?? 1;
         if (!(strength > 0)) return;
-        path = level(strength * VIEW.cone.ringShare);
+        path = level(strength);
         const points = screen[index];
         // The cone is open: no ring closes it where its oldest or, once the body has gone, its newest sound lies.
         const open = index === rings.length - 1 || (index === 0 && !apex);
@@ -956,34 +965,6 @@ export function createCubeView(canvas, options) {
           else if (apex) line(apex, point, apexScreen, points[step]);
         });
       });
-      // Its edge as seen: on every ring the two points farthest from the axis on screen, joined from the apex back.
-      const centres = screen.map(points => ({ x: points.reduce((sum, p) => sum + p.x, 0) / points.length, y: points.reduce((sum, p) => sum + p.y, 0) / points.length }));
-      const sides = [[], []];
-      rings.forEach((ring, index) => {
-        const ahead = index ? centres[index - 1] : apexScreen ?? centres[Math.min(centres.length - 1, 1)];
-        const behind = index < centres.length - 1 ? centres[index + 1] : centres[index];
-        const [ax, ay] = [ahead.x - behind.x, ahead.y - behind.y];
-        const length = Math.hypot(ax, ay);
-        if (!(length > 0)) return;
-        const [nx, ny] = [-ay / length, ax / length];
-        let [most, least] = [0, 0];
-        screen[index].forEach((p, step) => {
-          const across = (p.x - centres[index].x) * nx + (p.y - centres[index].y) * ny;
-          if (across > (screen[index][most].x - centres[index].x) * nx + (screen[index][most].y - centres[index].y) * ny) most = step;
-          if (across < (screen[index][least].x - centres[index].x) * nx + (screen[index][least].y - centres[index].y) * ny) least = step;
-        });
-        sides[0].push({ index, step: most });
-        sides[1].push({ index, step: least });
-      });
-      for (const side of sides) {
-        side.forEach(({ index, step }, position) => {
-          path = level(strengths?.[index] ?? 1);
-          if (position) {
-            const before = side[position - 1];
-            line(rings[before.index][before.step], rings[index][step], screen[before.index][before.step], screen[index][step]);
-          } else if (apex && index === 0) line(apex, rings[index][step], apexScreen, screen[index][step]);
-        });
-      }
     }
     const alpha = context.globalAlpha;
     context.strokeStyle = colors.glow;
