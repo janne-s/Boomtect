@@ -167,6 +167,13 @@ figcaption {
 .plot-balance {
   margin-left: 10px;
 }
+.plot-tabs.plot-balance button {
+  color: var(--muted);
+}
+.plot-tabs.plot-balance button[aria-pressed="true"] {
+  color: var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
+}
 .plot-tabs {
   display: inline-flex;
   gap: 2px;
