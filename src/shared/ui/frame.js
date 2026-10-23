@@ -352,6 +352,12 @@ export function startFrame(tect) {
   }
 
 
+  const plotted = result => {
+    if (!result) return null;
+    let peakPa = result.peakPa ?? 0;
+    if (!(peakPa > 0)) for (const value of result.channels[0]) peakPa = Math.max(peakPa, Math.abs(value));
+    return { ...result, samples: result.channels[0], peakPa };
+  };
   const partnerGain = () => (state.preferences.partner.levelDecibels === null ? 0 : 10 ** (state.preferences.partner.levelDecibels / 20));
   const partnerResults = () => (linked.mix && linked.mix.key === sceneKey(state.scene) ? linked.mix.results : null);
   const ownSilent = () => !state.scene.emitters.some(emitter => emitter.enabled);
@@ -536,7 +542,7 @@ export function startFrame(tect) {
     }
   }
 
-  const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, null]);
+  const PARTNER_LEVELS = Object.freeze([0, -6, -12, -18, -24, -30, -36, null]);
 
   function openLinkDialog() {
     const partner = link.partner();
@@ -1815,7 +1821,12 @@ export function startFrame(tect) {
     const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
     const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
     const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
-    drawWaveform($('waveform'), { key, traces, soloId }, playheadSeconds);
+    const partner = link.partner() && state.results ? partnerResults() : null;
+    const lanes = partner ? [
+      { label: appName, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
+      { label: partnerGain() > 0 ? link.partner() : `${link.partner()} · muted`, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner.find(result => result.receiverId === receiver.id)) })) }
+    ] : null;
+    drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${partnerGain()}:${state.ownKey}` : ''}`, traces, soloId, lanes }, playheadSeconds);
     const byDirection = Boolean(MODE_SETTINGS[state.scene.mode].arrivalsByDirection);
     drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
     if (!frame) {

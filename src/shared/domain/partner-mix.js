@@ -29,6 +29,7 @@ export const resultsForPartner = results => [...results.values()].map(result => 
   sampleRate: result.sampleRate,
   startSeconds: result.startSeconds,
   channels: result.channels.map(samples => Float32Array.from(samples)),
+  peakPa: result.peakPa,
   arrivals: result.arrivals,
   truncated: result.truncated,
   speedOfSound: result.speedOfSound,

@@ -74,47 +74,61 @@ export function plotSeconds(canvas, clientX, clamp = false) {
   return start + Math.min(1, Math.max(0, share)) * (end - start);
 }
 
-export function drawWaveform(canvas, { key, traces, soloId }, playheadSeconds = null) {
+/** One plot, or with `lanes` one band per lane stacked top to bottom, each scaled to its own peak and named at its left. */
+export function drawWaveform(canvas, { key, traces, soloId, lanes = null }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
-    const live = traces.filter(trace => trace.result?.samples.length);
-    if (!live.length) return null;
+    const bands = (lanes ?? [{ label: null, traces }]).map(lane => ({ ...lane, live: lane.traces.filter(trace => trace.result?.samples.length) }));
+    const everyone = bands.flatMap(band => band.live);
+    if (!everyone.length) return null;
     const colors = palette();
-    const window = sharedWindow(live);
+    const window = sharedWindow(everyone);
     timeAxis(context, width, height, window, colors);
-    const peakPa = Math.max(...live.map(trace => trace.result.peakPa));
-    const middle = (VIEW.plots.topPixels + height - VIEW.plots.bottomPixels) / 2;
-    const half = (height - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
+    const top = VIEW.plots.topPixels;
+    const bandHeight = (height - VIEW.plots.bottomPixels - top) / bands.length;
     const columns = width - VIEW.plots.leftPixels - VIEW.plots.rightPixels;
     const span = window.end - window.start;
-    const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
-    context.strokeStyle = colors.line;
-    context.beginPath(); context.moveTo(VIEW.plots.leftPixels, middle); context.lineTo(width - VIEW.plots.rightPixels, middle); context.stroke();
-    context.globalCompositeOperation = live.length > 1 ? 'screen' : 'source-over';
-    for (const { trace, color, alpha } of traceStyles(live, soloId, colors)) {
-      const { samples, sampleRate, startSeconds } = trace.result;
-      context.strokeStyle = color;
-      context.globalAlpha = alpha;
-      context.beginPath();
-      for (let column = 0; column < columns; column += 1) {
-        const from = Math.max(0, Math.floor((window.start + column / columns * span - startSeconds) * sampleRate));
-        const to = Math.min(samples.length, Math.max(from + 1, Math.floor((window.start + (column + 1) / columns * span - startSeconds) * sampleRate)));
-        if (from >= samples.length || to <= 0) continue;
-        let low = Infinity;
-        let high = -Infinity;
-        for (let index = from; index < to; index += 1) {
-          if (samples[index] < low) low = samples[index];
-          if (samples[index] > high) high = samples[index];
-        }
-        const x = VIEW.plots.leftPixels + column + .5;
-        context.moveTo(x, y(high));
-        context.lineTo(x, y(low) + .5);
+    bands.forEach((band, position) => {
+      const middle = top + bandHeight * (position + .5);
+      const half = bandHeight / 2 - (bands.length > 1 ? 2 : 0);
+      context.strokeStyle = colors.line;
+      context.globalAlpha = 1;
+      context.beginPath(); context.moveTo(VIEW.plots.leftPixels, middle); context.lineTo(width - VIEW.plots.rightPixels, middle); context.stroke();
+      if (position > 0) {
+        context.strokeStyle = colors.raised;
+        context.beginPath(); context.moveTo(VIEW.plots.leftPixels, top + bandHeight * position); context.lineTo(width - VIEW.plots.rightPixels, top + bandHeight * position); context.stroke();
       }
-      context.stroke();
-    }
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-    context.fillStyle = colors.faint;
-    context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - VIEW.plots.rightPixels - 70, VIEW.plots.topPixels - 6);
+      context.fillStyle = colors.faint;
+      if (band.label) context.fillText(band.label, VIEW.plots.leftPixels + 4, top + bandHeight * position + 11);
+      if (!band.live.length) return;
+      const peakPa = Math.max(...band.live.map(trace => trace.result.peakPa));
+      const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
+      context.globalCompositeOperation = band.live.length > 1 ? 'screen' : 'source-over';
+      for (const { trace, color, alpha } of traceStyles(band.live, soloId, colors)) {
+        const { samples, sampleRate, startSeconds } = trace.result;
+        context.strokeStyle = color;
+        context.globalAlpha = alpha;
+        context.beginPath();
+        for (let column = 0; column < columns; column += 1) {
+          const from = Math.max(0, Math.floor((window.start + column / columns * span - startSeconds) * sampleRate));
+          const to = Math.min(samples.length, Math.max(from + 1, Math.floor((window.start + (column + 1) / columns * span - startSeconds) * sampleRate)));
+          if (from >= samples.length || to <= 0) continue;
+          let low = Infinity;
+          let high = -Infinity;
+          for (let index = from; index < to; index += 1) {
+            if (samples[index] < low) low = samples[index];
+            if (samples[index] > high) high = samples[index];
+          }
+          const x = VIEW.plots.leftPixels + column + .5;
+          context.moveTo(x, y(high));
+          context.lineTo(x, y(low) + .5);
+        }
+        context.stroke();
+      }
+      context.globalCompositeOperation = 'source-over';
+      context.globalAlpha = 1;
+      context.fillStyle = colors.faint;
+      context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - VIEW.plots.rightPixels - 70, (bands.length > 1 ? top + bandHeight * position + 11 : top - 6));
+    });
     return window;
   }, playheadSeconds);
 }
