@@ -128,6 +128,8 @@ export function createPartnerLink({ app, handlers }) {
         }
         return;
       case MESSAGE.offer:
+        // The offer repeats until it is answered; a copy from the window already linked is only answered again.
+        if (fromPartner) { partner.peer.send({ ...base(), type: MESSAGE.accept }); return; }
         setLeads(false);
         adopt(data.app, data.instance, peerFor(data, source, origin));
         partner.peer.send({ ...base(), type: MESSAGE.accept });

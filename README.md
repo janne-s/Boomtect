@@ -339,8 +339,8 @@ rockets, and the roar of an eruption.
   both tects at their real pressures; Balanced lifts the quieter one to the
   louder one's loudest A-weighted level, turning nothing down. The plot shows
   each tect in its own half, scaled to its own peak, with the lift beside its
-  name. The microphone's levels are always the real sum. The cross beside
-  them unlinks.
+  name. The microphone's levels are always the real sum. The cross at the
+  right of the linked tect's half unlinks it.
 - **Tects** — In the export while linked: Together exports the sum as heard;
   Separately exports each tect's sound in its own files at its real level, on
   one full scale and one time axis per microphone, with one scene file.

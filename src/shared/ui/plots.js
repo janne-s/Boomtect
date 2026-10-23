@@ -127,7 +127,7 @@ export function drawWaveform(canvas, { key, traces, soloId, lanes = null }, play
       context.globalCompositeOperation = 'source-over';
       context.globalAlpha = 1;
       context.fillStyle = colors.faint;
-      context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - VIEW.plots.rightPixels - 70, (bands.length > 1 ? top + bandHeight * position + 11 : top - 6));
+      context.fillText(`±${peakPa.toPrecision(3)} Pa`, width - VIEW.plots.rightPixels - 70 - (band.reserveRightPixels ?? 0), (bands.length > 1 ? top + bandHeight * position + 11 : top - 6));
     });
     return window;
   }, playheadSeconds);

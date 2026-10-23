@@ -222,7 +222,7 @@ export function startFrame(tect) {
       onShared: shared => applyShared(shared),
       onWant: () => resendScene(),
       onOffer: (shared, mode) => {
-        if (window.opener && !linkedAtLoad && performance.now() - loadedAt < VIEW.freshLinkSeconds * 1000) {
+        if (window.opener && !linkedAtLoad && !freshLink() && performance.now() - loadedAt < VIEW.freshLinkSeconds * 1000) {
           setFreshLink(true);
           if (MODES.includes(mode) && mode !== state.scene.mode) switchMode(mode);
           else { state.scene = { ...state.scene, emitters: [] }; state.selection = { type: null, id: null }; storeScene(); invalidateResults(); refreshPanel(); }
@@ -1843,7 +1843,7 @@ export function startFrame(tect) {
     const laneLabel = (name, gain) => (gain === 1 ? name : `${name} · ${gainText(gain)}`);
     const lanes = link.partner() && state.results && (partner || linked.updating) ? [
       { label: laneLabel(appName, gains.own), traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
-      { label: linked.updating ? `${link.partner()} · rendering…` : laneLabel(link.partner(), gains.partner), dimmed: linked.updating, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner?.find(result => result.receiverId === receiver.id)) })) }
+      { label: linked.updating ? `${link.partner()} · rendering…` : laneLabel(link.partner(), gains.partner), dimmed: linked.updating, reserveRightPixels: VIEW.plots.unlinkPixels, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner?.find(result => result.receiverId === receiver.id)) })) }
     ] : null;
     drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${gains?.own}:${gains?.partner}:${state.ownKey}:${linked.updating}` : ''}`, traces, soloId, lanes }, playheadSeconds);
     if (!frame) drawBalance(Boolean(partner));
@@ -1864,13 +1864,8 @@ export function startFrame(tect) {
       $('plot-tabs').insertAdjacentHTML('afterend', '<span class="plot-tabs plot-balance" id="plot-balance" role="group" aria-label="Level of the linked sound"></span>');
       holder = $('plot-balance');
     }
-    const partner = link.partner();
-    if (!partner) { holder.replaceChildren(); return; }
-    const unlink = button('', () => link.unlink(), { title: `Unlink ${partner}` });
-    unlink.classList.add('plot-unlink');
-    unlink.setAttribute('aria-label', `Unlink ${partner}`);
-    unlink.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    if (!shown) { holder.replaceChildren(unlink); return; }
+    placeUnlink(shown);
+    if (!shown) { holder.replaceChildren(); return; }
     holder.replaceChildren(...Object.entries(BALANCES).map(([value, label]) => {
       const choice = button(label, () => {
         if (state.preferences.partner.balance === value) return;
@@ -1880,7 +1875,28 @@ export function startFrame(tect) {
       }, { title: value === 'real' ? `Both tects at their real pressures` : `${link.partner()} at this tect's loudest level` });
       choice.setAttribute('aria-pressed', String(state.preferences.partner.balance === value));
       return choice;
-    }), unlink);
+    }));
+  }
+
+  /** A cross at the right of the linked tect's half of the pressure plot, after its peak, that unlinks it. */
+  function placeUnlink(shown) {
+    let cross = $('plot-unlink');
+    if (!cross) {
+      cross = button('', () => link.unlink());
+      cross.id = 'plot-unlink';
+      cross.className = 'plot-unlink';
+      cross.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+      $('waveform').after(cross);
+    }
+    cross.hidden = !shown;
+    if (!shown) return;
+    const partner = link.partner();
+    cross.title = `Unlink ${partner}`;
+    cross.setAttribute('aria-label', cross.title);
+    const height = $('waveform').clientHeight;
+    const band = (height - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
+    cross.style.top = `${VIEW.plots.topPixels + band}px`;
+    cross.style.right = `${VIEW.plots.rightPixels - 4}px`;
   }
 
   function drawPlotTabs(soloId) {
