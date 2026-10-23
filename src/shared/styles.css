@@ -255,6 +255,10 @@ figcaption {
   border-radius: 50%;
   background: var(--accent);
 }
+.link-dot.error {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
 .link-dot.updating {
   background: var(--faint);
   animation: link-pulse 1s ease-in-out infinite alternate;

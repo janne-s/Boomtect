@@ -204,7 +204,7 @@ export function startFrame(tect) {
     return sceneKeys.get(scene);
   }
 
-  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve(), created: new Set() };
+  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve(), created: new Set(), error: null, resentAt: 0 };
 
   const link = createPartnerLink({
     app: appName,
@@ -220,6 +220,7 @@ export function startFrame(tect) {
         drawLink();
       },
       onShared: shared => applyShared(shared),
+      onWant: () => resendScene(),
       onOffer: (shared, mode) => {
         if (window.opener && !linkedAtLoad && performance.now() - loadedAt < VIEW.freshLinkSeconds * 1000) {
           setFreshLink(true);
@@ -393,8 +394,19 @@ export function startFrame(tect) {
     link.send('mix', { state: 'ready', key: state.ownKey, results }, results.flatMap(result => result.channels.map(samples => samples.buffer)));
   }
 
+  /** The leading window sends its shared part again, at most every few seconds, when the two have drifted apart. */
+  function resendScene() {
+    if (!link.partner() || !link.leads() || performance.now() - linked.resentAt < VIEW.linkResendMilliseconds) return;
+    linked.resentAt = performance.now();
+    linked.sentKey = sceneKey(state.scene);
+    link.send('scene', { shared: sharedPart(state.scene) });
+  }
+
   function receiveMix(message) {
     if (message.state === 'updating') { linked.updating = true; drawLink(); return; }
+    if (message.key && message.key !== sceneKey(state.scene)) {
+      if (link.leads()) resendScene(); else link.send('want', {});
+    }
     linked.updating = false;
     const mix = { key: message.key, results: Array.isArray(message.results) ? message.results : [] };
     if (!state.preferences.autoRender && linked.mix) linked.held = mix;
@@ -479,9 +491,12 @@ export function startFrame(tect) {
     try {
       next = parseScene(withShared(state.scene, shared));
     } catch (error) {
-      setStatus(`The linked scene was not taken: ${error.message}`, true);
+      linked.error = `${link.partner()}'s scene was not taken here: ${error.message}`;
+      setStatus(linked.error, true);
+      drawLink();
       return;
     }
+    if (linked.error) { linked.error = null; drawLink(); }
     const key = sceneKey(next);
     if (key === sceneKey(state.scene)) return;
     linked.sentKey = key;
@@ -497,7 +512,10 @@ export function startFrame(tect) {
 
   /** A linked tect asks for this tect's sound in full, or without terrain echoes, for its export. */
   async function serveRequest(variant, key) {
-    if (key !== sceneKey(state.scene)) throw new Error('its scene is still updating; try again in a moment');
+    if (key !== sceneKey(state.scene)) {
+      if (link.leads()) resendScene(); else link.send('want', {});
+      throw new Error('the two windows hold different scenes; they are being matched, try again in a moment');
+    }
     if (ownSilent()) return [];
     if (variant === 'dry' && echoesActive(state.scene)) {
       const own = await renderFull(withoutEchoes(state.scene));
@@ -525,10 +543,10 @@ export function startFrame(tect) {
       const item = element('button', partner === name ? 'link-button linked' : 'link-button');
       item.type = 'button';
       const waiting = link.offering() === name;
-      item.textContent = partner === name ? name : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
+      item.textContent = partner === name ? (linked.error ? `${name} · not matched` : name) : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
       if (partner === name) {
-        item.prepend(element('span', linked.updating ? 'link-dot updating' : 'link-dot'));
-        item.title = linked.updating ? `${name} is updating its sound` : `Linked with ${name}`;
+        item.prepend(element('span', linked.error ? 'link-dot error' : linked.updating ? 'link-dot updating' : 'link-dot'));
+        item.title = linked.error ?? (linked.updating ? `${name} is updating its sound` : `Linked with ${name}`);
         item.setAttribute('aria-haspopup', 'dialog');
       }
       item.disabled = waiting;
@@ -1429,7 +1447,8 @@ export function startFrame(tect) {
     operation('terrain', null);
     terrainCoverageTimer = setTimeout(async () => {
       const { terrain } = state.scene;
-      if (!terrain?.enabled || !state.scene.emitters.length) return;
+      if (link.partner() && !link.leads()) return;
+      if (!terrain?.enabled || !(state.scene.emitters.length || (link.partner() && linked.emitters.length))) return;
       const needed = neededPatches(state.scene, state.preferences.terrainDraft.cellMetres);
       if (needed.cellMetres === terrain.cellMetres && sameRange(needed.range, terrainRange(terrain))) return;
       const task = terrainCoverageTask.start(GROUND.terrain.loadLimitSeconds * 1000);

@@ -309,6 +309,7 @@ export const VIEW = Object.freeze({
   linkPoints: 300,
   ghostAlpha: .55,
   freshLinkSeconds: 30,
+  linkResendMilliseconds: 3000,
   envelopeSeconds: .01,
   envelopeRangeDb: 40,
   plots: Object.freeze({

@@ -9,7 +9,7 @@ const ORIGINS = Object.freeze(['https://janne-s.github.io', 'http://127.0.0.1:80
 const PREFIX = 'tect.link.';
 const MESSAGE = Object.freeze({
   present: `${PREFIX}present`, hello: `${PREFIX}hello`, offer: `${PREFIX}offer`, accept: `${PREFIX}accept`, bye: `${PREFIX}bye`,
-  scene: `${PREFIX}scene`, emitters: `${PREFIX}emitters`, mix: `${PREFIX}mix`, request: `${PREFIX}request`, reply: `${PREFIX}reply`, select: `${PREFIX}select`, focus: `${PREFIX}focus`
+  scene: `${PREFIX}scene`, want: `${PREFIX}want`, emitters: `${PREFIX}emitters`, mix: `${PREFIX}mix`, request: `${PREFIX}request`, reply: `${PREFIX}reply`, select: `${PREFIX}select`, focus: `${PREFIX}focus`
 });
 const HEARTBEAT_MILLISECONDS = 3000;
 // A background tab may run its timers once a minute, so a link over the channel waits this long before it counts as gone.
@@ -18,11 +18,16 @@ const OFFER_MILLISECONDS = 500;
 const OFFER_SECONDS = 30;
 const REQUEST_SECONDS = 600;
 const SESSION_KEY = 'tect.link.partner';
+const LEADS_KEY = 'tect.link.leads';
 
 const instanceId = () => crypto.randomUUID();
 
 /** The tect this tab was linked with, kept for the tab's session so that a reload takes the link up again. */
 export const linkedSession = () => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } };
+
+/** Whether this window opened the link; it alone keeps the shared terrain covering both tects' emitters. */
+const setLeads = on => { try { if (on === null) sessionStorage.removeItem(LEADS_KEY); else sessionStorage.setItem(LEADS_KEY, on ? '1' : '0'); } catch {} };
+const leadsSession = () => { try { return sessionStorage.getItem(LEADS_KEY); } catch { return null; } };
 
 function windowPeer(target, origin) {
   return {
@@ -88,7 +93,7 @@ export function createPartnerLink({ app, handlers }) {
     if (tell) partner.peer.send({ ...base(), type: MESSAGE.bye, forget });
     const name = partner.app;
     partner = null;
-    if (forget) remember(null);
+    if (forget) { remember(null); setLeads(null); }
     for (const { reject } of pending.values()) reject(new Error(`${name} is no longer linked.`));
     pending.clear();
     changed();
@@ -123,6 +128,7 @@ export function createPartnerLink({ app, handlers }) {
         }
         return;
       case MESSAGE.offer:
+        setLeads(false);
         adopt(data.app, data.instance, peerFor(data, source, origin));
         partner.peer.send({ ...base(), type: MESSAGE.accept });
         handlers.onOffer?.(data.shared, typeof data.mode === 'string' ? data.mode : null);
@@ -139,6 +145,7 @@ export function createPartnerLink({ app, handlers }) {
     if (!fromPartner) return;
     switch (data.type) {
       case MESSAGE.scene: handlers.onShared?.(data.shared); break;
+      case MESSAGE.want: handlers.onWant?.(); break;
       case MESSAGE.emitters: handlers.onEmitters?.(data.emitters); break;
       case MESSAGE.mix: handlers.onMix?.(data); break;
       case MESSAGE.select: handlers.onSelect?.(data.id); window.focus(); break;
@@ -195,6 +202,8 @@ export function createPartnerLink({ app, handlers }) {
   return {
     others,
     partner: () => partner?.app ?? null,
+    /** The window that opened the link leads; for a link taken up without that record, the tect whose name sorts first. */
+    leads: () => { const value = leadsSession(); return value === null ? Boolean(partner) && app < partner.app : value === '1'; },
     offering: () => offering?.app ?? null,
     present: name => present.has(name),
 
@@ -221,6 +230,7 @@ export function createPartnerLink({ app, handlers }) {
         if (Date.now() - started > OFFER_SECONDS * 1000) { clearInterval(offering.timer); offering = null; changed(); handlers.onError?.(`${name} did not answer within ${OFFER_SECONDS} s.`); return; }
         peer.send({ ...base(), type: MESSAGE.offer, shared, mode });
       };
+      setLeads(true);
       offering = { app: name, window: target, timer: setInterval(offer, OFFER_MILLISECONDS) };
       offer();
       changed();
