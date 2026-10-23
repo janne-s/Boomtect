@@ -5,6 +5,7 @@ import { emissionSeconds } from '../domain/lightning.js';
 import { BODY_TYPES, carlsonBoom } from '../domain/flight.js';
 import { machCone, soundSpeedAt } from '../shared/domain/trajectory.js';
 import { followerPlacement, followerSeed } from '../shared/domain/follower.js';
+import { frontProfile } from '../shared/domain/refraction.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import {
@@ -377,7 +378,7 @@ export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [k
   alwaysTimed: emitter => isBlastKind(emitter) || isMeteorKind(emitter),
   tracks: (emitter, scene) => (isTrackKind(emitter) ? cachedTracks(emitter, scene.air) : null),
   followAs: emitter => (isFlightKind(emitter) && !emitter.follows && emitter.body !== 'rocket' ? { role: 'aircraft', size: emitter.body === 'bomber' ? 'bomber' : 'fighter' } : null),
-  cone: machCone,
+  cone: (path, now, profile) => machCone(path, now, profile, { profileAt: frontProfile, envelope: true }),
   amplitudes: wavefrontAmplitudes,
   wavefrontSources: wavefrontSourcesOf,
   mergesSources: kind === 'lightning' || kind === 'storm',
