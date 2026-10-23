@@ -302,6 +302,22 @@ Echotect with it in its own window, and **Save file** saves it as a package
   its Source the way the sound came from; Direction, so only its Source moves;
   or Sound only, so a scene set up there stays as it is.
 
+## Calibration
+
+Boomtect plays through the browser at the computer's volume, like any other
+sound. Its levels are model values; with a fixed full scale they keep their
+real relation, so a sound system can be set to play them at that level.
+
+- **Peak** — The loudest moment plays at −3 dBFS whatever its pressure, so a
+  quiet scene plays as loud as a loud one.
+- **Fixed** — Full scale is a pressure: at 20 Pa a sample of 1.0 is 20 Pa, and
+  0 dBFS is 120 dB SPL peak. Exported files keep the same scale.
+- **To calibrate** — Choose Fixed, one omni microphone, and Ear reflex and
+  Loudness off. Play a 1 kHz sine at −20 dBFS from any tone generator and set
+  the speakers or headphones with a sound level meter to read the full scale's
+  level less 23 dB: 97 dB SPL at 20 Pa. Leave the volume there. Binaural
+  playback and mixes of several microphones are scaled down for headroom.
+
 ## Echotect
 
 For echoes from buildings and streets, place a Boomtect sound in an
