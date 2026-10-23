@@ -774,7 +774,8 @@ export function startFrame(tect) {
     }
     return receivers.flatMap(index => {
       const boundaries = partitionSeconds(null, scene, shares[index], [arrivals[index]]);
-      return Array.from({ length: shares[index] }, (_, part) => ({ receivers: [index], fromSeconds: boundaries[part], toSeconds: boundaries[part + 1] }));
+      return Array.from({ length: shares[index] }, (_, part) => ({ receivers: [index], fromSeconds: boundaries[part], toSeconds: boundaries[part + 1] }))
+        .filter(job => job.fromSeconds < job.toSeconds);
     });
   }
 

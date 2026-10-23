@@ -1153,9 +1153,12 @@ export function createCubeView(canvas, options) {
       context.beginPath(); context.arc(at.x, at.y, VIEW.box.microphoneRadius, 0, 2 * Math.PI); context.stroke();
       if (state) {
         for (const track of ghost.tracks) {
-          const index = Math.round((state.seconds - track.startSeconds) / track.stepSeconds);
-          if (index < 0 || index >= track.points.length) continue;
-          const p = frame.project(track.points[index]);
+          const position = (state.seconds - track.startSeconds) / track.stepSeconds;
+          if (!(position >= 0) || position > track.points.length - 1) continue;
+          const index = Math.min(track.points.length - 2, Math.floor(position));
+          const share = position - index;
+          const [a, b] = [track.points[index], track.points[index + 1] ?? track.points[index]];
+          const p = frame.project({ x: a.x + (b.x - a.x) * share, y: a.y + (b.y - a.y) * share, z: a.z + (b.z - a.z) * share });
           context.beginPath(); context.arc(p.x, p.y, 3.5, 0, 2 * Math.PI); context.fill();
         }
       }
