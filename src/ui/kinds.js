@@ -46,7 +46,7 @@ function emitterSummary(emitter, scene) {
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
   if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
-  if (emitter.follows) return `${FLIGHT.bodies[emitter.body].label} on ${emitter.follows.app}'s ${emitter.follows.name}${emitter.paths.length > 1 ? `, ${emitter.paths.length} paths` : ''}`;
+  if (emitter.follows) return `${emitter.body === 'rocket' ? `${formatMetres(emitter.lengthMetres)} rocket` : FLIGHT.bodies[emitter.body].label} on ${emitter.follows.app}'s ${emitter.follows.name}${emitter.paths.length > 1 ? `, ${emitter.paths.length} paths` : ''}`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${flightHeightLabel(emitter, scene)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'fireworks') return `${emitter.shellCount} shells of about ${Math.round(emitter.shellDiameterMillimetres)} mm over ${emitter.durationSeconds} s, ${Math.round(emitter.crackleShare * 100)} % crackling`;
   if (emitter.kind === 'barrage') {
@@ -411,7 +411,7 @@ export const ADD_EMITTERS = Object.freeze({
 
 const within = (key, value) => Math.min(PARAMETERS[key].maximum, Math.max(PARAMETERS[key].minimum, value));
 
-/** A flight on a linked tect's path, so that its booms and Mach cone come from Boomtect; the body is kept once chosen. */
+/** A flight on a linked tect's path, so that its booms and Mach cone come from Boomtect; the body is kept once chosen, a rocket's length taken from the linked tect. */
 export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
   const body = ghost.follow.role === 'rocket' ? 'rocket' : ghost.follow.size === 'bomber' ? 'bomber' : 'reconnaissance';
   const base = existing ?? {
@@ -419,8 +419,10 @@ export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
     body, lengthMetres: FLIGHT.bodies[body].lengthMetres, shapeFactor: FLIGHT.bodies[body].shapeFactor
   };
   const placement = followerPlacement(ghost.follow.paths[0]);
+  const length = body === 'rocket' && Number.isFinite(ghost.follow.lengthMetres) ? { lengthMetres: +within('lengthMetres', ghost.follow.lengthMetres).toPrecision(3) } : {};
   return {
     ...base,
+    ...length,
     follows: { app: partner, id: ghost.id, name: ghost.name },
     paths: ghost.follow.paths,
     startMetres: placement.startMetres,
