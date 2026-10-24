@@ -3,6 +3,7 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
+import { focusSpectrum, focusSpectrumAt } from './focus.js';
 import { PULSE_FRIEDLANDER, PULSE_GRAIN, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { createScintillation } from './scintillation.js';
 import { previewQuality } from './render-cost.js';
@@ -129,7 +130,10 @@ const PATH_ARRAYS = Object.freeze({
   height: Float64Array,
   absorptionExcess: Float64Array,
   /** Class C. */
-  aloft: Uint8Array
+  aloft: Uint8Array,
+  focusMu: Float64Array,
+  focusHeight: Float64Array,
+  hilbert: Uint8Array
 });
 
 function pathTable(capacity) {
@@ -202,6 +206,9 @@ function pathWriter(frame, scene, paths) {
     paths.height[index] = path.topMetres ?? from.z;
     paths.absorptionExcess[index] = path.absorptionExcess ?? 0;
     paths.aloft[index] = path.topMetres === undefined ? 0 : 1;
+    paths.focusMu[index] = path.focusMu ?? 0;
+    paths.focusHeight[index] = path.focusHeight ?? 0;
+    paths.hilbert[index] = path.hilbert ? 1 : 0;
     paths.foliageMetres[index] = !treeHeight ? 0 : isEcho(kind) ? path.foliageMetres
       : foliageMetres(path.metres, from.z - surface.heightAt(from.x, from.y), receiverLift, treeHeight);
     paths.direction.set(path.metres > 0 ? ambisonicDirection(-arrival.x, -arrival.y, -arrival.z) : [1, 0, 0], 3 * index);
@@ -292,7 +299,7 @@ export function tracePart(preparedEmitters, receiver, scene, { part = 0, parts =
       tick();
       if (sourceIndex < trackCount) {
         for (const crossing of crossings[emitterIndex][sourceIndex]) {
-          const shared = { emissionSeconds: crossing.emissionSeconds, from: crossing.point, durationSeconds: crossing.durationSeconds };
+          const shared = { emissionSeconds: crossing.emissionSeconds, from: crossing.point, durationSeconds: crossing.durationSeconds, focusMu: crossing.focusMu, focusHeight: crossing.focusHeight, hilbert: crossing.hilbert };
           if (crossing.secondary) {
             const aloft = { ...crossing.ray, ...shared, overpressurePa: crossing.overpressurePa * crossing.focus, topMetres: crossing.topMetres, absorptionExcess: crossing.absorptionExcess };
             add(emitterIndex, sourceIndex, sources, PATH_DIRECT, aloft);
@@ -861,6 +868,9 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let middleCos = middleStepRe;
   let middleSin = middleStepIm;
   const friedlanderRe = sources.decay[sourceIndex] / duration;
+  const focus = nWave && paths.focusMu[index] > 0 ? focusSpectrum(paths.focusMu[index], paths.focusHeight[index]) : null;
+  const focusPair = focus ? new Float64Array(2) : null;
+  const hilbert = nWave && paths.hilbert[index] === 1;
   const subArrivalSets = [spreadArrivals, turbulence].filter(Boolean);
   const reals = spectra.map(spectrum => spectrum.real);
   const imaginaries = spectra.map(spectrum => spectrum.imaginary);
@@ -895,6 +905,16 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       const nextCos = pulseCos * pulseStepRe - pulseSin * pulseStepIm;
       pulseSin = pulseCos * pulseStepIm + pulseSin * pulseStepRe;
       pulseCos = nextCos;
+      if (focus) {
+        focusSpectrumAt(focus, omega * duration / 2, focusPair);
+        re = focusPair[0] * duration / 2;
+        im = focusPair[1] * duration / 2;
+      } else if (hilbert) {
+        // The branch that has touched its caustic arrives turned by a quarter period, i sign ω: a U-wave.
+        const turned = re;
+        re = -im;
+        im = turned;
+      }
     } else {
       const sScale = friedlanderRe * friedlanderRe + omega * omega;
       const inverseRe = friedlanderRe / sScale;
