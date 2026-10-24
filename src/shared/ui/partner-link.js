@@ -9,7 +9,7 @@ const ORIGINS = Object.freeze(['https://janne-s.github.io', 'http://127.0.0.1:80
 const PREFIX = 'tect.link.';
 const MESSAGE = Object.freeze({
   present: `${PREFIX}present`, hello: `${PREFIX}hello`, offer: `${PREFIX}offer`, accept: `${PREFIX}accept`, bye: `${PREFIX}bye`,
-  scene: `${PREFIX}scene`, want: `${PREFIX}want`, emitters: `${PREFIX}emitters`, mix: `${PREFIX}mix`, request: `${PREFIX}request`, reply: `${PREFIX}reply`, select: `${PREFIX}select`, focus: `${PREFIX}focus`
+  scene: `${PREFIX}scene`, want: `${PREFIX}want`, again: `${PREFIX}again`, emitters: `${PREFIX}emitters`, mix: `${PREFIX}mix`, request: `${PREFIX}request`, reply: `${PREFIX}reply`, select: `${PREFIX}select`, focus: `${PREFIX}focus`
 });
 const HEARTBEAT_MILLISECONDS = 3000;
 // A background tab may run its timers once a minute, so a link over the channel waits this long before it counts as gone.
@@ -148,6 +148,7 @@ export function createPartnerLink({ app, handlers }) {
     switch (data.type) {
       case MESSAGE.scene: handlers.onShared?.(data.shared); break;
       case MESSAGE.want: handlers.onWant?.(); break;
+      case MESSAGE.again: handlers.onAgain?.(); break;
       case MESSAGE.emitters: handlers.onEmitters?.(data.emitters); break;
       case MESSAGE.mix: handlers.onMix?.(data); break;
       case MESSAGE.select: handlers.onSelect?.(data.id); window.focus(); break;

@@ -221,6 +221,7 @@ export function startFrame(tect) {
       },
       onShared: shared => applyShared(shared),
       onWant: () => resendScene(),
+      onAgain: () => sendEverything(),
       onOffer: (shared, mode) => {
         if (window.opener && !linkedAtLoad && !freshLink() && performance.now() - loadedAt < VIEW.freshLinkSeconds * 1000) {
           setFreshLink(true);
@@ -404,6 +405,22 @@ export function startFrame(tect) {
     link.send('scene', { shared: sharedPart(state.scene) });
   }
 
+  /** Everything this tect gives the linked one, sent again: the leading window's scene, the emitters, and the sound. */
+  function sendEverything() {
+    if (!link.partner()) return;
+    if (link.leads()) {
+      linked.sentKey = sceneKey(state.scene);
+      link.send('scene', { shared: sharedPart(state.scene) });
+    }
+    sendEmitters();
+    sendMix();
+  }
+
+  function syncAgain() {
+    sendEverything();
+    link.send('again', {});
+  }
+
   function receiveMix(message) {
     if (message.state === 'updating') { linked.updating = true; drawLink(); drawResults(); return; }
     if (message.key && message.key !== sceneKey(state.scene)) {
@@ -578,6 +595,7 @@ export function startFrame(tect) {
     const footer = element('footer', 'export-actions');
     footer.append(
       button('Unlink', () => { dialog.close(); link.unlink(); }),
+      button('Sync again', () => { dialog.close(); syncAgain(); }, { title: `Send the scene and sound to ${partner} again and ask for its own` }),
       button(`Show ${partner}`, () => link.open(partner)),
       button('Done', () => dialog.close())
     );
