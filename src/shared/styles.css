@@ -186,6 +186,24 @@ figcaption {
 .plot-unlink[hidden] {
   display: none;
 }
+.plot-mute {
+  position: absolute;
+  width: 12px;
+  height: 14px;
+  padding: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+}
+.plot-mute:hover,
+.plot-mute[aria-pressed="true"] {
+  color: var(--accent);
+}
+.plot-mute[hidden] {
+  display: none;
+}
 .plot-tabs.plot-balance button[aria-pressed="true"] {
   color: var(--accent);
   box-shadow: none;

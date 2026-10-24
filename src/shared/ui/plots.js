@@ -98,7 +98,7 @@ export function drawWaveform(canvas, { key, traces, soloId, lanes = null }, play
         context.beginPath(); context.moveTo(VIEW.plots.leftPixels, top + bandHeight * position); context.lineTo(width - VIEW.plots.rightPixels, top + bandHeight * position); context.stroke();
       }
       context.fillStyle = band.dimmed ? colors.accent : colors.faint;
-      if (band.label) context.fillText(band.label, VIEW.plots.leftPixels + 4, top + bandHeight * position + 11);
+      if (band.label) context.fillText(band.label, VIEW.plots.leftPixels + 4 + (band.labelIndentPixels ?? 0), top + bandHeight * position + 11);
       if (!band.live.length) return;
       const peakPa = Math.max(...band.live.map(trace => trace.result.peakPa));
       const y = value => middle - Math.max(-1, Math.min(1, value / peakPa)) * half;
@@ -106,7 +106,7 @@ export function drawWaveform(canvas, { key, traces, soloId, lanes = null }, play
       for (const { trace, color, alpha } of traceStyles(band.live, soloId, colors)) {
         const { samples, sampleRate, startSeconds } = trace.result;
         context.strokeStyle = color;
-        context.globalAlpha = alpha * (band.dimmed ? VIEW.plots.dimmed : 1);
+        context.globalAlpha = alpha * (band.dimmed || band.muted ? VIEW.plots.dimmed : 1);
         context.beginPath();
         for (let column = 0; column < columns; column += 1) {
           const from = Math.max(0, Math.floor((window.start + column / columns * span - startSeconds) * sampleRate));

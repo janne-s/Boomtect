@@ -204,7 +204,7 @@ export function startFrame(tect) {
     return sceneKeys.get(scene);
   }
 
-  const linked = { emitters: [], mix: null, held: null, updating: false, sentKey: null, serving: Promise.resolve(), created: new Set(), error: null, resentAt: 0 };
+  const linked = { emitters: [], mix: null, held: null, updating: false, muted: null, sentKey: null, serving: Promise.resolve(), created: new Set(), error: null, resentAt: 0 };
 
   const link = createPartnerLink({
     app: appName,
@@ -212,7 +212,7 @@ export function startFrame(tect) {
       onStatus: () => drawLink(),
       onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
       onUnlinked: () => {
-        Object.assign(linked, { emitters: [], mix: null, held: null, updating: false });
+        Object.assign(linked, { emitters: [], mix: null, held: null, updating: false, muted: null });
         if (!linkedSession()) { setFreshLink(false); storeScene(); }
         $('link-dialog')?.close();
         showResults();
@@ -374,10 +374,12 @@ export function startFrame(tect) {
     const ownReady = state.ownResults || (ownSilent() && state.ownKey === sceneKey(state.scene));
     const gains = linkGains(partner);
     state.realResults = ownReady && (state.ownResults || partner) ? mixedResults(state.scene, state.ownResults, partner, 1) : null;
-    state.results = state.realResults && (gains.own !== 1 || gains.partner !== 1) ? mixedResults(state.scene, state.ownResults, partner, gains.partner, gains.own) : state.realResults;
+    const balanced = state.realResults && (gains.own !== 1 || gains.partner !== 1) ? mixedResults(state.scene, state.ownResults, partner, gains.partner, gains.own) : state.realResults;
+    const muted = balanced && partner && linked.muted;
+    state.results = muted ? mixedResults(state.scene, muted === 'own' ? null : state.ownResults, muted === 'partner' ? null : partner, gains.partner, gains.own) ?? balanced : balanced;
     $('export').disabled = !state.results;
     if (state.results) {
-      state.envelopes = envelopes([...state.results.values()]);
+      state.envelopes = envelopes([...balanced.values()]);
       earCache.clear();
     }
     syncPlayButton();
@@ -1841,12 +1843,15 @@ export function startFrame(tect) {
     const partner = link.partner() && state.results ? partnerResults() : null;
     const gains = partner ? linkGains(partner) : { own: 1, partner: 1 };
     const laneLabel = (name, gain) => (gain === 1 ? name : `${name} · ${gainText(gain)}`);
+    const muting = Boolean(partner?.length && state.ownResults && !linked.updating);
+    const muteSpace = muting ? VIEW.plots.mutePixels : 0;
     const lanes = link.partner() && state.results && (partner || linked.updating) ? [
-      { label: laneLabel(appName, gains.own), traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
-      { label: linked.updating ? `${link.partner()} · rendering…` : laneLabel(link.partner(), gains.partner), dimmed: linked.updating, reserveRightPixels: VIEW.plots.unlinkPixels, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner?.find(result => result.receiverId === receiver.id)) })) }
+      { label: laneLabel(appName, gains.own), labelIndentPixels: muteSpace, muted: muting && linked.muted === 'own', traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.ownResults?.get(receiver.id) ?? null })) },
+      { label: linked.updating ? `${link.partner()} · rendering…` : laneLabel(link.partner(), gains.partner), labelIndentPixels: muteSpace, muted: muting && linked.muted === 'partner', dimmed: linked.updating, reserveRightPixels: VIEW.plots.unlinkPixels, traces: receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: plotted(partner?.find(result => result.receiverId === receiver.id)) })) }
     ] : null;
-    drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${gains?.own}:${gains?.partner}:${state.ownKey}:${linked.updating}` : ''}`, traces, soloId, lanes }, playheadSeconds);
+    drawWaveform($('waveform'), { key: `${key}|${lanes ? `lanes:${linked.mix?.key}:${gains?.own}:${gains?.partner}:${state.ownKey}:${linked.updating}:${muting && linked.muted}` : ''}`, traces, soloId, lanes }, playheadSeconds);
     if (!frame) drawBalance(Boolean(partner));
+    if (!frame) placeMutes(muting);
     const byDirection = Boolean(MODE_SETTINGS[state.scene.mode].arrivalsByDirection);
     drawArrivals($('arrivals'), { key: `${key}|${byDirection}`, traces, soloId, byDirection }, playheadSeconds);
     if (!frame) {
@@ -1897,6 +1902,31 @@ export function startFrame(tect) {
     const band = (height - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
     cross.style.top = `${VIEW.plots.topPixels + band}px`;
     cross.style.right = `${VIEW.plots.rightPixels - 4}px`;
+  }
+
+  /** An M before each lane's name that takes that tect out of what is played and exported; one lane at a time. */
+  function placeMutes(shown) {
+    const lanes = { own: appName, partner: link.partner() };
+    const band = ($('waveform').clientHeight - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
+    Object.entries(lanes).forEach(([lane, name], position) => {
+      let mute = $(`plot-mute-${lane}`);
+      if (!mute) {
+        mute = button('M', () => {
+          linked.muted = linked.muted === lane ? null : lane;
+          showResults();
+        });
+        mute.id = `plot-mute-${lane}`;
+        mute.className = 'plot-mute';
+        $('waveform').after(mute);
+      }
+      mute.hidden = !shown;
+      if (!shown) return;
+      mute.title = `Mute ${name}`;
+      mute.setAttribute('aria-label', mute.title);
+      mute.setAttribute('aria-pressed', String(linked.muted === lane));
+      mute.style.top = `${VIEW.plots.topPixels + band * position}px`;
+      mute.style.left = `${VIEW.plots.leftPixels}px`;
+    });
   }
 
   function drawPlotTabs(soloId) {

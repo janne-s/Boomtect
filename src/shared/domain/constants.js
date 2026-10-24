@@ -318,6 +318,7 @@ export const VIEW = Object.freeze({
     topPixels: 22,
     bottomPixels: 20,
     unlinkPixels: 16,
+    mutePixels: 14,
     dimmed: .4,
     muted: .35,
     overlapping: .6,

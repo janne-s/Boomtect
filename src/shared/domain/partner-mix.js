@@ -57,6 +57,7 @@ function finished(base, startSeconds, channels, arrivals, truncated) {
 
 /** One microphone's own result at `ownGain` and the linked tect's at `gain`, summed on one time axis: pressures add, being linear. */
 export function mixedResult(own, other, gain, ownGain = 1) {
+  if (!own && (!other || !(gain > 0))) return null;
   if ((!other || !(gain > 0)) && ownGain === 1) return own;
   if (!other || !(gain > 0)) other = null;
   if (!other) {
