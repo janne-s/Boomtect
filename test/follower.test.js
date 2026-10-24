@@ -48,7 +48,8 @@ test('a volcano follows the linked Rumbletect volcano\'s crater and onset, its e
   assert.equal(made.equivalentChargeKilograms, 3.9e5);
   assert.deepEqual(made.positionMetres, { x: -300, y: 20, z: 15 });
   assert.equal(made.startSeconds, 2);
-  assert.ok(parseScene({ ...scene, emitters: [made] }));
+  assert.deepEqual(parseScene({ ...scene, emitters: [made] }).emitters[0].follows, made.follows);
+  assert.equal(KIND_PANELS.volcano.followAs(parseScene({ ...scene, emitters: [made] }).emitters[0]), null);
   assert.equal(follower(ghost, null, { ...context, scene: defaultScene('sonic') }), null);
   assert.equal(KIND_PANELS.volcano.followAs(made), null);
   const own = { ...defaultVolcano('volcano-2', 'Volcano 2', 1), equivalentChargeKilograms: 4000 };

@@ -50,16 +50,23 @@ function readPath(value) {
   return path;
 }
 
-/** Class C. A follower's link to the emitter it follows, a rocket's burn time after each path's start, and the paths; none when the link or the paths are missing or broken. */
-export function followerFields(value) {
+/** A point follower's link to the emitter it follows; none when the link is missing or broken. */
+export function followsField(value) {
   const follows = value.follows;
   if (!follows || typeof follows !== 'object') return {};
   const app = text(follows.app);
   const id = text(follows.id);
+  if (!app || !id) return {};
+  return { follows: { app, id, name: text(follows.name) ?? id } };
+}
+
+/** Class C. A follower's link to the emitter it follows, a rocket's burn time after each path's start, and the paths; none when the link or the paths are missing or broken. */
+export function followerFields(value) {
+  const { follows } = followsField(value);
   const paths = (Array.isArray(value.paths) ? value.paths.slice(0, MOST_PATHS) : []).map(readPath).filter(Boolean);
-  if (!app || !id || !paths.length) return {};
-  const burn = Number.isFinite(follows.burnSeconds) && follows.burnSeconds >= 0 ? { burnSeconds: follows.burnSeconds } : {};
-  return { follows: { app, id, name: text(follows.name) ?? id, ...burn }, paths };
+  if (!follows || !paths.length) return {};
+  const burn = Number.isFinite(value.follows.burnSeconds) && value.follows.burnSeconds >= 0 ? { burnSeconds: value.follows.burnSeconds } : {};
+  return { follows: { ...follows, ...burn }, paths };
 }
 
 /** Where and when a follower's first path starts, its heading and climb there, how long it lasts, and its top speed. */

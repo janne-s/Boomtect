@@ -1,4 +1,4 @@
-import { followerFields } from '../shared/domain/follower.js';
+import { followerFields, followsField } from '../shared/domain/follower.js';
 import { FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
 import { createScene } from '../shared/domain/scene.js';
 import { BLAST_PULSE } from './blast-pulse.js';
@@ -419,7 +419,7 @@ const KINDS = Object.freeze({
   storm: { defaults: () => defaultStorm(), read: readStorm },
   blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres', defaultBlast().explosive) },
   barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres', defaultBarrage().explosive), 'centreMetres', path) },
-  volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path) }) },
+  volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path), ...followsField(value) }) },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
