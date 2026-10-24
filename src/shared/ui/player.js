@@ -172,17 +172,30 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
   let pending = null;
   let silence = null;
   let detachContext = null;
-  // Opening an output can click, so a context is kept between playbacks and made again only when it cannot be trusted.
+  // A laptop's output powers down when nothing plays and clicks as it wakes, so the context keeps running between playbacks; it is made again only when it cannot be trusted.
   let stale = true;
   let sleepWatch = null;
+  let watched = null;
   const markStale = () => { stale = true; };
+  const sinceHidden = () => { if (watched && document.visibilityState !== 'visible') watched.hidden = true; };
+  // A background page's timers are slowed, so a long gap counts as sleep only in a page that stayed visible; the wall clock running ahead of the monotonic one counts anywhere.
+  function checkSleep() {
+    if (!watched) return;
+    const now = Date.now();
+    const offset = now - performance.now();
+    const sleepMilliseconds = RENDER.audioSleepSeconds * 1000;
+    if (Math.abs(offset - watched.offset) > sleepMilliseconds || (!watched.hidden && now - watched.tick > sleepMilliseconds)) stale = true;
+    if (context?.state === 'running' && watched.context === context && !watched.hidden) {
+      const elapsedSeconds = (performance.now() - watched.at) / 1000;
+      if (elapsedSeconds > 1 && context.currentTime - watched.audioSeconds < elapsedSeconds / 2) stale = true;
+    }
+    watched = { tick: now, offset, hidden: document.visibilityState !== 'visible', context, audioSeconds: context?.currentTime ?? 0, at: performance.now() };
+  }
   function watchSleep() {
     if (sleepWatch) return;
-    let lastTick = Date.now();
-    sleepWatch = setInterval(() => {
-      if (Date.now() - lastTick > RENDER.audioSleepSeconds * 1000) stale = true;
-      lastTick = Date.now();
-    }, RENDER.audioTickSeconds * 1000);
+    watched = { tick: Date.now(), offset: Date.now() - performance.now(), hidden: document.visibilityState !== 'visible', context: null, audioSeconds: 0, at: performance.now() };
+    sleepWatch = setInterval(checkSleep, RENDER.audioTickSeconds * 1000);
+    document.addEventListener('visibilitychange', sinceHidden);
     navigator.mediaDevices?.addEventListener?.('devicechange', markStale);
   }
 
@@ -217,8 +230,6 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     abandoned?.abort();
     release();
     silence?.pause();
-    const resting = context;
-    if (resting) setTimeout(() => { if (context === resting && !current && !pending) resting.suspend().catch(() => {}); }, RENDER.fadeSeconds * 2000 + 50);
     onChange();
   }
 
@@ -243,7 +254,9 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
 
   function observeContext(ownedContext) {
     const changed = () => {
-      if (context === ownedContext && ownedContext.state !== 'running') interrupt();
+      if (context !== ownedContext || ownedContext.state === 'running') return;
+      stale = true;
+      interrupt();
     };
     ownedContext.addEventListener('statechange', changed);
     detachContext = () => ownedContext.removeEventListener('statechange', changed);
@@ -280,6 +293,7 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
           silence ??= silentLoop();
           sessionReady = silence.play();
         }
+        checkSleep();
         // Safari can report running while its output is silent after sleep or a change of output, so then a new one.
         if (!context || stale || context.state === 'closed' || context.sampleRate !== sampleRate) replaceContext(sampleRate);
       }
@@ -358,6 +372,7 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
       clearInterval(sleepWatch);
       sleepWatch = null;
       navigator.mediaDevices?.removeEventListener?.('devicechange', markStale);
+      document.removeEventListener('visibilitychange', sinceHidden);
       const retired = context;
       detachContext?.();
       detachContext = null;

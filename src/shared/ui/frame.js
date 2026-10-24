@@ -1068,6 +1068,14 @@ export function startFrame(tect) {
     return { composition, gain, playbackGain };
   }
 
+  /** Files sound as Play does, the heard peak at the target, yet no microphone's pressure passes full scale. */
+  function exportGain({ composition, playbackGain }) {
+    const { levelMode, fullScalePa } = state.scene.render;
+    if (levelMode === 'fixed') return 1 / fullScalePa;
+    const loudestPa = Math.max(composition.peakPa, ...[...state.results.values()].map(result => result.peakPa));
+    return loudestPa > 0 ? Math.min(playbackGain, 1 / loudestPa) : playbackGain;
+  }
+
   function savePreferences() {
     storage.write(PREFERENCES_STORAGE_KEY, state.preferences);
   }
@@ -2458,7 +2466,7 @@ export function startFrame(tect) {
       return;
     }
     if (!current) return;
-    const plan = exportPlan(state.scene, state.results, current.gain);
+    const plan = exportPlan(state.scene, state.results, exportGain(current));
     if (!plan) return;
     exportState = { plan, composition: current.composition, echoFree: echoesActive(state.scene) ? echoFreeShare(state.results) : 1 };
     const chosen = new Set(state.preferences.exportItems ?? ['scene', 'stereo']);
