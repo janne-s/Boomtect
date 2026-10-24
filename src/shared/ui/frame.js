@@ -465,7 +465,7 @@ export function startFrame(tect) {
     return state.scene.emitters.filter(emitter => emitter.enabled && !(emitter.follows && emitter.follows.app === link.partner())).map(emitter => {
       const kind = kinds[emitter.kind];
       const paths = kind.tracks?.(emitter, state.scene) ?? null;
-      const follow = paths && kind.followAs?.(emitter, state.scene);
+      const follow = kind.followAs?.(emitter, state.scene) ?? null;
       const tracks = (paths ?? []).map(path => {
         const stride = thinned(path.x.length, VIEW.linkTrackPoints);
         const points = [];
@@ -479,7 +479,7 @@ export function startFrame(tect) {
       const anchor = emitterAnchor(emitter);
       return {
         id: emitter.id, name: emitter.name, label: kind.label(emitter), tracks, dots, anchor: { x: anchor.x, y: anchor.y, z: anchor.z ?? 0 },
-        follow: follow ? { ...follow, paths: (follow.paths ?? paths).map(savedPath) } : null
+        follow: follow ? { ...follow, paths: (follow.paths ?? paths ?? []).map(savedPath) } : null
       };
     });
   }

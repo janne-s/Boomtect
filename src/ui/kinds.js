@@ -198,7 +198,7 @@ function detailSections(emitter, { updateEmitter }) {
     return [
       section('Placement', container => {
         placement(container);
-        pointFields(container, { label: 'Vent', point: emitter.positionMetres, onCommit: set('positionMetres') });
+        pointFields(container, { label: 'Crater', point: emitter.positionMetres, onCommit: set('positionMetres') });
       }),
       section('Source', container => {
         selectField(container, {
@@ -333,7 +333,7 @@ function measure(item, scene, at) {
   else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(at);
 }
 
-const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'vent' : isTrackKind(selected) ? 'start' : 'blast');
+const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'crater' : isTrackKind(selected) ? 'start' : 'blast');
 
 function info(selected) {
   if (selected.kind === 'storm') return [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`];
@@ -383,13 +383,19 @@ export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [k
   timeline: strokeTimeline,
   alwaysTimed: emitter => isBlastKind(emitter) || isMeteorKind(emitter),
   tracks: (emitter, scene) => (isTrackKind(emitter) ? cachedTracks(emitter, scene.air) : null),
-  followAs: emitter => (isFlightKind(emitter) && !emitter.follows && emitter.body !== 'rocket' ? { role: 'aircraft', size: emitter.body === 'bomber' ? 'bomber' : 'fighter' } : null),
+  followAs: emitter => (emitter.follows ? null : emitter.kind === 'volcano' ? volcanoFollow(emitter) : isFlightKind(emitter) && emitter.body !== 'rocket' ? { role: 'aircraft', size: emitter.body === 'bomber' ? 'bomber' : 'fighter' } : null),
   cone: (path, now, profile) => machCone(path, now, profile, { profileAt: frontProfile, envelope: true }),
   amplitudes: wavefrontAmplitudes,
   wavefrontSources: wavefrontSourcesOf,
   mergesSources: kind === 'lightning' || kind === 'storm',
   eventSeconds: VIEW.flash.traverseSeconds + VIEW.flash.visibleSeconds
 })])));
+
+const nearestEruption = emitter => ERUPTION_TYPES.reduce((best, type) => (Math.abs(Math.log(VOLCANO.eruptions[type].equivalentChargeKilograms / emitter.equivalentChargeKilograms)) < Math.abs(Math.log(VOLCANO.eruptions[best].equivalentChargeKilograms / emitter.equivalentChargeKilograms)) ? type : best));
+
+function volcanoFollow(emitter) {
+  return { role: 'volcano', crater: { ...emitter.positionMetres }, startSeconds: emitter.startSeconds, eruption: nearestEruption(emitter), paths: [] };
+}
 
 const add = (create, label, mode) => Object.freeze({ create, label, mode });
 
@@ -411,8 +417,29 @@ export const ADD_EMITTERS = Object.freeze({
 
 const within = (key, value) => Math.min(PARAMETERS[key].maximum, Math.max(PARAMETERS[key].minimum, value));
 
+const ERUPTION_OF_CATEGORY = Object.freeze({ strombolian: 'strombolian', fountain: 'strombolian', subplinian: 'vulcanian', plinian: 'strongVulcanian' });
+
+function followerVolcano(ghost, existing, { partner, uniqueId, scene }) {
+  if (scene.mode !== 'blast') return null;
+  const { crater, startSeconds, category } = ghost.follow;
+  let base = existing;
+  if (!base) {
+    base = defaultVolcano(uniqueId('volcano'), `${ghost.name} blast`.slice(0, 64), followerSeed(partner, ghost.id));
+    applyEruption(base, ERUPTION_OF_CATEGORY[category] ?? 'vulcanian');
+  }
+  return {
+    ...base,
+    follows: { app: partner, id: ghost.id, name: ghost.name },
+    positionMetres: { x: crater.x, y: crater.y, z: within('heightMetres', crater.z) },
+    startSeconds: within('startSeconds', startSeconds)
+  };
+}
+
+export const follower = (ghost, existing, context) => (ghost.follow.role === 'volcano' ? followerVolcano : followerFlight)(ghost, existing, context);
+
 /** A flight on a linked tect's path, so that its booms and Mach cone come from Boomtect; the body is kept once chosen, a rocket's length taken from the linked tect. */
 export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
+  if (scene.mode !== 'sonic') return null;
   const body = ghost.follow.role === 'rocket' ? 'rocket' : ghost.follow.size === 'bomber' ? 'bomber' : 'reconnaissance';
   const base = existing ?? {
     ...defaultFlight(uniqueId('flight'), `${ghost.name} boom`.slice(0, 64), followerSeed(partner, ghost.id)),

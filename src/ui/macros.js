@@ -409,7 +409,7 @@ const volcanoSize = {
 };
 
 const volcanoHeight = {
-  label: 'Vent height',
+  label: 'Crater height',
   read: item => clamp01(Math.sqrt(item.positionMetres.z / VIEW.macros.volcanoHeightMetres)),
   write: (item, t) => { item.positionMetres = { ...item.positionMetres, z: Math.round(t * t * VIEW.macros.volcanoHeightMetres / 10) * 10 }; },
   show: item => metres(item.positionMetres.z),
