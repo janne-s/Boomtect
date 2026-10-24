@@ -203,6 +203,9 @@ export const RENDER = Object.freeze({
   scheduleLeadSeconds: .2,
   fadeSeconds: .05,
   audioResumeSeconds: 8,
+  /** A gap this long in a timer that ticks every audioTickSeconds means the computer slept, and the audio context is made again. */
+  audioSleepSeconds: 20,
+  audioTickSeconds: 5,
   breakUpDecibels: 20
 });
 

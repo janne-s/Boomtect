@@ -172,6 +172,19 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
   let pending = null;
   let silence = null;
   let detachContext = null;
+  // Opening an output can click, so a context is kept between playbacks and made again only when it cannot be trusted.
+  let stale = true;
+  let sleepWatch = null;
+  const markStale = () => { stale = true; };
+  function watchSleep() {
+    if (sleepWatch) return;
+    let lastTick = Date.now();
+    sleepWatch = setInterval(() => {
+      if (Date.now() - lastTick > RENDER.audioSleepSeconds * 1000) stale = true;
+      lastTick = Date.now();
+    }, RENDER.audioTickSeconds * 1000);
+    navigator.mediaDevices?.addEventListener?.('devicechange', markStale);
+  }
 
   function disconnect({ sources, nodes, faders }) {
     sources.forEach(source => source.disconnect());
@@ -204,17 +217,26 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     abandoned?.abort();
     release();
     silence?.pause();
+    const resting = context;
+    if (resting) setTimeout(() => { if (context === resting && !current && !pending) resting.suspend().catch(() => {}); }, RENDER.fadeSeconds * 2000 + 50);
+    onChange();
+  }
+
+  function replaceContext(sampleRate) {
+    watchSleep();
     const retired = context;
     detachContext?.();
     detachContext = null;
-    context = null;
-    if (retired) setTimeout(() => retired.close().catch(() => {}), RENDER.fadeSeconds * 2000 + 50);
-    onChange();
+    if (retired) retired.close().catch(() => {});
+    context = new AudioContext({ sampleRate });
+    observeContext(context);
+    stale = false;
   }
 
   function interrupt(message = 'Audio interrupted') {
     if (!current) return;
     const position = { seconds: clock.sceneSeconds(), skippedSeconds: clock.skippedSeconds };
+    stale = true;
     stop();
     onInterrupted(position, message);
   }
@@ -258,9 +280,8 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
           silence ??= silentLoop();
           sessionReady = silence.play();
         }
-        // Recreate on explicit starts: Safari can report running while its output is silent after sleep.
-        context = new AudioContext({ sampleRate });
-        observeContext(context);
+        // Safari can report running while its output is silent after sleep or a change of output, so then a new one.
+        if (!context || stale || context.state === 'closed' || context.sampleRate !== sampleRate) replaceContext(sampleRate);
       }
       attempt.context = context;
       const resumed = context.resume();
@@ -268,7 +289,7 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     } catch (error) {
       attempt.ready = Promise.reject(error);
     }
-    attempt.ready.catch(() => {});
+    attempt.ready.catch(() => { stale = true; });
     onChange();
     return attempt;
   }
@@ -334,6 +355,14 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     busy: () => pending !== null,
     dispose() {
       stop();
+      clearInterval(sleepWatch);
+      sleepWatch = null;
+      navigator.mediaDevices?.removeEventListener?.('devicechange', markStale);
+      const retired = context;
+      detachContext?.();
+      detachContext = null;
+      context = null;
+      retired?.close().catch(() => {});
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('pageshow', wake);
       navigator.audioSession?.removeEventListener('statechange', sessionChanged);
