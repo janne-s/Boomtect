@@ -42,18 +42,22 @@ export function flightPath(flight, air) {
   return path;
 }
 
+/** Class C. The supersonic flight's straight approach before its start; a climbing one comes in level at its start height, never from under the ground. */
 export function withApproach(path, air) {
   const speed = path.speed[0];
   const mach = speed / soundSpeedAt(air, path.z[0]);
   if (!(mach > 1)) return path;
+  const level = Math.hypot(path.vx[0], path.vy[0]);
+  if (path.vz[0] > 0 && !(level > 0)) return path;
+  const [vx, vy, vz] = path.vz[0] > 0 ? [path.vx[0] * speed / level, path.vy[0] * speed / level, 0] : [path.vx[0], path.vy[0], path.vz[0]];
   const metres = TRAJECTORY.approachHeights * Math.max(0, path.z[0]) / Math.sqrt(mach * mach - 1) + TRAJECTORY.approachMetres;
   const steps = Math.min(TRAJECTORY.maximumSteps, Math.ceil(metres / speed / path.step));
   const approach = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step: path.step };
   for (let index = steps; index >= 1; index -= 1) {
     const t = index * path.step;
     approach.seconds.push(path.seconds[0] - t);
-    approach.x.push(path.x[0] - path.vx[0] * t); approach.y.push(path.y[0] - path.vy[0] * t); approach.z.push(path.z[0] - path.vz[0] * t);
-    approach.vx.push(path.vx[0]); approach.vy.push(path.vy[0]); approach.vz.push(path.vz[0]); approach.speed.push(speed);
+    approach.x.push(path.x[0] - vx * t); approach.y.push(path.y[0] - vy * t); approach.z.push(path.z[0] - vz * t);
+    approach.vx.push(vx); approach.vy.push(vy); approach.vz.push(vz); approach.speed.push(speed);
   }
   for (const key of ['seconds', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'speed']) approach[key].push(...path[key]);
   return approach;
