@@ -41,7 +41,7 @@ function flightHeightLabel(emitter, scene) {
 
 function emitterSummary(emitter, scene) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
-  if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}`;
+  if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}${emitter.follows ? `, at ${emitter.follows.app}'s ${emitter.follows.name}` : ''}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
@@ -166,7 +166,7 @@ function detailSections(emitter, { updateEmitter }) {
       numbers(['riseTimeSeconds'])(container);
     })
   );
-  if (emitter.follows) {
+  if (emitter.follows && emitter.kind !== 'volcano') {
     return [
       section('Placement', container => textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') })),
       bodySection()
@@ -197,6 +197,11 @@ function detailSections(emitter, { updateEmitter }) {
   if (emitter.kind === 'volcano') {
     return [
       section('Placement', container => {
+        if (emitter.follows) {
+          textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
+          seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
+          return;
+        }
         placement(container);
         pointFields(container, { label: 'Crater', point: emitter.positionMetres, onCommit: set('positionMetres') });
       }),

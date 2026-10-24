@@ -52,6 +52,10 @@ test('a volcano follows the linked Rumbletect volcano\'s crater and onset, its e
   assert.equal(KIND_PANELS.volcano.followAs(parseScene({ ...scene, emitters: [made] }).emitters[0]), null);
   assert.equal(follower(ghost, null, { ...context, scene: defaultScene('sonic') }), null);
   assert.equal(KIND_PANELS.volcano.followAs(made), null);
+  const labels = KIND_PANELS.volcano.macros(made, { onset: true }).map(macro => macro.label);
+  assert.ok(labels.includes('Size') && labels.includes('Eruption'));
+  assert.ok(!labels.includes('Crater height') && !labels.includes('Onset'));
+  assert.ok(!KIND_PANELS.volcano.details(made, { updateEmitter: () => {} }).some(section => section.title === 'Body'));
   const own = { ...defaultVolcano('volcano-2', 'Volcano 2', 1), equivalentChargeKilograms: 4000 };
   assert.deepEqual(KIND_PANELS.volcano.followAs(own), { role: 'volcano', crater: own.positionMetres, startSeconds: 0, eruption: 'vulcanian', paths: [] });
 });

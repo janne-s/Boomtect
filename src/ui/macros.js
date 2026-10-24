@@ -449,6 +449,7 @@ const volcanoThumps = {
 };
 
 export function macrosFor(emitter, { onset: withOnset = false } = {}) {
+  if (emitter.follows && emitter.kind === 'volcano') return [volcanoEruption, volcanoSize, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps];
   if (emitter.follows) return [];
   const timed = list => (withOnset ? [...list, onset] : list);
   if (emitter.kind === 'lightning') return timed([energy, height, branching, jaggedness, crack, strokes]);
