@@ -214,7 +214,7 @@ export function startFrame(tect) {
       onUnlinked: () => {
         Object.assign(linked, { emitters: [], mix: null, held: null, updating: false, muted: null });
         if (!linkedSession()) { setFreshLink(false); storeScene(); }
-        $('link-dialog')?.close();
+        $('link-menu')?.hidePopover();
         showResults();
         redrawViews();
         drawLink();
@@ -573,11 +573,12 @@ export function startFrame(tect) {
       if (partner === name) {
         item.prepend(element('span', linked.error ? 'link-dot error' : linked.updating ? 'link-dot updating' : 'link-dot'));
         item.title = linked.error ?? (linked.updating ? `${name} is updating its sound` : `Linked with ${name}`);
-        item.setAttribute('aria-haspopup', 'dialog');
+        item.setAttribute('aria-haspopup', 'menu');
+        item.popoverTargetElement = linkMenu();
       }
       item.disabled = waiting;
       item.addEventListener('click', () => {
-        if (partner === name) { openLinkDialog(); return; }
+        if (partner === name) return;
         try { link.open(name, sharedPart(state.scene), linkModes[name]?.[state.scene.mode] ?? null); } catch (error) { setStatus(error.message, true); }
       });
       return item;
@@ -593,24 +594,32 @@ export function startFrame(tect) {
     }
   }
 
-  function openLinkDialog() {
-    const partner = link.partner();
-    if (!partner) return;
-    const dialog = $('link-dialog') ?? document.body.appendChild(Object.assign(document.createElement('dialog'), { id: 'link-dialog', className: 'settings-dialog', tabIndex: -1 }));
-    const header = element('header', 'details-header');
-    header.append(element('h2', '', partner));
-    const footer = element('footer', 'export-actions');
-    footer.append(
-      button('Unlink', () => { dialog.close(); link.unlink(); }),
-      button('Sync again', () => { dialog.close(); syncAgain(); }, { title: `Send the scene and sound to ${partner} again and ask for its own` }),
-      button(`Show ${partner}`, () => link.open(partner)),
-      button('Done', () => dialog.close())
-    );
-    footer.lastChild.classList.add('primary');
-    dialog.replaceChildren(header, footer);
-    if (dialog.open) return;
-    dialog.showModal();
-    dialog.focus();
+  function linkMenu() {
+    const existing = $('link-menu');
+    if (existing) return existing;
+    const menu = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'link-menu', className: 'link-menu', popover: 'auto', tabIndex: -1 }));
+    menu.setAttribute('role', 'menu');
+    menu.addEventListener('beforetoggle', event => {
+      if (event.newState !== 'open') return;
+      const partner = link.partner();
+      if (!partner) { event.preventDefault(); return; }
+      const anchor = document.querySelector('.link-button.linked').getBoundingClientRect();
+      menu.style.top = `${anchor.bottom + 4}px`;
+      menu.style.right = `${document.documentElement.clientWidth - anchor.right}px`;
+      const item = (text, action, title) => {
+        const node = button(text, () => { menu.hidePopover(); action(); }, { title });
+        node.setAttribute('role', 'menuitem');
+        return node;
+      };
+      menu.replaceChildren(
+        item(`Show ${partner}`, () => link.open(partner)),
+        item('Sync again', syncAgain, `Send the scene and sound to ${partner} again and ask for its own`),
+        element('hr'),
+        item('Unlink', () => link.unlink())
+      );
+    });
+    menu.addEventListener('toggle', event => { if (event.newState === 'open') menu.focus(); });
+    return menu;
   }
 
   function invalidateResults() {

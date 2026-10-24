@@ -307,6 +307,36 @@ figcaption {
 @keyframes link-pulse {
   to { opacity: .3; }
 }
+.link-menu {
+  inset: auto;
+  position: fixed;
+  margin: 0;
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 4px;
+}
+.link-menu:focus {
+  outline: none;
+}
+.link-menu:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+.link-menu button {
+  background: none;
+  text-align: left;
+}
+.link-menu button:hover:not(:disabled) {
+  background: var(--raised);
+}
+.link-menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
 .github-link svg {
   width: 18px;
   height: 18px;
