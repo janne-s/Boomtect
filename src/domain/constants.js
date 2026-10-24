@@ -2,9 +2,9 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.77.0';
+export const APP_VERSION = '0.78.0';
 
-export const MODEL_VERSION = '34.0.0';
+export const MODEL_VERSION = '35.0.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 
@@ -145,6 +145,12 @@ export const FLIGHT = Object.freeze({
   }),
   /** Class C. */
   focusLimit: 5,
+  /** Class C: the arrival time's slope is taken over this, so that a followed path's rounding makes no stationary points. */
+  slopeSeconds: .25,
+  /** Class C: a fold's third derivative is taken where its slope has changed this much. */
+  foldSlopeChange: .01,
+  /** Class C: below the focused boom table's top the focused boom gives way to the two rays over this height. */
+  focusBlendHeight: .5,
   /** Class C, not fitted. */
   turbulentFront: Object.freeze({
     arrivals: 24,

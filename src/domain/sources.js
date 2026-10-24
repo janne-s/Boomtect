@@ -10,10 +10,10 @@ import { followedPath } from '../shared/domain/follower.js';
 
 const table = (emitter, scene, surface) => emitterSourceTable(emitter, scene.air, surface, scene.render.quality);
 
-function track(body, path, booms, { secondary = false, shape } = {}) {
+function track(body, path, booms, { secondary = false, shape, caustics = true } = {}) {
   return {
     shape,
-    arrivals: (receiver, profile, air) => [...booms(path, body, receiver, profile, air), ...(secondary ? secondaryBooms(path, body, receiver, air) : [])]
+    arrivals: (receiver, profile, air) => [...booms(path, body, receiver, profile, air, { caustics }), ...(secondary ? secondaryBooms(path, body, receiver, air) : [])]
   };
 }
 
@@ -42,7 +42,7 @@ export const SOURCE_KINDS = Object.freeze({
   formation: moving(flights),
   meteor: moving(meteors),
   shower: moving(meteors),
-  whip: moving((emitter, scene, surface) => ({ tracks: [track(whipBody(emitter), whipPath(emitter, scene.air, surface), flightBooms)] })),
+  whip: moving((emitter, scene, surface) => ({ tracks: [track(whipBody(emitter), whipPath(emitter, scene.air, surface), flightBooms, { caustics: false })] })),
   booster: moving((emitter, scene, surface) => ({
     tracks: [track(emitter, boosterPath(emitter, scene.air, surface), flightBooms, { secondary: true, shape: { pulse: 'triple', middleShare: BOOSTER.middleShare, middleRatio: BOOSTER.middleRatio } })]
   }))

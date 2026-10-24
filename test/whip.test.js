@@ -36,7 +36,7 @@ test('a whip’s crack is Carlson’s boom of its cracker where it leaves the pa
   const scene = whipScene();
   const whip = scene.emitters[0];
   const receiver = { x: -2.75, y: 0, z: 4.6 };
-  const booms = flightBooms(whipPath(whip, scene.air), whipBody(whip), receiver, soundSpeedProfile(scene.air), scene.air);
+  const booms = flightBooms(whipPath(whip, scene.air), whipBody(whip), receiver, soundSpeedProfile(scene.air), scene.air, { caustics: false });
   const boom = booms.reduce((best, item) => (item.mach > best.mach ? item : best));
   assert.ok(boom.mach > 2 && boom.mach < whip.mach * 1.001, `${booms.map(item => item.mach)}`);
   const pressure = scene.air.pressureKpa * 1000;

@@ -3,6 +3,7 @@ import { pressureAtHeightPa, temperatureAtHeightKelvin } from '../shared/domain/
 import { inShadow, pathProfile, rayBetween, shadowPath, travelSeconds } from '../shared/domain/refraction.js';
 import { onGround } from '../shared/domain/terrain.js';
 import { formationMembers, soundSpeedAt } from '../shared/domain/trajectory.js';
+import { foldScaling, FOCUS_RANGE } from '../shared/domain/focus.js';
 
 /** Booms where the arrival is stationary, class A; Carlson's simplified method (NASA TP-1122, 1978), class B with K_p = K_t = 1 class C; focusing class B, its limit class C. */
 
@@ -142,21 +143,154 @@ export function stationaryArrivals(path, receiver, profile) {
   return found;
 }
 
-export function flightBooms(path, flight, receiver, profile, air) {
+function arrivalTimes(path, receiver, profile) {
+  return Float64Array.from(path.seconds, (seconds, index) => {
+    const point = { x: path.x[index], y: path.y[index], z: path.z[index] };
+    return seconds + travelSeconds(pathProfile(profile, point, receiver), point, receiver);
+  });
+}
+
+function stationaryPoint(path, arrival, index, receiver, profile) {
+  const h = path.step;
+  const curvature = (arrival[index + 1] - 2 * arrival[index] + arrival[index - 1]) / (h * h);
+  const shift = curvature !== 0 ? Math.max(-.5, Math.min(.5, (arrival[index - 1] - arrival[index + 1]) / (2 * curvature * h * h))) : 0;
+  const blend = values => values[index] + (shift >= 0 ? (values[index + 1] - values[index]) * shift : (values[index] - values[index - 1]) * shift);
+  const point = { x: blend(path.x), y: blend(path.y), z: blend(path.z) };
+  const along = pathProfile(profile, point, receiver);
+  const shadow = along.gradient < 0 && inShadow(along, point, receiver);
+  return { point, emissionSeconds: blend(path.seconds), ray: shadow ? shadowPath(along, point, receiver) : rayBetween(along, point, receiver), along, curvature, blend, shadow };
+}
+
+/**
+ * The arrival time's stationary points, minima and maxima, and its folds: where its slope has an extremum, the two
+ * arrivals either side meet at a caustic. Class C.
+ */
+function arrivalStructure(path, receiver, profile) {
+  const count = path.seconds.length;
+  if (count < 3) return { stationary: [], folds: [] };
+  const h = path.step;
+  const arrival = arrivalTimes(path, receiver, profile);
+  const w = Math.max(1, Math.min(Math.round(FLIGHT.slopeSeconds / h), Math.floor(count / 100)));
+  const slope = Float64Array.from(arrival, (_, index) => {
+    const low = Math.max(0, index - w);
+    const high = Math.min(count - 1, index + w);
+    return (arrival[high] - arrival[low]) / ((high - low) * h);
+  });
+  const stationary = [];
+  for (let index = 0; index + 1 < count; index += 1) {
+    if (Math.sign(slope[index]) === Math.sign(slope[index + 1]) || slope[index + 1] === 0) continue;
+    const minimum = slope[index] < 0;
+    let best = -1;
+    for (let at = Math.max(1, index - w); at <= Math.min(count - 2, index + 1 + w); at += 1) {
+      if (best < 0 || (minimum ? arrival[at] < arrival[best] : arrival[at] > arrival[best])) best = at;
+    }
+    if (best < 0) continue;
+    const isExtreme = minimum ? arrival[best] < arrival[best - 1] && arrival[best] <= arrival[best + 1] : arrival[best] > arrival[best - 1] && arrival[best] >= arrival[best + 1];
+    if (isExtreme) stationary.push({ index: best, maximum: !minimum });
+  }
+  const folds = [];
+  for (let index = 1; index + 1 < count; index += 1) {
+    const isFold = (slope[index] < slope[index - 1] && slope[index] <= slope[index + 1]) || (slope[index] > slope[index - 1] && slope[index] >= slope[index + 1]);
+    if (!isFold) continue;
+    let reach = 2 * w;
+    let change = 0;
+    while (index - reach >= 0 && index + reach < count) {
+      change = (slope[index + reach] + slope[index - reach]) / 2 - slope[index];
+      if (Math.abs(change) >= FLIGHT.foldSlopeChange) break;
+      reach *= 2;
+    }
+    if (!(Math.abs(change) >= FLIGHT.foldSlopeChange)) continue;
+    folds.push({ index, slope: slope[index], third: 2 * change / (reach * h) ** 2 });
+    index += reach;
+  }
+  return { arrival, stationary, folds };
+}
+
+function boomAt(path, flight, receiver, air, { point, ray, along }, speed) {
+  const soundSpeed = soundSpeedAt(air, point.z);
+  const mach = speed / soundSpeed;
+  if (!(mach > 1)) return null;
+  const boom = carlsonBoom({
+    mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
+    vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
+  });
+  const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
+  const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
+  return { mach, soundSpeed, steady, ...boom };
+}
+
+/** A fold near the receiver as one focused boom from the nonlinear Tricomi table (tect-shared focus.js), class B; the matching to the rays class C. */
+function focusedBoom(path, flight, receiver, profile, air, arrival, fold) {
+  const { index } = fold;
+  const point = { x: path.x[index], y: path.y[index], z: path.z[index] };
+  const along = pathProfile(profile, point, receiver);
+  const shadow = along.gradient < 0 && inShadow(along, point, receiver);
+  const ray = shadow ? shadowPath(along, point, receiver) : rayBetween(along, point, receiver);
+  const speed = path.speed[index];
+  const boom = boomAt(path, flight, receiver, air, { point, ray, along }, speed);
+  if (!boom) return null;
+  const halfSeconds = boom.durationSeconds / 2;
+  const scaling = foldScaling({
+    slope: fold.slope, third: fold.third, halfSeconds, flatPa: boom.overpressurePa, steadyCurvature: boom.steady,
+    slopeGradient: Math.sqrt(Math.max(0, speed * speed - boom.soundSpeed ** 2)) / (boom.soundSpeed * ray.metres),
+    groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)), groundSoundSpeed: soundSpeedAt(air, Math.max(0, receiver.z))
+  });
+  if (!scaling) return null;
+  const cubic = Math.abs(fold.third) / 2;
+  const reachSeconds = Math.sqrt(Math.max(0, -fold.slope * Math.sign(fold.third)) / cubic);
+  const share = Math.max(0, Math.min(1, (FOCUS_RANGE.highest - scaling.height) / FLIGHT.focusBlendHeight));
+  return {
+    index, reachSeconds, share,
+    boom: scaling.height >= FOCUS_RANGE.lowest && share > 0 ? {
+      point, emissionSeconds: arrival[index] - ray.seconds + FOCUS_RANGE.startTau * halfSeconds, ray, along, mach: boom.mach, focus: share, shadow,
+      overpressurePa: scaling.referencePa, durationSeconds: boom.durationSeconds, focusMu: scaling.mu, focusHeight: scaling.height
+    } : null
+  };
+}
+
+/**
+ * Booms where the arrival is stationary: the earlier, a minimum, as an N-wave, the later, a maximum that has touched
+ * its caustic, turned by a quarter period into a U-wave; near a fold both come from the focused boom instead. Without
+ * `caustics` only the minima boom, as a whip's crack, whose weak-shock caustic would be centimetres from its tip.
+ */
+export function flightBooms(path, flight, receiver, profile, air, { caustics = true } = {}) {
+  const structure = arrivalStructure(path, receiver, profile);
+  const { arrival } = structure;
+  const stationary = caustics ? structure.stationary : structure.stationary.filter(point => !point.maximum);
+  const folds = caustics ? structure.folds : [];
   const booms = [];
-  for (const { point, emissionSeconds, ray, along, curvature, blend, shadow } of stationaryArrivals(path, receiver, profile)) {
-    const speed = blend(path.speed);
-    const soundSpeed = soundSpeedAt(air, point.z);
-    const mach = speed / soundSpeed;
-    if (!(mach > 1)) continue;
-    const boom = carlsonBoom({
-      mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
-      vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
-    });
-    const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
-    const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
-    const focus = Math.min(FLIGHT.focusLimit, Math.sqrt(steady / Math.max(curvature, steady / FLIGHT.focusLimit ** 2)));
-    booms.push({ point, emissionSeconds, ray, along, mach, focus, shadow, ...boom });
+  const rayShares = new Map();
+  const ordered = [...stationary].sort((first, second) => first.index - second.index);
+  const pairs = [];
+  ordered.forEach((point, position) => {
+    const next = ordered[position + 1];
+    if (next && point.maximum !== next.maximum) pairs.push([point, next]);
+  });
+  // A pair either side of a fold gives it from its own timing: s₀ half their spacing, |a| = Δt / 4s₀³, b = 3|a|s₀².
+  const fromPairs = pairs.map(([first, second]) => {
+    const spread = (second.index - first.index) * path.step / 2;
+    const cubic = Math.abs(arrival[second.index] - arrival[first.index]) / (4 * spread ** 3);
+    const sign = first.maximum ? 1 : -1;
+    return { index: Math.round((first.index + second.index) / 2), slope: -3 * cubic * spread ** 2 * sign, third: 6 * cubic * sign, pair: [first, second] };
+  });
+  const lone = folds.filter(fold => !fromPairs.some(({ pair: [first, second] }) => fold.index >= first.index && fold.index <= second.index));
+  for (const fold of [...fromPairs, ...lone]) {
+    const focused = focusedBoom(path, flight, receiver, profile, air, arrival, fold);
+    if (!focused?.boom) continue;
+    booms.push(focused.boom);
+    const reach = 1.5 * focused.reachSeconds + 2 * Math.min(FLIGHT.slopeSeconds, path.seconds.length * path.step / 100);
+    for (const point of fold.pair ?? stationary.filter(item => Math.abs(item.index - fold.index) * path.step <= reach)) rayShares.set(point, 1 - focused.share);
+  }
+  for (const stationaryIndex of stationary) {
+    const rayShare = rayShares.get(stationaryIndex) ?? 1;
+    if (!(rayShare > 0)) continue;
+    const found = stationaryPoint(path, arrival, stationaryIndex.index, receiver, profile);
+    const speed = found.blend(path.speed);
+    const boom = boomAt(path, flight, receiver, air, found, speed);
+    if (!boom) continue;
+    const focus = rayShare * Math.min(FLIGHT.focusLimit, Math.sqrt(boom.steady / Math.max(Math.abs(found.curvature), boom.steady / FLIGHT.focusLimit ** 2)));
+    const { mach, overpressurePa, durationSeconds } = boom;
+    booms.push({ point: found.point, emissionSeconds: found.emissionSeconds, ray: found.ray, along: found.along, mach, focus, shadow: found.shadow, overpressurePa, durationSeconds, ...(stationaryIndex.maximum ? { hilbert: true } : {}) });
   }
   return booms;
 }

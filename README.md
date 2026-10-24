@@ -398,14 +398,14 @@ B/C marks a part that combines the two.
 | Secondary shock | delay by the explosive's detonation velocity and density (Rigby & Gitterman); a 4 % charge's shock | B |
 | Fireball roar | seeded noise burst fitted to recordings of improvised charges on open grass; its ground reflection uncorrelated | C |
 | Barrage | rounds seeded over a disc, salvos spread over the duration, charges lognormal about the mean | C |
-| Sonic boom | leaves where a microphone's arrival time along the flight path is stationary (Mach cone); none when subsonic or cut off by the air | A |
+| Sonic boom | leaves where a microphone's arrival time along the flight path is stationary, at its minima and maxima (Mach cone); none when subsonic or cut off by the air | A |
 | Approach | a body supersonic at its start flew straight before it, at the start's speed | C |
 | Boom pressure and duration | Carlson's simplified method (NASA TP-1122) along the ray, without his atmospheric chart factors | B/C |
 | Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Boom beyond its carpet | where the air turns the rays away before the ground, the boom creeps along the ground into the refraction shadow, as other sources' sound does, losing high frequencies first, down to the shadow floor | B/C |
 | Secondary boom | rays that turn back above the tropopause: standard-atmosphere warming above 20 km, the upper wind as a jet at 50 km, rays in the stratified effective sound speed, stationary in emission time; Carlson's boom over the ray's length with its ray-tube spreading and focusing, absorption along the ray, no shock left; no thermospheric returns | B/C |
-| Focused boom | √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
+| Focused boom | near a fold caustic, where an accelerating or turning flight's two arrivals meet, the nonlinear Tricomi equation solved for an N-wave (Auger & Coulouvrat 2002; Wyle WR 12-21) and tabulated over its nonlinearity μ and the height above the caustic, scaled from the arrival times' third derivative and Carlson's boom; past it, the later arrival turned by a quarter period into a U-wave; elsewhere √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
 | Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
 | Fireworks burst | TNT blast of 15 % of the shell's mass, fitted to 718 Pa below 4–6 inch shells bursting at 91 m (Maglieri & Henderson 1973); TNT's pulse, longer than their 12 ms signature | C |
