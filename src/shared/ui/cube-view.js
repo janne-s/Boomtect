@@ -945,7 +945,12 @@ export function createCubeView(canvas, options) {
         }
       }
     };
-    for (const { apex, rings, strengths, occluders: spheres = [], lineEvery = VIEW.cone.lineEvery } of cones) {
+    // The floor does not end a cone: where it meets the ground is drawn as before.
+    const inBox = point => point.x >= low.x && point.x <= high.x && point.y >= low.y && point.y <= high.y && point.z <= high.z;
+    for (const { apex, rings: all, strengths, occluders: spheres = [], lineEvery = VIEW.cone.lineEvery } of cones) {
+      const outside = all.findIndex(ring => !ring.every(inBox));
+      const rings = outside === -1 ? all : all.slice(0, outside);
+      if (!rings.length) continue;
       occluders = spheres;
       const screen = rings.map(ring => ring.map(frame.project));
       const apexScreen = apex && frame.project(apex);
@@ -956,7 +961,7 @@ export function createCubeView(canvas, options) {
         path = level(strength);
         const points = screen[index];
         // The cone is open: no ring closes it where its oldest or, once the body has gone, its newest sound lies.
-        const open = index === rings.length - 1 || (index === 0 && !apex);
+        const open = index === all.length - 1 || (index === 0 && !apex);
         ring.forEach((point, step) => {
           const next = (step + 1) % ring.length;
           if (!open) line(point, ring[next], points[step], points[next]);

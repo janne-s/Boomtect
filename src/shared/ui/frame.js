@@ -1116,10 +1116,10 @@ export function startFrame(tect) {
     const label = element('label', '', macro.label);
     label.htmlFor = id;
     const steps = macro.steps ?? VIEW.panels.macroSteps;
-    const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter));
+    const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter, state.scene));
     if (macro.entry) {
       value.type = 'button';
-      value.setAttribute('aria-label', `${macro.label} ${macro.show(emitter)}`);
+      value.setAttribute('aria-label', `${macro.label} ${macro.show(emitter, state.scene)}`);
       value.addEventListener('click', () => typeEntry(value, emitter, macro));
     }
     const slider = position => {
@@ -1132,7 +1132,7 @@ export function startFrame(tect) {
       return input;
     };
     const showValue = item => {
-      value.textContent = macro.show(item);
+      value.textContent = macro.show(item, state.scene);
       if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
     };
     const siblings = macroRows.get(container) ?? [];
