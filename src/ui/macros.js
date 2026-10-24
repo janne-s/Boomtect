@@ -3,6 +3,7 @@ import { applyEruption, ERUPTION_TYPES, eruptionOf } from '../domain/volcano.js'
 import { formatCharge } from '../shared/ui/levels.js';
 import { PARAMETERS } from '../domain/scene.js';
 import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
+import { cachedTracks } from './geometry-cache.js';
 
 export { entryText, parseEntry } from '../shared/ui/macros.js';
 
@@ -202,7 +203,10 @@ const flightClimb = {
   label: 'Climb',
   read: item => (item.climbDegrees + 90) / 180,
   write: (item, t) => { item.climbDegrees = Math.round(t * 180 - 90); },
-  show: item => `${item.climbDegrees}°`,
+  show: (item, scene) => {
+    const endMetres = item.climbDegrees && scene && item.kind !== 'whip' ? cachedTracks(item, scene.air)[0]?.z.at(-1) : undefined;
+    return endMetres === undefined ? `${item.climbDegrees}°` : `${item.climbDegrees}° · ${metres(endMetres)}`;
+  },
   entry: { unit: '°', get: item => item.climbDegrees, set: (item, value) => { item.climbDegrees = value; } }
 };
 
