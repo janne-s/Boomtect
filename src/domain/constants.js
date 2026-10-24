@@ -145,6 +145,11 @@ export const FLIGHT = Object.freeze({
   }),
   /** Class C. */
   focusLimit: 5,
+  /**
+   * A followed rocket after burnout: Carlson's K_S = P √A_e,max / l^¾ l_e^¼ (TP-1122, B) for a body of revolution
+   * without lift, fineness 20 and a nose three diameters long, P 0.685 as his example's A_e,1/A_e,max of 0.29 (C).
+   */
+  coastShapeFactor: .049,
   /** Class C: the arrival time's slope is taken over this, so that a followed path's rounding makes no stationary points. */
   slopeSeconds: .25,
   /** Class C: a fold's third derivative is taken where its slope has changed this much. */

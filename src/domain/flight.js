@@ -206,13 +206,17 @@ function arrivalStructure(path, receiver, profile) {
   return { arrival, stationary, folds };
 }
 
-function boomAt(path, flight, receiver, air, { point, ray, along }, speed) {
+/** A followed rocket's shape factor is its plume's while it burns, its body's after. */
+const shapeFactorAt = (path, flight, emissionSeconds) => (Number.isFinite(flight.follows?.burnSeconds) && emissionSeconds - path.seconds[0] > flight.follows.burnSeconds
+  ? FLIGHT.coastShapeFactor : flight.shapeFactor);
+
+function boomAt(path, flight, receiver, air, { point, ray, along }, speed, emissionSeconds) {
   const soundSpeed = soundSpeedAt(air, point.z);
   const mach = speed / soundSpeed;
   if (!(mach > 1)) return null;
   const boom = carlsonBoom({
     mach, vehiclePressurePa: pressureAtHeightPa(air, point.z), groundPressurePa: pressureAtHeightPa(air, Math.max(0, receiver.z)),
-    vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: flight.shapeFactor, distanceMetres: ray.metres
+    vehicleSoundSpeed: soundSpeed, lengthMetres: flight.lengthMetres, shapeFactor: shapeFactorAt(path, flight, emissionSeconds), distanceMetres: ray.metres
   });
   const meanSpeed = ray.metres / Math.max(ray.seconds, 1e-9);
   const steady = speed * speed * (1 - 1 / (mach * mach)) / (meanSpeed * ray.metres);
@@ -227,7 +231,7 @@ function focusedBoom(path, flight, receiver, profile, air, arrival, fold) {
   const shadow = along.gradient < 0 && inShadow(along, point, receiver);
   const ray = shadow ? shadowPath(along, point, receiver) : rayBetween(along, point, receiver);
   const speed = path.speed[index];
-  const boom = boomAt(path, flight, receiver, air, { point, ray, along }, speed);
+  const boom = boomAt(path, flight, receiver, air, { point, ray, along }, speed, path.seconds[index]);
   if (!boom) return null;
   const halfSeconds = boom.durationSeconds / 2;
   const scaling = foldScaling({
@@ -288,7 +292,7 @@ export function flightBooms(path, flight, receiver, profile, air, { caustics = t
     if (!(rayShare > 0)) continue;
     const found = stationaryPoint(path, arrival, stationaryIndex.index, receiver, profile);
     const speed = found.blend(path.speed);
-    const boom = boomAt(path, flight, receiver, air, found, speed);
+    const boom = boomAt(path, flight, receiver, air, found, speed, found.emissionSeconds);
     if (!boom) continue;
     const focus = rayShare * Math.min(FLIGHT.focusLimit, Math.sqrt(boom.steady / Math.max(Math.abs(found.curvature), boom.steady / FLIGHT.focusLimit ** 2)));
     const { mach, overpressurePa, durationSeconds } = boom;

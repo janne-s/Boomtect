@@ -423,7 +423,7 @@ export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
   return {
     ...base,
     ...length,
-    follows: { app: partner, id: ghost.id, name: ghost.name },
+    follows: { app: partner, id: ghost.id, name: ghost.name, ...(Number.isFinite(ghost.follow.burnSeconds) ? { burnSeconds: ghost.follow.burnSeconds } : {}) },
     paths: ghost.follow.paths,
     startMetres: placement.startMetres,
     startSeconds: within('startSeconds', placement.startSeconds),
