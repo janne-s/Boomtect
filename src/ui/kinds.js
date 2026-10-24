@@ -12,7 +12,7 @@ import {
   defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
 import { newSeed } from '../shared/domain/random.js';
-import { formatMetres } from '../shared/ui/canvas.js';
+import { formatMetres, formatMetresSpan } from '../shared/ui/canvas.js';
 import { checkboxField, numberField, pointFields, seedField, selectField, textField } from './fields.js';
 import { cachedBursts, cachedFlashes, cachedRounds, cachedTracks, isFieldKind, isFlightKind, isTrackKind } from './geometry-cache.js';
 import { macrosFor } from './macros.js';
@@ -33,7 +33,13 @@ function emitterKindLabel(emitter) {
   return emitter.kind === 'lightning' ? FLASH_TYPE_LABELS[emitter.flashType] : KIND_LABELS[emitter.kind];
 }
 
-function emitterSummary(emitter) {
+function flightHeightLabel(emitter, scene) {
+  const [path] = cachedTracks(emitter, scene.air);
+  const [from, to] = [path.z[0], path.z.at(-1)];
+  return Math.abs(to - from) >= 10 ? formatMetresSpan(from, to) : formatMetres(emitter.startMetres.z);
+}
+
+function emitterSummary(emitter, scene) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
@@ -41,7 +47,7 @@ function emitterSummary(emitter) {
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
   if (emitter.kind === 'whip') return `Tip at Mach ${emitter.mach.toFixed(2)}, ${formatMetres(emitter.startMetres.z)} above the ground`;
   if (emitter.follows) return `${FLIGHT.bodies[emitter.body].label} on ${emitter.follows.app}'s ${emitter.follows.name}${emitter.paths.length > 1 ? `, ${emitter.paths.length} paths` : ''}`;
-  if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${formatMetres(emitter.startMetres.z)} for ${emitter.durationSeconds} s`;
+  if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${flightHeightLabel(emitter, scene)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'fireworks') return `${emitter.shellCount} shells of about ${Math.round(emitter.shellDiameterMillimetres)} mm over ${emitter.durationSeconds} s, ${Math.round(emitter.crackleShare * 100)} % crackling`;
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
