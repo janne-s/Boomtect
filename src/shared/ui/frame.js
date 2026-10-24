@@ -405,18 +405,20 @@ export function startFrame(tect) {
     link.send('scene', { shared: sharedPart(state.scene) });
   }
 
-  /** Everything this tect gives the linked one, sent again: the leading window's scene, the emitters, and the sound. */
+  /** The emitters and the sound sent again, the sound rendered first when it is not this scene's. */
   function sendEverything() {
     if (!link.partner()) return;
-    if (link.leads()) {
-      linked.sentKey = sceneKey(state.scene);
-      link.send('scene', { shared: sharedPart(state.scene) });
-    }
     sendEmitters();
-    sendMix();
+    if (state.ownKey === sceneKey(state.scene) && (state.ownResults || ownSilent())) sendMix();
+    else startRender();
   }
 
+  /** Sync again: this window's scene, as an edit would send it, then everything both ways; a held sound is taken. */
   function syncAgain() {
+    if (!link.partner()) return;
+    adoptHeld();
+    linked.sentKey = sceneKey(state.scene);
+    link.send('scene', { shared: sharedPart(state.scene) });
     sendEverything();
     link.send('again', {});
   }
@@ -479,11 +481,13 @@ export function startFrame(tect) {
     });
   }
 
-  /** Keeps one follower here for every emitter of the linked tect this tect can give a sound to; one removed here stays removed. */
+  /** Keeps one follower here for every emitter of the linked tect this tect can give a sound to; one removed here stays removed while its source is there. */
   function syncFollowers() {
     const partner = link.partner();
     if (!partner || !follower) return;
     const followed = new Map(linked.emitters.filter(ghost => ghost.follow).map(ghost => [ghost.id, ghost]));
+    // A source the linked tect has removed is forgotten, so that a new one under its id is followed again.
+    for (const key of linked.created) if (key.startsWith(`${partner}:`) && !followed.has(key.slice(partner.length + 1))) linked.created.delete(key);
     const emitters = state.scene.emitters.filter(emitter => !(emitter.follows?.app === partner && !followed.has(emitter.follows.id)));
     let changed = emitters.length !== state.scene.emitters.length;
     for (const ghost of followed.values()) {
