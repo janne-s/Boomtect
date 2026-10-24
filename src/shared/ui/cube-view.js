@@ -940,7 +940,8 @@ export function createCubeView(canvas, options) {
         draw(p, q, start, end);
       }
     };
-    for (const { apex, rings, strengths, lineEvery = VIEW.cone.lineEvery } of cones) {
+    for (const { apex, rings, strengths, outer, lineEvery = VIEW.cone.lineEvery } of cones) {
+      const shown = (index, step) => outer?.[index]?.[step] ?? true;
       const screen = rings.map(ring => ring.map(frame.project));
       const apexScreen = apex && frame.project(apex);
       const level = strength => levels[Math.min(VIEW.cone.levels, Math.ceil(strength * VIEW.cone.levels)) - 1];
@@ -953,9 +954,10 @@ export function createCubeView(canvas, options) {
         const open = index === rings.length - 1 || (index === 0 && !apex);
         ring.forEach((point, step) => {
           const next = (step + 1) % ring.length;
-          if (!open) line(point, ring[next], points[step], points[next]);
+          if (!shown(index, step)) return;
+          if (!open && shown(index, next)) line(point, ring[next], points[step], points[next]);
           if (step % lineEvery) return;
-          if (index) line(rings[index - 1][step], point, screen[index - 1][step], points[step]);
+          if (index) { if (shown(index - 1, step)) line(rings[index - 1][step], point, screen[index - 1][step], points[step]); }
           else if (apex) line(apex, point, apexScreen, points[step]);
         });
       });

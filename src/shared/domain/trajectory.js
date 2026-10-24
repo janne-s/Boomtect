@@ -122,7 +122,17 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
   const apex = flying && end === last;
   const rings = [];
   const radii = [];
+  const outer = [];
   const stride = coneStride(path, end);
+  const reach = Math.max(1, Math.round(stride / 2));
+  // A ring point is on the cone's outer sheet when the neighbouring fronts pass outside it; inside them it is on the
+  // fold's other sheet, the caustic-touched one an accelerating or turning flight adds, which is not drawn.
+  const onOuterSheet = (point, index) => {
+    const step = Math.min(reach, index, last - index);
+    if (step < 1) return true;
+    const gap = front => Math.hypot(point.x - front.centre.x, point.y - front.centre.y, point.z - front.centre.z) - front.radiusMetres;
+    return gap(frontAt(index - step)) + gap(frontAt(index + step)) - 2 * gap(frontAt(index)) >= 0;
+  };
   const indices = [];
   if (!apex) indices.push(end);
   for (let index = Math.floor(end / stride) * stride; index >= 0; index -= stride) if (index !== end) indices.push(index);
@@ -153,14 +163,16 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
     const radius = radiusMetres * Math.sqrt(1 - cosine * cosine);
     radii.push(radiusMetres);
-    rings.push((envelope ? ENVELOPE_RING : CONE_RING).map(({ cos, sin }) => {
+    const ring = (envelope ? ENVELOPE_RING : CONE_RING).map(({ cos, sin }) => {
       const a = radius * cos;
       const b = radius * sin;
       return { x: middle.x + a * first.x + b * second.x, y: middle.y + a * first.y + b * second.y, z: middle.z + a * first.z + b * second.z };
-    }));
+    });
+    rings.push(ring);
+    outer.push(ring.map(point => !envelope || onOuterSheet(point, index)));
   }
   if (!rings.length) return null;
-  return { apex: apex ? at(last) : null, rings, radii, ...(envelope ? { lineEvery: VIEW.cone.lineEvery } : {}) };
+  return { apex: apex ? at(last) : null, rings, radii, outer, ...(envelope ? { lineEvery: VIEW.cone.lineEvery } : {}) };
 }
 
 /**
