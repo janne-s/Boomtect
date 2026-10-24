@@ -369,8 +369,11 @@ export function startFrame(tect) {
   const partnerResults = () => (linked.mix && linked.mix.key === sceneKey(state.scene) ? linked.mix.results : null);
   const ownSilent = () => !state.scene.emitters.some(emitter => emitter.enabled);
 
+  let resultsStamp = 0;
+
   /** The own render and the linked tect's at the same microphones, summed; everything heard, plotted, and exported comes from this. */
   function showResults() {
+    resultsStamp += 1;
     const partner = link.partner() ? partnerResults() : null;
     const ownReady = state.ownResults || (ownSilent() && state.ownKey === sceneKey(state.scene));
     const gains = linkGains(partner);
@@ -1861,7 +1864,7 @@ export function startFrame(tect) {
     const { receivers } = state.scene;
     const soloId = receivers.length > 1 && state.soloId && findItem('receiver', state.soloId) ? state.soloId : null;
     const traces = receivers.map((receiver, index) => ({ id: receiver.id, index, listening: receiver.listen, result: state.results?.get(receiver.id) ?? null }));
-    const key = `${state.results ? state.revision : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
+    const key = `${state.results ? `${state.revision}.${resultsStamp}` : 'none'}|${soloId}|${traces.map(trace => `${trace.id}:${trace.listening}`).join(',')}`;
     const partner = link.partner() && state.results ? partnerResults() : null;
     const gains = partner ? linkGains(partner) : { own: 1, partner: 1 };
     const laneLabel = (name, gain) => (gain === 1 ? name : `${name} · ${gainText(gain)}`);
