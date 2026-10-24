@@ -50,7 +50,7 @@ function readPath(value) {
   return path;
 }
 
-/** Class C. A follower's link to the emitter it follows and that emitter's paths; none when either is missing or broken. */
+/** Class C. A follower's link to the emitter it follows, a rocket's burn time after each path's start, and the paths; none when the link or the paths are missing or broken. */
 export function followerFields(value) {
   const follows = value.follows;
   if (!follows || typeof follows !== 'object') return {};
@@ -58,7 +58,8 @@ export function followerFields(value) {
   const id = text(follows.id);
   const paths = (Array.isArray(value.paths) ? value.paths.slice(0, MOST_PATHS) : []).map(readPath).filter(Boolean);
   if (!app || !id || !paths.length) return {};
-  return { follows: { app, id, name: text(follows.name) ?? id }, paths };
+  const burn = Number.isFinite(follows.burnSeconds) && follows.burnSeconds >= 0 ? { burnSeconds: follows.burnSeconds } : {};
+  return { follows: { app, id, name: text(follows.name) ?? id, ...burn }, paths };
 }
 
 /** Where and when a follower's first path starts, its heading and climb there, how long it lasts, and its top speed. */

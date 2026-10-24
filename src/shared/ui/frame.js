@@ -479,7 +479,7 @@ export function startFrame(tect) {
       const anchor = emitterAnchor(emitter);
       return {
         id: emitter.id, name: emitter.name, label: kind.label(emitter), tracks, dots, anchor: { x: anchor.x, y: anchor.y, z: anchor.z ?? 0 },
-        follow: follow ? { ...follow, paths: paths.map(savedPath) } : null
+        follow: follow ? { ...follow, paths: (follow.paths ?? paths).map(savedPath) } : null
       };
     });
   }
