@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { flightBooms } from '../src/domain/flight.js';
 import { defaultFlight, defaultScene, parseScene } from '../src/domain/scene.js';
 import { soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { flightPath, withApproach } from '../src/shared/domain/trajectory.js';
+import { followedPath } from '../src/shared/domain/follower.js';
 
 const scene = parseScene(defaultScene('sonic'));
 const profile = soundSpeedProfile(scene.air);
@@ -32,4 +34,10 @@ test('nearer the fold the two become one focused boom, and a level steady flight
   const plain = flightBooms(withApproach(flightPath(steady, scene.air), scene.air), steady, { x: 9000, y: -3100, z: 1.7 }, profile, scene.air);
   assert.equal(plain.length, 1);
   assert.ok(!plain[0].hilbert && !plain[0].focusMu);
+});
+
+test('a salvo round climbing away, whose cone never reaches the microphone, gives no boom though its slope has a minimum', () => {
+  const saved = JSON.parse(readFileSync(new URL('./fixtures/salvo-round-path.json', import.meta.url), 'utf8'));
+  const body = { lengthMetres: 104.5, shapeFactor: .68 };
+  assert.deepEqual(flightBooms(followedPath(saved), body, { x: saved.x[0] + 1400, y: saved.y[0], z: 1.7 }, profile, scene.air), []);
 });

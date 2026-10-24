@@ -273,7 +273,9 @@ export function flightBooms(path, flight, receiver, profile, air, { caustics = t
     const sign = first.maximum ? 1 : -1;
     return { index: Math.round((first.index + second.index) / 2), slope: -3 * cubic * spread ** 2 * sign, third: 6 * cubic * sign, pair: [first, second] };
   });
-  const lone = folds.filter(fold => !fromPairs.some(({ pair: [first, second] }) => fold.index >= first.index && fold.index <= second.index));
+  // Without a pair a fold can only be the shadow side's, where the arrival comes near stationary without reaching it.
+  const lone = folds.filter(fold => !fromPairs.some(({ pair: [first, second] }) => fold.index >= first.index && fold.index <= second.index)
+    && fold.slope * Math.sign(fold.third) > 0 && Math.abs(fold.slope) <= FLIGHT.shadowFoldSlope);
   for (const fold of [...fromPairs, ...lone]) {
     const focused = focusedBoom(path, flight, receiver, profile, air, arrival, fold);
     if (!focused?.boom) continue;

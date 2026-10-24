@@ -149,6 +149,8 @@ export const FLIGHT = Object.freeze({
   slopeSeconds: .25,
   /** Class C: a fold's third derivative is taken where its slope has changed this much. */
   foldSlopeChange: .01,
+  /** Class C: a fold without its two arrivals, on the caustic's shadow side, counts only where the slope comes this near zero. */
+  shadowFoldSlope: .05,
   /** Class C: below the focused boom table's top the focused boom gives way to the two rays over this height. */
   focusBlendHeight: .5,
   /** Class C, not fitted. */
