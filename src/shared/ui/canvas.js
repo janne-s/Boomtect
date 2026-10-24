@@ -37,6 +37,11 @@ export function formatMetres(value) {
   return Math.abs(value) >= 1000 ? `${+(value / 1000).toFixed(2)} km` : `${+value.toFixed(1)} m`;
 }
 
+export function formatMetresSpan(from, to) {
+  if (Math.max(Math.abs(from), Math.abs(to)) < 1000) return `${Math.round(from)}–${Math.round(to)} m`;
+  return `${+(from / 1000).toFixed(2)}–${+(to / 1000).toFixed(2)} km`;
+}
+
 export function formatSeconds(value) {
   return Math.abs(value) >= 1 ? `${+value.toFixed(2)} s` : `${+(value * 1000).toFixed(1)} ms`;
 }

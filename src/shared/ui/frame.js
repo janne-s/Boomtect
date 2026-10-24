@@ -1116,10 +1116,10 @@ export function startFrame(tect) {
     const label = element('label', '', macro.label);
     label.htmlFor = id;
     const steps = macro.steps ?? VIEW.panels.macroSteps;
-    const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter, state.scene));
+    const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter));
     if (macro.entry) {
       value.type = 'button';
-      value.setAttribute('aria-label', `${macro.label} ${macro.show(emitter, state.scene)}`);
+      value.setAttribute('aria-label', `${macro.label} ${macro.show(emitter)}`);
       value.addEventListener('click', () => typeEntry(value, emitter, macro));
     }
     const slider = position => {
@@ -1132,7 +1132,7 @@ export function startFrame(tect) {
       return input;
     };
     const showValue = item => {
-      value.textContent = macro.show(item, state.scene);
+      value.textContent = macro.show(item);
       if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
     };
     const siblings = macroRows.get(container) ?? [];
@@ -1977,9 +1977,8 @@ export function startFrame(tect) {
     for (const [id, envelopeData] of state.envelopes) {
       receivers.set(id, envelopeData.values[Math.floor((now - envelopeData.startSeconds) / envelopeData.window)] ?? 0);
     }
-    const spheres = wavefrontsShown() || (!frontStyle.levelDependent && state.preferences.cone) ? wavefrontSpheres(now, profile) : [];
+    const spheres = wavefrontsShown() ? wavefrontSpheres(now, profile) : [];
     const wavefronts = wavefrontsShown() ? { profile, spheres, total: frontStyle.levelDependent ? wavefrontCandidates(state.scene).length : spheres.length, shadowShare: frontStyle.shadowShare } : null;
-    const envelopes = state.preferences.cone ? coneOccluders(now, profile, spheres) : new Map();
     const flights = new Map();
     let cones = [];
     for (const emitter of state.scene.emitters) {
@@ -2002,7 +2001,7 @@ export function startFrame(tect) {
         const { amplitude, frequencyHz } = amplitudes.get(`${emitter.id}:${member}`) ?? { amplitude: 0, frequencyHz: 1000 };
         const strengths = cone.radii.map(radius => frontStyle.strength(amplitude, radius, frequencyHz, state.scene.air));
         const strength = Math.max(...strengths);
-        if (strength > 0) cones.push({ ...cone, strengths, strength, occluders: envelopes.get(`${emitter.id}:${member}`) });
+        if (strength > 0) cones.push({ ...cone, strengths, strength });
       });
     }
     cones = cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies);
@@ -2034,14 +2033,10 @@ export function startFrame(tect) {
     for (const emitter of scene.emitters) {
       if (!emitter.enabled) continue;
       if (frontStyle.levelDependent) for (const [group, amplitude] of kinds[emitter.kind].amplitudes(emitter, scene, currentSurface())) amplitudes.set(group, amplitude);
-      const first = candidates.length;
       kinds[emitter.kind].wavefrontSources(emitter, scene, placedPoint, candidates);
-      if (kinds[emitter.kind].tracks?.(emitter, scene)) for (let index = first; index < candidates.length; index += 1) candidates[index].moving = true;
     }
     const stride = frontStyle.levelDependent ? Math.max(1, Math.ceil(candidates.length / VIEW.wavefront.spheres)) : 1;
     const sampled = candidates.filter((_, index) => index % stride === 0).map((candidate, order) => ({ ...candidate, order, ...(amplitudes.get(candidate.group) ?? { amplitude: 0, frequencyHz: 1000 }) }));
-    sampled.moving = sampled.filter(candidate => candidate.moving);
-    sampled.still = sampled.filter(candidate => !candidate.moving);
     wavefrontSources.set(scene, sampled);
     return sampled;
   }
@@ -2051,8 +2046,8 @@ export function startFrame(tect) {
   function spheresOf(sources, now, profile) {
     return sources
       .filter(candidate => now > candidate.emitted)
-      .map(({ point, emitted, group, order, amplitude, frequencyHz, spacingSeconds = 0, moving = false }) => {
-        const front = { moving, ...wavefront(frontProfile(profile, point.z), point, now - emitted) };
+      .map(({ point, emitted, group, order, amplitude, frequencyHz, spacingSeconds = 0 }) => {
+        const front = { ...wavefront(frontProfile(profile, point.z), point, now - emitted) };
         const reach = front.radiusMetres * Math.max(1, spacingSeconds / (now - emitted));
         front.strength = frontStyle.strength(amplitude, reach, frequencyHz, state.scene.air);
         if (!profile.wind) return { source: point, group, order, spacingSeconds, ...front };
@@ -2067,17 +2062,6 @@ export function startFrame(tect) {
     const candidates = wavefrontCandidates(state.scene);
     if (frontStyle.levelDependent) return spheresOf(candidates, now, profile);
     return outerSpheres(spheresOf(sampleEnvelopeSources(candidates, now), now, profile)).map((sphere, order) => ({ ...sphere, order }));
-  }
-
-  /** The outer fronts of every moving source, sampled the same way in every tect: they bound its Mach cone and hide the cone inside them. */
-  function coneOccluders(now, profile, drawn) {
-    const spheres = frontStyle.levelDependent ? outerSpheres(spheresOf(sampleEnvelopeSources(wavefrontCandidates(state.scene).moving, now), now, profile)) : drawn;
-    const groups = new Map();
-    for (const sphere of spheres) {
-      if (!groups.has(sphere.group)) groups.set(sphere.group, []);
-      groups.get(sphere.group).push(sphere);
-    }
-    return groups;
   }
 
   views.forEach(view => view.setAnimation(animationState));

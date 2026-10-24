@@ -53,25 +53,3 @@ export function outerSpheres(spheres) {
   }
   return kept;
 }
-
-export function outsideSphereIntervals(a, b, spheres, from = 0, to = 1, radiusShare = 1) {
-  let intervals = [[from, to]];
-  const dx = b.x - a.x; const dy = b.y - a.y; const dz = b.z - a.z;
-  const lengthSquared = dx * dx + dy * dy + dz * dz;
-  if (!(lengthSquared > 0)) return [];
-  for (const { centre, radiusMetres } of spheres) {
-    const x = a.x - centre.x; const y = a.y - centre.y; const z = a.z - centre.z;
-    const along = x * dx + y * dy + z * dz;
-    const discriminant = along * along - lengthSquared * (x * x + y * y + z * z - (radiusMetres * radiusShare) ** 2);
-    if (!(discriminant > 0)) continue;
-    const root = Math.sqrt(discriminant);
-    const enter = (-along - root) / lengthSquared;
-    const leave = (-along + root) / lengthSquared;
-    intervals = intervals.flatMap(([start, end]) => {
-      if (leave <= start || enter >= end) return [[start, end]];
-      return [...(enter > start ? [[start, enter]] : []), ...(leave < end ? [[leave, end]] : [])];
-    });
-    if (!intervals.length) break;
-  }
-  return intervals;
-}

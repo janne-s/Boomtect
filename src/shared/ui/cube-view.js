@@ -3,7 +3,6 @@ import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domai
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { currentSurface, useTerrain } from './geometry-cache.js';
-import { outsideSphereIntervals } from './wavefront-envelope.js';
 
 const OUTLINE_STEPS = 48;
 const OUTLINE_DIRECTIONS = Object.freeze(Array.from({ length: OUTLINE_STEPS }, (_, step) => {
@@ -14,7 +13,6 @@ const TERRAIN_LIGHT = (() => { const { x, y, z } = VIEW.terrain.light; const len
 const LABEL_PRIORITY = Object.freeze({ city: 0, town: 1, village: 2, peak: 3, water: 4, hamlet: 5, locality: 6 });
 const TERRAIN_RIPPLE_ITERATIONS = 14;
 /** Class C: allow the sagitta of a polygonal ring when hiding interior cone lines. */
-const CONE_SURFACE_SHARE = Math.cos(Math.PI / VIEW.cone.ringPoints);
 
 function outerCircles(circles) {
   const kept = [];
@@ -916,7 +914,6 @@ export function createCubeView(canvas, options) {
     let path = null;
     let from = 0;
     let to = 1;
-    let occluders = [];
     const within = (start, delta, minimum, maximum) => {
       if (delta === 0) return start >= minimum && start <= maximum;
       const t0 = (minimum - start) / delta;
@@ -934,24 +931,16 @@ export function createCubeView(canvas, options) {
       to = 1;
       if (!within(a.x, b.x - a.x, low.x, high.x) || !within(a.y, b.y - a.y, low.y, high.y) || !within(a.z, b.z - a.z, low.z, high.z)) return;
       if (!(to > from)) return;
-      for (const [low, high] of outsideSphereIntervals(a, b, occluders, from, to, CONE_SURFACE_SHARE)) {
-        if (Math.min(a.z + (b.z - a.z) * low, a.z + (b.z - a.z) * high) > highest) { draw(p, q, low, high); continue; }
-        for (let piece = 0; piece < VIEW.cone.pieces; piece += 1) {
-          const start = low + (high - low) * piece / VIEW.cone.pieces;
-          const end = low + (high - low) * (piece + 1) / VIEW.cone.pieces;
-          const t = (start + end) / 2;
-          if (a.z + (b.z - a.z) * t < ground(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) continue;
-          draw(p, q, start, end);
-        }
+      if (Math.min(a.z + (b.z - a.z) * from, a.z + (b.z - a.z) * to) > highest) { draw(p, q, from, to); return; }
+      for (let piece = 0; piece < VIEW.cone.pieces; piece += 1) {
+        const start = from + (to - from) * piece / VIEW.cone.pieces;
+        const end = from + (to - from) * (piece + 1) / VIEW.cone.pieces;
+        const t = (start + end) / 2;
+        if (a.z + (b.z - a.z) * t < ground(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) continue;
+        draw(p, q, start, end);
       }
     };
-    // The floor does not end a cone: where it meets the ground is drawn as before.
-    const inBox = point => point.x >= low.x && point.x <= high.x && point.y >= low.y && point.y <= high.y && point.z <= high.z;
-    for (const { apex, rings: all, strengths, occluders: spheres = [], lineEvery = VIEW.cone.lineEvery } of cones) {
-      const outside = all.findIndex(ring => !ring.every(inBox));
-      const rings = outside === -1 ? all : all.slice(0, outside);
-      if (!rings.length) continue;
-      occluders = spheres;
+    for (const { apex, rings, strengths, lineEvery = VIEW.cone.lineEvery } of cones) {
       const screen = rings.map(ring => ring.map(frame.project));
       const apexScreen = apex && frame.project(apex);
       const level = strength => levels[Math.min(VIEW.cone.levels, Math.ceil(strength * VIEW.cone.levels)) - 1];
@@ -961,7 +950,7 @@ export function createCubeView(canvas, options) {
         path = level(strength);
         const points = screen[index];
         // The cone is open: no ring closes it where its oldest or, once the body has gone, its newest sound lies.
-        const open = index === all.length - 1 || (index === 0 && !apex);
+        const open = index === rings.length - 1 || (index === 0 && !apex);
         ring.forEach((point, step) => {
           const next = (step + 1) % ring.length;
           if (!open) line(point, ring[next], points[step], points[next]);
