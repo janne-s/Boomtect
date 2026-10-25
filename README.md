@@ -426,8 +426,8 @@ B/C marks a part that combines the two.
 | Air absorption | ISO 9613-1; with refraction, the mean over the heights a path spans, the vapour thinning out with height | B |
 | Ground reflection | Delany–Bazley impedance, spherical-wave coefficient; from the slope under the microphone over terrain | B |
 | Forest, under the canopy | ISO 9613-2 foliage attenuation as `0.006·f^(1/3)` dB/m, up to 200 m, with a causal phase | B |
-| Forest reverberation | seeded diffuse tail at the microphone, octave times around 1.5 s at 1 kHz (Koli, Finland) | B/C |
-| Forest density | scales the foliage loss per metre and the tail's energy; the tail's times stay | C |
+| Forest reverberation | seeded diffuse tail at the microphone with an early and a late slope per octave, fitted to eight measured forest responses (Koli, Finland), driven by each path's way under the canopy | B/C |
+| Forest density | scales the way under the canopy, and so the foliage loss and the tail; the tail's times stay | C |
 | Surroundings | seeded diffuse tail at the microphone over level ground, falling about 9 dB/s, mostly below 250 Hz, fitted to recorded booms | C |
 | Ground reflection, partly coherent | ground roughness of 5 cm (Rayleigh) and turbulence scatter a share of the reflection over a few milliseconds | C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
