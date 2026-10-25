@@ -10,8 +10,10 @@ export const DEFAULT_QUALITY = Object.freeze({
   sourceMerge: 1,
   echoCellScale: 1,
   scatterArrivals: PROPAGATION.scatterArrivals,
+  synthesis: 0,
   coarseForest: false,
-  sharedScatter: false
+  sharedScatter: false,
+  coarseEchoes: false
 });
 export const QUALITY_NUMBERS = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'number'));
 export const QUALITY_SWITCHES = Object.freeze(Object.keys(DEFAULT_QUALITY).filter(key => typeof DEFAULT_QUALITY[key] === 'boolean'));
@@ -61,6 +63,7 @@ export const PARAMETERS = Object.freeze({
   sourceMerge: { minimum: 1, maximum: 8, unit: '', label: 'Flash detail', reliability: null, integer: true },
   echoCellScale: { minimum: 1, maximum: 4, unit: '×', label: 'Echo detail', reliability: null },
   scatterArrivals: { minimum: 4, maximum: 24, unit: '', label: 'Scatter arrivals', reliability: null, integer: true },
+  synthesis: { minimum: 0, maximum: 2, unit: '', label: 'Synthesis', reliability: null, integer: true },
   facingDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Facing', reliability: null },
   pitchDegrees: { minimum: -90, maximum: 90, unit: '°', label: 'Elevation', reliability: null }
 });

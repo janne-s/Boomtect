@@ -152,6 +152,7 @@ export function startFrame(tect) {
       maximumThreads: WORKER_COUNT,
       echoCellMetres: echoesActive(state.scene) ? state.scene.terrain.echoCellMetres : null,
       flashes: state.scene.emitters.some(emitter => kinds[emitter.kind].mergesSources),
+      grains: state.scene.emitters.some(emitter => kinds[emitter.kind].grains),
       forest: state.scene.ground.forest,
       scatterShare: scatterShare(),
       last: state.lastRender

@@ -2,6 +2,8 @@ import { PREVIEW } from '../domain/constants.js';
 import { previewQuality, relativeCost } from '../domain/render-cost.js';
 import { DEFAULT_QUALITY, PARAMETERS, QUALITY_NUMBERS, QUALITY_SWITCHES } from '../domain/scene.js';
 
+const SYNTHESIS_LEVELS = Object.freeze(['exact', 'fast', 'fastest']);
+
 const plural = (value, one, many) => `${value} ${value === 1 ? one : many}`;
 
 const SETTINGS = Object.freeze({
@@ -10,12 +12,14 @@ const SETTINGS = Object.freeze({
   sourceMerge: { step: 1, format: value => (value === 1 ? 'every segment' : `1 per ${value} segments`), idle: context => (context.flashes ? null : 'no flashes') },
   echoCellScale: { step: .5, format: (value, context) => `${Math.round(context.echoCellMetres * value)} m cells`, idle: context => (context.echoCellMetres ? null : 'no terrain echoes') },
   scatterArrivals: { step: 1, format: value => plural(value, 'arrival', 'arrivals'), idle: context => (context.echoCellMetres ? null : 'no terrain echoes') },
+  synthesis: { step: 1, format: value => SYNTHESIS_LEVELS[value], idle: context => (context.grains ? null : 'no grain sources') },
   threads: { step: 1, format: (value, context) => `${value} of ${context.maximumThreads}` }
 });
 
 const SWITCHES = Object.freeze({
   coarseForest: { label: 'Coarse forest', idle: context => (context.forest ? null : 'no forest') },
-  sharedScatter: { label: 'Shared scatter', idle: context => (context.echoCellMetres ? null : 'no terrain echoes') }
+  sharedScatter: { label: 'Shared scatter', idle: context => (context.echoCellMetres ? null : 'no terrain echoes') },
+  coarseEchoes: { label: 'Coarse echoes', idle: context => (!context.echoCellMetres ? 'no terrain echoes' : context.grains ? null : 'no grain sources') }
 });
 
 const PREVIEW_SUMMARY = `${PREVIEW.sourceMerge} segments · ${PREVIEW.echoCellScale} × cells · ≤ ${PREVIEW.highestHz / 1000} kHz`;
@@ -84,7 +88,7 @@ export function createSettings({ read, save }) {
 
   function updateCost() {
     const { preview, threads, ...chosen } = values();
-    const quality = { ...(preview ? previewQuality(chosen) : chosen), ...(context.flashes ? {} : { sourceMerge: 1 }) };
+    const quality = { ...(preview ? previewQuality(chosen) : chosen), ...(context.flashes ? {} : { sourceMerge: 1 }), ...(context.grains ? {} : { synthesis: 0, coarseEchoes: false }) };
     const share = relativeCost(quality, context.scatterShare, context.forest);
     const most = relativeCost({ ...DEFAULT_QUALITY, cutoffDecibels: PARAMETERS.cutoffDecibels.minimum, scatterArrivals: PARAMETERS.scatterArrivals.maximum }, context.scatterShare, context.forest);
     $('cost-fill').style.width = `${Math.min(100, share / most * 100)}%`;
@@ -92,7 +96,7 @@ export function createSettings({ read, save }) {
     let text = `≈ ${Math.round(share * 100)} % of full`;
     const { last } = context;
     if (last) {
-      const lastQuality = context.flashes ? last.quality : { ...last.quality, sourceMerge: 1 };
+      const lastQuality = { ...last.quality, ...(context.flashes ? {} : { sourceMerge: 1 }), ...(context.grains ? {} : { synthesis: 0, coarseEchoes: false }) };
       const seconds = last.milliseconds / 1000 * share / relativeCost(lastQuality, context.scatterShare, context.forest) * last.workers / threads;
       text += ` · ≈ ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
     }

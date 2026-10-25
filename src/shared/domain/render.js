@@ -38,6 +38,7 @@ const RISE_TIME_PER_SIGMA = 2.5631;
 /** Class A. */
 const AIR_NONLINEARITY = (GAMMA_AIR + 1) / 2;
 const CREEPING_RADII = 8;
+const COARSE_ECHO_RADIANS = 10 * Math.PI / 180;
 const groundScatter = new Float64Array(GROUND_GRID_POINTS);
 const forestRe = new Float64Array(GROUND_GRID_POINTS);
 const forestIm = new Float64Array(GROUND_GRID_POINTS);
@@ -1215,9 +1216,12 @@ function scintillationGain({ lower, share }, levels, bin) {
 }
 
 /** The grain's spectrum toward the path's departure from the kind, centred one grain length (its source's duration) after the path's time; a long sound's scintillation, class C, comes with it. */
-function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations) {
+function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) {
   const departure = { x: paths.departure[3 * index], y: paths.departure[3 * index + 1], z: paths.departure[3 * index + 2] };
-  const spectrum = prepared.emission(sources.noiseSeed[paths.source[index]], departure, plan);
+  const seed = sources.noiseSeed[paths.source[index]];
+  const shared = echoes && isEcho(paths.kind[index]) ? `${paths.emitter[index]}:${seed}:${echoDirection(paths, index)}:${plan.size}` : null;
+  const spectrum = shared && echoes.key === shared ? echoes.spectrum : prepared.emission(seed, departure, plan);
+  if (shared) Object.assign(echoes, { key: shared, spectrum });
   if (!(scene.air.turbulenceStrength > 0)) return spectrum;
   const key = prepared.emitter.id;
   if (!scintillations.has(key)) {
@@ -1226,6 +1230,14 @@ function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, s
   const centre = paths.seconds[index] + sources.durationSeconds[paths.source[index]];
   return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
 }
+
+/** Coarse echoes: a grain's echoes leaving within one step of direction share the spectrum of the first of them. */
+function echoDirection(paths, index) {
+  const [x, y, z] = [paths.departure[3 * index], paths.departure[3 * index + 1], paths.departure[3 * index + 2]];
+  return `${Math.round(Math.atan2(y, x) / COARSE_ECHO_RADIANS)},${Math.round(Math.asin(Math.max(-1, Math.min(1, z))) / COARSE_ECHO_RADIANS)}`;
+}
+
+const grainEcho = (preparedEmitters, paths, index) => isEcho(paths.kind[index]) && pathSources(preparedEmitters, paths, index).pulse[paths.source[index]] === PULSE_GRAIN;
 
 export function earliestArrival(paths) {
   let earliest = Infinity;
@@ -1279,7 +1291,10 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const noiseLength = Math.max(0, ...noises.map(noisy => (noisy ? noisy[0].samples.length : 0)));
   const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + noiseLength));
   const gains = new Float64Array(channels);
-  selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || a - b);
+  const echoes = scene.render.quality.coarseEchoes ? { key: null, spectrum: null } : null;
+  const echoOrder = echoes ? new Map(selected.filter(index => grainEcho(preparedEmitters, paths, index)).map(index => [index, `${pathSources(preparedEmitters, paths, index).noiseSeed[paths.source[index]]}:${echoDirection(paths, index)}`])) : null;
+  const byEcho = (a, b) => (echoOrder?.has(a) && echoOrder.has(b) ? (echoOrder.get(a) < echoOrder.get(b) ? -1 : echoOrder.get(a) > echoOrder.get(b) ? 1 : 0) : 0);
+  selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || byEcho(a, b) || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
@@ -1302,7 +1317,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       const grain = sources.pulse[paths.source[index]] === PULSE_GRAIN
-        ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations) : null;
+        ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) : null;
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared, grain);
       doneWeight += weightOf(index);
       cursor += 1;

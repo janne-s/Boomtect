@@ -181,7 +181,9 @@ export const RENDER_COST = Object.freeze({
   binExponent: .8,
   cellExponent: -.74,
   arrivalShare: .5,
-  scatterShare: .68
+  scatterShare: .68,
+  synthesisShares: Object.freeze([1, .65, .6]),
+  coarseEchoSaving: .5
 });
 
 export const RENDER = Object.freeze({

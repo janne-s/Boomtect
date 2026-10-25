@@ -118,7 +118,7 @@ microphone along the Mach cone.
 - **Space** — Runs the main Render / Play / Stop action outside controls and dialogs.
 - **Render** and **Play** — The button renders the scene when it has changed,
   then plays it: it flashes the sources and plays what the listening microphones
-  hear.
+  hear. While a render runs, it stops it (the square beside the spinner).
 - **Pause** — The button on the pressure plot holds playback where it is; Play
   goes on from there, Stop starts over.
 - **Scrubbing** — Press either plot or the small scene timeline to move playback
@@ -138,7 +138,8 @@ microphone along the Mach cone.
   scattered echo's arrivals, a coarse forest (on a coarse frequency grid), and
   shared scatter (a frame's scattered echoes spread in a few groups), with the cost against the full computation and an
   estimate of its time from the last render; the preview; and the threads this
-  device renders on.
+  device renders on. Its synthesis and coarse echoes apply to Rumbletect's
+  grain sources and rest here.
 - **Preview** (turtle, beside Play or in the mobile view switches) — Renders a
   lighter version of the scene's settings: a flash's sources merged in fours, echo cells twice as large, and
   sound up to 2 kHz at most.

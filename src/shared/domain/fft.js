@@ -61,6 +61,40 @@ export function fft(real, imaginary, inverse = false) {
   if (inverse) for (let index = 0; index < length; index += 1) { real[index] /= length; imaginary[index] /= length; }
 }
 
+/** The spectrum of a real signal from DC to Nyquist through one complex FFT of half its length; equal to `fft` up to rounding. */
+export function realSpectrum(signal) {
+  const length = signal.length;
+  const half = length / 2;
+  if (!isPowerOfTwo(length) || length < 2) throw new RangeError('FFT length must be a power of two.');
+  const packedRe = new Float64Array(half);
+  const packedIm = new Float64Array(half);
+  for (let index = 0; index < half; index += 1) {
+    packedRe[index] = signal[2 * index];
+    packedIm[index] = signal[2 * index + 1];
+  }
+  fft(packedRe, packedIm);
+  const { cos, sin } = twiddleTable(length);
+  const re = new Float64Array(half + 1);
+  const im = new Float64Array(half + 1);
+  for (let bin = 0; bin <= half; bin += 1) {
+    const at = bin % half;
+    const mirror = (half - bin) % half;
+    const zRe = packedRe[at];
+    const zIm = packedIm[at];
+    const cRe = packedRe[mirror];
+    const cIm = -packedIm[mirror];
+    const evenRe = (zRe + cRe) / 2;
+    const evenIm = (zIm + cIm) / 2;
+    const oddRe = (zIm - cIm) / 2;
+    const oddIm = (cRe - zRe) / 2;
+    const wRe = bin < half ? cos[bin] : -1;
+    const wIm = bin < half ? -sin[bin] : 0;
+    re[bin] = evenRe + wRe * oddRe - wIm * oddIm;
+    im[bin] = evenIm + wRe * oddIm + wIm * oddRe;
+  }
+  return { re, im };
+}
+
 const BLOCK_KERNELS = 4;
 
 export function silent(samples, from, to) {
