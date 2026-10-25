@@ -161,7 +161,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
         windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, upperWindMetresPerSecond: 30, upperWindFromDegrees: 270, humidityScaleHeightMetres: 2000,
         groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
       },
-      ground: { enabled: true, type: 'grass', forest: true, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
+      ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
       place: { ...DEFAULT_PLACE },
       terrain: null,
       emitters: [emitter],

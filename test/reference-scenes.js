@@ -10,6 +10,8 @@ import {
 } from '../src/domain/scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
+const forestedScene = mode => { const base = defaultScene(mode); return { ...base, ground: { ...base.ground, forest: true } }; };
+
 const EMITTERS = Object.freeze({
   lightning: ['thunder', () => defaultLightning()],
   cloudFlash: ['thunder', () => defaultCloudFlash()],
@@ -31,11 +33,11 @@ const MODE_OF_GROUP = Object.freeze({ thunder: 'thunder', blast: 'blast', flight
 const hill = (x, y) => 120 + 80 * Math.exp(-((x - 700) ** 2 + (y - 300) ** 2) / 500 ** 2);
 
 function flatScene(mode, emitter) {
-  return parseScene({ ...defaultScene(mode), emitters: [emitter] });
+  return parseScene({ ...forestedScene(mode), emitters: [emitter] });
 }
 
 function terrainScene(mode, emitter, { rich = false } = {}) {
-  const base = defaultScene(mode);
+  const base = forestedScene(mode);
   const second = { ...defaultReceiver('receiver-2', 'Mic 2'), positionMetres: { x: -600, y: 900, z: 1.7 }, headingDegrees: 120 };
   return parseScene({
     ...base,
@@ -52,7 +54,7 @@ export const REFERENCE_CASES = Object.freeze(Object.entries(EMITTERS).flatMap(([
   { name: `${name}-flat`, group, pipeline: 'whole', scene: () => flatScene(MODE_OF_GROUP[group], emitter()) },
   { name: `${name}-terrain`, group, pipeline: 'parts', scene: () => terrainScene(MODE_OF_GROUP[group], emitter(), options) }
 ]).concat(['thunder', 'blast', 'flights'].map(group => ({
-  name: `${MODE_OF_GROUP[group]}-preview`, group, pipeline: 'parts', scene: () => previewScene(defaultScene(MODE_OF_GROUP[group]))
+  name: `${MODE_OF_GROUP[group]}-preview`, group, pipeline: 'parts', scene: () => previewScene(forestedScene(MODE_OF_GROUP[group]))
 }))));
 
 function renderWhole(scene) {

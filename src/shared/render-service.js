@@ -2,6 +2,11 @@ import { diffuseTails } from './domain/forest.js';
 import { renderReceiverRange, tailResponses, tracePart } from './domain/render.js';
 
 export function serveRenders({ parseScene, prepareScene }) {
+  let held = { revision: null, prepared: null };
+  const preparedFor = (revision, scene) => {
+    if (held.revision !== revision) held = { revision, prepared: prepareScene(scene) };
+    return held.prepared;
+  };
   self.addEventListener('message', ({ data }) => {
     const { revision, type, scene: value } = data;
     try {
@@ -17,7 +22,7 @@ export function serveRenders({ parseScene, prepareScene }) {
         self.postMessage({ revision, type: 'result', responses }, [...buffers]);
         return;
       }
-      const prepared = prepareScene(scene);
+      const prepared = preparedFor(revision, scene);
       if (type === 'trace') {
         const parts = data.jobs.map(({ receiver, part, parts: count }, index) => tracePart(prepared, scene.receivers[receiver], scene, {
           part,

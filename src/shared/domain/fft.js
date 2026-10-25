@@ -3,11 +3,19 @@ const twiddles = new Map();
 function twiddleTable(length) {
   let table = twiddles.get(length);
   if (table) return table;
-  table = { cos: new Float64Array(length / 2), sin: new Float64Array(length / 2) };
+  table = { cos: new Float64Array(length / 2), sin: new Float64Array(length / 2), swaps: null };
   for (let index = 0; index < length / 2; index += 1) {
     table.cos[index] = Math.cos(2 * Math.PI * index / length);
     table.sin[index] = Math.sin(2 * Math.PI * index / length);
   }
+  const swaps = [];
+  for (let index = 1, reversed = 0; index < length; index += 1) {
+    let bit = length >> 1;
+    for (; reversed & bit; bit >>= 1) reversed ^= bit;
+    reversed ^= bit;
+    if (index < reversed) swaps.push(index, reversed);
+  }
+  table.swaps = Uint32Array.from(swaps);
   twiddles.set(length, table);
   return table;
 }
@@ -24,24 +32,21 @@ export function nextPowerOfTwo(value) {
 export function fft(real, imaginary, inverse = false) {
   const length = real.length;
   if (!isPowerOfTwo(length) || imaginary.length !== length) throw new RangeError('FFT length must be a power of two.');
-  for (let index = 1, reversed = 0; index < length; index += 1) {
-    let bit = length >> 1;
-    for (; reversed & bit; bit >>= 1) reversed ^= bit;
-    reversed ^= bit;
-    if (index < reversed) {
-      let swap = real[index]; real[index] = real[reversed]; real[reversed] = swap;
-      swap = imaginary[index]; imaginary[index] = imaginary[reversed]; imaginary[reversed] = swap;
-    }
+  const { cos, sin, swaps } = twiddleTable(length);
+  for (let pair = 0; pair < swaps.length; pair += 2) {
+    const index = swaps[pair];
+    const reversed = swaps[pair + 1];
+    let swap = real[index]; real[index] = real[reversed]; real[reversed] = swap;
+    swap = imaginary[index]; imaginary[index] = imaginary[reversed]; imaginary[reversed] = swap;
   }
-  const table = twiddleTable(length);
   const direction = inverse ? 1 : -1;
   for (let size = 2; size <= length; size *= 2) {
     const half = size / 2;
     const stride = length / size;
     for (let start = 0; start < length; start += size) {
       for (let offset = 0; offset < half; offset += 1) {
-        const cosine = table.cos[offset * stride];
-        const sine = direction * table.sin[offset * stride];
+        const cosine = cos[offset * stride];
+        const sine = direction * sin[offset * stride];
         const even = start + offset;
         const odd = even + half;
         const oddReal = real[odd] * cosine - imaginary[odd] * sine;

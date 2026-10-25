@@ -698,10 +698,14 @@ export function startFrame(tect) {
     drawResults();
   }
 
+  function releaseWorkers(entries = state.workers) {
+    entries.forEach(entry => entry.worker.terminate());
+    state.workers = state.workers.filter(entry => !entries.includes(entry));
+  }
+
   function stopWorkers() {
     state.revision += 1;
-    state.workers.forEach(worker => worker.terminate());
-    state.workers = [];
+    releaseWorkers();
     clearInterval(state.watchdog);
     operation('render', null);
     state.fullRender?.reject(new Error('The full render did not finish.'));
@@ -716,22 +720,33 @@ export function startFrame(tect) {
     });
   }
 
-  function spawnWorker(revision, message, { onProgress, onResult }, transfer = []) {
-    const worker = new Worker(workerUrl, { type: 'module' });
-    state.workers.push(worker);
-    worker.addEventListener('message', ({ data }) => {
+  function startWorker(revision) {
+    const entry = { worker: new Worker(workerUrl, { type: 'module' }), prepared: false, job: null };
+    state.workers.push(entry);
+    entry.worker.addEventListener('message', ({ data }) => {
       if (data.revision !== state.revision) return;
       state.heard = performance.now();
-      if (data.type === 'progress') { onProgress?.(data.fraction); return; }
+      if (data.type === 'progress') { entry.job.onProgress?.(data.fraction); return; }
       if (data.type === 'error') { failRender(data.message); return; }
-      worker.terminate();
+      const { onResult } = entry.job;
+      entry.job = null;
       onResult(data);
     });
-    worker.addEventListener('error', event => {
+    entry.worker.addEventListener('error', event => {
       if (revision !== state.revision) return;
       failRender(event.message || 'The renderer failed to start.');
     });
-    worker.postMessage({ revision, ...message }, transfer);
+    return entry;
+  }
+
+  /** A worker stays for the revision, so one that traced renders with the scene it has already prepared. */
+  function spawnWorker(revision, message, job, transfer = []) {
+    const idle = state.workers.filter(entry => !entry.job);
+    const preparing = message.type === 'trace' || message.type === 'render';
+    const entry = (preparing && idle.find(each => each.prepared)) || idle.find(each => !each.prepared) || idle[0] || startWorker(revision);
+    entry.prepared ||= preparing;
+    entry.job = job;
+    entry.worker.postMessage({ revision, ...message }, transfer);
   }
 
   function startRender({ full = false, variant = null } = {}) {
@@ -860,6 +875,7 @@ export function startFrame(tect) {
         }
       }, [...new Set(transfer)]);
     });
+    releaseWorkers(state.workers.filter(entry => !entry.job));
     // The workers' handlers would otherwise keep the whole table alive through the render.
     tracedPaths.fill(null);
   }
@@ -897,7 +913,7 @@ export function startFrame(tect) {
   }
 
   function finishRender(scene, arrivals, sums, parts, info) {
-    state.workers = [];
+    releaseWorkers();
     clearInterval(state.watchdog);
     let results;
     try {

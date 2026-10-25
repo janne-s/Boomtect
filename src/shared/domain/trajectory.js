@@ -15,10 +15,16 @@ export const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CON
 
 const smoothStep = value => { const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t); };
 
-/** The heading `t` seconds into a flight: a steady turn rate, or with `flight.turn` a bend of its degrees eased between its seconds. */
-const headingAt = (flight, t) => flight.headingDegrees + (flight.turn
-  ? flight.turn.degrees * smoothStep((t - flight.turn.fromSeconds) / Math.max(1e-9, flight.turn.toSeconds - flight.turn.fromSeconds))
-  : flight.turnDegreesPerSecond * t);
+/**
+ * The heading `t` seconds into a flight: a steady turn rate; with `flight.turn` a bend of its degrees eased between its
+ * seconds; with `flight.arc` a turn of its degrees on its radius, by the `arcMetres` flown level since its seconds.
+ */
+function headingAt(flight, t, arcMetres) {
+  if (flight.arc) return flight.headingDegrees + Math.sign(flight.arc.degrees) * Math.min(Math.abs(flight.arc.degrees), arcMetres / flight.arc.radiusMetres * 180 / Math.PI);
+  return flight.headingDegrees + (flight.turn
+    ? flight.turn.degrees * smoothStep((t - flight.turn.fromSeconds) / Math.max(1e-9, flight.turn.toSeconds - flight.turn.fromSeconds))
+    : flight.turnDegreesPerSecond * t);
+}
 
 export function flightPath(flight, air) {
   const steps = Math.min(TRAJECTORY.maximumSteps, Math.max(2, Math.ceil(flight.durationSeconds / TRAJECTORY.stepSeconds)));
@@ -27,15 +33,24 @@ export function flightPath(flight, air) {
   const path = { seconds: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], speed: [], step };
   let { x, y, z } = flight.startMetres;
   let speed = flight.mach * soundSpeedAt(air, z);
+  let arcMetres = 0;
+  const arcEndMetres = flight.arc ? Math.abs(flight.arc.degrees) * Math.PI / 180 * flight.arc.radiusMetres : 0;
+  if (flight.arc) path.arcSeconds = [flight.arc.fromSeconds, null];
   for (let index = 0; index <= steps; index += 1) {
     const t = index * step;
-    const heading = headingAt(flight, t) * Math.PI / 180;
+    const heading = headingAt(flight, t, arcMetres) * Math.PI / 180;
     const vx = speed * Math.cos(climb) * Math.sin(heading);
     const vy = speed * Math.cos(climb) * Math.cos(heading);
     const vz = speed * Math.sin(climb);
     path.seconds.push(flight.startSeconds + t); path.x.push(x); path.y.push(y); path.z.push(z);
     path.vx.push(vx); path.vy.push(vy); path.vz.push(vz); path.speed.push(speed);
     x += vx * step; y += vy * step; z += vz * step;
+    if (flight.arc) {
+      const level = speed * Math.cos(climb);
+      const before = arcMetres;
+      arcMetres += level * Math.min(step, Math.max(0, t + step - flight.arc.fromSeconds));
+      if (path.arcSeconds[1] === null && before < arcEndMetres && arcMetres >= arcEndMetres) path.arcSeconds[1] = t + step - (arcMetres - arcEndMetres) / level;
+    }
     speed += flight.accelerationMetresPerSecondSquared * step;
     if (z < 0 || speed < TRAJECTORY.stoppedMetresPerSecond) break;
   }
