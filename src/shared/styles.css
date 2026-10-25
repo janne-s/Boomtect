@@ -81,6 +81,22 @@ button[aria-busy="true"]::after {
 #play[aria-busy="true"]:not(:disabled)::after {
   display: none;
 }
+#play.rendering {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+#play.rendering::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: currentColor;
+  content: "";
+}
+#play.rendering[aria-busy="true"]::after {
+  display: inline-block;
+}
 @keyframes loading-spin {
   to {
     transform: rotate(360deg);

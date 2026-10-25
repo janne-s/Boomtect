@@ -670,9 +670,11 @@ export function startFrame(tect) {
     const rendering = operations.has('render');
     const busy = !playing && !starting && rendering;
     button.textContent = playing || starting ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
-    button.setAttribute('aria-label', busy ? 'Rendering' : button.textContent);
+    button.setAttribute('aria-label', busy ? 'Stop rendering' : button.textContent);
+    button.title = busy ? 'Stop rendering' : '';
+    button.classList.toggle('rendering', busy);
     if (busy || starting) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
-    button.disabled = !playing && !starting && (rendering || (!state.results && !state.scene.emitters.some(emitter => emitter.enabled)));
+    button.disabled = !playing && !starting && !rendering && !state.results && !state.scene.emitters.some(emitter => emitter.enabled);
     button.setAttribute('aria-pressed', playing ? 'true' : 'false');
     const pause = $('plot-play');
     pause.disabled = !state.results;
@@ -2247,6 +2249,13 @@ export function startFrame(tect) {
   }
 
   $('play').addEventListener('click', () => {
+    if (operations.has('render') && !player.busy() && !player.playing()) {
+      clearTimeout(state.renderTimer);
+      stopWorkers();
+      setStatus('Render stopped.');
+      drawResults();
+      return;
+    }
     if (player.busy() || player.playing()) {
       state.pause = null;
       player.stop();
