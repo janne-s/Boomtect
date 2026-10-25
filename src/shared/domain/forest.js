@@ -223,3 +223,12 @@ export function diffuseTails(pressure, { forest = null, surroundings = null }, c
   }
   return tails;
 }
+
+export function diffuseTailBytes(length, { forest = null, surroundings = null }, channels, send = false) {
+  const kernels = [send ? forest : null, surroundings].filter(Boolean);
+  const total = length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
+  const lanes = channels + kernels.length;
+  const transforms = Math.max(0, ...kernels.map(kernel => (2 * Math.ceil(channels / 2) + 4) * overlapSize(total, kernel[0].length)));
+  const responses = [forest, surroundings].filter(Boolean).reduce((sum, kernel) => sum + kernel.length * kernel[0].length, 0);
+  return Float64Array.BYTES_PER_ELEMENT * (lanes * total + transforms + length * (send ? 2 : 1) + responses);
+}

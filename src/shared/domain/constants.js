@@ -206,6 +206,9 @@ export const RENDER = Object.freeze({
   sceneExtentMetres: 300000,
   maximumHeightMetres: 120000,
   sourceCopiesBudget: 1000000,
+  tailStretchSeconds: 30,
+  /** What the tail workers may hold at once; a phone tab is stopped at about 1.5 GB. */
+  tailBytesBudget: 512 * 2 ** 20,
   progressWeights: Object.freeze([1, 22, 4.5, 1, 1]),
   stallSeconds: 60,
   maximumWorkers: 8,

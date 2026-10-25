@@ -1,8 +1,9 @@
 import { GROUND, RENDER, RENDER_COST, VIEW } from '../domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from '../domain/ground.js';
+import { diffuseTailBytes } from '../domain/forest.js';
 import { newSeed, randomId } from '../domain/random.js';
 import { frontProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from '../domain/refraction.js';
-import { addTails, arrivalTable, assemblePaths, earliestArrival, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from '../domain/render.js';
+import { addTails, arrivalTable, assemblePaths, earliestArrival, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, latestArrival, partitionSeconds, previewScene, echoFreeShare, queueTails, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from '../domain/render.js';
 import { defaultReceiver, headingToward, placeLabel, TERRAIN_DEFAULTS } from '../domain/scene.js';
 import { AMBISONIC_CONVENTION, availableItems, exportDownload, exportFiles, exportPlan, exportSizes, fileStem, itemFiles } from './export-package.js';
 import { soundHandoff } from '../domain/sound-handoff.js';
@@ -28,7 +29,7 @@ import { createPlayer, renderComposition } from './player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './plots.js';
 import { attachSplitters } from './splitters.js';
 import { attachTimelineSeek } from './timeline.js';
-import { createRenderMarker, unfinishedRenderText } from './render-marker.js';
+import { createRenderMarker, renderLoadText, unfinishedRenderText } from './render-marker.js';
 import { createFrontStyle } from './front-style.js';
 import { outerSpheres, sampleEnvelopeSources } from './wavefront-envelope.js';
 import { formatMicrophoneLevels } from './levels.js';
@@ -789,7 +790,7 @@ export function startFrame(tect) {
     }
     const started = performance.now();
     state.heard = performance.now();
-    renderMarker.phase('Tracing paths', { sources });
+    renderMarker.phase('Tracing paths', { sources, channels: (scene.render.ambisonicOrder + 1) ** 2 });
     operation('render', 'Tracing paths', { share: 0 });
     const channels = (scene.render.ambisonicOrder + 1) ** 2;
     const shares = Math.max(1, Math.min(channels, Math.floor(workerCount / scene.receivers.length)));
@@ -802,7 +803,7 @@ export function startFrame(tect) {
     // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
     state.watchdog = setInterval(() => {
       if (revision !== state.revision || performance.now() - state.heard < RENDER.stallSeconds * 1000) return;
-      failRender(`The render stopped responding with ${sources.toLocaleString('en')} point sources, likely out of memory`);
+      failRender(`The render stopped responding${renderLoadText(renderMarker.held() ?? {})}, likely out of memory`);
     }, 5000);
     const parts = Math.max(1, Math.floor(workerCount / scene.receivers.length));
     const jobs = scene.receivers.flatMap((_, receiver) => Array.from({ length: parts }, (_, part) => ({ receiver, part, parts })));
@@ -863,6 +864,8 @@ export function startFrame(tect) {
     const parts = new Array(jobs.length);
     let remaining = jobs.length;
     operation('render', 'Rendering', { share: 0 });
+    const spread = Math.max(0, ...tracedPaths.filter(paths => paths.count).map(paths => latestArrival(paths) - earliestArrival(paths)));
+    renderMarker.note({ seconds: Math.min(RENDER.maximumSeconds, spread) });
     const extents = tracedPaths.map(paths => frameExtents(prepared, paths));
     jobs.forEach((job, index) => {
       const whole = !Number.isFinite(job.fromSeconds) && !Number.isFinite(job.toSeconds);
@@ -896,26 +899,30 @@ export function startFrame(tect) {
       return;
     }
     const lengths = sums.map((sum, index) => (responses[index] ? sum.channels[0].length - tailSamples(responses[index]) : 0));
-    const total = lengths.reduce((a, b) => a + b, 0);
+    const stretch = RENDER.tailStretchSeconds * scene.render.sampleRate;
     const jobs = lengths.flatMap((length, index) => (length > 0
-      ? tailStretches(length, Math.max(1, Math.round(info.workerCount * length / total)), tailSamples(responses[index])).map(([from, to]) => ({ index, from, to }))
+      ? tailStretches(length, Math.ceil(length / stretch), tailSamples(responses[index])).map(([from, to]) => ({ index, from, to }))
       : []));
     const finish = () => finishRender(scene, arrivals, sums, parts, { sources: info.sources, workers: info.workerCount, milliseconds: performance.now() - info.started, variant: info.variant });
     if (!jobs.length) { finish(); return; }
-    let remaining = jobs.length;
+    const largest = Math.max(...jobs.map(({ index, from, to }) => diffuseTailBytes(to - from, responses[index], sums[index].channels.length, Boolean(sums[index].send))));
+    const concurrent = Math.max(1, Math.min(info.workerCount, jobs.length, Math.floor(RENDER.tailBytesBudget / largest)));
+    let added = 0;
     operation('render', 'Adding tails', { share: 0 });
-    jobs.forEach(({ index, from, to }) => {
+    renderMarker.note({ seconds: Math.max(...sums.map(sum => sum.channels[0].length)) / scene.render.sampleRate });
+    queueTails(jobs.length, concurrent, (position, finished) => {
+      const { index, from, to } = jobs[position];
       const pressure = sums[index].channels[0].slice(from, to);
       const send = sums[index].send?.slice(from, to) ?? null;
       spawnWorker(revision, { type: 'tails', pressure, send, responses: responses[index], channels: sums[index].channels.length }, {
-        onResult: data => {
+        onResult: data => finished(() => {
           addTails(sums[index], from, data.tails);
-          remaining -= 1;
-          operation('render', 'Adding tails', { share: 1 - remaining / jobs.length });
-          if (remaining === 0) finish();
-        }
+          added += 1;
+          operation('render', 'Adding tails', { share: added / jobs.length });
+        })
       }, [pressure.buffer, ...(send ? [send.buffer] : [])]);
-    });
+    }, finish);
+    releaseWorkers(state.workers.filter(entry => !entry.job));
   }
 
   function finishRender(scene, arrivals, sums, parts, info) {
@@ -2781,6 +2788,7 @@ export function startFrame(tect) {
   window.addEventListener('resize', () => drawResults());
 
   window.addEventListener('pagehide', () => renderMarker.suspend());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) renderMarker.note({ hidden: true }); });
   window.addEventListener('pageshow', event => { if (event.persisted && operations.has('render')) renderMarker.restore(); });
 
   refreshPanel();

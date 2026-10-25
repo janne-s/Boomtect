@@ -15,6 +15,12 @@ export function createRenderMarker(storage, key) {
       current = { ...current, ...details, phase: text };
       write();
     },
+    note(details) {
+      if (!current) return;
+      current = { ...current, ...details };
+      write();
+    },
+    held: () => current,
     restore() { if (current) write(); },
     suspend() {
       try { storage.removeItem(key); } catch {}
@@ -34,10 +40,22 @@ export function createRenderMarker(storage, key) {
   };
 }
 
-export function unfinishedRenderText(mark) {
+const counted = (count, word) => `${count.toLocaleString('en')} ${word}${count === 1 ? '' : 's'}`;
+
+/** What the render held when it stopped: point sources while tracing, then the sound's length and channels. */
+export function renderLoadText(mark) {
   const parts = [];
   if (typeof mark.phase === 'string' && mark.phase) parts.push(mark.phase);
-  if (Number.isFinite(mark.sources)) parts.push(`${mark.sources.toLocaleString('en')} point sources`);
+  if (Number.isFinite(mark.seconds)) {
+    parts.push(`${Math.round(mark.seconds).toLocaleString('en')} s`);
+    if (Number.isFinite(mark.channels)) parts.push(counted(mark.channels, 'channel'));
+  } else if (Number.isFinite(mark.sources)) parts.push(counted(mark.sources, 'point source'));
   if (mark.preview === true) parts.push('Preview');
-  return `The last render did not finish${parts.length ? ` (${parts.join(', ')})` : ''}`;
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
+export function unfinishedRenderText(mark) {
+  return mark.hidden === true
+    ? `The last render stopped while the page was in the background${renderLoadText(mark)}`
+    : `This device ran out of memory during the last render${renderLoadText(mark)}`;
 }

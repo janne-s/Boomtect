@@ -1245,6 +1245,12 @@ export function earliestArrival(paths) {
   return earliest;
 }
 
+export function latestArrival(paths) {
+  let latest = -Infinity;
+  for (let index = 0; index < paths.count; index += 1) latest = Math.max(latest, paths.seconds[index]);
+  return latest;
+}
+
 export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSeconds = -Infinity, toSeconds = Infinity, onProgress = null, paths: traced = null, extents = null, earliestSeconds = null } = {}) {
   const sampleRate = scene.render.sampleRate;
   const profile = soundSpeedProfile(scene.air);
@@ -1400,13 +1406,40 @@ export function sumSegments(segments, sampleRate, room = 0) {
     }
     return sum;
   };
-  const channels = Array.from({ length: count }, (_, channel) => lane(segment => segment.channels[channel]));
-  return { startSample: start, channels, send: sends ? lane(segment => segment.send) : null, truncated: cut || reach > longest };
+  // Each segment lane is let go once summed, so the segments and the sum are never both whole in memory.
+  const channels = Array.from({ length: count }, (_, channel) => {
+    const sum = lane(segment => segment.channels[channel]);
+    for (const segment of present) segment.channels[channel] = null;
+    return sum;
+  });
+  const send = sends ? lane(segment => segment.send) : null;
+  for (const segment of present) segment.send = null;
+  return { startSample: start, channels, send, truncated: cut || reach > longest };
 }
 
 export function tailStretches(length, count, shortest = 1) {
   const parts = Math.max(1, Math.min(count, Math.floor(length / Math.max(1, shortest))));
   return Array.from({ length: parts }, (_, part) => [Math.floor(part * length / parts), Math.floor((part + 1) * length / parts)]);
+}
+
+/** Runs `count` tail stretches at most `limit` at a time. A tail reaches into the following stretch, so that stretch starts, taking its pressure, before the tail is added. */
+export function queueTails(count, limit, start, done) {
+  let next = 0;
+  let remaining = count;
+  const launch = () => {
+    const position = next;
+    next += 1;
+    start(position, add => {
+      const early = next === position + 1 && next < count;
+      if (early) launch();
+      add();
+      remaining -= 1;
+      if (remaining === 0) done();
+      else if (!early && next < count) launch();
+    });
+  };
+  if (!count) { done(); return; }
+  for (let started = 0; started < Math.min(limit, count); started += 1) launch();
 }
 
 export function addTails(sum, from, tails) {
@@ -1425,9 +1458,11 @@ export function finishSum(sum, sampleRate) {
       result[index] = samples[index];
       if (channel === 0) peakPa = Math.max(peakPa, Math.abs(samples[index]));
     }
+    // Let go as soon as copied, so the sum and the result are never both whole in memory.
+    sum.channels[channel] = null;
     return result;
   });
-  return { startSeconds: sum.channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], sampleRate), truncated: Boolean(sum.truncated) };
+  return { startSeconds: channels[0].length ? sum.startSample / sampleRate : 0, channels, peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], sampleRate), truncated: Boolean(sum.truncated) };
 }
 
 export function combineSegments(segments, sampleRate) {
