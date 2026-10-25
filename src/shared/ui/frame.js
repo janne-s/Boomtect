@@ -1,6 +1,6 @@
 import { GROUND, RENDER, RENDER_COST, VIEW } from '../domain/constants.js';
 import { GROUND_LABELS, GROUND_TYPES } from '../domain/ground.js';
-import { newSeed } from '../domain/random.js';
+import { newSeed, randomId } from '../domain/random.js';
 import { frontProfile, PATH_DIRECT, PATH_SCATTER, PATH_SHADOW, pathProfile, soundSpeedProfile, travelSeconds, wavefront } from '../domain/refraction.js';
 import { addTails, arrivalTable, assemblePaths, earliestArrival, echoesActive, finishSum, frameExtents, pathRange, hasTails, joinResponses, partitionSeconds, previewScene, echoFreeShare, receiverResult, resultDifference, sumSegments, tailSamples, tailStretches } from '../domain/render.js';
 import { defaultReceiver, headingToward, placeLabel, TERRAIN_DEFAULTS } from '../domain/scene.js';
@@ -2420,7 +2420,7 @@ export function startFrame(tect) {
     placement: echotectPlacement(),
     scene: plan.scene, receiver: plan.scene.receivers.find(receiver => receiver.id === microphone.receiverId),
     channels: microphone.channels, arrivals: results.get(microphone.receiverId).arrivals, fullScalePa: 1 / plan.gain,
-    startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: crypto.randomUUID(), createdAt: new Date().toISOString()
+    startSeconds: plan.everyone.startSeconds, file, terrainEchoes: false, appVersion: APP_VERSION, id: randomId(), createdAt: new Date().toISOString()
   });
 
   async function sendToEchotect(receiverId, trigger) {

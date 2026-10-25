@@ -32,3 +32,13 @@ export function normalDeviates(random, count) {
 export const isSeed = value => Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
 
 export const newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
+
+/** A random UUID; `crypto.randomUUID` exists only on https or localhost, so a page opened by its network address builds one. */
+export function randomId() {
+  if (globalThis.crypto.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = bytes[6] & 0x0f | 0x40;
+  bytes[8] = bytes[8] & 0x3f | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}

@@ -1,3 +1,5 @@
+import { randomId } from '../domain/random.js';
+
 const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
 
 export const LINKED_TECTS = Object.freeze({
@@ -20,7 +22,7 @@ const REQUEST_SECONDS = 600;
 const SESSION_KEY = 'tect.link.partner';
 const LEADS_KEY = 'tect.link.leads';
 
-const instanceId = () => crypto.randomUUID();
+const instanceId = () => randomId();
 
 /** The tect this tab was linked with, kept for the tab's session so that a reload takes the link up again. */
 export const linkedSession = () => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } };
