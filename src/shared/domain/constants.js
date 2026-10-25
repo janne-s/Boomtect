@@ -38,11 +38,21 @@ export const GROUND = Object.freeze({
   foliageDecibelsPerCubeRootHertz: .006,
   foliageCutoffHz: 10,
   reverbBandsHz: Object.freeze([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
-  /** Class B at 1 kHz: snowy forest at Koli, T30 1.3–1.7 s (Shelley, Murphy & Chadwick, DAFx 2013); the rest class C. */
+  /**
+   * Class B 250 Hz–8 kHz: median two-slope fit to the eight Koli impulse responses, snow and summer, 7.2–11 m
+   * (Shelley, Murphy & Chadwick, DAFx 2013; OpenAIR); energy density re the direct sound, dB re 1/s, at the start of each
+   * slope, and its T60, the late one at most 3 s. 31.5–125 Hz and 16 kHz class C. The tail ends `cutDecibels` below its start.
+   */
   forest: Object.freeze({
-    seconds: Object.freeze([.2, .3, .5, .8, 1.15, 1.5, 1.3, 1, .7, .5]),
-    energyShare: .1,
-    buildSeconds: .005
+    earlyDecibels: Object.freeze([-3, 0, 3, 4, 2, 3, 1.5, .2, 5, 2]),
+    earlySeconds: Object.freeze([.3, .4, .44, .5, .47, .59, .48, .48, .37, .3]),
+    lateDecibels: Object.freeze([-20, -15, -10, -19, -21, -17, -18, -19, -22, -25]),
+    lateSeconds: Object.freeze([1.5, 2, 2.8, 3, 3, 2.4, 2.1, 1.3, 1.4, 1]),
+    buildSeconds: .002,
+    cutDecibels: 45,
+    /** Class C: the Koli responses' path under the trees; the tail scales with the energy the foliage takes from a path, at 1 kHz. */
+    referenceMetres: 9,
+    scatterDecibelsPerMetre: .06
   }),
   /** Class C, fitted to Doc/reference/audio sonic1–3 and meteor1. */
   surroundings: Object.freeze({

@@ -19,9 +19,52 @@ export function foliageMetres(metres, a, b, treeHeightMetres) {
   return metres * (treeHeightMetres - low) / (high - low);
 }
 
-const FOREST = Object.freeze({ ...GROUND.forest, salt: 0 });
+const ENERGY_PER_T60 = 6 * Math.LN10;
 
-const SURROUNDINGS = Object.freeze({ ...GROUND.surroundings, salt: 0x5bd1e995 });
+function forestCutSeconds(band) {
+  const { earlyDecibels, earlySeconds, lateDecibels, lateSeconds, cutDecibels } = GROUND.forest;
+  const floor = Math.max(earlyDecibels[band], lateDecibels[band]) - cutDecibels;
+  const early = earlySeconds[band] * (earlyDecibels[band] - floor) / 60;
+  const late = lateSeconds[band] * (lateDecibels[band] - floor) / 60;
+  return Math.max(early, late);
+}
+
+const FOREST_CUTS = Object.freeze(GROUND.reverbBandsHz.map((_, band) => forestCutSeconds(band)));
+
+/** Energy density re the direct sound per second, faded to nothing over the last fifth before the cut. */
+function forestDensity(band, t) {
+  const { earlyDecibels, earlySeconds, lateDecibels, lateSeconds } = GROUND.forest;
+  const cut = FOREST_CUTS[band];
+  if (t >= cut) return 0;
+  const fade = Math.min(1, (cut - t) / (.2 * cut));
+  const density = 10 ** (earlyDecibels[band] / 10) * Math.exp(-ENERGY_PER_T60 * t / earlySeconds[band])
+    + 10 ** (lateDecibels[band] / 10) * Math.exp(-ENERGY_PER_T60 * t / lateSeconds[band]);
+  return density * (.5 - .5 * Math.cos(Math.PI * fade));
+}
+
+const FOREST = Object.freeze({
+  salt: 0,
+  name: 'forest',
+  lengthSeconds: Math.max(...FOREST_CUTS),
+  shape: band => t => (1 - Math.exp(-t / GROUND.forest.buildSeconds)) * Math.sqrt(forestDensity(band, t)),
+  share: (band, shape, sampleRate, length) => {
+    let energy = 0;
+    for (let index = 0; index < length; index += 1) energy += shape(index / sampleRate) ** 2;
+    return energy / sampleRate;
+  }
+});
+
+const SURROUNDINGS = Object.freeze({
+  salt: 0x5bd1e995,
+  name: 'surroundings',
+  lengthSeconds: 70 / 60 * Math.max(...GROUND.surroundings.seconds),
+  shape: band => {
+    const { seconds, buildSeconds } = GROUND.surroundings;
+    const decay = 3 * Math.LN10 / seconds[band];
+    return t => (1 - Math.exp(-t / buildSeconds)) * Math.exp(-decay * t);
+  },
+  share: band => GROUND.surroundings.energyShare * GROUND.surroundings.seconds[band] / GROUND.surroundings.seconds[5]
+});
 
 export function forestSeed(id) {
   let hash = 0x811c9dc5;
@@ -29,28 +72,40 @@ export function forestSeed(id) {
   return hash >>> 0;
 }
 
-export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels], density = 1) {
-  // Class C.
-  return cachedResponses(density === 1 ? FOREST : { ...FOREST, energyShare: FOREST.energyShare * density }, seed, sampleRate, first, last, 'forest');
+/**
+ * Class C: how strongly a path drives the forest tail, as an amplitude, by its metres under the canopy. The tail takes the
+ * energy the trees scatter from the path, which grows as the foliage loss does; at the Koli responses' 9 m it is 1.
+ */
+export function forestSend(underCanopyMetres) {
+  if (!(underCanopyMetres > 0)) return 0;
+  const { referenceMetres, scatterDecibelsPerMetre } = GROUND.forest;
+  const scattered = metres => 10 ** (scatterDecibelsPerMetre * metres / 10) - 1;
+  return Math.sqrt(scattered(underCanopyMetres) / scattered(referenceMetres));
+}
+
+export function forestResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
+  return cachedResponses(FOREST, seed, sampleRate, first, last);
 }
 
 export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
-  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last, 'surroundings');
+  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last);
 }
 
 const lastResponses = new Map();
 
-function cachedResponses(profile, seed, sampleRate, first, last, name) {
-  const key = `${seed}:${first}:${last}:${sampleRate}:${profile.energyShare}`;
-  if (lastResponses.get(name)?.key !== key) lastResponses.set(name, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
-  return lastResponses.get(name).responses;
+function cachedResponses(profile, seed, sampleRate, first, last) {
+  const key = `${seed}:${first}:${last}:${sampleRate}`;
+  if (lastResponses.get(profile.name)?.key !== key) lastResponses.set(profile.name, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
+  return lastResponses.get(profile.name).responses;
 }
 
 function makeResponses(profile, seed, sampleRate, first, last) {
-  const length = Math.ceil(70 / 60 * Math.max(...profile.seconds) * sampleRate);
+  const length = Math.ceil(profile.lengthSeconds * sampleRate);
   const size = nextPowerOfTwo(length);
   const binHz = sampleRate / size;
   const bands = GROUND.reverbBandsHz.length;
+  const shapes = GROUND.reverbBandsHz.map((_, band) => profile.shape(band));
+  const shares = shapes.map((shape, band) => profile.share(band, shape, sampleRate, length));
   const weights = GROUND.reverbBandsHz.map(() => new Float64Array(size / 2 + 1));
   for (let bin = 1; bin <= size / 2; bin += 1) {
     const position = Math.log2(bin * binHz / GROUND.reverbBandsHz[0]);
@@ -96,14 +151,13 @@ function makeResponses(profile, seed, sampleRate, first, last) {
       [re, im].forEach((signal, part) => {
         const bandEnergy = energies[part];
         if (!bandEnergy) return;
-        const decay = 3 * Math.LN10 / profile.seconds[band + part];
+        const shape = shapes[band + part];
         let energy = 0;
         for (let index = 0; index < length; index += 1) {
-          const t = index / sampleRate;
-          signal[index] *= (1 - Math.exp(-t / profile.buildSeconds)) * Math.exp(-decay * t);
+          signal[index] *= shape(index / sampleRate);
           energy += signal[index] * signal[index];
         }
-        const target = profile.energyShare * profile.seconds[band + part] / profile.seconds[5] * bandEnergy / (size / 2) / (2 * order + 1);
+        const target = shares[band + part] * bandEnergy / (size / 2) / (2 * order + 1);
         const scale = energy > 0 ? Math.sqrt(target / energy) : 0;
         for (let index = 0; index < length; index += 1) response[index] += signal[index] * scale;
       });
@@ -152,14 +206,19 @@ export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   }
 }
 
-export function diffuseTails(pressure, { forest = null, surroundings = null }, channels) {
+/** The forest tail follows `send`, each path's pressure weighted by its `forestSend`; the surroundings follow the pressure and the forest tail. */
+export function diffuseTails(pressure, { forest = null, surroundings = null }, channels, send = null) {
   const length = pressure.length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
   const tails = Array.from({ length: channels }, () => new Float64Array(length));
-  const source = new Float64Array(length);
-  source.set(pressure);
-  if (forest) addForestTail(tails, forest, source);
+  if (forest && send) {
+    const driven = new Float64Array(length);
+    driven.set(send);
+    addForestTail(tails, forest, driven);
+  }
   if (surroundings) {
-    if (forest) for (let index = 0; index < length; index += 1) source[index] += tails[0][index];
+    const source = new Float64Array(length);
+    source.set(pressure);
+    if (forest && send) for (let index = 0; index < length; index += 1) source[index] += tails[0][index];
     addForestTail(tails, surroundings, source);
   }
   return tails;

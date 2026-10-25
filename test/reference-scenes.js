@@ -78,7 +78,7 @@ function renderInParts(scene, parts = 2) {
     const length = responses ? sum.channels[0].length - tailSamples(responses) : 0;
     if (length > 0) {
       for (const [from, to] of tailStretches(length, parts, tailSamples(responses))) {
-        addTails(sum, from, diffuseTails(sum.channels[0].slice(from, to), responses, sum.channels.length));
+        addTails(sum, from, diffuseTails(sum.channels[0].slice(from, to), responses, sum.channels.length, sum.send?.slice(from, to)));
       }
     }
     const nonlinearPaths = segments.reduce((total, segment) => total + segment.nonlinearPaths, 0);

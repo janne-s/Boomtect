@@ -906,14 +906,15 @@ export function startFrame(tect) {
     operation('render', 'Adding tails', { share: 0 });
     jobs.forEach(({ index, from, to }) => {
       const pressure = sums[index].channels[0].slice(from, to);
-      spawnWorker(revision, { type: 'tails', pressure, responses: responses[index], channels: sums[index].channels.length }, {
+      const send = sums[index].send?.slice(from, to) ?? null;
+      spawnWorker(revision, { type: 'tails', pressure, send, responses: responses[index], channels: sums[index].channels.length }, {
         onResult: data => {
           addTails(sums[index], from, data.tails);
           remaining -= 1;
           operation('render', 'Adding tails', { share: 1 - remaining / jobs.length });
           if (remaining === 0) finish();
         }
-      }, [pressure.buffer]);
+      }, [pressure.buffer, ...(send ? [send.buffer] : [])]);
     });
   }
 

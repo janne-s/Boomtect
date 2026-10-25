@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GROUND } from '../src/domain/constants.js';
 import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
-import { foliageExponent, foliageMetres, forestResponses } from '../src/shared/domain/forest.js';
+import { foliageExponent, foliageMetres, forestResponses, forestSend } from '../src/shared/domain/forest.js';
 import { combineWithTails, joinResponses, partitionSeconds, prepareScene, renderReceiver, renderReceiverRange, tailResponses } from '../src/domain/render.js';
 import { parseScene } from '../src/domain/scene.js';
 import { plainScene } from './plain-scene.js';
@@ -31,41 +31,43 @@ test('only the part of a straight path under the canopy passes through foliage',
   assert.ok(Math.abs(foliageMetres(300, 25, 5, 15) - 150) < 1e-9);
 });
 
-test('the forest tail holds its share of each band and decays in the Koli time at 1 kHz', () => {
+test('the forest tail follows the Koli responses at 1 kHz: about −9 dB of the sound that drives it, as Koli\'s tail of its direct sound and ground reflection, falling 10–16 dB by 0.1 s and 18–30 dB by 0.3 s', () => {
   const [response] = forestResponses(7, 1, SAMPLE_RATE);
   const size = nextPowerOfTwo(response.length);
   const re = new Float64Array(size);
   const im = new Float64Array(size);
   re.set(response);
   fft(re, im);
-  // Against a unit impulse, whose energy per bin is 1: about −10 dB at 1 kHz, less at the ends.
-  const share = (low, high) => {
-    let energy = 0;
-    let bins = 0;
-    for (let bin = 1; bin < size / 2; bin += 1) {
-      const frequency = bin * SAMPLE_RATE / size;
-      if (frequency >= low && frequency < high) { energy += re[bin] ** 2 + im[bin] ** 2; bins += 1; }
-    }
-    return 10 * Math.log10(energy / bins);
-  };
-  const middle = share(700, 1400);
-  assert.ok(middle > -11 && middle < -7, `${middle}`);
-  assert.ok(share(20, 100) < middle - 5);
   const band = new Float64Array(size);
   const bandIm = new Float64Array(size);
+  let bins = 0;
   for (let bin = 1; bin < size / 2; bin += 1) {
     const frequency = bin * SAMPLE_RATE / size;
     if (frequency < 707 || frequency >= 1414) continue;
     band[bin] = re[bin]; bandIm[bin] = im[bin];
     band[size - bin] = re[bin]; bandIm[size - bin] = -im[bin];
+    bins += 1;
   }
   fft(band, bandIm, true);
-  const remaining = new Float64Array(response.length);
-  for (let index = response.length - 1, sum = 0; index >= 0; index -= 1) { sum += band[index] ** 2; remaining[index] = sum; }
-  const level = index => 10 * Math.log10(remaining[index] / remaining[0]);
-  const at = decibels => remaining.findIndex((_, index) => level(index) <= decibels) / SAMPLE_RATE;
-  const t30 = 2 * (at(-35) - at(-5));
-  assert.ok(t30 > 1.3 && t30 < 1.7, `${t30}`);
+  const energy = (from, to) => {
+    let sum = 0;
+    for (let index = Math.round(from * SAMPLE_RATE); index < Math.min(response.length, Math.round(to * SAMPLE_RATE)); index += 1) sum += band[index] ** 2;
+    return sum;
+  };
+  // A unit impulse has 2·bins/size of its energy in the octave.
+  const total = 10 * Math.log10(energy(0, Infinity) / (2 * bins / size));
+  assert.ok(total > -11 && total < -8, `${total}`);
+  const density = (from, to) => 10 * Math.log10(energy(from, to) / (to - from) / (2 * bins / size));
+  const start = density(.005, .02);
+  assert.ok(start - density(.1, .2) > 9 && start - density(.1, .2) < 16, `${start - density(.1, .2)}`);
+  assert.ok(start - density(.3, .5) > 18 && start - density(.3, .5) < 30, `${start - density(.3, .5)}`);
+});
+
+test('a path drives the forest tail by the energy its foliage scatters: as at Koli at 9 m, none in the open, more deep in the trees', () => {
+  assert.equal(forestSend(0), 0);
+  assert.ok(Math.abs(forestSend(9) - 1) < 1e-12);
+  assert.ok(Math.abs(forestSend(4.5) ** 2 - .5) < .02);
+  assert.ok(forestSend(200) ** 2 > 50 && forestSend(200) ** 2 < 200);
 });
 
 test('a diffuse tail gives each first-order Ambisonic channel a third of the omnidirectional energy', () => {
@@ -124,16 +126,16 @@ test('tail responses made in shares of channels are those made at once', () => {
   assert.deepEqual(shares, whole);
 });
 
-test('a sparser forest returns its share of the tail and muffles less under its canopy', () => {
-  const [dense] = forestResponses(7, 1, SAMPLE_RATE);
-  const [sparse] = forestResponses(7, 1, SAMPLE_RATE, [0, 1], .25);
-  for (const index of [100, 5000, 40000]) assert.ok(Math.abs(sparse[index] - dense[index] / 2) < 1e-12 * Math.abs(dense[index]) + 1e-18);
-  const peak = density => {
+test('a sparser forest drives less of the tail and muffles less under its canopy', () => {
+  const render = density => {
     const scene = plainScene('blast');
     scene.ground = { ...scene.ground, forest: true, forestDensity: density };
     scene.render.ambisonicOrder = 0;
-    const result = renderReceiver(prepareScene(scene), scene.receivers[0], scene);
-    return result.channels[0].reduce((most, value) => Math.max(most, Math.abs(value)), 0);
+    return renderReceiver(prepareScene(scene), scene.receivers[0], scene);
   };
-  assert.ok(peak(.2) > peak(1) * 1.05);
+  const peak = result => result.channels[0].reduce((most, value) => Math.max(most, Math.abs(value)), 0);
+  const late = result => result.channels[0].reduce((sum, value, index) => (index > result.channels[0].length / 2 ? sum + value * value : sum), 0);
+  const [sparse, dense] = [render(.2), render(1)];
+  assert.ok(peak(sparse) > peak(dense));
+  assert.ok(late(sparse) < late(dense));
 });

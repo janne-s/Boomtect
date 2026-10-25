@@ -136,7 +136,7 @@ test('the surroundings hear the forest tail, and stretches of the pressure sum t
   const pressure = Float64Array.from({ length: 700 }, (_, index) => (index < 650 ? Math.sin(index * .3) * Math.exp(-index / 300) : 0));
   const kernels = (length, scale) => [0, 1, 2].map(channel => Float64Array.from({ length }, (_, index) => Math.exp(-index / (scale + channel)) * Math.cos(index * .7)));
   const responses = { forest: kernels(30, 5), surroundings: kernels(90, 20) };
-  const whole = diffuseTails(pressure, responses, 3);
+  const whole = diffuseTails(pressure, responses, 3, pressure);
   assert.equal(whole[0].length, 700 + 30 + 90);
   const excitation = new Float64Array(whole[0].length);
   excitation.set(pressure);
@@ -149,7 +149,7 @@ test('the surroundings hear the forest tail, and stretches of the pressure sum t
   });
   const sum = whole.map(tail => new Float64Array(tail.length));
   for (const [from, to] of [[0, 123], [123, 400], [400, 700]]) {
-    diffuseTails(pressure.subarray(from, to), responses, 3).forEach((tail, channel) => tail.forEach((value, index) => { sum[channel][from + index] += value; }));
+    diffuseTails(pressure.subarray(from, to), responses, 3, pressure.subarray(from, to)).forEach((tail, channel) => tail.forEach((value, index) => { sum[channel][from + index] += value; }));
   }
   sum.forEach((tail, channel) => tail.forEach((value, index) => assert.ok(Math.abs(value - whole[channel][index]) < 1e-12, `${channel}:${index}`)));
 });

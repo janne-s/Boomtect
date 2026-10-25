@@ -11,7 +11,7 @@ export function serveRenders({ parseScene, prepareScene }) {
     const { revision, type, scene: value } = data;
     try {
       if (type === 'tails') {
-        const tails = diffuseTails(data.pressure, data.responses, data.channels);
+        const tails = diffuseTails(data.pressure, data.responses, data.channels, data.send);
         self.postMessage({ revision, type: 'result', tails }, tails.map(channel => channel.buffer));
         return;
       }
@@ -45,7 +45,7 @@ export function serveRenders({ parseScene, prepareScene }) {
         });
         return { receiverId: receiver.id, ...segment };
       });
-      self.postMessage({ revision, type: 'result', segments }, segments.flatMap(segment => segment.channels.map(channel => channel.buffer)));
+      self.postMessage({ revision, type: 'result', segments }, segments.flatMap(segment => [...segment.channels, ...(segment.send ? [segment.send] : [])].map(channel => channel.buffer)));
     } catch (error) {
       self.postMessage({ revision, type: 'error', message: error instanceof Error ? error.message : String(error) });
     }

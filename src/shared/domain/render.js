@@ -2,7 +2,7 @@ import { airAtHeight, atmosphericAbsorptionNepersPerMetre, pressureAtHeightPa, t
 import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.js';
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { edgeField } from './diffraction.js';
-import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, surroundingsResponses } from './forest.js';
+import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, forestSend, surroundingsResponses } from './forest.js';
 import { focusSpectrum, focusSpectrumAt } from './focus.js';
 import { PULSE_FRIEDLANDER, PULSE_GRAIN, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { createScintillation } from './scintillation.js';
@@ -1279,7 +1279,9 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   }
   const order = scene.render.ambisonicOrder;
   const channels = channelCount(order);
-  if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), nonlinearPaths: 0, pathCount: 0, truncated: beyond > 0 };
+  const sends = scene.ground.forest;
+  const lanes = channels + (sends ? 1 : 0);
+  if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), send: sends ? new Float64Array(0) : null, nonlinearPaths: 0, pathCount: 0, truncated: beyond > 0 };
   // Class C: a noise source radiates from a whole volume, so its reflection does not interfere with it.
   const noises = preparedEmitters.map(({ sources, noise, emitter }) => {
     let index = 0;
@@ -1289,8 +1291,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     return [0, 1].map(part => ({ samples: noise((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate, emitter), impulses: null }));
   });
   const noiseLength = Math.max(0, ...noises.map(noisy => (noisy ? noisy[0].samples.length : 0)));
-  const outputs = Array.from({ length: channels }, () => new Float64Array(last - first + noiseLength));
-  const gains = new Float64Array(channels);
+  const outputs = Array.from({ length: lanes }, () => new Float64Array(last - first + noiseLength));
+  const gains = new Float64Array(lanes);
   const echoes = scene.render.quality.coarseEchoes ? { key: null, spectrum: null } : null;
   const echoOrder = echoes ? new Map(selected.filter(index => grainEcho(preparedEmitters, paths, index)).map(index => [index, `${pathSources(preparedEmitters, paths, index).noiseSeed[paths.source[index]]}:${echoDirection(paths, index)}`])) : null;
   const byEcho = (a, b) => (echoOrder?.has(a) && echoOrder.has(b) ? (echoOrder.get(a) < echoOrder.get(b) ? -1 : echoOrder.get(a) > echoOrder.get(b) ? 1 : 0) : 0);
@@ -1298,7 +1300,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
-  const shared = scene.render.quality.sharedScatter ? sharedScatter(channels, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
+  const shared = scene.render.quality.sharedScatter ? sharedScatter(lanes, scene.render.quality.scatterArrivals, forestSeed(receiver.id)) : null;
   const scintillations = new Map();
   const weightOf = index => RENDER.progressWeights[frameGroup(paths, index) % FRAME_GROUPS];
   const totalWeight = selected.reduce((sum, index) => sum + weightOf(index), 0);
@@ -1309,13 +1311,14 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const emitterIndex = paths.emitter[selected[cursor]];
     const frame = frameOf[selected[cursor]];
     const plan = plans[group];
-    const spectra = Array.from({ length: channels }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
+    const spectra = Array.from({ length: lanes }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     shared?.start(group, frame);
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
       const index = selected[cursor];
       const sources = pathSources(preparedEmitters, paths, index);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
+      if (sends) gains[channels] = forestSend(Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity);
       const grain = sources.pulse[paths.source[index]] === PULSE_GRAIN
         ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) : null;
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared, grain);
@@ -1328,11 +1331,11 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     let target = outputs;
     if (part >= 0) {
       const noisy = noises[emitterIndex][part];
-      noisy.impulses ??= Array.from({ length: channels }, () => new Float64Array(last - first));
+      noisy.impulses ??= Array.from({ length: lanes }, () => new Float64Array(last - first));
       target = noisy.impulses;
     }
-    for (let channel = 0; channel < channels; channel += 2) {
-      const blocks = channel + 1 < channels ? synthesizeFramePair(spectra[channel], spectra[channel + 1], plan.size, sampleRate)
+    for (let channel = 0; channel < lanes; channel += 2) {
+      const blocks = channel + 1 < lanes ? synthesizeFramePair(spectra[channel], spectra[channel + 1], plan.size, sampleRate)
         : [synthesizeFrame(spectra[channel].real, spectra[channel].imaginary, plan.size, sampleRate)];
       blocks.forEach((block, part) => {
         const output = target[channel + part];
@@ -1346,7 +1349,7 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       if (impulses) convolveAdd(outputs, impulses, samples);
     }
   }
-  return { startSample: first, channels: outputs, nonlinearPaths, pathCount: selected.length, truncated: beyond > 0 };
+  return { startSample: first, channels: outputs.slice(0, channels), send: sends ? outputs[channels] : null, nonlinearPaths, pathCount: selected.length, truncated: beyond > 0 };
 }
 
 export function hasTails(scene) {
@@ -1360,7 +1363,7 @@ export function tailResponses(receiver, scene, channels = [0, channelCount(scene
   const count = channelCount(scene.render.ambisonicOrder);
   const { sampleRate } = scene.render;
   return {
-    forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels, scene.ground.forestDensity) : null,
+    forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels) : null,
     surroundings: surroundingsTail(scene) ? surroundingsResponses(forestSeed(receiver.id), count, sampleRate, channels) : null
   };
 }
@@ -1375,17 +1378,19 @@ export const tailSamples = responses => (responses?.forest?.[0].length ?? 0) + (
 export function sumSegments(segments, sampleRate, room = 0) {
   const present = segments.filter(segment => segment.channels[0].length);
   const count = segments[0]?.channels.length ?? 1;
+  const sends = segments.some(segment => segment.send);
   const cut = segments.some(segment => segment.truncated);
-  if (!present.length) return { startSample: 0, channels: Array.from({ length: count }, () => new Float64Array(0)), truncated: cut };
+  if (!present.length) return { startSample: 0, channels: Array.from({ length: count }, () => new Float64Array(0)), send: sends ? new Float64Array(0) : null, truncated: cut };
   const start = Math.min(...present.map(segment => segment.startSample));
   const longest = Math.round(RENDER.maximumSeconds * sampleRate);
   const reach = Math.max(...present.map(segment => segment.startSample + segment.channels[0].length)) - start;
   const length = Math.min(reach, longest);
-  const channels = Array.from({ length: count }, (_, channel) => {
+  const lane = pick => {
     const sum = new Float64Array(length + room);
     for (const segment of present) {
       const offset = segment.startSample - start;
-      const samples = segment.channels[channel];
+      const samples = pick(segment);
+      if (!samples) continue;
       const kept = Math.min(samples.length, length - offset);
       for (let index = 0; index < kept; index += 1) sum[offset + index] += samples[index];
     }
@@ -1394,8 +1399,9 @@ export function sumSegments(segments, sampleRate, room = 0) {
       for (let index = 0; index < fade; index += 1) sum[length - fade + index] *= 1 - (index + 1) / fade;
     }
     return sum;
-  });
-  return { startSample: start, channels, truncated: cut || reach > longest };
+  };
+  const channels = Array.from({ length: count }, (_, channel) => lane(segment => segment.channels[channel]));
+  return { startSample: start, channels, send: sends ? lane(segment => segment.send) : null, truncated: cut || reach > longest };
 }
 
 export function tailStretches(length, count, shortest = 1) {
@@ -1435,7 +1441,7 @@ export function combineWithTails(segments, receiver, scene, stretches = 1) {
   const length = sum.channels[0].length - tailSamples(responses);
   if (responses && length > 0) {
     const pressure = sum.channels[0].slice(0, length);
-    for (const [from, to] of tailStretches(length, stretches)) addTails(sum, from, diffuseTails(pressure.subarray(from, to), responses, sum.channels.length));
+    for (const [from, to] of tailStretches(length, stretches)) addTails(sum, from, diffuseTails(pressure.subarray(from, to), responses, sum.channels.length, sum.send?.subarray(from, to)));
   }
   return finishSum(sum, sampleRate);
 }
