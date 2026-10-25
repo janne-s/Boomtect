@@ -1,6 +1,16 @@
 import { TECT_MESSAGES } from '../domain/handoff.js';
 
-export const ECHOTECT_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://127.0.0.1:8001/' : 'https://janne-s.github.io/Echotect/';
+const PAGES = 'https://janne-s.github.io';
+const LOCAL_PORTS = Object.freeze({ Boomtect: 8000, Echotect: 8001, Rumbletect: 8002 });
+const LOOPBACK = ['localhost', '127.0.0.1'].includes(location.hostname);
+// A tect served by its own local server, by localhost or by the machine's address in the local network, finds the others on the same host.
+const LOCAL = LOOPBACK || (location.protocol === 'http:' && Object.values(LOCAL_PORTS).includes(Number(location.port)));
+const HOST = LOOPBACK ? '127.0.0.1' : location.hostname;
+
+export const tectUrl = name => (LOCAL ? `http://${HOST}:${LOCAL_PORTS[name]}/` : `${PAGES}/${name}/`);
+export const tectOrigins = names => Object.freeze([PAGES, ...names.flatMap(name => [...new Set(['127.0.0.1', 'localhost', location.hostname])].map(host => `http://${host}:${LOCAL_PORTS[name]}`))]);
+export const ECHOTECT_URL = tectUrl('Echotect');
+
 const READY_SECONDS = 30;
 const ANSWER_SECONDS = 30;
 

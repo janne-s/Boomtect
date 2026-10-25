@@ -1,13 +1,9 @@
 import { randomId } from '../domain/random.js';
+import { tectOrigins, tectUrl } from './tect-link.js';
 
-const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+export const LINKED_TECTS = Object.freeze({ Boomtect: tectUrl('Boomtect'), Rumbletect: tectUrl('Rumbletect') });
 
-export const LINKED_TECTS = Object.freeze({
-  Boomtect: LOCAL ? 'http://127.0.0.1:8000/' : 'https://janne-s.github.io/Boomtect/',
-  Rumbletect: LOCAL ? 'http://127.0.0.1:8002/' : 'https://janne-s.github.io/Rumbletect/'
-});
-
-const ORIGINS = Object.freeze(['https://janne-s.github.io', 'http://127.0.0.1:8000', 'http://localhost:8000', 'http://127.0.0.1:8002', 'http://localhost:8002']);
+const ORIGINS = tectOrigins(Object.keys(LINKED_TECTS));
 const PREFIX = 'tect.link.';
 const MESSAGE = Object.freeze({
   present: `${PREFIX}present`, hello: `${PREFIX}hello`, offer: `${PREFIX}offer`, accept: `${PREFIX}accept`, bye: `${PREFIX}bye`,
