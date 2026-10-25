@@ -107,6 +107,36 @@ function coneStride(path, end) {
   return Math.max(powerOfTwoAbove(end / MOST_CONE_RINGS), Math.min(even, turning));
 }
 
+const frames = new WeakMap();
+const sideways = unit => Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
+
+/** A ring's first direction, carried along the path from its start so that a ring's points stay matched to the next one's. */
+function pathFrames(path) {
+  if (frames.has(path)) return frames.get(path);
+  const count = path.seconds.length;
+  const result = [];
+  let previous = null;
+  for (let index = 0; index < count; index += 1) {
+    const from = Math.max(0, index - 1);
+    const to = Math.min(count - 1, index + 1);
+    const d = { x: path.x[to] - path.x[from], y: path.y[to] - path.y[from], z: path.z[to] - path.z[from] };
+    const length = Math.hypot(d.x, d.y, d.z) || 1;
+    previous = carried(previous, { x: d.x / length, y: d.y / length, z: d.z / length });
+    result.push(previous);
+  }
+  frames.set(path, result);
+  return result;
+}
+
+function carried(first, unit) {
+  const guess = first ?? sideways(unit);
+  const along = guess.x * unit.x + guess.y * unit.y + guess.z * unit.z;
+  const v = { x: guess.x - along * unit.x, y: guess.y - along * unit.y, z: guess.z - along * unit.z };
+  const norm = Math.hypot(v.x, v.y, v.z);
+  if (norm > 1e-6) return { x: v.x / norm, y: v.y / norm, z: v.z / norm };
+  return first ? carried(null, unit) : guess;
+}
+
 export function machCone(path, now, profile, { profileAt = localProfile, envelope = false } = {}) {
   const count = path.seconds.length;
   const last = Math.min(count - 1, Math.floor((now - path.seconds[0]) / path.step));
@@ -170,9 +200,7 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
     }
     if (!(length > 0 && Math.abs(cosine) < 1)) continue;
     const unit = { x: d.x / length, y: d.y / length, z: d.z / length };
-    const across = Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
-    const norm = Math.hypot(across.x, across.y, across.z);
-    const first = { x: across.x / norm, y: across.y / norm, z: across.z / norm };
+    const first = carried(pathFrames(path)[index], unit);
     const second = { x: unit.y * first.z - unit.z * first.y, y: unit.z * first.x - unit.x * first.z, z: unit.x * first.y - unit.y * first.x };
     const { centre, radiusMetres } = frontAt(index);
     const middle = { x: centre.x + radiusMetres * cosine * unit.x, y: centre.y + radiusMetres * cosine * unit.y, z: centre.z + radiusMetres * cosine * unit.z };
