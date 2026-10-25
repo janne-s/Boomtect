@@ -67,6 +67,8 @@ export function startFrame(tect) {
   const workerLimit = () => Math.max(1, Math.min(WORKER_COUNT, state.preferences.threads || WORKER_COUNT));
 
 
+  const onsetOf = scene => (typeof onsetName === 'function' ? onsetName(scene) : onsetName);
+
   const $ = id => document.getElementById(id);
 
   const RENDER_MARKER_STORAGE_KEY = `${prefix}.renderUnfinished`;
@@ -1855,7 +1857,7 @@ export function startFrame(tect) {
         first = Math.min(first, result.arrivals.seconds[index]);
         last = Math.max(last, result.arrivals.seconds[index]);
       }
-      listenInfo.append(element('span', '', last > first ? `Sound ${formatSeconds(first)}–${formatSeconds(last)} after ${onsetName}` : `Sound ${formatSeconds(first)} after ${onsetName}`));
+      listenInfo.append(element('span', '', last > first ? `Sound ${formatSeconds(first)}–${formatSeconds(last)} after ${onsetOf(state.scene)}` : `Sound ${formatSeconds(first)} after ${onsetOf(state.scene)}`));
       listenInfo.append(element('span', '', formatMicrophoneLevels(result)));
       listenInfo.append(element('span', '', `c ${result.speedOfSound.toFixed(1)} m/s`));
       let shadowed = 0;
@@ -2470,7 +2472,7 @@ export function startFrame(tect) {
     $('export-summary').textContent = selected.size ? `${count} file${count === 1 ? '' : 's'} · ≈ ${formatBytes(bytes)}${count > 1 ? ' · ZIP' : ''}` : '';
     const aligned = selected.has('microphones') || selected.has('ambix');
     const timeline = aligned ? plan.everyone : plan.listening;
-    $('export-contract').textContent = `${timeline.sampleRate / 1000} kHz · 32-bit float · full scale ${Number((1 / plan.gain).toPrecision(3)).toLocaleString('en')} Pa · from ${formatSeconds(timeline.startSeconds)} after ${onsetName}`;
+    $('export-contract').textContent = `${timeline.sampleRate / 1000} kHz · 32-bit float · full scale ${Number((1 / plan.gain).toPrecision(3)).toLocaleString('en')} Pa · from ${formatSeconds(timeline.startSeconds)} after ${onsetOf(state.scene)}`;
     $('export-submit').disabled = selected.size === 0;
     $('echotect-summary').textContent = `Mono · ${echoesActive(state.scene) ? 'without terrain echoes · ' : ''}≈ ${formatBytes(sizes.echotect)}`;
   }

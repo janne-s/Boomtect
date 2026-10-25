@@ -117,8 +117,8 @@ microphone along the Mach cone.
 
 - **Space** — Runs the main Render / Play / Stop action outside controls and dialogs.
 - **Render** and **Play** — The button renders the scene when it has changed,
-  then plays it: it flashes the sources and plays what the listening microphones
-  hear. While a render runs, it stops it (the square beside the spinner).
+  then plays it: it lights the sources as they sound and plays what the
+  listening microphones hear. While a render runs, it stops it (the square beside the spinner).
 - **Pause** — The button on the pressure plot holds playback where it is; Play
   goes on from there, Stop starts over.
 - **Scrubbing** — Press either plot or the small scene timeline to move playback
@@ -146,7 +146,7 @@ microphone along the Mach cone.
   About as loud, as long, and as dark as the full render, a few times quicker
   over terrain. An export is always rendered in full.
 - **Real delay** (hourglass, beside Play) — On: the sound arrives as late as it would outdoors, and the
-  clock in the corner counts from the flash, its bar brightening when the sound
+  clock in the corner counts from the start (the flash when only flashes sound), its bar brightening when the sound
   arrives. Off: the silence before the first sound is skipped, and the channel
   glows where the sound being heard comes from.
 - **View switches** — Down the scene's right edge, each icon lit while on, only
@@ -276,7 +276,7 @@ button works independently of the main application’s startup.
 **Export** packs the chosen files, several of them in a ZIP:
 
 - **Scene (JSON)** — The full scene as JSON, with the files, the time of their first
-  sample after the flash, and the pascals at full scale. It opens as a scene.
+  sample after the start, and the pascals at full scale. It opens as a scene.
 - **Stereo** — What plays, in two channels: mono on both, a pair left and right,
   more microphones panned, binaural as heard on headphones.
 - **Microphones** — One file per microphone: an omni's pressure in mono, a
