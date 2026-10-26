@@ -22,6 +22,6 @@ Requires Node 20 or later; no packages.
 
 ## Cases
 
-- **A real place:** GPS coordinates in `place` and `"terrain": { "enabled": true }`. Ask for coordinates; do not send an address to a search service unasked. README, "Writing a scene".
+- **A real place:** GPS coordinates in `place` and `"terrain": { "enabled": true }`. Use the coordinates you know for a named place and put the microphone where the description puts it; ask only when unsure, and never send an address to a search service unasked. README, "Writing a scene".
 - **A supersonic jet with its engine:** README, "From the command line", with Rumbletect cloned beside this repository. Hand over the mix and each part.
 - **A collection whose levels compare:** render the loudest scene first, then set `"render": { "levelMode": "fixed", "fullScalePa": <its fullScalePa> }` in every scene. A new `seed` gives another take. Run renders in parallel; each uses one core.

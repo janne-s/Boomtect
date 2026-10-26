@@ -466,16 +466,14 @@ parameters a scene sets, with their defaults and ranges, in `src/domain/scene.js
 
 ## Sounds from words
 
-Ask Claude for a sound in words, such as "thunder three kilometres away on a humid summer night". Claude writes
-the scene, renders it on your machine, checks it by measurement, and hands
-over the WAV files with a link that opens the scene in the app.
+Ask Claude for a sound in words, such as "thunder three kilometres away on a
+humid summer night" or "a sonic boom over Koli, heard from the summit". Claude
+places the source and the microphone from your description, renders the sound
+on your machine, checks it by measurement, and hands over the WAV files and the
+scene to open in the app. There are no servers to set up.
 
-- **Claude Desktop** — Install [`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb),
-  which holds Boomtect and Rumbletect and needs nothing else. The link opens
-  the app served from your machine while Claude Desktop is open.
-- **Claude Code** — In a clone, `claude mcp add tect -- node "$PWD/src/shared/mcp/server.mjs"`.
-  It also finds the tects cloned beside this one.
-- **Other agents and scripts** — See `AGENTS.md` and the command line below.
+- **Claude Desktop** — Install [`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb) and ask.
+- **Claude Code** — Open this repository and ask.
 
 ### Writing a scene
 
@@ -510,8 +508,8 @@ and longitude; every position is metres east, north, and up from it.
 `"terrain": { "enabled": true }` without heights loads the terrain around
 the scene's sources and microphones from Terrain Tiles in 30 m cells (or
 `cellMetres`), and the filled `scene.json` keeps the heights. Without terrain
-the ground is flat. Positions take coordinates, not names; an address sent to a
-search service leaves the machine.
+the ground is flat. A named place takes the coordinates the agent knows; an
+address is never sent to a search service unasked.
 
 **Boomtect and Rumbletect together** — A supersonic jet's boom comes from Boomtect and its engine from Rumbletect. Write both scenes with the
 same `place`, `terrain`, `air`, `ground`, and `receivers`, ids included. Each
