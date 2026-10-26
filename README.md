@@ -467,10 +467,10 @@ parameters a scene sets, with their defaults and ranges, in `src/domain/scene.js
 ## Sounds from words
 
 Ask Claude for a sound in words, such as "thunder three kilometres away on a
-humid summer night" or "a sonic boom over Koli, heard from the summit". Claude
-places the source and the microphone from your description, renders the sound
-on your machine, checks it by measurement, and hands over the WAV files and the
-scene to open in the app. There are no servers to set up.
+humid summer night" or "a sonic boom over the Grand Canyon, heard from the
+South Rim". Claude places the source and the microphone from your description,
+renders the sound on your machine, checks it by measurement, and hands over the
+WAV files and the scene to open in the app. There are no servers to set up.
 
 - **Claude Desktop** — Install [`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb) and ask.
 - **Claude Code** — Open this repository and ask.
