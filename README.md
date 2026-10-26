@@ -498,6 +498,7 @@ What each change does to the sound:
 | `ground.surroundings` | the long rumble the land around returns of a loud sound |
 | Humid air | highs carry farther |
 | Wind toward the microphone | louder; against it, a shadow at a distance |
+| Microphone `type` `binaural` with `headingDegrees` and `pitchDegrees` | a stereo file for headphones, facing that way (compass degrees); a higher `render.ambisonicOrder` sharpens the direction |
 | `seed` | another take of the same event |
 
 Every parameter with its default and range is in `src/domain/scene.js`. The
@@ -526,12 +527,14 @@ node tools/render.mjs my-scene.json out --ambix
 ```
 
 The folder gets one WAV per microphone, the filled `scene.json`, and the
-printed summary as `summary.json`. Without `--ambix` each file is the omni
-pressure; with it, the AmbiX channels of the scene's order in the world frame.
-Files are 32-bit float at the app's export gain. The summary tells an agent,
-which cannot listen, what came out: per microphone the length, the time within
-40 dB of the peak, the peak in dB SPL, the loudest A-weighted level (fast), and
-the spectral centroid and octave shape of the loudest second.
+printed summary as `summary.json`. Each WAV is the omni pressure, or for a
+binaural microphone a stereo file for headphones facing its heading and
+elevation, as the app plays it. `--ambix` adds each microphone's full sound
+field as `<mic>-ambix.wav`, the AmbiX channels of the scene's order in the
+world frame. Files are 32-bit float at the app's export gain. The summary tells
+an agent, which cannot listen, what came out: per microphone the length, the
+time within 40 dB of the peak, the peak in dB SPL, the loudest A-weighted level
+(fast), and the spectral centroid and octave shape of the loudest second.
 
 For two tects, render the first with `--cover <the other scene>` so that its
 terrain covers both, copy `place` and `terrain` from its filled `scene.json`

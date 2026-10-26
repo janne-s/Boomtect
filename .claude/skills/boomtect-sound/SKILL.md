@@ -11,7 +11,7 @@ Requires Node 20 or later; no packages.
 
 1. Translate the request with the table in README.md, section "Writing a scene". Timbre words decide the source as much as its kind: "crack", "sharp" point to a short rise time or a near source, "rolling", "ragged" to a longer, more branched channel.
 2. Copy the nearest scene in `examples/` and change only what the request names. Missing fields take their defaults; `src/domain/scene.js` lists every field with its range. App macros are not fields; set the fields they move.
-3. Run `node tools/render.mjs <scene.json> <folder>`. Add `--ambix` only for spatial audio.
+3. Run `node tools/render.mjs <scene.json> <folder>`. For a listening direction or headphones, make the microphone `binaural`, facing that way; add `--ambix` only when Ambisonics are asked for.
 4. Check the printed summary against the request:
    - dark or bright: `spectralCentroidHz`, and the 2000 Hz and 4000 Hz octaves below the loudest band;
    - long or short: `withinFortyDecibelsSeconds`;
