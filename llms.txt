@@ -13,7 +13,7 @@ An agent can render without the browser: clone the repository and run `node tool
 ## Docs
 
 - [README](https://github.com/janne-s/Boomtect/blob/main/README.md): what every control does, the export files, and the model table with sources and classes
-- [Rendering from a script or an agent](https://github.com/janne-s/Boomtect/blob/main/README.md#rendering-from-a-script-or-an-agent): the render command, its output, and what each change does to the sound
+- [Sounds from words](https://github.com/janne-s/Boomtect/blob/main/README.md#sounds-from-words): Claude Desktop and Claude Code, writing a scene and what each change does to the sound, and the render command
 - [Examples](https://github.com/janne-s/Boomtect/tree/main/examples): starting scenes for requests
 - [Live app](https://janne-s.github.io/Boomtect/)
 

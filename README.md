@@ -6,6 +6,8 @@ how distance, height, layered air, terrain, and ground shape what arrives. Liste
 spaced stereo pair, or binaurally on headphones, and export WAV or Ambisonics.
 Made for sound design, built on physics.
 
+Or ask Claude for a sound in words: see [Sounds from words](#sounds-from-words).
+
 See it live: [**https://janne-s.github.io/Boomtect/**](https://janne-s.github.io/Boomtect/)
 
 ![Boomtect interface](assets/screenshot.jpg)
@@ -462,39 +464,26 @@ Open http://localhost:8000/. Run the tests with `npm test`.
 The model's and the view's tuning values and limits are in `src/domain/constants.js`; the
 parameters a scene sets, with their defaults and ranges, in `src/domain/scene.js`.
 
-## Rendering from a script or an agent
+## Sounds from words
 
-The model runs in Node without the browser, so a script or an AI agent can
-turn a request such as "thunder three kilometres away on a humid summer
-night" into a sound. Node 20 or later, no installed packages:
+Ask Claude for a sound in words, such as "thunder three kilometres away on a humid summer night". Claude writes
+the scene, renders it on your machine, checks it by measurement, and hands
+over the WAV files with a link that opens the scene in the app.
 
-```sh
-node tools/render.mjs examples/thunder-three-kilometres-away.json out
-node tools/render.mjs my-scene.json out --ambix
-node tools/render.mjs boom.json boom --cover rumble.json
-node tools/mix.mjs mix boom rumble
-```
+- **Claude Desktop** — Install [`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb),
+  which holds Boomtect and Rumbletect and needs nothing else. The link opens
+  the app served from your machine while Claude Desktop is open.
+- **Claude Code** — In a clone, `claude mcp add tect -- node "$PWD/src/shared/mcp/server.mjs"`.
+  It also finds the tects cloned beside this one.
+- **Other agents and scripts** — See `AGENTS.md` and the command line below.
 
-The scene is a file saved from the app or a partial one written by hand:
-missing fields take their defaults and values out of range are brought into
-range, as when the app opens a file. The folder gets one WAV per microphone
-the filled `scene.json`, which opens in the app for listening and further
-changes, and the printed summary as `summary.json`. A scene saved from the app over real terrain carries its heights and
-renders the same here. Without `--ambix` each file is the omni pressure; with
-it, the AmbiX channels of the scene's order. Files are 32-bit float at the
-app's export gain.
+### Writing a scene
 
-The JSON on stdout tells an agent, which cannot listen, what came out: per
-microphone the length, the time within 40 dB of the peak, the peak in dB SPL,
-the loudest A-weighted level (fast), and the spectral centroid and octave
-shape of the loudest second in dB below its loudest band. The same scene and
-seed give the same sound.
-
-`examples/` holds three starting points: thunder three kilometres away, a
-blast across a forest, and a sonic boom from high overhead. Begin from the
-nearest one and change what the request names; the macros of the app are not
-scene fields, so set the parameters they move. What each change does to the
-sound:
+A scene is a file saved from the app or a partial one written by hand: missing
+fields take their defaults and values out of range are brought into range, as
+when the app opens a file. `examples/` holds three starting points: thunder three kilometres away, a blast across a forest, and a sonic boom from high overhead.
+Begin from the nearest one and change what the request names; the macros of the app are not scene fields, so set the parameters they move.
+What each change does to the sound:
 
 | Change | Sound |
 |---|---|
@@ -513,50 +502,49 @@ sound:
 | Wind toward the microphone | louder; against it, a shadow at a distance |
 | `seed` | another take of the same event |
 
-Every parameter with its default and range is in `src/domain/scene.js`.
+Every parameter with its default and range is in `src/domain/scene.js`. The
+same scene and seed give the same sound.
 
-### Claude Desktop and Claude Code
+**Place and terrain** — `place` holds the scene's geographic point as latitude
+and longitude; every position is metres east, north, and up from it.
+`"terrain": { "enabled": true }` without heights loads the terrain around
+the scene's sources and microphones from Terrain Tiles in 30 m cells (or
+`cellMetres`), and the filled `scene.json` keeps the heights. Without terrain
+the ground is flat. Positions take coordinates, not names; an address sent to a
+search service leaves the machine.
 
-[`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb)
-installs Boomtect and Rumbletect in Claude Desktop, which brings its own Node:
-ask for a sound in words, and Claude writes the scene, renders it on this
-machine, and gives a link that opens it in the app, served from this machine
-while Claude Desktop is open. In a clone, the same server joins Claude Code and
-finds the tects cloned beside it:
+**Boomtect and Rumbletect together** — A supersonic jet's boom comes from Boomtect and its engine from Rumbletect. Write both scenes with the
+same `place`, `terrain`, `air`, `ground`, and `receivers`, ids included. Each
+tect renders its own emitters, and the mix puts them together in the scene's
+time, with each part as its own file.
+
+### From the command line
+
+Node 20 or later, no installed packages:
 
 ```sh
-claude mcp add tect -- node "$PWD/src/shared/mcp/server.mjs"
+node tools/render.mjs examples/thunder-three-kilometres-away.json out
+node tools/render.mjs my-scene.json out --ambix
 ```
 
-### Place and terrain
+The folder gets one WAV per microphone, the filled `scene.json`, and the
+printed summary as `summary.json`. Without `--ambix` each file is the omni
+pressure; with it, the AmbiX channels of the scene's order in the world frame.
+Files are 32-bit float at the app's export gain. The summary tells an agent,
+which cannot listen, what came out: per microphone the length, the time within
+40 dB of the peak, the peak in dB SPL, the loudest A-weighted level (fast), and
+the spectral centroid and octave shape of the loudest second.
 
-`place` holds the scene's geographic point as latitude and longitude; every
-position is metres east, north, and up from it, so GPS coordinates place a
-microphone as precisely as they are given. The command takes coordinates, not
-names: look a place up first, and remember that an address sent to a search
-service leaves the machine. `"terrain": { "enabled": true }` without heights
-loads the terrain around the scene's sources and microphones from Terrain
-Tiles, as the app does, in 30 m cells (or `cellMetres`); the filled
-`scene.json` carries the heights, so later renders need no network. Without
-terrain the ground is flat. A microphone's heading matters only in the app's
-binaural listening; AmbiX files are in the world frame.
+For two tects, render the first with `--cover <the other scene>` so that its
+terrain covers both, copy `place` and `terrain` from its filled `scene.json`
+into the other scene and render that in its own tect, then mix:
 
-### Boomtect and Rumbletect in one scene
+```sh
+node tools/mix.mjs mix boom rumble
+```
 
-A supersonic jet's boom comes from Boomtect and its engine from Rumbletect.
-Each renders its own emitters at the same place, terrain, air, ground, and
-microphones, and the mix puts them together in the scene's time:
-
-1. Write both scenes with the same `place`, `terrain`, `air`, `ground`, and
-   `receivers`, ids included.
-2. Render the first with `--cover <the other scene>`, so that its terrain
-   covers both.
-3. Copy `place` and `terrain` from its filled `scene.json` into the other
-   scene and render that in its own tect.
-4. `node tools/mix.mjs <folder> <first render folder> <second render folder>`
-   writes per microphone the mix and each tect's part, every file starting at
-   the same moment at one gain, and a summary that warns when the scenes do
-   not share their place, terrain, air, ground, or microphones.
+The mix summary warns when the scenes do not share their place, terrain, air,
+ground, or microphones.
 
 ## Data
 
