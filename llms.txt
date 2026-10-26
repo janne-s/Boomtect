@@ -8,7 +8,7 @@ Exports are 32-bit float WAV at one full scale in pascals, recorded in the scene
 
 Opened from each other, Boomtect and Rumbletect link their windows: they share the scene's place, terrain, air, ground, microphones, and render settings, each renders only its own emitters, and the microphones hear the sum, which the plots, levels, playback, and export use.
 
-An agent can render without the browser: clone the repository and run `node tools/render.mjs <scene.json> <folder>` with Node 20 or later and no installed packages. A partial scene is enough; the folder gets one WAV per microphone and the filled scene, and stdout gives levels, length, and spectral shape so the result can be checked without listening. Start from the nearest file in `examples/` and change what the request names.
+An agent can render without the browser: clone the repository and run `node tools/render.mjs <scene.json> <folder>` with Node 20 or later and no installed packages. A partial scene is enough; the folder gets one WAV per microphone and the filled scene, and stdout gives levels, length, and spectral shape so the result can be checked without listening. Start from the nearest file in `examples/` and change what the request names. With GPS coordinates in `place` and `"terrain": { "enabled": true }` the render loads the real terrain; `tools/mix.mjs` puts a Boomtect and a Rumbletect render of the same scene together in time, with each part as its own file.
 
 ## Docs
 

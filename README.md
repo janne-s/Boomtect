@@ -471,13 +471,15 @@ night" into a sound. Node 20 or later, no installed packages:
 ```sh
 node tools/render.mjs examples/thunder-three-kilometres-away.json out
 node tools/render.mjs my-scene.json out --ambix
+node tools/render.mjs boom.json boom --cover rumble.json
+node tools/mix.mjs mix boom rumble
 ```
 
 The scene is a file saved from the app or a partial one written by hand:
 missing fields take their defaults and values out of range are brought into
 range, as when the app opens a file. The folder gets one WAV per microphone
-and the filled `scene.json`, which opens in the app for listening and further
-changes. A scene saved from the app over real terrain carries its heights and
+the filled `scene.json`, which opens in the app for listening and further
+changes, and the printed summary as `summary.json`. A scene saved from the app over real terrain carries its heights and
 renders the same here. Without `--ambix` each file is the omni pressure; with
 it, the AmbiX channels of the scene's order. Files are 32-bit float at the
 app's export gain.
@@ -512,6 +514,36 @@ sound:
 | `seed` | another take of the same event |
 
 Every parameter with its default and range is in `src/domain/scene.js`.
+
+### Place and terrain
+
+`place` holds the scene's geographic point as latitude and longitude; every
+position is metres east, north, and up from it, so GPS coordinates place a
+microphone as precisely as they are given. The command takes coordinates, not
+names: look a place up first, and remember that an address sent to a search
+service leaves the machine. `"terrain": { "enabled": true }` without heights
+loads the terrain around the scene's sources and microphones from Terrain
+Tiles, as the app does, in 30 m cells (or `cellMetres`); the filled
+`scene.json` carries the heights, so later renders need no network. Without
+terrain the ground is flat. A microphone's heading matters only in the app's
+binaural listening; AmbiX files are in the world frame.
+
+### Boomtect and Rumbletect in one scene
+
+A supersonic jet's boom comes from Boomtect and its engine from Rumbletect.
+Each renders its own emitters at the same place, terrain, air, ground, and
+microphones, and the mix puts them together in the scene's time:
+
+1. Write both scenes with the same `place`, `terrain`, `air`, `ground`, and
+   `receivers`, ids included.
+2. Render the first with `--cover <the other scene>`, so that its terrain
+   covers both.
+3. Copy `place` and `terrain` from its filled `scene.json` into the other
+   scene and render that in its own tect.
+4. `node tools/mix.mjs <folder> <first render folder> <second render folder>`
+   writes per microphone the mix and each tect's part, every file starting at
+   the same moment at one gain, and a summary that warns when the scenes do
+   not share their place, terrain, air, ground, or microphones.
 
 ## Data
 

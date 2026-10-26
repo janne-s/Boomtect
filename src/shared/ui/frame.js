@@ -14,7 +14,7 @@ import { savedPath } from '../domain/follower.js';
 import { balancedGains, mixedResults, resultsForPartner, separateResults, sharedKey, sharedPart, withoutEchoes, withShared } from '../domain/partner-mix.js';
 import { formatMetres, formatSeconds, microphoneColor } from './canvas.js';
 import { capturePatches, fetchPlaceNames, searchPlace } from './terrain-loader.js';
-import { patchCount, patchRange, rangeBounds, rangePatches, terrainRange, terrainSurface } from '../domain/terrain.js';
+import { rangeBounds, rangePatches, terrainCoverage, terrainRange, terrainSurface } from '../domain/terrain.js';
 import { createPlaceMap } from './place-map.js';
 import { createCubeView } from './cube-view.js';
 import { createMapLayer } from './map-layer.js';
@@ -1485,15 +1485,7 @@ export function startFrame(tect) {
     return bounds;
   }
 
-  function neededPatches(scene, resolutionMetres) {
-    const bounds = sceneBounds(scene);
-    const size = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
-    const margin = Math.max(GROUND.terrain.echoMarginMetres, GROUND.terrain.echoMarginShare * size);
-    const area = { west: bounds.west - margin, east: bounds.east + margin, south: bounds.south - margin, north: bounds.north + margin };
-    let cellMetres = resolutionMetres;
-    while (patchCount(patchRange(area, cellMetres)) > GROUND.terrain.maximumPatches && cellMetres < GROUND.terrain.maximumCellMetres) cellMetres *= 2;
-    return { cellMetres, range: patchRange(area, cellMetres) };
-  }
+  const neededPatches = (scene, resolutionMetres) => terrainCoverage(sceneBounds(scene), resolutionMetres);
 
   const sameRange = (a, b) => a && b && a.column0 === b.column0 && a.column1 === b.column1 && a.row0 === b.row0 && a.row1 === b.row1;
   const terrainCoverageKey = terrain => (terrain ? `${terrain.latitude},${terrain.longitude},${terrain.cellMetres},${Object.values(terrainRange(terrain)).join(',')}` : '');

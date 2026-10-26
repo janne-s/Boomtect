@@ -82,6 +82,15 @@ export function rangeBounds(range, cellMetres) {
   return { west: range.column0 * side, east: (range.column1 + 1) * side, south: range.row0 * side, north: (range.row1 + 1) * side };
 }
 
+export function terrainCoverage(bounds, resolutionMetres) {
+  const size = Math.max(bounds.east - bounds.west, bounds.north - bounds.south);
+  const margin = Math.max(GROUND.terrain.echoMarginMetres, GROUND.terrain.echoMarginShare * size);
+  const area = { west: bounds.west - margin, east: bounds.east + margin, south: bounds.south - margin, north: bounds.north + margin };
+  let cellMetres = resolutionMetres;
+  while (patchCount(patchRange(area, cellMetres)) > GROUND.terrain.maximumPatches && cellMetres < GROUND.terrain.maximumCellMetres) cellMetres *= 2;
+  return { cellMetres, range: patchRange(area, cellMetres) };
+}
+
 export function tilePlan({ latitude, longitude }, bounds, cellMetres) {
   const { north, east } = metresPerDegree(latitude);
   const degrees = { west: longitude + bounds.west / east, east: longitude + bounds.east / east, south: latitude + bounds.south / north, north: latitude + bounds.north / north };

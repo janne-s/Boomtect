@@ -1,7 +1,9 @@
 import { GROUND } from '../domain/constants.js';
 import { decodePngRgb } from '../domain/png.js';
 import { mapLabels } from '../domain/map-labels.js';
-import { buildPatch, curvatureDropMetres, decodeTerrarium, metresPerDegree, mapTiles, rangeBounds, TERRAIN_PROVIDER, terrainRange, tilePixel, tilePlan, TILE_SIZE } from '../domain/terrain.js';
+import { buildPatch, curvatureDropMetres, decodeTerrarium, metresPerDegree, mapTiles, rangeBounds, rangePatches, TERRAIN_PROVIDER, terrainCoverage, terrainRange, terrainSurface, tilePixel, tilePlan, TILE_SIZE } from '../domain/terrain.js';
+import { TERRAIN_DEFAULTS } from '../domain/scene.js';
+import { sceneBounds } from '../domain/offline-render.js';
 
 const PLACE_TILEJSON_URL = 'https://tiles.openfreemap.org/planet/latest';
 const PLACE_TILE_ZOOM = 14;
@@ -124,4 +126,23 @@ export async function capturePatches(anchor, cellMetres, wanted, { signal, onPro
       return elevation - curvatureDropMetres(Math.hypot(x, y));
     });
   });
+}
+
+export async function loadTerrain(place, bounds, { cellMetres = 30, settings = TERRAIN_DEFAULTS, signal, onProgress } = {}) {
+  const coverage = terrainCoverage(bounds, cellMetres);
+  const patches = await capturePatches(place, coverage.cellMetres, rangePatches(coverage.range), { signal, onProgress });
+  const covered = { latitude: place.latitude, longitude: place.longitude, cellMetres: coverage.cellMetres, patches, names: [] };
+  const datumMetres = terrainSurface({ ...covered, enabled: true, datumMetres: 0 }).heightAt(0, 0);
+  return { ...TERRAIN_DEFAULTS, ...settings, ...covered, datumMetres };
+}
+
+const terrainWanted = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value.patches) && value.enabled !== false;
+
+export async function readSceneWithTerrain(raw, tect, { others = [], onProgress } = {}) {
+  if (!terrainWanted(raw.terrain)) return tect.readScene(raw.terrain && !Array.isArray(raw.terrain.patches) ? { ...raw, terrain: null } : raw);
+  const flat = tect.readScene({ ...raw, terrain: null });
+  const bounds = sceneBounds(flat, tect.prepareScene(flat), others);
+  const settings = Object.fromEntries(Object.keys(TERRAIN_DEFAULTS).filter(key => key in raw.terrain).map(key => [key, raw.terrain[key]]));
+  const terrain = await loadTerrain(flat.place, bounds, { cellMetres: raw.terrain.cellMetres ?? 30, settings, onProgress });
+  return tect.readScene({ ...raw, terrain });
 }

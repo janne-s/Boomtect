@@ -54,3 +54,27 @@ export function encodeFloat32Wav(channels, sampleRate) {
   }
   return buffer;
 }
+
+export function decodeFloat32Wav(buffer) {
+  const view = new DataView(buffer instanceof ArrayBuffer ? buffer : buffer.buffer, buffer.byteOffset ?? 0, buffer.byteLength);
+  const text = (offset, length) => String.fromCharCode(...Array.from({ length }, (_, index) => view.getUint8(offset + index)));
+  if (text(0, 4) !== 'RIFF' || text(8, 4) !== 'WAVE') throw new Error('This is not a WAV file.');
+  let format = null;
+  for (let offset = 12; offset + 8 <= view.byteLength;) {
+    const id = text(offset, 4);
+    const size = view.getUint32(offset + 4, true);
+    if (id === 'fmt ') {
+      const code = view.getUint16(offset + 8, true);
+      format = { float: code === FORMAT_CODE_IEEE_FLOAT || (code === FORMAT_CODE_EXTENSIBLE && view.getUint16(offset + 32, true) === FORMAT_CODE_IEEE_FLOAT), channelCount: view.getUint16(offset + 10, true), sampleRate: view.getUint32(offset + 12, true), bits: view.getUint16(offset + 22, true) };
+    } else if (id === 'data') {
+      if (!format?.float || format.bits !== BYTES_PER_SAMPLE * 8) throw new Error('Only 32-bit float WAV is read.');
+      const frameCount = Math.floor(size / (format.channelCount * BYTES_PER_SAMPLE));
+      const channels = Array.from({ length: format.channelCount }, () => new Float32Array(frameCount));
+      let at = offset + 8;
+      for (let frame = 0; frame < frameCount; frame += 1) for (const channel of channels) { channel[frame] = view.getFloat32(at, true); at += BYTES_PER_SAMPLE; }
+      return { channels, sampleRate: format.sampleRate };
+    }
+    offset += 8 + size + (size % 2);
+  }
+  throw new Error('The WAV file has no data.');
+}
