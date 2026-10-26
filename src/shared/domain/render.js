@@ -512,6 +512,7 @@ function edgeDecibels(paths, index, frequencyHz) {
 
 export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   const paths = options.paths ?? receiverPaths(preparedEmitters, receiver, scene, options);
+  const seconds = paths.seconds.slice(0, paths.count);
   const heights = new Float32Array(paths.count);
   const levels = new Float32Array(paths.count);
   const bearings = new Float32Array(paths.count);
@@ -528,6 +529,8 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
   };
   for (let index = 0; index < paths.count; index += 1) {
     const sources = pathSources(preparedEmitters, paths, index);
+    const source = paths.source[index];
+    if (sources.pulse[source] === PULSE_GRAIN) seconds[index] += sources.spanSeconds[source] / 2;
     heights[index] = paths.height[index];
     bearings[index] = ((Math.atan2(-paths.direction[3 * index + 1], paths.direction[3 * index]) * 180 / Math.PI) + 360) % 360;
     elevations[index] = Math.asin(Math.max(-1, Math.min(1, paths.direction[3 * index + 2]))) * 180 / Math.PI;
@@ -535,7 +538,7 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
       + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(VIEW.arrivalDiagramHz, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
       + edgeDecibels(paths, index, VIEW.arrivalDiagramHz);
   }
-  return { count: paths.count, seconds: paths.seconds.slice(0, paths.count), metres: paths.metres.slice(0, paths.count), heights, levels, bearings, elevations, kinds: paths.kind.slice(0, paths.count) };
+  return { count: paths.count, seconds, metres: paths.metres.slice(0, paths.count), heights, levels, bearings, elevations, kinds: paths.kind.slice(0, paths.count) };
 }
 
 /** Class B: Clifford & Lataitis 1983, via Salomons 2001; to verify. */
