@@ -1,3 +1,4 @@
+import { binauralChannels } from './binaural.js';
 import { RENDER } from './constants.js';
 import { nextPowerOfTwo, realSpectrum } from './fft.js';
 import { loudestDecibelsA, pressureDecibels } from './levels.js';
@@ -103,19 +104,28 @@ const tectOf = scene => String(scene.format ?? 'tect').replace(/\.scene$/, '');
 export function renderSceneFiles(scene, tect, { ambix = false } = {}) {
   const started = performance.now();
   const prepared = tect.prepareScene(scene);
-  const results = scene.receivers.map(receiver => ({ receiver, result: renderReceiver(prepared, receiver, scene) }));
-  const loudestPa = Math.max(0, ...results.map(({ result }) => result.peakPa));
+  const order = scene.render.ambisonicOrder;
+  const results = scene.receivers.map(receiver => {
+    const result = renderReceiver(prepared, receiver, scene);
+    const binaural = receiver.type === 'binaural' && order > 0;
+    return { receiver, result, binaural, listened: binaural ? binauralChannels(result.channels, order, receiver.headingDegrees, receiver.pitchDegrees) : [result.channels[0]] };
+  });
+  const peakOf = channels => channels.reduce((top, channel) => channel.reduce((most, value) => Math.max(most, Math.abs(value)), top), 0);
+  const loudestPa = Math.max(0, ...results.map(({ result, listened }) => Math.max(result.peakPa, peakOf(listened))));
   const gain = scene.render.levelMode === 'fixed' ? 1 / scene.render.fullScalePa : loudestPa > 0 ? RENDER.peakTarget / loudestPa : 1;
+  const scaled = channels => channels.map(channel => Float32Array.from(channel, value => value * gain));
   const names = new Set();
   const files = [];
-  const microphones = results.map(({ receiver, result }) => {
-    let name = `${slug(receiver.name)}.wav`;
-    for (let count = 2; names.has(name); count += 1) name = `${slug(receiver.name)}-${count}.wav`;
-    names.add(name);
-    const channels = (ambix ? result.channels : [result.channels[0]]).map(channel => Float32Array.from(channel, value => value * gain));
-    files.push({ name, data: new Uint8Array(encodeFloat32Wav(channels, result.sampleRate)) });
+  const microphones = results.map(({ receiver, result, binaural, listened }) => {
+    let stem = slug(receiver.name);
+    for (let count = 2; names.has(stem); count += 1) stem = `${slug(receiver.name)}-${count}`;
+    names.add(stem);
+    files.push({ name: `${stem}.wav`, data: new Uint8Array(encodeFloat32Wav(scaled(listened), result.sampleRate)) });
+    if (ambix) files.push({ name: `${stem}-ambix.wav`, data: new Uint8Array(encodeFloat32Wav(scaled(result.channels), result.sampleRate)) });
     return {
-      file: name, receiverId: receiver.id, name: receiver.name, channels: channels.length, positionMetres: receiver.positionMetres,
+      file: `${stem}.wav`, ambixFile: ambix ? `${stem}-ambix.wav` : undefined, receiverId: receiver.id, name: receiver.name,
+      listening: binaural ? `binaural, facing ${receiver.headingDegrees}° at ${receiver.pitchDegrees}° elevation` : 'omni pressure',
+      channels: listened.length, positionMetres: receiver.positionMetres,
       startSeconds: +result.startSeconds.toFixed(6), ...measureSound(result.channels[0], result.sampleRate)
     };
   });

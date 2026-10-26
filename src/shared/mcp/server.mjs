@@ -28,7 +28,7 @@ const instructions = `Tects render sounds from their physics: ${tects.map(tect =
 3. Call render. Check each microphone's measurements against the request: dark or bright by spectralCentroidHz and the 2000 Hz and 4000 Hz octaves; long or short by withinFortyDecibelsSeconds; loud or near by loudestDecibelsAFast, not peakDecibelsSpl. If a word is missed, change one field and render again; stop after three renders.
 4. Hand over the WAV paths and the open links, say in a few lines what you chose, and name the next field to change.
 A real place takes its coordinates in place and "terrain": { "enabled": true }: use the coordinates you know for a named place and put the microphone where the description puts it; ask only when unsure, and never send an address to a search service unasked. A sound made by two tects, such as a supersonic jet's boom (Boomtect) and engine (Rumbletect), is one render call with both scenes sharing place, terrain, air, ground, and receivers, ids included. For a collection whose levels compare, render the loudest first and set "render": { "levelMode": "fixed", "fullScalePa": <its fullScalePa> } in the others; a new seed gives another take.
-The open links serve the app from this computer while this server runs; the user starts nothing. For direction on headphones, make the microphone binaural with its heading toward the source and give the open link, where the app plays it binaurally; ask for ambix only when the user wants Ambisonics.\nRender only with the render tool. If it fails, tell the user what failed; the commands in a guide need the tect's repository, which the user may not have.`;
+The open links serve the app from this computer while this server runs; the user starts nothing. When the user names a direction to listen in, or headphones, make the microphone "type": "binaural" with headingDegrees (compass: 0 north, 90 east) and pitchDegrees where the listener looks; its WAV is then stereo for headphones. Set ambix only when the user asks for Ambisonics; it adds the full sound field beside each WAV.\nRender only with the render tool. If it fails, tell the user what failed; the commands in a guide need the tect's repository, which the user may not have.`;
 
 const tools = [
   {
@@ -45,7 +45,7 @@ const tools = [
   },
   {
     name: 'render',
-    description: 'Renders scenes to WAV files on this computer, one per microphone, with the filled scene.json, measurements to check the sound by, and a link that opens the scene in its app. Several scenes of different tects are rendered at one place and mixed in the scene\'s time, with each part as its own file. A long render returns status "rendering"; then call render_result.',
+    description: 'Renders scenes to WAV files on this computer, one per microphone (mono, or stereo for headphones from a binaural microphone), with the filled scene.json, measurements to check the sound by, and a link that opens the scene in its app. Several scenes of different tects are rendered at one place and mixed in the scene\'s time, with each part as its own file. A long render returns status "rendering"; then call render_result.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -56,7 +56,7 @@ const tools = [
           items: { type: 'object', properties: { tect: { type: 'string' }, scene: { type: 'object', description: 'A scene as in describe: a partial one is filled with defaults.' } }, required: ['tect', 'scene'] }
         },
         name: { type: 'string', description: 'A few words naming the sound; the folder is named after them.' },
-        ambix: { type: 'boolean', description: 'AmbiX channels of the scene\'s order instead of omni pressure. Only for spatial audio.' }
+        ambix: { type: 'boolean', description: 'Also write each microphone\'s full sound field as AmbiX channels of the scene\'s order. Only when Ambisonics are asked for.' }
       },
       required: ['scenes']
     },
