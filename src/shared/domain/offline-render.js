@@ -11,7 +11,7 @@ export const AMBIX_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = west, 
 const SPECTRUM_SIZE = 8192;
 const AUDIBLE_SPAN_DECIBELS = 40;
 
-const slug = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mic';
+const slug = text => text.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mic';
 
 function loudestSecond(samples, sampleRate) {
   const length = Math.min(samples.length, sampleRate);
