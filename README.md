@@ -515,6 +515,19 @@ sound:
 
 Every parameter with its default and range is in `src/domain/scene.js`.
 
+### Claude Desktop and Claude Code
+
+[`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb)
+installs Boomtect and Rumbletect in Claude Desktop, which brings its own Node:
+ask for a sound in words, and Claude writes the scene, renders it on this
+machine, and gives a link that opens it in the app, served from this machine
+while Claude Desktop is open. In a clone, the same server joins Claude Code and
+finds the tects cloned beside it:
+
+```sh
+claude mcp add tect -- node "$PWD/src/shared/mcp/server.mjs"
+```
+
 ### Place and terrain
 
 `place` holds the scene's geographic point as latitude and longitude; every
