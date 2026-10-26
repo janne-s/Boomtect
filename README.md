@@ -462,6 +462,57 @@ Open http://localhost:8000/. Run the tests with `npm test`.
 The model's and the view's tuning values and limits are in `src/domain/constants.js`; the
 parameters a scene sets, with their defaults and ranges, in `src/domain/scene.js`.
 
+## Rendering from a script or an agent
+
+The model runs in Node without the browser, so a script or an AI agent can
+turn a request such as "thunder three kilometres away on a humid summer
+night" into a sound. Node 20 or later, no installed packages:
+
+```sh
+node tools/render.mjs examples/thunder-three-kilometres-away.json out
+node tools/render.mjs my-scene.json out --ambix
+```
+
+The scene is a file saved from the app or a partial one written by hand:
+missing fields take their defaults and values out of range are brought into
+range, as when the app opens a file. The folder gets one WAV per microphone
+and the filled `scene.json`, which opens in the app for listening and further
+changes. A scene saved from the app over real terrain carries its heights and
+renders the same here. Without `--ambix` each file is the omni pressure; with
+it, the AmbiX channels of the scene's order. Files are 32-bit float at the
+app's export gain.
+
+The JSON on stdout tells an agent, which cannot listen, what came out: per
+microphone the length, the time within 40 dB of the peak, the peak in dB SPL,
+the loudest A-weighted level (fast), and the spectral centroid and octave
+shape of the loudest second in dB below its loudest band. The same scene and
+seed give the same sound.
+
+`examples/` holds three starting points: thunder three kilometres away, a
+blast across a forest, and a sonic boom from high overhead. Begin from the
+nearest one and change what the request names; the macros of the app are not
+scene fields, so set the parameters they move. What each change does to the
+sound:
+
+| Change | Sound |
+|---|---|
+| Farther source | quieter, darker, and longer; air takes the highs first, a close flash cracks before it rumbles |
+| Lightning `topMetres` higher, longer channel | a longer rumble |
+| `flashType` `intra-cloud` (Cloud flash) | a channel inside the cloud, its sound spread out in time |
+| More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
+| Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
+| Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |
+| Flight higher | a weaker, slightly longer boom; faster `mach`, a wider carpet |
+| `ground.type` `water` or `rigid` | a strong reflection right after the direct sound |
+| `grass`, `soil`, `forestFloor`, `snow` | softer ground, the lows dip near it; `snow` the most muffled |
+| `ground.forest` | highs muffled on the way, a reverberant tail |
+| `ground.surroundings` | the long rumble the land around returns of a loud sound |
+| Humid air | highs carry farther |
+| Wind toward the microphone | louder; against it, a shadow at a distance |
+| `seed` | another take of the same event |
+
+Every parameter with its default and range is in `src/domain/scene.js`.
+
 ## Data
 
 Terrain heights: [Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)

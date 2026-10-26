@@ -8,9 +8,13 @@ Exports are 32-bit float WAV at one full scale in pascals, recorded in the scene
 
 Opened from each other, Boomtect and Rumbletect link their windows: they share the scene's place, terrain, air, ground, microphones, and render settings, each renders only its own emitters, and the microphones hear the sum, which the plots, levels, playback, and export use.
 
+An agent can render without the browser: clone the repository and run `node tools/render.mjs <scene.json> <folder>` with Node 20 or later and no installed packages. A partial scene is enough; the folder gets one WAV per microphone and the filled scene, and stdout gives levels, length, and spectral shape so the result can be checked without listening. Start from the nearest file in `examples/` and change what the request names.
+
 ## Docs
 
 - [README](https://github.com/janne-s/Boomtect/blob/main/README.md): what every control does, the export files, and the model table with sources and classes
+- [Rendering from a script or an agent](https://github.com/janne-s/Boomtect/blob/main/README.md#rendering-from-a-script-or-an-agent): the render command, its output, and what each change does to the sound
+- [Examples](https://github.com/janne-s/Boomtect/tree/main/examples): starting scenes for requests
 - [Live app](https://janne-s.github.io/Boomtect/)
 
 ## Formats

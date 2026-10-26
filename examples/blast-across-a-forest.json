@@ -1,0 +1,12 @@
+{
+  "format": "boomtect.scene",
+  "mode": "blast",
+  "air": { "temperatureCelsius": 5, "relativeHumidityPercent": 70 },
+  "ground": { "type": "forestFloor", "forest": true, "treeHeightMetres": 18, "surroundings": true },
+  "emitters": [
+    { "kind": "blast", "name": "Quarry blast", "chargeKilograms": 100, "explosive": "tnt", "positionMetres": { "x": 1500, "y": 0, "z": 1 } }
+  ],
+  "receivers": [
+    { "name": "Forest edge", "type": "omni", "positionMetres": { "x": 0, "y": 0, "z": 1.7 } }
+  ]
+}

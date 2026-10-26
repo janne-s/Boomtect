@@ -1,0 +1,12 @@
+{
+  "format": "boomtect.scene",
+  "mode": "sonic",
+  "air": { "temperatureCelsius": -10, "relativeHumidityPercent": 60 },
+  "ground": { "type": "snow", "forest": false, "surroundings": true },
+  "emitters": [
+    { "kind": "flight", "name": "Reconnaissance", "body": "reconnaissance", "mach": 1.6, "startMetres": { "x": -12000, "y": 0, "z": 12000 }, "headingDegrees": 90, "durationSeconds": 40 }
+  ],
+  "receivers": [
+    { "name": "Field", "type": "omni", "positionMetres": { "x": 0, "y": 0, "z": 1.7 } }
+  ]
+}

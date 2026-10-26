@@ -1,0 +1,12 @@
+{
+  "format": "boomtect.scene",
+  "mode": "thunder",
+  "air": { "temperatureCelsius": 20, "relativeHumidityPercent": 80 },
+  "ground": { "type": "grass", "forest": false, "surroundings": true },
+  "emitters": [
+    { "kind": "lightning", "name": "Ground flash", "flashType": "cloud-to-ground", "baseMetres": { "x": 3000, "y": 0, "z": 0 }, "topMetres": { "x": 3600, "y": 0, "z": 4000 } }
+  ],
+  "receivers": [
+    { "name": "Porch", "type": "omni", "positionMetres": { "x": 0, "y": 0, "z": 1.7 } }
+  ]
+}
