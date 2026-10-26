@@ -135,6 +135,8 @@ export function readHandoff(value) {
 
 export const serializeHandoff = handoff => `${JSON.stringify(readHandoff(handoff), null, 2)}\n`;
 
+export const TECT_PORTS = Object.freeze({ Boomtect: 8000, Echotect: 8001, Rumbletect: 8002 });
+
 export const TECT_MESSAGES = Object.freeze({ hello: 'tect.hello', ready: 'tect.ready', handoff: 'tect.handoff', received: 'tect.received', refused: 'tect.refused' });
 
 export const handoffMessage = (handoff, samples) => ({ type: TECT_MESSAGES.handoff, handoff: readHandoff(handoff), samples });

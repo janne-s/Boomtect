@@ -2347,8 +2347,12 @@ export function startFrame(tect) {
     const file = $('open-file').files[0];
     $('open-file').value = '';
     if (!file) return;
+    openScene(file.name, async () => JSON.parse(await file.text()));
+  });
+
+  async function openScene(name, read) {
     try {
-      const scene = readScene(JSON.parse(await file.text()));
+      const scene = readScene(await read());
       cancelGeographicTasks();
       state.scene = scene;
       state.selection = { type: 'emitter', id: scene.emitters[0]?.id ?? null };
@@ -2358,11 +2362,11 @@ export function startFrame(tect) {
       invalidateResults();
       refreshPanel();
       requestRender();
-      setStatus(`Opened ${file.name}`);
+      setStatus(`Opened ${name}`);
     } catch (error) {
-      setStatus(`Could not open ${file.name}: ${error.message}`, true);
+      setStatus(`Could not open ${name}: ${error.message}`, true);
     }
-  });
+  }
 
   /** Each tect's sound in its own files at its real level, on one full scale and one time axis per microphone, with one scene file for both. */
   async function separateFiles(choice, dry, gain, selected, stem, describe) {
@@ -2784,8 +2788,16 @@ export function startFrame(tect) {
   window.addEventListener('pageshow', event => { if (event.persisted && operations.has('render')) renderMarker.restore(); });
 
   refreshPanel();
-  // Not rendered again by itself: that would stop the page again.
-  if (unfinishedRender) {
+  const linkedSceneUrl = new URLSearchParams(location.search).get('scene');
+  if (linkedSceneUrl) {
+    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+    openScene(decodeURIComponent(new URL(linkedSceneUrl, location.href).pathname.split('/').slice(-2).join('/')), async () => {
+      const response = await fetch(new URL(linkedSceneUrl, location.href));
+      if (!response.ok) throw new Error(`the link answered ${response.status}`);
+      return response.json();
+    });
+  } else if (unfinishedRender) {
+    // Not rendered again by itself: that would stop the page again.
     setStatus(unfinishedRenderText(unfinishedRender), true);
     syncPlayButton();
   } else if (state.preferences.autoRender) startRender();
