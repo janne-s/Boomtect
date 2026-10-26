@@ -23,5 +23,6 @@ Boomtect is a creative sound tool, not a measurement: levels are uncalibrated mo
 ## Notes
 
 - The file starts at the first arriving sound.
+- **A collection whose levels compare** (a series growing louder, takes to cut together): each file is otherwise scaled to its own peak, which hides the differences. Render the loudest scene first, then set `"render": { "levelMode": "fixed", "fullScalePa": <its fullScalePa> }` in every scene. Run several renders at once; each uses one core.
 - The same scene and seed give the same sound; a new `seed` gives another take, such as another lightning channel.
 - For continuous engine sound (jets, airliners, rockets, eruption jets) use Rumbletect, which has the same command.
