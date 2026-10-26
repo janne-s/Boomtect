@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const TECT_FILES = ['tect.json', 'src/domain/scene.js', 'src/domain/render.js', 'src/shared/domain/offline-render.js', 'src/shared/ui/terrain-loader.js'];
-const AGENT_SECTION = '## Rendering from a script or an agent';
+const GUIDE_SECTION = '### Writing a scene';
 
 const isTect = app => TECT_FILES.every(file => existsSync(join(app, file)));
 
@@ -30,10 +30,10 @@ export const importFrom = (app, file) => import(pathToFileURL(join(app, file)).h
 
 function agentSection(app) {
   const readme = readFileSync(join(app, 'README.md'), 'utf8');
-  const start = readme.indexOf(AGENT_SECTION);
+  const start = readme.indexOf(GUIDE_SECTION);
   if (start < 0) return '';
-  const end = readme.indexOf('\n## ', start + AGENT_SECTION.length);
-  return readme.slice(start, end < 0 ? undefined : end).trim();
+  const end = readme.slice(start + GUIDE_SECTION.length).search(/\n##+ /);
+  return readme.slice(start, end < 0 ? undefined : start + GUIDE_SECTION.length + end).trim();
 }
 
 export function examplesOf(app) {
