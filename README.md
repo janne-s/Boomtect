@@ -474,7 +474,7 @@ and hands over the WAV files and the scene to open in the app. Nothing needs
 starting by hand.
 
 - **Claude Desktop** — Install [`tect.mcpb`](https://github.com/janne-s/Boomtect/releases/latest/download/tect.mcpb) and ask.
-- **Codex and ChatGPT desktop** — Install [`tect-openai.zip`](https://github.com/janne-s/Boomtect/releases/latest/download/tect-openai.zip) and ask; needs Node 20 or later.
+- **Codex and ChatGPT desktop** — Install [`tect-openai.zip`](https://github.com/janne-s/Boomtect/releases/latest/download/tect-openai.zip) and ask.
 - **Claude Code and other coding agents** — Open this repository and ask.
 - **Other MCP apps**, such as Cursor or VS Code — Add
   `node src/shared/mcp/server.mjs` from a clone to the app's MCP servers; it
