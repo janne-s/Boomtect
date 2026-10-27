@@ -113,11 +113,12 @@ export function meteorTrack(meteor) {
   const duration = lengthMetres / speed;
   const steps = Math.max(2, Math.ceil(duration / TRACK_STEP_SECONDS));
   const step = duration / steps;
-  const track = { seconds: [], x: [], y: [], z: [], step };
+  const track = { seconds: [], x: [], y: [], z: [], speed: [], step };
   for (let index = 0; index <= steps; index += 1) {
     const along = index * step * speed;
     track.seconds.push(meteor.startSeconds + index * step);
     track.x.push(start.x + direction.x * along); track.y.push(start.y + direction.y * along); track.z.push(start.z + direction.z * along);
+    track.speed.push(speed);
   }
   return track;
 }
