@@ -243,12 +243,17 @@ function focusedBoom(path, flight, receiver, profile, air, arrival, fold) {
   const cubic = Math.abs(fold.third) / 2;
   const reachSeconds = Math.sqrt(Math.max(0, -fold.slope * Math.sign(fold.third)) / cubic);
   const share = Math.max(0, Math.min(1, (FOCUS_RANGE.highest - scaling.height) / FLIGHT.focusBlendHeight));
+  if (!(scaling.height >= FOCUS_RANGE.lowest && share > 0)) return null;
+  const pulseTau = Math.max(Math.abs(FOCUS_RANGE.startTau), Math.abs(FOCUS_RANGE.startTau + FOCUS_RANGE.spanTau));
+  const historySeconds = 2 * reachSeconds + Math.cbrt(3 * pulseTau * halfSeconds / cubic);
+  const availableSeconds = Math.min(path.seconds[index] - path.seconds[0], path.seconds.at(-1) - path.seconds[index]);
+  if (historySeconds > availableSeconds) return { incomplete: true };
   return {
     index, reachSeconds, share,
-    boom: scaling.height >= FOCUS_RANGE.lowest && share > 0 ? {
+    boom: {
       point, emissionSeconds: arrival[index] - ray.seconds + FOCUS_RANGE.startTau * halfSeconds, ray, along, mach: boom.mach, focus: share, shadow,
       overpressurePa: scaling.referencePa, durationSeconds: boom.durationSeconds, focusMu: scaling.mu, focusHeight: scaling.height
-    } : null
+    }
   };
 }
 
@@ -282,6 +287,11 @@ export function flightBooms(path, flight, receiver, profile, air, { caustics = t
     && fold.slope * Math.sign(fold.third) > 0 && Math.abs(fold.slope) <= FLIGHT.shadowFoldSlope);
   for (const fold of [...fromPairs, ...lone]) {
     const focused = focusedBoom(path, flight, receiver, profile, air, arrival, fold);
+    if (focused?.incomplete) {
+      // Class C: a fold without its source history keeps only the first-arriving shock.
+      for (const point of fold.pair ?? []) if (point.maximum) rayShares.set(point, 0);
+      continue;
+    }
     if (!focused?.boom) continue;
     booms.push(focused.boom);
     const reach = 1.5 * focused.reachSeconds + 2 * Math.min(FLIGHT.slopeSeconds, path.seconds.length * path.step / 100);

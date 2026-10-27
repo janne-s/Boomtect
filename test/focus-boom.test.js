@@ -6,6 +6,7 @@ import { defaultFlight, defaultScene, parseScene } from '../src/domain/scene.js'
 import { soundSpeedProfile } from '../src/shared/domain/refraction.js';
 import { flightPath, withApproach } from '../src/shared/domain/trajectory.js';
 import { followedPath } from '../src/shared/domain/follower.js';
+import { prepareScene, renderReceiver } from '../src/domain/render.js';
 
 const scene = parseScene(defaultScene('sonic'));
 const profile = soundSpeedProfile(scene.air);
@@ -40,4 +41,27 @@ test('a salvo round climbing away, whose cone never reaches the microphone, give
   const saved = JSON.parse(readFileSync(new URL('./fixtures/salvo-round-path.json', import.meta.url), 'utf8'));
   const body = { lengthMetres: 104.5, shapeFactor: .68 };
   assert.deepEqual(flightBooms(followedPath(saved), body, { x: saved.x[0] + 1400, y: saved.y[0], z: 1.7 }, profile, scene.air), []);
+});
+
+test('a giant fast round without the source history for a focused wave keeps its causal first shock', () => {
+  const saved = JSON.parse(readFileSync(new URL('./fixtures/mega-salvo-round-path.json', import.meta.url), 'utf8'));
+  const flight = { ...defaultFlight(), body: 'rocket', lengthMetres: 88.7, shapeFactor: .68,
+    follows: { app: 'Rumbletect', id: 'salvo-1', name: 'Salvo', burnSeconds: 2 }, paths: [saved] };
+  const receiver = { ...scene.receivers[0], positionMetres: { x: 2205, y: 42, z: 1.7 } };
+  const found = flightBooms(followedPath(saved), flight, receiver.positionMetres, profile, scene.air);
+  assert.equal(found.length, 1);
+  assert.ok(!found[0].focusMu && !found[0].hilbert);
+  assert.ok(Math.abs(arrival(found[0]) - 6.0431) < .001);
+  const parsed = parseScene({ ...scene, ground: { ...scene.ground, enabled: false, forest: false, surroundings: false },
+    render: { ...scene.render, ambisonicOrder: 0 }, emitters: [flight], receivers: [receiver] });
+  const result = renderReceiver(prepareScene(parsed), parsed.receivers[0], parsed);
+  let earlyPeak = 0;
+  let peak = 0;
+  for (let index = 0; index < result.samples.length; index += 1) {
+    const value = Math.abs(result.samples[index]);
+    peak = Math.max(peak, value);
+    if (result.startSeconds + index / result.sampleRate < 5.94) earlyPeak = Math.max(earlyPeak, value);
+  }
+  assert.ok(peak > 0 && Number.isFinite(peak));
+  assert.ok(earlyPeak < .01 * peak, `early peak ${earlyPeak}, peak ${peak}`);
 });

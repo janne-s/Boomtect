@@ -2,9 +2,9 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.78.1';
+export const APP_VERSION = '0.79.0';
 
-export const MODEL_VERSION = '35.0.0';
+export const MODEL_VERSION = '36.0.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 

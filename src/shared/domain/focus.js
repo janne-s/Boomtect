@@ -8,7 +8,8 @@ const SPECTRUM_PADDING = 8;
 export const FOCUS_RANGE = Object.freeze({
   lowest: FOCUS_TABLE.heights.first,
   highest: FOCUS_TABLE.heights.first + (FOCUS_TABLE.heights.count - 1) * FOCUS_TABLE.heights.step,
-  startTau: FOCUS_TABLE.tau.first
+  startTau: FOCUS_TABLE.tau.first,
+  spanTau: FOCUS_TABLE.tau.count * FOCUS_TABLE.tau.step
 });
 
 /**

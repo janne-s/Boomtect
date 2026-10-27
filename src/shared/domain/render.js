@@ -3,7 +3,7 @@ import { ambisonicDirection, channelCount, encodeDirection } from './ambisonics.
 import { GAMMA_AIR, GAS_CONSTANT_AIR_J_PER_KG_KELVIN, GROUND, KELVIN_OFFSET, PROPAGATION, RENDER, VIEW } from './constants.js';
 import { edgeField } from './diffraction.js';
 import { diffuseTails, foliageExponent, foliageMetres, forestResponses, forestSeed, forestSend, surroundingsResponses } from './forest.js';
-import { focusSpectrum, focusSpectrumAt } from './focus.js';
+import { focusSpectrum, focusSpectrumAt, FOCUS_RANGE } from './focus.js';
 import { PULSE_FRIEDLANDER, PULSE_GRAIN, PULSE_NOISE, PULSE_NWAVE, PULSE_TRIPLE, sourcePosition, sourceTable } from './source-table.js';
 import { createScintillation } from './scintillation.js';
 import { previewQuality } from './render-cost.js';
@@ -567,7 +567,8 @@ export function frameExtents(preparedEmitters, paths) {
     const prepared = preparedEmitters[paths.emitter[index]];
     const sources = isEcho(paths.kind[index]) ? paths.cells[paths.emitter[index]] : prepared.sources;
     const source = paths.source[index];
-    const span = paths.diffuse[index] ? 0 : sources.relaxationRadius[source] > 0 ? paths.duration[index]
+    const span = paths.diffuse[index] ? 0 : paths.focusMu[index] > 0 ? FOCUS_RANGE.spanTau * paths.duration[index] / 2
+      : sources.relaxationRadius[source] > 0 ? paths.duration[index]
       : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.turbulentFront[source] ? paths.duration[index] : 0);
     extent.longestSpan = Math.max(extent.longestSpan, span + paths.timeSpread[index] + PROPAGATION.longestRises * ((sources.turbulentFront[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
