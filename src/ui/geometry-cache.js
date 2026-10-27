@@ -24,12 +24,30 @@ export function cachedFlashes(emitter) {
 const tracks = new Map();
 const trackSurfaces = new Map();
 
+function followedTrack(saved, burnSeconds) {
+  const path = followedPath(saved);
+  if (!Number.isFinite(burnSeconds) || burnSeconds >= path.seconds.at(-1) - path.seconds[0]) return path;
+  if (burnSeconds <= 0) return null;
+  const steps = Math.ceil(burnSeconds / path.step);
+  const step = burnSeconds / steps;
+  const shown = { step, seconds: Array.from({ length: steps + 1 }, (_, index) => path.seconds[0] + index * step) };
+  for (const axis of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'speed']) {
+    shown[axis] = Array.from({ length: steps + 1 }, (_, index) => {
+      const at = Math.min(path.seconds.length - 1, index * step / path.step);
+      const low = Math.floor(at);
+      const share = at - low;
+      return path[axis][low] + ((path[axis][low + 1] ?? path[axis][low]) - path[axis][low]) * share;
+    });
+  }
+  return shown;
+}
+
 export function cachedTracks(emitter, air) {
   const surface = currentSurface();
   if (trackSurfaces.get(emitter.id) !== surface) tracks.delete(emitter.id);
   trackSurfaces.set(emitter.id, surface);
   return cached(tracks, emitter, air, () => (emitter.kind === 'whip' ? [whipPath(emitter, air, surface)] : emitter.kind === 'booster' ? [boosterPath(emitter, air, surface)]
-    : emitter.paths ? emitter.paths.map(followedPath)
+    : emitter.paths ? emitter.paths.map(saved => followedTrack(saved, emitter.follows?.burnSeconds)).filter(Boolean)
       : isFlightKind(emitter) ? flightMembers(emitter).map(member => flightPath(member, air)) : showerMembers(emitter).map(meteorTrack)));
 }
 

@@ -352,8 +352,9 @@ rockets, and the roar of an eruption.
   on its path, named after it, whose booms and Mach cone Boomtect computes; each
   Boomtect flight gets a jet in Rumbletect for its engines. A follower moves
   with what it follows and keeps a copy of the path, so it still sounds without
-  the link. Its body is set in Details. Removed, it stays away while both
-  windows are open.
+  the link. A rocket's visible path ends at burnout, as in Rumbletect; its
+  unpowered continuation still contributes booms. Its body is set in Details.
+  Removed, it stays away while both windows are open.
 - **Real and Balanced** — Above the pressure plot while linked: Real plays
   both tects at their real pressures; Balanced lifts the quieter one to the
   louder one's loudest A-weighted level, turning nothing down. The plot shows
