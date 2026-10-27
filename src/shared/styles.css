@@ -1367,6 +1367,7 @@ details summary {
     flex: none;
     font-size: 14px;
     line-height: 1.05;
+    text-align: right;
   }
   .brand-suffix {
     display: block;
