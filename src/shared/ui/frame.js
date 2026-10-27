@@ -33,6 +33,7 @@ import { createRenderMarker, renderLoadText, unfinishedRenderText } from './rend
 import { createFrontStyle } from './front-style.js';
 import { outerSpheres, sampleEnvelopeSources } from './wavefront-envelope.js';
 import { formatMicrophoneLevels } from './levels.js';
+import { createActionMenu } from './action-menu.js';
 
 export function startFrame(tect) {
   const {
@@ -209,6 +210,7 @@ export function startFrame(tect) {
   }
 
   const linked = { emitters: [], mix: null, held: null, updating: false, muted: null, sentKey: null, serving: Promise.resolve(), created: new Set(), error: null, resentAt: 0 };
+  const actionsMenu = createActionMenu($('more'), mobileActions);
 
   const link = createPartnerLink({
     app: appName,
@@ -583,7 +585,7 @@ export function startFrame(tect) {
       item.disabled = waiting;
       item.addEventListener('click', () => {
         if (partner === name) return;
-        try { link.open(name, sharedPart(state.scene), linkModes[name]?.[state.scene.mode] ?? null); } catch (error) { setStatus(error.message, true); }
+        openPartner(name);
       });
       return item;
     }));
@@ -596,6 +598,41 @@ export function startFrame(tect) {
       update.addEventListener('click', adoptHeld);
       holder.append(update);
     }
+    const offering = link.offering();
+    const indicator = $('more-link');
+    indicator.hidden = !partner && !offering;
+    indicator.className = partner && linked.error ? 'link-dot error' : linked.updating || linked.held || offering ? 'link-dot updating' : 'link-dot';
+    const status = partner ? linked.error ? `${partner} · not matched` : linked.held ? `New sound from ${partner}` : linked.updating ? `${partner} is updating its sound` : `Linked with ${partner}` : offering ? `Linking ${offering}` : '';
+    $('more').title = status ? `Actions · ${status}` : 'Actions';
+    $('more').setAttribute('aria-label', $('more').title);
+    actionsMenu.refresh();
+  }
+
+  function openPartner(name) {
+    try { link.open(name, sharedPart(state.scene), linkModes[name]?.[state.scene.mode] ?? null); }
+    catch (error) { setStatus(error.message, true); }
+  }
+
+  function linkedActions(takeSound = false) {
+    const partner = link.partner();
+    return [
+      { id: 'show-partner', label: `Show ${partner}`, action: () => openPartner(partner) },
+      { id: 'sync-partner', label: 'Sync again', action: syncAgain, title: `Send the scene and sound to ${partner} again and ask for its own` },
+      ...(takeSound && linked.held ? [{ id: 'take-sound', label: 'Take new sound', action: adoptHeld }] : []),
+      { separator: true },
+      { id: 'unlink-partner', label: 'Unlink', action: () => link.unlink() }
+    ];
+  }
+
+  function mobileActions() {
+    const files = ['open', 'save', 'export'].map(id => ({
+      id, label: id === 'open' ? 'Open…' : id === 'save' ? 'Save' : 'Export…', disabled: $(id).disabled, action: () => $(id).click()
+    }));
+    const partner = link.partner();
+    return [...files, { separator: true }, ...(partner ? [{ heading: partner }, ...linkedActions(true)] : link.others.map(name => ({
+      id: `open-${name}`, label: link.offering() === name ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`,
+      disabled: link.offering() === name, action: () => openPartner(name)
+    })))];
   }
 
   function linkMenu() {
@@ -615,12 +652,7 @@ export function startFrame(tect) {
         node.setAttribute('role', 'menuitem');
         return node;
       };
-      menu.replaceChildren(
-        item(`Show ${partner}`, () => link.open(partner)),
-        item('Sync again', syncAgain, `Send the scene and sound to ${partner} again and ask for its own`),
-        element('hr'),
-        item('Unlink', () => link.unlink())
-      );
+      menu.replaceChildren(...linkedActions().map(entry => entry.separator ? element('hr') : item(entry.label, entry.action, entry.title)));
     });
     menu.addEventListener('toggle', event => { if (event.newState === 'open') menu.focus(); });
     return menu;
@@ -673,9 +705,11 @@ export function startFrame(tect) {
     const starting = player.busy();
     const rendering = operations.has('render');
     const busy = !playing && !starting && rendering;
-    button.textContent = playing || starting ? 'Stop' : busy ? '' : state.results ? 'Play' : 'Render';
-    button.setAttribute('aria-label', busy ? 'Stop rendering' : button.textContent);
-    button.title = busy ? 'Stop rendering' : '';
+    const label = playing || starting ? 'Stop' : busy ? 'Stop rendering' : state.results ? 'Play' : 'Render';
+    const icon = playing || starting ? 'fa-stop' : state.results ? 'fa-play' : 'fa-gears';
+    button.innerHTML = `<i class="fa-solid ${icon} play-icon" aria-hidden="true"></i><span class="play-label">${busy ? '' : label}</span>`;
+    button.setAttribute('aria-label', label);
+    button.title = label;
     button.classList.toggle('rendering', busy);
     if (busy || starting) button.setAttribute('aria-busy', 'true'); else button.removeAttribute('aria-busy');
     button.disabled = !playing && !starting && !rendering && !state.results && !state.scene.emitters.some(emitter => emitter.enabled);
@@ -685,6 +719,7 @@ export function startFrame(tect) {
     pause.setAttribute('aria-label', playing || starting ? 'Pause' : 'Play');
     pause.classList.toggle('playing', playing || starting);
     $('results').classList.toggle('playable', Boolean(state.results));
+    actionsMenu.refresh();
   }
 
   function requestRender() {

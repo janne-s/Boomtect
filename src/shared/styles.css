@@ -296,6 +296,15 @@ figcaption {
 .github-link:hover {
   color: var(--accent);
 }
+.bar .mobile-actions,
+.play-icon {
+  display: none;
+}
+.mobile-actions .link-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
 .link-buttons {
   display: inline-flex;
   align-items: center;
@@ -352,6 +361,22 @@ figcaption {
   margin: 4px 0;
   border: 0;
   border-top: 1px solid var(--line);
+}
+.actions-menu {
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+}
+.actions-menu button {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+.actions-heading {
+  padding: 8px 14px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 .github-link svg {
   width: 18px;
@@ -1363,14 +1388,20 @@ details summary {
     height: 36px;
   }
   .bar #settings,
+  .bar .mobile-actions,
   .bar .github-link {
     flex: none;
     width: 36px;
     height: 36px;
     color: var(--ink);
   }
-  .bar .github-link {
+  .bar .mobile-actions {
+    display: inline-grid;
+    position: relative;
     margin-left: auto;
+  }
+  .bar .github-link {
+    margin-left: 0;
   }
   .bar #open,
   .bar #save,
@@ -1603,6 +1634,27 @@ details summary {
   }
 }
 
+@media (max-width: 420px) {
+  .brand {
+    font-size: 12px;
+  }
+  .bar #play {
+    min-width: 36px;
+    width: 36px;
+    padding: 0;
+  }
+  #play .play-label {
+    display: none;
+  }
+  #play .play-icon {
+    display: inline-block;
+    font-size: 15px;
+  }
+  #play.rendering .play-icon {
+    display: none;
+  }
+}
+
 @media (max-width: 360px) {
   .bar {
     gap: 2px;
@@ -1610,14 +1662,20 @@ details summary {
   }
   .brand {
     font-size: 12px;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .modes button,
   .bar #settings,
+  .bar .mobile-actions,
   .bar .github-link {
     width: 32px;
   }
   .bar #play {
-    min-width: 56px;
-    width: 56px;
+    min-width: 32px;
+    width: 32px;
   }
 }
