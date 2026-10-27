@@ -1365,6 +1365,11 @@ details summary {
   .brand {
     margin-right: 0;
     flex: none;
+    font-size: 14px;
+    line-height: 1.05;
+  }
+  .brand-suffix {
+    display: block;
   }
   .modes {
     flex: none;
@@ -1635,9 +1640,6 @@ details summary {
 }
 
 @media (max-width: 420px) {
-  .brand {
-    font-size: 12px;
-  }
   .bar #play {
     min-width: 36px;
     width: 36px;
@@ -1659,14 +1661,6 @@ details summary {
   .bar {
     gap: 2px;
     padding: 6px;
-  }
-  .brand {
-    font-size: 12px;
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .modes button,
   .bar #settings,

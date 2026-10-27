@@ -2,7 +2,7 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.79.1';
+export const APP_VERSION = '0.79.2';
 
 export const MODEL_VERSION = '36.0.0';
 

@@ -24,7 +24,7 @@ startFrame({
   modes: {
     thunder: { label: 'Thunder', button: 'fa-bolt', icon: 'fa-bolt' },
     blast: { label: 'Blast', button: 'fa-explosion', icon: 'fa-explosion', arrivalsByDirection: true },
-    sonic: { label: 'Sonic', button: 'fa-wave-square', icon: 'fa-jet-fighter', upperWind: true }
+    sonic: { label: 'Sonic', button: 'fa-jet-fighter', icon: 'fa-jet-fighter', upperWind: true }
   },
   preferences: { cone: true, clouds: true },
   toggles: {
