@@ -1,5 +1,6 @@
-import { VIEW, VOLCANO } from '../domain/constants.js';
+import { GAS_EXPLOSION, VIEW, VOLCANO } from '../domain/constants.js';
 import { applyEruption, ERUPTION_TYPES, eruptionOf } from '../domain/volcano.js';
+import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import { formatCharge } from '../shared/ui/levels.js';
 import { PARAMETERS } from '../domain/scene.js';
 import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
@@ -448,6 +449,27 @@ const volcanoThumps = {
   entry: { unit: '%', get: item => item.thumpShare * 100, set: (item, value) => { item.thumpShare = value / 100; } }
 };
 
+const gasChoice = (label, key, types, table) => ({
+  label,
+  read: item => types.indexOf(item[key]) / (types.length - 1),
+  write: (item, t) => { item[key] = types[Math.round(t * (types.length - 1))]; },
+  show: item => table[item[key]].label,
+  steps: types.length - 1
+});
+
+const gasFuel = gasChoice('Fuel', 'fuel', FUEL_TYPES, GAS_EXPLOSION.fuels);
+const gasCongestion = gasChoice('Congestion', 'congestion', CONGESTION_TYPES, GAS_EXPLOSION.congestions);
+const gasConfinement = gasChoice('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements);
+const gasIgnition = gasChoice('Ignition', 'ignition', IGNITION_TYPES, GAS_EXPLOSION.ignitions);
+
+const gasCloud = {
+  label: 'Cloud',
+  read: item => clamp01(logPosition(item.cloudCubicMetres, VIEW.macros.gasCloudRange)),
+  write: (item, t) => { item.cloudCubicMetres = +logValue(t, VIEW.macros.gasCloudRange).toPrecision(2); },
+  show: item => `${+item.cloudCubicMetres.toPrecision(3)} m³`,
+  entry: { unit: 'm³', get: item => item.cloudCubicMetres, set: (item, value) => { item.cloudCubicMetres = value; } }
+};
+
 export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.follows && emitter.kind === 'volcano') return [volcanoEruption, volcanoSize, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps];
   if (emitter.follows) return [];
@@ -462,6 +484,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
+  if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, fireball]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

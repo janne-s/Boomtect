@@ -1,4 +1,4 @@
-import { BLAST, FLIGHT, THUNDER, VIEW, VOLCANO } from '../domain/constants.js';
+import { BLAST, FLIGHT, GAS_EXPLOSION, THUNDER, VIEW, VOLCANO } from '../domain/constants.js';
 import { blastSources, emitterSources } from '../domain/emitters.js';
 import { EXPLOSIVE_TYPES } from '../domain/explosives.js';
 import { emissionSeconds } from '../domain/lightning.js';
@@ -8,8 +8,9 @@ import { followerPlacement, followerSeed } from '../shared/domain/follower.js';
 import { frontProfile } from '../shared/domain/refraction.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
+import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, gasExplosionPulse, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
+  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
 import { newSeed } from '../shared/domain/random.js';
 import { formatMetres, formatMetresSpan } from '../shared/ui/canvas.js';
@@ -19,12 +20,12 @@ import { macrosFor } from './macros.js';
 import { formatAtKilometre, formatCharge, formatPressure } from '../shared/ui/levels.js';
 import { blastPressureAtKilometrePa } from '../domain/blast-pulse.js';
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano', gasExplosion: 'Gas explosion' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const hasSeed = emitter => !['blast', 'meteor', 'whip', 'booster'].includes(emitter.kind) && !isFlightKind(emitter);
 
-const isPointKind = emitter => emitter.kind === 'blast' || emitter.kind === 'volcano';
+const isPointKind = emitter => emitter.kind === 'blast' || emitter.kind === 'volcano' || emitter.kind === 'gasExplosion';
 const isBlastKind = emitter => isPointKind(emitter) || isFieldKind(emitter);
 const eruptionLabel = emitter => { const type = eruptionOf(emitter); return type === 'custom' ? 'Custom' : VOLCANO.eruptions[type].label; };
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
@@ -39,9 +40,12 @@ function flightHeightLabel(emitter, scene) {
   return Math.abs(to - from) >= 10 ? formatMetresSpan(from, to) : formatMetres(emitter.startMetres.z);
 }
 
+const formatCloud = cubicMetres => `${+cubicMetres.toPrecision(3)} m³`;
+
 function emitterSummary(emitter, scene) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}${emitter.follows ? `, at ${emitter.follows.app}'s ${emitter.follows.name}` : ''}`;
+  if (emitter.kind === 'gasExplosion') return `${formatCloud(emitter.cloudCubicMetres)} ${GAS_EXPLOSION.fuels[emitter.fuel].label.toLowerCase()}, ${emitter.ignition === 'charge' ? 'detonated' : GAS_EXPLOSION.congestions[emitter.congestion].label.toLowerCase()}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
   if (emitter.kind === 'booster') return `From ${formatMetres(emitter.startHeightMetres)} at Mach ${emitter.mach.toFixed(2)}, ${emitter.descentDegrees}° down`;
@@ -215,6 +219,25 @@ function detailSections(emitter, { updateEmitter }) {
       })
     ];
   }
+  if (emitter.kind === 'gasExplosion') {
+    const choose = (label, key, types, table) => container => selectField(container, {
+      label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key)
+    });
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Cloud centre', point: emitter.positionMetres, onCommit: set('positionMetres') });
+      }),
+      section('Cloud', container => {
+        numbers(['cloudCubicMetres'])(container);
+        choose('Fuel', 'fuel', FUEL_TYPES, GAS_EXPLOSION.fuels)(container);
+        choose('Congestion', 'congestion', CONGESTION_TYPES, GAS_EXPLOSION.congestions)(container);
+        choose('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements)(container);
+        choose('Ignition', 'ignition', IGNITION_TYPES, GAS_EXPLOSION.ignitions)(container);
+      }),
+      section('Source', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']))
+    ];
+  }
   if (emitter.kind === 'barrage') {
     return [
       centrePlacement,
@@ -267,6 +290,7 @@ function wavefrontAmplitudes(emitter, scene, surface) {
   };
   if (emitter.kind === 'blast') return new Map([[emitter.id, blastFront(emitter)]]);
   if (emitter.kind === 'volcano') { const [pulse] = volcanoSources(emitter, air); return new Map([[emitter.id, front(pulse.amplitudePaMetres, pulse.durationSeconds)]]); }
+  if (emitter.kind === 'gasExplosion') { const pulse = gasExplosionPulse(emitter, air); return new Map([[emitter.id, front(pulse.peakPaMetres, pulse.durationSeconds + pulse.onsetSeconds)]]); }
   if (isFlightKind(emitter)) {
     const boom = boomFront(Math.max(1.01, emitter.mach), emitter.lengthMetres, emitter.shapeFactor, 1000);
     return new Map(cachedTracks(emitter, air).map((_, index) => [`${emitter.id}:${index}`, boom]));
@@ -338,13 +362,17 @@ function measure(item, scene, at) {
   else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(at);
 }
 
-const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'crater' : isTrackKind(selected) ? 'start' : 'blast');
+const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'crater' : selected.kind === 'gasExplosion' ? 'cloud centre' : isTrackKind(selected) ? 'start' : 'blast');
 
-function info(selected) {
+function info(selected, scene) {
   if (selected.kind === 'storm') return [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`];
   if (selected.kind === 'blast') return [formatAtKilometre(formatPressure(blastPressureAtKilometrePa(selected.chargeKilograms)))];
   if (selected.kind === 'barrage') return [`${formatAtKilometre(formatPressure(blastPressureAtKilometrePa(selected.chargeKilograms)))} per round`];
   if (selected.kind === 'volcano') return [formatAtKilometre(formatPressure(volcanoPaMetres(selected) / VOLCANO.referenceMetres))];
+  if (selected.kind === 'gasExplosion') {
+    const pulse = gasExplosionPulse(selected, scene.air);
+    return [`Strength ${pulse.strength} · ${+(pulse.sourcePa / 1000).toPrecision(3)} kPa in the cloud`, formatAtKilometre(formatPressure(pulse.peakPaMetres / GAS_EXPLOSION.referenceMetres)), formatCharge(pulse.kilograms)];
+  }
   return [];
 }
 
@@ -370,7 +398,7 @@ function groundAnchored(field, item) {
   return field === 'positionMetres';
 }
 
-const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
+const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [kind, Object.freeze({
   label: emitterKindLabel,
@@ -412,6 +440,7 @@ export const ADD_EMITTERS = Object.freeze({
   barrage: add(defaultBarrage, 'Barrage', 'blast'),
   fireworks: add(defaultFireworks, 'Fireworks', 'blast'),
   volcano: add(defaultVolcano, 'Volcano', 'blast'),
+  gasExplosion: add(defaultGasExplosion, 'Gas explosion', 'blast'),
   flight: add(defaultFlight, 'Flight', 'sonic'),
   formation: add(defaultFormation, 'Formation', 'sonic'),
   meteor: add(defaultMeteor, 'Meteor', 'sonic'),

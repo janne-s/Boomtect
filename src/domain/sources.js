@@ -38,6 +38,7 @@ export const SOURCE_KINDS = Object.freeze({
   barrage: blasting,
   fireworks: blasting,
   volcano: { sources: table, noise: codaSamples },
+  gasExplosion: blasting,
   flight: moving(flights),
   formation: moving(flights),
   meteor: moving(meteors),

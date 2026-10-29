@@ -5,7 +5,7 @@ import { DEFAULT_PLACE, defaultBarrage, defaultBlast, defaultFlight, defaultLigh
 import { syntheticTerrain } from './terrain-fixture.js';
 
 // Saved by the version each file names and never regenerated: every one must keep opening.
-const FIXTURES = ['v28', 'v29', 'v30'].flatMap(version => MODES.map(mode => `scene-${version}-${mode}`));
+const FIXTURES = ['v28', 'v29', 'v30', 'v31'].flatMap(version => MODES.map(mode => `scene-${version}-${mode}`));
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'));
 
 test('every saved scene version opens', () => {

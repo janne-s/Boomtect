@@ -6,6 +6,7 @@ import { EXPLOSIVE_TYPES } from './explosives.js';
 import { BODY_TYPES } from './flight.js';
 import { FLASH_TYPES } from './lightning.js';
 import { applyEruption, ERUPTION_NUMBERS } from './volcano.js';
+import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from './gas-explosion.js';
 
 export { DEFAULT_PLACE, DEFAULT_QUALITY, defaultReceiver, headingToward, PLACE_NAME_KINDS, placeLabel, QUALITY_NUMBERS, QUALITY_SWITCHES, SceneError, TERRAIN_DEFAULTS } from '../shared/domain/scene.js';
 
@@ -94,7 +95,8 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   pulseSeconds: { minimum: .05, maximum: 10, unit: 's', label: 'Positive phase', reliability: 'B' },
   codaDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Coda', reliability: 'C' },
   codaSeconds: { minimum: .2, maximum: 30, unit: 's', label: 'Coda length', reliability: 'C' },
-  thumpShare: { minimum: 0, maximum: 1, unit: '', label: 'Thumps', reliability: 'C' }
+  thumpShare: { minimum: 0, maximum: 1, unit: '', label: 'Thumps', reliability: 'C' },
+  cloudCubicMetres: { minimum: 1, maximum: 1e6, unit: 'm³', label: 'Cloud', reliability: null }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -125,6 +127,8 @@ const FIREWORKS_NUMBERS = Object.freeze([
 ]);
 
 const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
+
+const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -233,6 +237,34 @@ export function defaultVolcano(id = 'volcano-1', name = 'Volcano', seed = 202610
   const volcano = { id, name, kind: 'volcano', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 } };
   applyEruption(volcano, 'vulcanian');
   return volcano;
+}
+
+export function defaultGasExplosion(id = 'gas-explosion-1', name = 'Gas explosion', seed = 20261029) {
+  return {
+    id, name, kind: 'gasExplosion', enabled: true, seed,
+    startSeconds: 0,
+    positionMetres: { x: 0, y: 0, z: 0 },
+    cloudCubicMetres: 2000,
+    fuel: 'propane',
+    congestion: 'dense',
+    confinement: 'open',
+    ignition: 'spark',
+    fireballDecibels: -14,
+    fireballSecondsPerSixthRootKilogram: .92,
+    riseTimeSeconds: 4e-5
+  };
+}
+
+function readGasExplosion(value, { point, numbers, choice }, path) {
+  const defaults = defaultGasExplosion();
+  return {
+    positionMetres: point(value.positionMetres, `${path}.positionMetres`),
+    fuel: choice(value.fuel, FUEL_TYPES, defaults.fuel, `${path}.fuel`),
+    congestion: choice(value.congestion, CONGESTION_TYPES, defaults.congestion, `${path}.congestion`),
+    confinement: choice(value.confinement, CONFINEMENT_TYPES, defaults.confinement, `${path}.confinement`),
+    ignition: choice(value.ignition, IGNITION_TYPES, defaults.ignition, `${path}.ignition`),
+    ...numbers(value, GAS_EXPLOSION_NUMBERS, path)
+  };
 }
 
 /** Class C as a default. */
@@ -420,6 +452,7 @@ const KINDS = Object.freeze({
   blast: { defaults: () => defaultBlast(), read: (value, fields, path) => blastFields(fields, value, path, BLAST_NUMBERS, 'positionMetres', defaultBlast().explosive) },
   barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres', defaultBarrage().explosive), 'centreMetres', path) },
   volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path), ...followsField(value) }) },
+  gasExplosion: { defaults: () => defaultGasExplosion(), read: readGasExplosion },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
@@ -432,12 +465,12 @@ const KINDS = Object.freeze({
 export const { PARAMETERS, MODES, defaultScene, parseScene, readScene, serializeScene, sceneInMode } = createScene({
   name: 'Boomtect',
   format: 'boomtect.scene',
-  version: 30,
+  version: 31,
   modelVersion: MODEL_VERSION,
   anchor: emitterAnchor,
   modes: {
     thunder: { kinds: ['lightning', 'storm'], emitter: () => defaultLightning(), receiverMetres: { x: 1400, y: 0, z: 1.7 } },
-    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
+    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
     sonic: { kinds: ['flight', 'formation', 'meteor', 'shower', 'whip', 'booster'], emitter: () => defaultFlight(), receiverMetres: { x: 0, y: 0, z: 1.7 } }
   },
   kinds: KINDS,

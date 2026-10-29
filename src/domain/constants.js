@@ -2,9 +2,9 @@ import { VIEW as SHARED_VIEW } from '../shared/domain/constants.js';
 
 export * from '../shared/domain/constants.js';
 
-export const APP_VERSION = '0.79.3';
+export const APP_VERSION = '0.80.0';
 
-export const MODEL_VERSION = '36.0.0';
+export const MODEL_VERSION = '36.1.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 
@@ -120,6 +120,39 @@ export const VOLCANO = Object.freeze({
   })
 });
 
+/** Strength pressures class B (TNO Multi-Energy, Van den Berg 1985; table as in Hellas et al. 2020); mixture energies class A from heats of combustion at stoichiometry, 15 °C; reactivity classes after Baker–Strehlow–Tang; class shifts, congestion and confinement strengths class C. Doc/design/architecture-decision-8-gas-explosion.md. */
+export const GAS_EXPLOSION = Object.freeze({
+  referenceMetres: 1000,
+  strengthPressuresKpa: Object.freeze([1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]),
+  detonationStrength: 10,
+  tntMegajoulesPerKilogram: 4.68,
+  expansionRatio: 7.5,
+  linearPressureShare: VOLCANO.linearPressureShare,
+  pressureWaveStrengths: Object.freeze([3, 7]),
+  fuels: Object.freeze({
+    methane: Object.freeze({ label: 'Methane', megajoulesPerCubicMetre: 3.22, reactivity: -1 }),
+    propane: Object.freeze({ label: 'Propane', megajoulesPerCubicMetre: 3.48, reactivity: 0 }),
+    ethylene: Object.freeze({ label: 'Ethylene', megajoulesPerCubicMetre: 3.66, reactivity: 1 }),
+    hydrogen: Object.freeze({ label: 'Hydrogen', megajoulesPerCubicMetre: 3.03, reactivity: 1 }),
+    propyleneOxide: Object.freeze({ label: 'Propylene oxide', megajoulesPerCubicMetre: 3.77, reactivity: 1 }),
+    ethyleneOxide: Object.freeze({ label: 'Ethylene oxide', megajoulesPerCubicMetre: 3.99, reactivity: 1 })
+  }),
+  congestions: Object.freeze({
+    open: Object.freeze({ label: 'Open', strength: 2 }),
+    sparse: Object.freeze({ label: 'Sparse', strength: 4 }),
+    dense: Object.freeze({ label: 'Dense', strength: 6 }),
+    pipeRack: Object.freeze({ label: 'Pipe rack', strength: 7 })
+  }),
+  confinements: Object.freeze({
+    open: Object.freeze({ label: 'Open', strength: 0 }),
+    planes: Object.freeze({ label: 'Between planes', strength: 1 })
+  }),
+  ignitions: Object.freeze({
+    spark: Object.freeze({ label: 'Spark' }),
+    charge: Object.freeze({ label: 'Burster charge' })
+  })
+});
+
 /** Class C. */
 export const UPPER_AIR = Object.freeze({
   topMetres: 80000,
@@ -207,7 +240,8 @@ export const VIEW = Object.freeze({
     cloudRange: Object.freeze([200, 18000]),
     volcanoChargeRange: Object.freeze([.01, 1e6]),
     volcanoRiseRange: Object.freeze([2e-5, 3e-3]),
-    volcanoHeightMetres: 6000
+    volcanoHeightMetres: 6000,
+    gasCloudRange: Object.freeze([10, 1e5])
   }),
   flash: Object.freeze({
     traverseSeconds: .12,

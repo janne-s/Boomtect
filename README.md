@@ -43,8 +43,8 @@ microphone along the Mach cone.
 - **Shadow boundary** — The line on the ground beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 - **Levels** — A microphone shows its peak in pascals and decibels and its
-  loudest A-weighted Fast level (LAFmax, IEC 61672-1). A blast, barrage, or
-  volcano shows its pressure and level 1 km away.
+  loudest A-weighted Fast level (LAFmax, IEC 61672-1). A blast, barrage,
+  volcano, or gas explosion shows its pressure and level 1 km away.
 
 ## Emitters
 
@@ -66,6 +66,12 @@ microphone along the Mach cone.
   TNT charge that carries the same sound energy, and the roar and low thumps of the ash and gas that
   follow it. Strombolian, Vulcanian, and strong Vulcanian types set it; the
   rise time runs from a soft thump to a crack.
+- **Gas explosion** — A flammable cloud on the ground that burns as a
+  deflagration or detonates: methane, propane, ethylene, hydrogen, or the
+  propylene and ethylene oxide of fuel-air explosives. Congestion and
+  confinement set its strength, from a soft whump that rises over the flame's
+  passage to a shock like a charge's; a burster charge detonates it. The roar
+  of its fireball follows.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -95,7 +101,8 @@ microphone along the Mach cone.
   charge, height, and fireball for a blast; size, duration, rounds, rounds per
   salvo, charge, and fireball for a barrage; size, duration, shells, shells per
   salvo, shell size, and crackle for a fireworks display; eruption, size, crater
-  height, sharpness, coda, coda length, and thumps for a volcano, each with its onset when the scene
+  height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
+  confinement, ignition, and fireball for a gas explosion, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -418,6 +425,9 @@ B/C marks a part that combines the two.
 | Volcano pulse | Friedlander pulse whose sound energy equals that of a Blast of its equivalent charge (Vulcanian 5.9 t, about 300 Pa at 1 km; about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
 | Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
+| Gas explosion strength | TNO Multi-Energy source pressure, 1 kPa (strength 1) to 1 MPa (10) (Van den Berg 1985); congestion sets the strength (open 2, sparse 4, dense 6, pipe rack 7), between planes adds 1, the fuel's Baker–Strehlow–Tang reactivity adds −1 (methane) to +1 (ethylene, hydrogen, propylene and ethylene oxide); a burster charge detonates the cloud (10) | B/C |
+| Gas explosion level | the source pressure falls as 1/r from the edge of a hemispherical cloud of 3.0–4.0 MJ/m³ of stoichiometric mixture, halved because the ground doubles it, never above a TNT blast of the same energy at 4.68 MJ/kg; 1 kPa and 46 ms 1 km from a 10 m strength-7 cloud (Van den Berg et al. 1991: about 1 kPa and 60 ms) | B/C |
+| Gas explosion shape | Friedlander pulse lasting the TNT blast's positive phase or the burn time, whichever is longer; the burn time is the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5); below strength 7 the pulse rises linearly over up to the whole burn time, a pressure wave, and from 7 it is a shock; the fireball's roar lasts the Blast's fireball time plus the burn time | A/C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
@@ -450,7 +460,9 @@ B/C marks a part that combines the two.
 
 Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
 or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
-its stars' burning; and a whip's swish.
+its stars' burning; a whip's swish; and a gas cloud's spreading, its flame's
+acceleration through the obstacles, separate congested regions in one cloud,
+BLEVEs, and dust explosions.
 
 Boomtect is a creative tool. Where published models exist it follows them,
 but a result is a plausible event, not a reconstruction or a measurement.
@@ -498,6 +510,7 @@ What each change does to the sound:
 | `flashType` `intra-cloud` (Cloud flash) | a channel inside the cloud, its sound spread out in time |
 | More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
 | Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
+| Gas explosion `congestion` denser, `confinement` `planes`, a more reactive `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive |
 | Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |
 | Flight higher | a weaker, slightly longer boom; faster `mach`, a wider carpet |
 | `ground.type` `water` or `rigid` | a strong reflection right after the direct sound |
