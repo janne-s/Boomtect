@@ -120,32 +120,32 @@ export const VOLCANO = Object.freeze({
   })
 });
 
-/** Strength pressures class B (TNO Multi-Energy, Van den Berg 1985; table as in Hellas et al. 2020); mixture energies class A from heats of combustion at stoichiometry, 15 °C; reactivity classes after Baker–Strehlow–Tang; class shifts, congestion and confinement strengths class C. Doc/design/architecture-decision-8-gas-explosion.md. */
+/** Strength pressures class B (TNO Multi-Energy, Van den Berg 1985; GAME, Eggen 1998, Figure 10); source pressure class B from the GAME correlation (Eggen 1998, HSE CRR 202/1998 §6.7: P₀ = a(VBR·L/D)^b S_L^2.7 D^0.7 bar, spark ignition, fitted over 0.01–10 bar, D 0.019–0.82 m, VBR 5–50 %, S_L 0.40–0.66 m/s); burning velocities of methane, propane and ethylene as GAME used them, the others class B from NFPA 68 Table D.1 and extrapolated; mixture energies class A from heats of combustion at stoichiometry, 15 °C; congestion presets class C, pipe rack after GAME Annex D. Doc/design/architecture-decision-8-gas-explosion.md. */
 export const GAS_EXPLOSION = Object.freeze({
   referenceMetres: 1000,
   strengthPressuresKpa: Object.freeze([1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]),
-  detonationStrength: 10,
   tntMegajoulesPerKilogram: 4.68,
   expansionRatio: 7.5,
   linearPressureShare: VOLCANO.linearPressureShare,
   pressureWaveStrengths: Object.freeze([3, 7]),
   fuels: Object.freeze({
-    methane: Object.freeze({ label: 'Methane', megajoulesPerCubicMetre: 3.22, reactivity: -1 }),
-    propane: Object.freeze({ label: 'Propane', megajoulesPerCubicMetre: 3.48, reactivity: 0 }),
-    ethylene: Object.freeze({ label: 'Ethylene', megajoulesPerCubicMetre: 3.66, reactivity: 1 }),
-    hydrogen: Object.freeze({ label: 'Hydrogen', megajoulesPerCubicMetre: 3.03, reactivity: 1 }),
-    propyleneOxide: Object.freeze({ label: 'Propylene oxide', megajoulesPerCubicMetre: 3.77, reactivity: 1 }),
-    ethyleneOxide: Object.freeze({ label: 'Ethylene oxide', megajoulesPerCubicMetre: 3.99, reactivity: 1 })
+    methane: Object.freeze({ label: 'Methane', megajoulesPerCubicMetre: 3.22, burningMetresPerSecond: .40 }),
+    propane: Object.freeze({ label: 'Propane', megajoulesPerCubicMetre: 3.48, burningMetresPerSecond: .45 }),
+    gasoline: Object.freeze({ label: 'Gasoline vapour', megajoulesPerCubicMetre: 3.53, burningMetresPerSecond: .40 }),
+    ethylene: Object.freeze({ label: 'Ethylene', megajoulesPerCubicMetre: 3.66, burningMetresPerSecond: .66 }),
+    hydrogen: Object.freeze({ label: 'Hydrogen', megajoulesPerCubicMetre: 3.03, burningMetresPerSecond: 2.4 }),
+    propyleneOxide: Object.freeze({ label: 'Propylene oxide', megajoulesPerCubicMetre: 3.77, burningMetresPerSecond: .82 }),
+    ethyleneOxide: Object.freeze({ label: 'Ethylene oxide', megajoulesPerCubicMetre: 3.99, burningMetresPerSecond: 1.08 })
   }),
   congestions: Object.freeze({
-    open: Object.freeze({ label: 'Open', strength: 2 }),
-    sparse: Object.freeze({ label: 'Sparse', strength: 4 }),
-    dense: Object.freeze({ label: 'Dense', strength: 6 }),
-    pipeRack: Object.freeze({ label: 'Pipe rack', strength: 7 })
+    open: Object.freeze({ label: 'Open', blockageRatio: .01, obstacleMetres: .3 }),
+    sparse: Object.freeze({ label: 'Sparse', blockageRatio: .05, obstacleMetres: .3 }),
+    dense: Object.freeze({ label: 'Dense', blockageRatio: .1, obstacleMetres: .3 }),
+    pipeRack: Object.freeze({ label: 'Pipe rack', blockageRatio: .2, obstacleMetres: .43 })
   }),
   confinements: Object.freeze({
-    open: Object.freeze({ label: 'Open', strength: 0 }),
-    planes: Object.freeze({ label: 'Between planes', strength: 1 })
+    open: Object.freeze({ label: 'Open', coefficient: .84, exponent: 2.75 }),
+    planes: Object.freeze({ label: 'Between planes', coefficient: 3.38, exponent: 2.25 })
   }),
   ignitions: Object.freeze({
     spark: Object.freeze({ label: 'Spark' }),

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasStrength } from '../src/domain/gas-explosion.js';
+import { cloudRadiusMetres, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { blastPressureAtKilometrePa } from '../src/domain/blast-pulse.js';
 import { plainScene } from './plain-scene.js';
 
@@ -34,18 +34,31 @@ test('a gas explosion opens in Blast mode, reads unknown choices as defaults, an
   assert.equal(odd.cloudCubicMetres, 1e6);
 });
 
-test('congestion, confinement and reactivity set the strength, and a burster charge detonates the cloud', () => {
-  const base = defaultGasExplosion();
-  assert.equal(gasStrength({ ...base, fuel: 'methane', congestion: 'open' }), 1);
-  assert.equal(gasStrength({ ...base, fuel: 'propane', congestion: 'pipeRack', confinement: 'planes' }), 8);
-  assert.equal(gasStrength({ ...base, fuel: 'hydrogen', congestion: 'open', ignition: 'charge' }), 10);
+test('the GAME correlation sets the source pressure, within the Multi-Energy range, and a burster charge detonates the cloud', () => {
+  const base = { ...defaultGasExplosion(), cloudCubicMetres: 2 * Math.PI / 3 * 1000 };
+  const expected = 0.84 * (0.1 * 10 / 0.3) ** 2.75 * 0.45 ** 2.7 * 0.3 ** 0.7 * 1e5;
+  assert.ok(Math.abs(gasSourcePa(base) / expected - 1) < 1e-9);
+  const planes = 3.38 * (0.1 * 10 / 0.3) ** 2.25 * 0.45 ** 2.7 * 0.3 ** 0.7 * 1e5;
+  assert.ok(Math.abs(gasSourcePa({ ...base, confinement: 'planes' }) / planes - 1) < 1e-9);
+  assert.equal(gasSourcePa({ ...base, congestion: 'open' }), 1000);
+  assert.equal(gasSourcePa({ ...base, fuel: 'hydrogen', congestion: 'pipeRack' }), 1e6);
+  assert.equal(gasStrength({ ...base, congestion: 'open', ignition: 'charge' }), 10);
+  assert.ok(gasSourcePa({ ...base, fuel: 'methane' }) < gasSourcePa(base) && gasSourcePa(base) < gasSourcePa({ ...base, fuel: 'ethylene' }));
+  assert.ok(gasSourcePa({ ...base, cloudCubicMetres: 500 }) < gasSourcePa(base));
 });
 
-test('strength 7 of a 10 m hemisphere gives about 1 kPa and 60 ms near 1 km, as Van den Berg et al. (1991)', () => {
+test('the strength runs through the Multi-Energy classes on a log scale', () => {
+  assert.equal(strengthOfPa(1000), 1);
+  assert.equal(strengthOfPa(1e6), 10);
+  assert.ok(Math.abs(strengthOfPa(1e5) - 7) < 1e-12);
+  assert.ok(Math.abs(strengthOfPa(Math.sqrt(1e5 * 2e5)) - 7.5) < 1e-12);
+});
+
+test('a 10 m hemisphere near strength 7 gives about 1 kPa and 60 ms near 1 km, as Van den Berg et al. (1991)', () => {
   const cloudCubicMetres = 2 * Math.PI / 3 * 1000;
   assert.ok(Math.abs(cloudRadiusMetres(cloudCubicMetres) - 10) < 1e-9);
-  const pulse = gasExplosionPulse({ ...defaultGasExplosion(), cloudCubicMetres, congestion: 'pipeRack' }, STANDARD_AIR);
-  assert.equal(pulse.strength, 7);
+  const pulse = gasExplosionPulse({ ...defaultGasExplosion(), cloudCubicMetres }, STANDARD_AIR);
+  assert.ok(Math.abs(pulse.strength - 7) < .3, `strength ${pulse.strength}`);
   const groundPa = 2 * pulse.peakPaMetres / 1000;
   assert.ok(groundPa > 800 && groundPa < 1300, `${groundPa} Pa`);
   assert.ok(pulse.durationSeconds > .04 && pulse.durationSeconds < .08, `${pulse.durationSeconds} s`);

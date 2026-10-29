@@ -11,13 +11,28 @@ export const IGNITION_TYPES = Object.freeze(Object.keys(GAS_EXPLOSION.ignitions)
 
 const FIREBALL_OFF_DECIBELS = -60;
 
-/** Class C: congestion and confinement set the Multi-Energy strength, the fuel's reactivity shifts it, and a burster charge detonates the cloud. */
-export function gasStrength(emitter) {
-  if (emitter.ignition === 'charge') return GAS_EXPLOSION.detonationStrength;
-  const { fuels, congestions, confinements, detonationStrength } = GAS_EXPLOSION;
-  const strength = congestions[emitter.congestion].strength + confinements[emitter.confinement].strength + fuels[emitter.fuel].reactivity;
-  return Math.min(detonationStrength, Math.max(1, strength));
+const BAR_PA = 1e5;
+
+/** Class B: the GAME correlation for a spark in the cloud's centre, the flame's path its radius; a burster charge detonates the cloud. */
+export function gasSourcePa(emitter) {
+  const { strengthPressuresKpa: pressures, congestions, confinements, fuels } = GAS_EXPLOSION;
+  const [weakest, strongest] = [pressures[0] * 1000, pressures.at(-1) * 1000];
+  if (emitter.ignition === 'charge') return strongest;
+  const { blockageRatio, obstacleMetres } = congestions[emitter.congestion];
+  const { coefficient, exponent } = confinements[emitter.confinement];
+  const argument = blockageRatio * cloudRadiusMetres(emitter.cloudCubicMetres) / obstacleMetres;
+  const bar = coefficient * argument ** exponent * fuels[emitter.fuel].burningMetresPerSecond ** 2.7 * obstacleMetres ** .7;
+  return Math.min(strongest, Math.max(weakest, bar * BAR_PA));
 }
+
+/** The Multi-Energy strength 1–10 whose source pressure this is, between classes on a log scale. */
+export function strengthOfPa(sourcePa) {
+  const pressures = GAS_EXPLOSION.strengthPressuresKpa.map(kpa => kpa * 1000);
+  const upper = Math.min(pressures.length - 1, Math.max(1, pressures.findIndex(pressure => pressure >= sourcePa)));
+  return upper + Math.log(sourcePa / pressures[upper - 1]) / Math.log(pressures[upper] / pressures[upper - 1]);
+}
+
+export const gasStrength = emitter => strengthOfPa(gasSourcePa(emitter));
 
 export const cloudRadiusMetres = cubicMetres => Math.cbrt(3 * cubicMetres / (2 * Math.PI));
 
@@ -36,10 +51,10 @@ const friedlanderArea = (seconds, durationSeconds, decay) => {
   return durationSeconds * (integral(seconds / durationSeconds) - integral(0));
 };
 
-/** Class B level: the Multi-Energy source pressure falls as 1/R from the cloud's edge, never above the TNT blast of the same energy; halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
+/** Class B level: the source pressure falls as 1/R from the cloud's edge, never above the TNT blast of the same energy; halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
 export function gasExplosionPulse(emitter, air) {
-  const strength = gasStrength(emitter);
-  const sourcePa = GAS_EXPLOSION.strengthPressuresKpa[strength - 1] * 1000;
+  const sourcePa = gasSourcePa(emitter);
+  const strength = strengthOfPa(sourcePa);
   const radiusMetres = cloudRadiusMetres(emitter.cloudCubicMetres);
   const kilograms = gasEquivalentKilograms(emitter);
   const peakPaMetres = Math.min(sourcePa * radiusMetres / 2, blastPressureAtKilometrePa(kilograms) * 1000);

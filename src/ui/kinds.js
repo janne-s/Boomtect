@@ -371,7 +371,7 @@ function info(selected, scene) {
   if (selected.kind === 'volcano') return [formatAtKilometre(formatPressure(volcanoPaMetres(selected) / VOLCANO.referenceMetres))];
   if (selected.kind === 'gasExplosion') {
     const pulse = gasExplosionPulse(selected, scene.air);
-    return [`Strength ${pulse.strength} · ${+(pulse.sourcePa / 1000).toPrecision(3)} kPa in the cloud`, formatAtKilometre(formatPressure(pulse.peakPaMetres / GAS_EXPLOSION.referenceMetres)), formatCharge(pulse.kilograms)];
+    return [`Strength ${pulse.strength.toFixed(1)} · ${+(pulse.sourcePa / 1000).toPrecision(3)} kPa in the cloud`, formatAtKilometre(formatPressure(pulse.peakPaMetres / GAS_EXPLOSION.referenceMetres)), formatCharge(pulse.kilograms)];
   }
   return [];
 }

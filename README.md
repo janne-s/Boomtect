@@ -67,9 +67,9 @@ microphone along the Mach cone.
   follow it. Strombolian, Vulcanian, and strong Vulcanian types set it; the
   rise time runs from a soft thump to a crack.
 - **Gas explosion** — A flammable cloud on the ground that burns as a
-  deflagration or detonates: methane, propane, ethylene, hydrogen, or the
-  propylene and ethylene oxide of fuel-air explosives. Congestion and
-  confinement set its strength, from a soft whump that rises over the flame's
+  deflagration or detonates: methane, propane, gasoline vapour, ethylene, hydrogen, or the
+  propylene and ethylene oxide of fuel-air explosives. Congestion,
+  confinement, the fuel, and the cloud's size set its strength, from a soft whump that rises over the flame's
   passage to a shock like a charge's; a burster charge detonates it. The roar
   of its fireball follows.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
@@ -425,8 +425,8 @@ B/C marks a part that combines the two.
 | Volcano pulse | Friedlander pulse whose sound energy equals that of a Blast of its equivalent charge (Vulcanian 5.9 t, about 300 Pa at 1 km; about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
 | Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
-| Gas explosion strength | TNO Multi-Energy source pressure, 1 kPa (strength 1) to 1 MPa (10) (Van den Berg 1985); congestion sets the strength (open 2, sparse 4, dense 6, pipe rack 7), between planes adds 1, the fuel's Baker–Strehlow–Tang reactivity adds −1 (methane) to +1 (ethylene, hydrogen, propylene and ethylene oxide); a burster charge detonates the cloud (10) | B/C |
-| Gas explosion level | the source pressure falls as 1/r from the edge of a hemispherical cloud of 3.0–4.0 MJ/m³ of stoichiometric mixture, halved because the ground doubles it, never above a TNT blast of the same energy at 4.68 MJ/kg; 1 kPa and 46 ms 1 km from a 10 m strength-7 cloud (Van den Berg et al. 1991: about 1 kPa and 60 ms) | B/C |
+| Gas explosion strength | GAME correlation for a spark in the cloud's centre (Eggen 1998, HSE CRR 202/1998): `P₀ = 0.84 (VBR·L/D)^2.75 S_L^2.7 D^0.7` bar in the open, `3.38 (…)^2.25` between planes, the flame's path L the cloud's radius; congestion sets the volume blockage VBR and obstacle diameter D (open 1 %, sparse 5 %, dense 10 % of 0.3 m, pipe rack 20 % of 0.43 m); the fuel its burning velocity S_L (methane 0.40, propane 0.45, ethylene 0.66 m/s as GAME used them; gasoline vapour 0.40, propylene oxide 0.82, ethylene oxide 1.08, hydrogen 2.4 m/s beyond its fit); kept within the TNO Multi-Energy range 1 kPa (strength 1) to 1 MPa (10); a burster charge detonates the cloud | B/C |
+| Gas explosion level | the source pressure falls as 1/r from the edge of a hemispherical cloud of 3.0–4.0 MJ/m³ of stoichiometric mixture, halved because the ground doubles it, never above a TNT blast of the same energy at 4.68 MJ/kg; 1.15 kPa and 46 ms 1 km from a 10 m dense propane cloud of strength 7.2 (Van den Berg et al. 1991: about 1 kPa and 60 ms at strength 7) | B/C |
 | Gas explosion shape | Friedlander pulse lasting the TNT blast's positive phase or the burn time, whichever is longer; the burn time is the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5); below strength 7 the pulse rises linearly over up to the whole burn time, a pressure wave, and from 7 it is a shock; the fireball's roar lasts the Blast's fireball time plus the burn time | A/C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
@@ -510,7 +510,7 @@ What each change does to the sound:
 | `flashType` `intra-cloud` (Cloud flash) | a channel inside the cloud, its sound spread out in time |
 | More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
 | Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
-| Gas explosion `congestion` denser, `confinement` `planes`, a more reactive `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive |
+| Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes`, a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive |
 | Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |
 | Flight higher | a weaker, slightly longer boom; faster `mach`, a wider carpet |
 | `ground.type` `water` or `rigid` | a strong reflection right after the direct sound |
