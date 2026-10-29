@@ -59,6 +59,7 @@ export function sourceCells(sources, cellMetres) {
     secondaryDelaySeconds: new Float64Array(length),
     secondaryCubeRoot: new Float64Array(length),
     durationSeconds: new Float64Array(length),
+    onsetSeconds: new Float64Array(length),
     decay: new Float64Array(length),
     spanSeconds: new Float64Array(length),
     linearRadiusMetres: new Float64Array(length),
@@ -71,7 +72,7 @@ export function sourceCells(sources, cellMetres) {
     shockShare: new Float64Array(length),
     shockHz: new Float64Array(length)
   };
-  const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
+  const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'onsetSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
   members.forEach((list, cell) => {
     let energy = 0;
     for (const source of list) energy += sources.amplitudePaMetres[source] ** 2;

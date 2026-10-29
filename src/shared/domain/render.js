@@ -569,7 +569,7 @@ export function frameExtents(preparedEmitters, paths) {
     const source = paths.source[index];
     const span = paths.diffuse[index] ? 0 : paths.focusMu[index] > 0 ? FOCUS_RANGE.spanTau * paths.duration[index] / 2
       : sources.relaxationRadius[source] > 0 ? paths.duration[index]
-      : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source]
+      : sources.pulse[source] === PULSE_FRIEDLANDER ? sources.spanSeconds[source] * paths.duration[index] / sources.durationSeconds[source] + sources.onsetSeconds[source]
         : Math.max(sources.spanSeconds[source], sources.turbulentFront[source] ? paths.duration[index] : 0);
     extent.longestSpan = Math.max(extent.longestSpan, span + paths.timeSpread[index] + PROPAGATION.longestRises * ((sources.turbulentFront[source] ? prepared.emitter.riseTimeSeconds : 0) + GROUND.scatterSeconds));
     extent.largestCreep = Math.max(extent.largestCreep, paths.creepNepers[index]);
@@ -855,6 +855,13 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let directivityRe = directivityStepRe;
   let directivityIm = directivityStepIm;
 
+  const onsetStep = Math.PI * binHz * sources.onsetSeconds[sourceIndex];
+  const onset = onsetStep > 1e-12;
+  const onsetStepRe = Math.cos(onsetStep);
+  const onsetStepIm = Math.sin(onsetStep);
+  let onsetRe = onsetStepRe;
+  let onsetIm = onsetStepIm;
+
   const omegaStep = 2 * Math.PI * binHz;
   const triple = pulseKind === PULSE_TRIPLE;
   const nWave = pulseKind === PULSE_NWAVE || triple;
@@ -937,6 +944,16 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
     re *= factor;
     im *= factor;
+    if (onset) {
+      // A linear onset: the pulse convolved with a causal boxcar of the onset length.
+      const sinc = onsetIm / (onsetStep * bin);
+      const nextRe = (re * onsetRe + im * onsetIm) * sinc;
+      im = (im * onsetRe - re * onsetIm) * sinc;
+      re = nextRe;
+      const nextOnsetRe = onsetRe * onsetStepRe - onsetIm * onsetStepIm;
+      onsetIm = onsetRe * onsetStepIm + onsetIm * onsetStepRe;
+      onsetRe = nextOnsetRe;
+    }
     if (coarseForest) {
       const position = gridPosition[bin];
       const lower = Math.floor(position);
