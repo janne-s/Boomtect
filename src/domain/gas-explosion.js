@@ -1,6 +1,7 @@
 import { BLAST_PULSE } from './blast-pulse.js';
 import { BLAST, GAS_EXPLOSION } from './constants.js';
 import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
+import { speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
 import { friedlanderSpanSeconds } from '../shared/domain/pulses.js';
 import { createRandom } from '../shared/domain/random.js';
@@ -81,7 +82,27 @@ export function multiEnergyOverpressure(sourcePa, scaledDistance, ambientPa) {
   return classOverpressure(lower, scaledDistance, ambientPa) ** (1 - share) * classOverpressure(lower + 1, scaledDistance, ambientPa) ** share;
 }
 
-/** Class B level: the Multi-Energy curve at its reference scaled distance, carried as 1/r, halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
+/** Class B: the Multi-Energy positive phase t̄₊ = t₊c₀/(E/p₀)^⅓ at the reference scaled distance, between the classes on a log scale. */
+export function multiEnergyPositivePhase(sourcePa) {
+  const phases = GAS_EXPLOSION.multiEnergy.referencePositivePhases;
+  const strength = Math.max(1, strengthOfPa(sourcePa));
+  const lower = Math.min(9, Math.floor(strength));
+  const share = Math.min(1, strength - lower);
+  return phases[lower - 1] ** (1 - share) * phases[lower] ** share;
+}
+
+export function positivePhaseShare(onsetShare, decay) {
+  const area = seconds => friedlanderArea(seconds, 1, decay) - friedlanderArea(Math.max(0, seconds - onsetShare), 1, decay);
+  let [low, high] = [1, 1 + onsetShare];
+  for (let step = 0; step < 50; step += 1) {
+    const middle = (low + high) / 2;
+    if (area(middle) > 0) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+}
+
+/** Class B level and positive phase: the Multi-Energy curves at their reference scaled distance, which hold the wave's aging up to there; the level carried as 1/r and halved because the ground doubles it, aged as a weak shock only beyond. Class C shape: the pulse rises over its Friedlander duration while the wave is a pressure wave, and is a shock from strength 7. */
 export function deflagrationPulse({ sourcePa, radiusMetres, kilograms }, air) {
   const strength = strengthOfPa(sourcePa);
   const ambientPa = air.pressureKpa * 1000;
@@ -89,10 +110,12 @@ export function deflagrationPulse({ sourcePa, radiusMetres, kilograms }, air) {
   const reference = GAS_EXPLOSION.multiEnergy.referenceScaledDistance;
   const peakPaMetres = multiEnergyOverpressure(sourcePa, reference, ambientPa) * reference * ambientPa * scaleMetres / 2;
   const burnSeconds = radiusMetres / flameMetresPerSecond(sourcePa, air);
-  const onsetSeconds = burnSeconds * (1 - shockShare(strength));
-  const durationSeconds = Math.max(BLAST_PULSE.durationSecondsPerCubeRootKilogram * Math.cbrt(kilograms), burnSeconds);
+  const positiveSeconds = multiEnergyPositivePhase(sourcePa) * scaleMetres / speedOfSoundMetresPerSecond(air.temperatureCelsius);
   const decay = BLAST_PULSE.decay;
-  return { strength, sourcePa, radiusMetres, kilograms, peakPaMetres, burnSeconds, onsetSeconds, durationSeconds, decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, decay) };
+  const onsetShare = 1 - shockShare(strength);
+  const durationSeconds = positiveSeconds / positivePhaseShare(onsetShare, decay);
+  const onsetSeconds = onsetShare * durationSeconds;
+  return { strength, sourcePa, radiusMetres, kilograms, peakPaMetres, agingRadiusMetres: reference * scaleMetres, burnSeconds, positiveSeconds, onsetSeconds, durationSeconds, decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, decay) };
 }
 
 export const gasExplosionPulse = (emitter, air) => deflagrationPulse({ sourcePa: gasSourcePa(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres), kilograms: gasEquivalentKilograms(emitter) }, air);
@@ -100,7 +123,8 @@ export const gasExplosionPulse = (emitter, air) => deflagrationPulse({ sourcePa:
 export const pulseSource = (common, pulse, air) => ({
   ...common, amplitudePaMetres: pulse.amplitudePaMetres, pulse: 'friedlander', durationSeconds: pulse.durationSeconds, onsetSeconds: pulse.onsetSeconds, decay: pulse.decay,
   spanSeconds: friedlanderSpanSeconds(pulse.durationSeconds, pulse.decay),
-  linearRadiusMetres: pulse.peakPaMetres / (GAS_EXPLOSION.linearPressureShare * air.pressureKpa * 1000)
+  linearRadiusMetres: pulse.peakPaMetres / (GAS_EXPLOSION.linearPressureShare * air.pressureKpa * 1000),
+  agingRadiusMetres: pulse.agingRadiusMetres ?? 0
 });
 
 export const gasPaMetres = (emitter, air) => gasExplosionPulse(emitter, air).peakPaMetres;

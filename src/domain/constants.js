@@ -128,13 +128,14 @@ export const GAS_EXPLOSION = Object.freeze({
   expansionRatio: 7.5,
   linearPressureShare: VOLCANO.linearPressureShare,
   pressureWaveStrengths: Object.freeze([3, 7]),
-  /** Class B: the Multi-Energy blast curve, digitised from GAME (Eggen 1998) Figure 1: the strengths 6–10 merge into one curve (scaled distance R̄ = R/(E/p₀)^⅓, overpressure ΔP̄ = ΔP/p₀); strengths 1–5 keep their source overpressure to R̄ 0.7, then fall as 0.76, 0.75, 0.71, 0.66, and 0.61 of it over R̄; the level is taken at R̄ 24, where Van den Berg et al. (1991) give about 1 kPa from strength 7. */
+  /** Class B: the Multi-Energy blast curve, digitised from GAME (Eggen 1998) Figure 1: the strengths 6–10 merge into one curve (scaled distance R̄ = R/(E/p₀)^⅓, overpressure ΔP̄ = ΔP/p₀); strengths 1–5 keep their source overpressure to R̄ 0.7, then fall as 0.76, 0.75, 0.71, 0.66, and 0.61 of it over R̄; the level is taken at R̄ 24, where Van den Berg et al. (1991) give about 1 kPa and 60 ms from strength 7; the positive phase t̄₊ = t₊c₀/(E/p₀)^⅓ there for strengths 1–10, digitised from GAME Figure 2. */
   multiEnergy: Object.freeze({
     mergedScaledDistances: Object.freeze([.3, .4, .5, .6, 1, 1.5, 2.5, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 70, 90]),
     mergedOverpressures: Object.freeze([12.8, 5.35, 3.31, 1.92, .62, .298, .136, .101, .0721, .0536, .0366, .0243, .0151, .0111, .00699, .00497, .00381, .00252, .00193]),
     farFieldShares: Object.freeze([.76, .75, .71, .66, .61]),
     kneeExponent: 6,
-    referenceScaledDistance: 24
+    referenceScaledDistance: 24,
+    referencePositivePhases: Object.freeze([4.94, 3.02, 2.01, 1.24, .70, .518, .518, .518, .518, .518])
   }),
   /** Class C, fitted to gas explosion recordings (Doc/reference/audio E1–E12): the roar grows over a quarter of the burn, holds to its end, then dies away; deflagrations roar low, strong explosions flat in octaves; its frequencies fall as the cloud's radius grows, the spectra as fitted for a 150 m³ cloud. */
   roar: Object.freeze({

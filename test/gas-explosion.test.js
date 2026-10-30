@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, combustionSamples, multiEnergyOverpressure, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
+import { cloudRadiusMetres, combustionSamples, multiEnergyOverpressure, multiEnergyPositivePhase, positivePhaseShare, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -77,13 +77,24 @@ test('the level follows the Multi-Energy curves read from GAME Figure 1, and str
   assert.ok(20 * Math.log10(sparse[1] / sparse[0]) > 3);
 });
 
-test('a weak deflagration rises over its burn time, and the flame speed gives back its source pressure', () => {
+test('the positive phase follows the Multi-Energy durations read from GAME Figure 2', () => {
+  const at = kpa => multiEnergyPositivePhase(kpa * 1000 * (1 + 1e-9));
+  assert.ok(Math.abs(at(1) - 4.94) < .01);
+  assert.ok(Math.abs(at(20) - .70) < .01);
+  assert.ok(Math.abs(at(1000) - .518) < .01);
+  assert.ok(Math.abs(at(Math.sqrt(5 * 10)) - Math.sqrt(2.01 * 1.24)) < .01);
+  assert.ok(Math.abs(positivePhaseShare(0, 1) - 1) < 1e-12);
+  assert.ok(Math.abs(positivePhaseShare(1, 1) - Math.E / (Math.E - 1)) < 1e-9);
+});
+
+test('a weak deflagration rises over its Friedlander duration, and the flame speed gives back its source pressure', () => {
   const explosion = { ...defaultGasExplosion(), fuel: 'methane', congestion: 'open', cloudCubicMetres: 1000 };
   const pulse = gasExplosionPulse(explosion, STANDARD_AIR);
   const speed = flameMetresPerSecond(pulse.sourcePa, STANDARD_AIR);
   const density = 101325 / (287.05 * 288.15);
   assert.ok(Math.abs(2 * density * (1 - 1 / GAS_EXPLOSION.expansionRatio) * speed ** 2 - pulse.sourcePa) < 1e-6);
-  assert.ok(Math.abs(pulse.onsetSeconds - cloudRadiusMetres(1000) / speed) < 1e-12);
+  assert.ok(Math.abs(pulse.onsetSeconds - pulse.durationSeconds) < 1e-12);
+  assert.ok(pulse.positiveSeconds > pulse.burnSeconds);
   const [shock] = gasExplosionSources(explosion, STANDARD_AIR);
   assert.equal(shock.onsetSeconds, pulse.onsetSeconds);
   assert.ok(shock.amplitudePaMetres > pulse.peakPaMetres);
@@ -99,7 +110,22 @@ test('a rendered gas explosion peaks at its level after its onset and falls off 
   const arrival = 200 / 340.3;
   const peakSeconds = near.startSeconds + nearPeak.index / near.sampleRate - arrival;
   assert.ok(Math.abs(peakSeconds - pulse.onsetSeconds) < .01, `peak ${peakSeconds} s after arrival, onset ${pulse.onsetSeconds} s`);
+  const start = near.samples.findIndex(value => value > 1e-3 * nearPeak.value);
+  const end = near.samples.findIndex((value, index) => index > nearPeak.index && value < 0);
+  const positiveSeconds = (end - start) / near.sampleRate;
+  assert.ok(Math.abs(positiveSeconds / pulse.positiveSeconds - 1) < .05, `positive phase ${positiveSeconds} s, model ${pulse.positiveSeconds} s`);
   assert.ok(near.samples.every(Number.isFinite));
+});
+
+test('a rendered dense cloud keeps to the Multi-Energy level far away, aging as a weak shock only beyond the reference distance', () => {
+  const explosion = { fuel: 'propane', congestion: 'dense', cloudCubicMetres: 1000 };
+  const pulse = gasExplosionPulse({ ...defaultGasExplosion(), ...explosion }, STANDARD_AIR);
+  const scaleMetres = pulse.agingRadiusMetres / GAS_EXPLOSION.multiEnergy.referenceScaledDistance;
+  for (const scaledDistance of [24, 90]) {
+    const heard = peak(freeGasExplosion(explosion, scaledDistance * scaleMetres)).value;
+    const expected = multiEnergyOverpressure(pulse.sourcePa, scaledDistance, 101325) * 101325 / 2;
+    assert.ok(Math.abs(20 * Math.log10(heard / expected)) < .5, `R̄ ${scaledDistance}: ${20 * Math.log10(heard / expected)} dB`);
+  }
 });
 
 test('a deflagration roars for its burn time before it dies away, and a detonation at once', () => {
