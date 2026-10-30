@@ -63,6 +63,7 @@ export function sourceCells(sources, cellMetres) {
     decay: new Float64Array(length),
     spanSeconds: new Float64Array(length),
     linearRadiusMetres: new Float64Array(length),
+    agingRadiusMetres: new Float64Array(length),
     relaxationRadius: new Float64Array(length),
     sourcePeriodSeconds: new Float64Array(length),
     limitRadii: new Float64Array(length),
@@ -87,6 +88,7 @@ export function sourceCells(sources, cellMetres) {
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);
+      table.agingRadiusMetres[cell] = Math.max(table.agingRadiusMetres[cell], sources.agingRadiusMetres[source]);
     }
   });
   return table;

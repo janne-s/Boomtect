@@ -435,9 +435,9 @@ export function airShockImpedance(air) {
   return density * soundSpeedProfile(air).groundSpeed ** 3;
 }
 
-/** Class B: weak-shock aging of a spherical wave (Whitham 1956; Pierce, Acoustics, ch. 11). */
+/** Class B: weak-shock aging of a spherical wave (Whitham 1956; Pierce, Acoustics, ch. 11), from the source's aging radius when it has one. */
 export function blastStretch(sources, index, metres, shockImpedance, heightMetres) {
-  const r0 = sources.linearRadiusMetres[index];
+  const r0 = sources.agingRadiusMetres[index] || sources.linearRadiusMetres[index];
   const T0 = sources.durationSeconds[index];
   if (!(metres > r0 && r0 > 0 && T0 > 0)) return 1;
   const p0 = sources.amplitudePaMetres[index] / r0 * (heightMetres < r0 ? PROPAGATION.mergedFrontFactor : 1);

@@ -5,7 +5,7 @@ const SOURCE_COLUMNS = Object.freeze({
   pulse: Uint8Array, noiseSeed: Uint32Array,
   secondaryDelaySeconds: Float64Array, secondaryCubeRoot: Float64Array,
   turbulentFront: Uint8Array, middleShare: Float64Array, middleRatio: Float64Array,
-  durationSeconds: Float64Array, onsetSeconds: Float64Array, decay: Float64Array, spanSeconds: Float64Array, linearRadiusMetres: Float64Array,
+  durationSeconds: Float64Array, onsetSeconds: Float64Array, decay: Float64Array, spanSeconds: Float64Array, linearRadiusMetres: Float64Array, agingRadiusMetres: Float64Array,
   relaxationRadius: Float64Array, sourcePeriodSeconds: Float64Array, limitRadii: Float64Array, shockShare: Float64Array, shockHz: Float64Array
 });
 
@@ -52,6 +52,7 @@ export function sourceTableBuilder(capacity = 1024) {
       columns.decay[index] = source.decay;
       columns.spanSeconds[index] = source.spanSeconds;
       columns.linearRadiusMetres[index] = source.linearRadiusMetres;
+      columns.agingRadiusMetres[index] = source.agingRadiusMetres ?? 0;
       columns.shockShare[index] = source.shockShare ?? 0;
       columns.shockHz[index] = source.shockHz ?? 0;
       if (source.weakShock) {
