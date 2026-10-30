@@ -1,5 +1,6 @@
 import Omnitone from '../vendor/omnitone/omnitone.min.esm.js';
 import { channelCount, orientationRotation, rotationTerms } from '../domain/ambisonics.js';
+import { hrirFiles } from '../domain/binaural.js';
 import { RENDER } from '../domain/constants.js';
 
 function silentLoop() {
@@ -57,7 +58,8 @@ async function binauralRenderer(context, order) {
   let renderers = binauralRenderers.get(context);
   if (!renderers) binauralRenderers.set(context, renderers = new Map());
   if (!renderers.has(order)) {
-    const renderer = order === 1 ? Omnitone.createFOARenderer(context) : Omnitone.createHOARenderer(context, { ambisonicOrder: order });
+    const hrirPathList = hrirFiles(order).map(bytes => URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
+    const renderer = order === 1 ? Omnitone.createFOARenderer(context, { hrirPathList }) : Omnitone.createHOARenderer(context, { ambisonicOrder: order, hrirPathList });
     renderers.set(order, renderer.initialize().then(() => {
       renderer.output.connect(context.destination);
       return renderer;
