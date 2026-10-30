@@ -1,4 +1,4 @@
-import { BLAST, FLIGHT, GAS_EXPLOSION, ROOM_EXPLOSION, THUNDER, VIEW, VOLCANO } from '../domain/constants.js';
+import { BLAST, BLEVE, FLIGHT, GAS_EXPLOSION, ROOM_EXPLOSION, THUNDER, VIEW, VOLCANO } from '../domain/constants.js';
 import { blastSources, emitterSources } from '../domain/emitters.js';
 import { EXPLOSIVE_TYPES } from '../domain/explosives.js';
 import { emissionSeconds } from '../domain/lightning.js';
@@ -10,8 +10,9 @@ import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, gasExplosionPulse, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, roomExplosion, VENT_TYPES } from '../domain/room-explosion.js';
+import { applyVessel, bleveBlast, bleveChargeKilograms, bleveContents, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultRoomExplosion, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
+  defaultBarrage, defaultBlast, defaultBleve, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultRoomExplosion, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
 import { newSeed } from '../shared/domain/random.js';
 import { formatMetres, formatMetresSpan } from '../shared/ui/canvas.js';
@@ -21,12 +22,12 @@ import { macrosFor } from './macros.js';
 import { formatAtKilometre, formatCharge, formatPressure } from '../shared/ui/levels.js';
 import { blastPressureAtKilometrePa } from '../domain/blast-pulse.js';
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano', gasExplosion: 'Gas explosion', roomExplosion: 'Room explosion' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano', gasExplosion: 'Gas explosion', roomExplosion: 'Room explosion', bleve: 'BLEVE' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const hasSeed = emitter => !['blast', 'meteor', 'whip', 'booster'].includes(emitter.kind) && !isFlightKind(emitter);
 
-const isPointKind = emitter => emitter.kind === 'blast' || emitter.kind === 'volcano' || emitter.kind === 'gasExplosion' || emitter.kind === 'roomExplosion';
+const isPointKind = emitter => ['blast', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve'].includes(emitter.kind);
 const isBlastKind = emitter => isPointKind(emitter) || isFieldKind(emitter);
 const eruptionLabel = emitter => { const type = eruptionOf(emitter); return type === 'custom' ? 'Custom' : VOLCANO.eruptions[type].label; };
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
@@ -42,11 +43,13 @@ function flightHeightLabel(emitter, scene) {
 }
 
 const formatCloud = cubicMetres => `${+cubicMetres.toPrecision(3)} m³`;
+const vesselLabel = emitter => { const type = vesselOf(emitter); return type === 'custom' ? `${formatCloud(emitter.vesselCubicMetres)} vessel` : BLEVE.vessels[type].label; };
 
 function emitterSummary(emitter, scene) {
   if (emitter.kind === 'blast') return `${formatCharge(emitter.chargeKilograms)} at ${formatMetres(emitter.positionMetres.z)}`;
   if (emitter.kind === 'volcano') return `${eruptionLabel(emitter)}, ${formatCharge(emitter.equivalentChargeKilograms)}${emitter.follows ? `, at ${emitter.follows.app}'s ${emitter.follows.name}` : ''}`;
   if (emitter.kind === 'gasExplosion') return `${formatCloud(emitter.cloudCubicMetres)} ${GAS_EXPLOSION.fuels[emitter.fuel].label.toLowerCase()}, ${emitter.ignition === 'charge' ? 'detonated' : GAS_EXPLOSION.congestions[emitter.congestion].label.toLowerCase()}`;
+  if (emitter.kind === 'bleve') return `${vesselLabel(emitter)} of ${BLEVE.fluids[emitter.fluid].label.toLowerCase()}, ${Math.round(emitter.fillShare * 100)} % full, failing at ${+emitter.failureBar.toPrecision(3)} bar g`;
   if (emitter.kind === 'roomExplosion') return `${formatCloud(emitter.roomCubicMetres)} room, ${ROOM_EXPLOSION.materials[emitter.material].label.toLowerCase()}, ${+emitter.ventSquareMetres.toPrecision(3)} m² ${ROOM_EXPLOSION.vents[emitter.ventStrength].label.toLowerCase()}`;
   if (emitter.kind === 'meteor') return `${+emitter.diameterMetres.toPrecision(3)} m meteoroid at ${emitter.speedKilometresPerSecond} km/s, ${emitter.entryDegrees}° down from ${formatMetres(emitter.startMetres.z)}`;
   if (emitter.kind === 'shower') return `${emitter.meteorCount} meteoroids of about ${+emitter.diameterMetres.toPrecision(3)} m over ${emitter.durationSeconds} s`;
@@ -244,6 +247,24 @@ function detailSections(emitter, { updateEmitter }) {
       })
     ];
   }
+  if (emitter.kind === 'bleve') {
+    return [
+      section('Placement', container => {
+        placement(container);
+        pointFields(container, { label: 'Vessel', point: emitter.positionMetres, onCommit: set('positionMetres') });
+      }),
+      section('Vessel', container => {
+        selectField(container, {
+          label: 'Vessel', value: vesselOf(emitter), reliability: 'C',
+          options: [...VESSEL_TYPES.map(type => [type, BLEVE.vessels[type].label]), ['custom', 'Custom']],
+          onCommit: type => { if (type !== 'custom') updateEmitter(emitter.id, item => applyVessel(item, type)); }
+        });
+        numbers(VESSEL_NUMBERS)(container);
+        selectField(container, { label: 'Fluid', value: emitter.fluid, reliability: 'A', options: FLUID_TYPES.map(type => [type, BLEVE.fluids[type].label]), onCommit: set('fluid') });
+      }),
+      section('Source', numbers(['blastShare', 'riseTimeSeconds']))
+    ];
+  }
   if (emitter.kind === 'gasExplosion') {
     const choose = (label, key, types, table) => container => selectField(container, {
       label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key)
@@ -320,6 +341,7 @@ function wavefrontAmplitudes(emitter, scene, surface) {
   if (emitter.kind === 'blast') return new Map([[emitter.id, blastFront(emitter)]]);
   if (emitter.kind === 'volcano') { const [pulse] = volcanoSources(emitter, air); return new Map([[emitter.id, front(pulse.amplitudePaMetres, pulse.durationSeconds)]]); }
   if (emitter.kind === 'roomExplosion') { const explosion = roomExplosion(emitter, air); return new Map([[emitter.id, front(explosion.peakPaMetres, explosion.external.durationSeconds + explosion.external.onsetSeconds)]]); }
+  if (emitter.kind === 'bleve') { const [shock] = blastSources(bleveBlast(emitter, air), air); return new Map([[emitter.id, front(shock.amplitudePaMetres / 2, shock.durationSeconds)]]); }
   if (emitter.kind === 'gasExplosion') { const pulse = gasExplosionPulse(emitter, air); return new Map([[emitter.id, front(pulse.peakPaMetres, pulse.durationSeconds + pulse.onsetSeconds)]]); }
   if (isFlightKind(emitter)) {
     const boom = boomFront(Math.max(1.01, emitter.mach), emitter.lengthMetres, emitter.shapeFactor, 1000);
@@ -392,7 +414,7 @@ function measure(item, scene, at) {
   else for (const flash of cachedFlashes(item)) for (const channel of flash.channels) channel.points.forEach(at);
 }
 
-const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'crater' : selected.kind === 'gasExplosion' ? 'cloud centre' : selected.kind === 'roomExplosion' ? 'vent' : isTrackKind(selected) ? 'start' : 'blast');
+const anchorName = selected => (selected.kind === 'lightning' ? (selected.flashType === 'cloud-to-ground' ? 'ground point' : 'start') : selected.kind === 'storm' || isFieldKind(selected) ? 'centre' : selected.kind === 'booster' ? 'pad' : selected.kind === 'volcano' ? 'crater' : selected.kind === 'gasExplosion' ? 'cloud centre' : selected.kind === 'roomExplosion' ? 'vent' : selected.kind === 'bleve' ? 'vessel' : isTrackKind(selected) ? 'start' : 'blast');
 
 function info(selected, scene) {
   if (selected.kind === 'storm') return [`Cloud ${formatMetres(selected.cloudBaseMetres)}–${formatMetres(selected.cloudTopMetres)} · ${formatMetres(selected.radiusMetres)} radius`];
@@ -402,6 +424,11 @@ function info(selected, scene) {
   if (selected.kind === 'gasExplosion') {
     const pulse = gasExplosionPulse(selected, scene.air);
     return [`Strength ${pulse.strength.toFixed(1)} · ${+(pulse.sourcePa / 1000).toPrecision(3)} kPa in the cloud`, formatAtKilometre(formatPressure(pulse.peakPaMetres / GAS_EXPLOSION.referenceMetres)), formatCharge(pulse.kilograms)];
+  }
+  if (selected.kind === 'bleve') {
+    const contents = bleveContents(selected, scene.air);
+    const kilograms = bleveChargeKilograms(selected, scene.air);
+    return [`${Math.round(contents.celsius)} °C · ${+contents.liquidKilograms.toPrecision(3)} kg liquid · ${+contents.vapourKilograms.toPrecision(3)} kg vapour`, formatAtKilometre(formatPressure(blastPressureAtKilometrePa(kilograms) / 2)), formatCharge(kilograms)];
   }
   if (selected.kind === 'roomExplosion') {
     const explosion = roomExplosion(selected, scene.air);
@@ -433,7 +460,7 @@ function groundAnchored(field, item) {
   return field === 'positionMetres';
 }
 
-const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
+const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [kind, Object.freeze({
   label: emitterKindLabel,
@@ -477,6 +504,7 @@ export const ADD_EMITTERS = Object.freeze({
   volcano: add(defaultVolcano, 'Volcano', 'blast'),
   gasExplosion: add(defaultGasExplosion, 'Gas explosion', 'blast'),
   roomExplosion: add(defaultRoomExplosion, 'Room explosion', 'blast'),
+  bleve: add(defaultBleve, 'BLEVE', 'blast'),
   flight: add(defaultFlight, 'Flight', 'sonic'),
   formation: add(defaultFormation, 'Formation', 'sonic'),
   meteor: add(defaultMeteor, 'Meteor', 'sonic'),

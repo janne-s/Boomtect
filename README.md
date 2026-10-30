@@ -44,7 +44,7 @@ microphone along the Mach cone.
   selected emitter's sound off the ground, for the microphone's height.
 - **Levels** — A microphone shows its peak in pascals and decibels and its
   loudest A-weighted Fast level (LAFmax, IEC 61672-1). A blast, barrage,
-  volcano, gas explosion, or room explosion shows its pressure and level 1 km away.
+  volcano, gas explosion, room explosion, or BLEVE shows its pressure and level 1 km away.
 
 ## Emitters
 
@@ -79,6 +79,12 @@ microphone along the Mach cone.
   ahead of the flame exploding outside, and the room ringing low through its
   opening follow one another; an empty room is far gentler than a furnished one,
   and walls weaker than the pressure give way.
+- **BLEVE** — A vessel of liquefied gas that bursts in a fire: an 11 or 47 kg
+  cylinder, a 200 l drum, a home tank, a road tanker, a rail tank car, or a
+  sphere, holding propane, butane, gasoline, water, or carbon dioxide. Its
+  vapour space sets the bang, a vessel burst's double shock, so a fuller vessel
+  bangs less; the fill, the failure pressure, and the share of the energy that
+  reaches the blast set it.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -110,7 +116,8 @@ microphone along the Mach cone.
   salvo, shell size, and crackle for a fireworks display; eruption, size, crater
   height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
   confinement, ignition, and roar for a gas explosion; material, room, vent,
-  vent strength, interior, and roar for a room explosion, each with its onset when the scene
+  vent strength, interior, and roar for a room explosion; vessel, fluid, size,
+  fill, and failure pressure for a BLEVE, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -439,6 +446,7 @@ B/C marks a part that combines the two.
 | Gas explosion roar | noise that grows over a quarter of the burn time, holds to its end, and falls 30 dB over 0.92 s·kg^⅙ of TNT equivalent; its spectrum runs from a deflagration's low roar to flat octaves between strengths 3 and 7, and its frequencies fall in proportion to the cloud's radius from those of a 150 m³ cloud; 20 dB under the pulse; fitted to recordings of gas explosions 75–450 m away | C |
 | Room explosion pressure | NFPA 68 (2018): `P_red = (A_s·0.0223·λ·S_u / A_v)²` bar for gases and mists, λ the turbulent enhancement of §7.2.6.1 for the room and its vent; `A_v = 10⁻⁴(1 + 1.54 P_stat^{4/3}) K_St V^{3/4} √(P_max/P_red − 1)` for dusts, K_St 150, 250, 400 bar·m/s; these bound designs, so an empty room takes 0.24 λ (Cooper et al. 1986; Harrison & Eyre 1987); ignition far from the vent triples it; the room opens at its vent's strength (window 5, light panel 1.5, door 2.5 kPa), and walls weaker than the pressure (15 kPa) cap it | B/C |
 | Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals) | A/C |
+| BLEVE blast | the vapour space's isentropic expansion work at the failure pressure, from CoolProp 8.0.0 saturation tables (carbon dioxide from the Yellow Book, CPR 14E, Table 7.2; gasoline as n-hexane), doubled for the ground (Yellow Book A_sb = 2) and heard as a TNT charge of that energy: the flashing liquid is too slow to make a shock (Birk et al. 2007); 4.5 kPa 100 m from the BAM rail car (2.5 kPa measured, 4.5 kPa by Birk's estimate); failure in a fire at 1.21 × a 17.24 barg relief valve; the second shock timed as TNT's | A/B/C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |

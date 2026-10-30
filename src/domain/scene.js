@@ -8,6 +8,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { applyEruption, ERUPTION_NUMBERS } from './volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from './gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, VENT_TYPES } from './room-explosion.js';
+import { applyVessel, FLUID_TYPES, VESSEL_NUMBERS } from './bleve.js';
 
 export { DEFAULT_PLACE, DEFAULT_QUALITY, defaultReceiver, headingToward, PLACE_NAME_KINDS, placeLabel, QUALITY_NUMBERS, QUALITY_SWITCHES, SceneError, TERRAIN_DEFAULTS } from '../shared/domain/scene.js';
 
@@ -101,7 +102,11 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   roomCubicMetres: { minimum: 1, maximum: 1e5, unit: 'm³', label: 'Room', reliability: null },
   ventSquareMetres: { minimum: .01, maximum: 1e4, unit: 'm²', label: 'Vent', reliability: null },
   structureKilopascals: { minimum: 1, maximum: 1000, unit: 'kPa', label: 'Structure', reliability: 'C' },
-  ringDecibels: { minimum: -60, maximum: 20, unit: 'dB', label: 'Ring', reliability: 'C' }
+  ringDecibels: { minimum: -60, maximum: 20, unit: 'dB', label: 'Ring', reliability: 'C' },
+  vesselCubicMetres: { minimum: .005, maximum: 5000, unit: 'm³', label: 'Vessel', reliability: null },
+  fillShare: { minimum: 0, maximum: .95, unit: '', label: 'Fill', reliability: null },
+  failureBar: { minimum: .2, maximum: 120, unit: 'bar g', label: 'Failure pressure', reliability: 'C' },
+  blastShare: { minimum: 0, maximum: 1, unit: '', label: 'Blast share', reliability: 'C' }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -135,6 +140,7 @@ const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -301,6 +307,20 @@ function readRoomExplosion(value, { point, numbers, choice }, path) {
     interior: choice(value.interior, INTERIOR_TYPES, defaults.interior, `${path}.interior`),
     ignition: choice(value.ignition, ROOM_IGNITION_TYPES, defaults.ignition, `${path}.ignition`),
     ...numbers(value, ROOM_EXPLOSION_NUMBERS, path)
+  };
+}
+
+export function defaultBleve(id = 'bleve-1', name = 'BLEVE', seed = 20261030) {
+  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, riseTimeSeconds: 4e-5 };
+  applyVessel(bleve, 'roadTanker');
+  return bleve;
+}
+
+function readBleve(value, { point, numbers, choice }, path) {
+  return {
+    positionMetres: point(value.positionMetres, `${path}.positionMetres`),
+    fluid: choice(value.fluid, FLUID_TYPES, defaultBleve().fluid, `${path}.fluid`),
+    ...numbers(value, BLEVE_NUMBERS, path)
   };
 }
 
@@ -491,6 +511,7 @@ const KINDS = Object.freeze({
   volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path), ...followsField(value) }) },
   gasExplosion: { defaults: () => defaultGasExplosion(), read: readGasExplosion },
   roomExplosion: { defaults: () => defaultRoomExplosion(), read: readRoomExplosion },
+  bleve: { defaults: () => defaultBleve(), read: readBleve },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
@@ -508,7 +529,7 @@ export const { PARAMETERS, MODES, defaultScene, parseScene, readScene, serialize
   anchor: emitterAnchor,
   modes: {
     thunder: { kinds: ['lightning', 'storm'], emitter: () => defaultLightning(), receiverMetres: { x: 1400, y: 0, z: 1.7 } },
-    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
+    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
     sonic: { kinds: ['flight', 'formation', 'meteor', 'shower', 'whip', 'booster'], emitter: () => defaultFlight(), receiverMetres: { x: 0, y: 0, z: 1.7 } }
   },
   kinds: KINDS,

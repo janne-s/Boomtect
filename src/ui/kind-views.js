@@ -630,7 +630,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
-    volcano: blast, gasExplosion: gasCloud, roomExplosion: room,
+    volcano: blast, gasExplosion: gasCloud, roomExplosion: room, bleve: blast,
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }

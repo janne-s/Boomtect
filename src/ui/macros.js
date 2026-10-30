@@ -1,7 +1,8 @@
-import { GAS_EXPLOSION, ROOM_EXPLOSION, VIEW, VOLCANO } from '../domain/constants.js';
+import { BLEVE, GAS_EXPLOSION, ROOM_EXPLOSION, VIEW, VOLCANO } from '../domain/constants.js';
 import { applyEruption, ERUPTION_TYPES, eruptionOf } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, VENT_TYPES } from '../domain/room-explosion.js';
+import { applyVessel, FLUID_TYPES, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
 import { formatCharge } from '../shared/ui/levels.js';
 import { PARAMETERS } from '../domain/scene.js';
 import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
@@ -476,6 +477,36 @@ const logControl = (label, key, rangeKey, unit) => ({
 });
 
 const roomSize = logControl('Room', 'roomCubicMetres', 'roomRange', 'm³');
+
+const vesselIndex = item => {
+  const type = vesselOf(item);
+  if (type !== 'custom') return VESSEL_TYPES.indexOf(type);
+  const distance = type => Math.abs(Math.log(BLEVE.vessels[type].vesselCubicMetres / item.vesselCubicMetres));
+  return VESSEL_TYPES.indexOf(VESSEL_TYPES.reduce((best, type) => (distance(type) < distance(best) ? type : best)));
+};
+
+const bleveVessel = {
+  label: 'Vessel',
+  read: item => vesselIndex(item) / (VESSEL_TYPES.length - 1),
+  write: (item, t) => {
+    const type = VESSEL_TYPES[Math.round(t * (VESSEL_TYPES.length - 1))];
+    if (type !== vesselOf(item)) applyVessel(item, type);
+  },
+  show: item => { const type = vesselOf(item); return type === 'custom' ? 'Custom' : BLEVE.vessels[type].label; },
+  steps: VESSEL_TYPES.length - 1
+};
+
+const bleveFluid = gasChoice('Fluid', 'fluid', FLUID_TYPES, BLEVE.fluids);
+const bleveSize = logControl('Size', 'vesselCubicMetres', 'vesselRange', 'm³');
+const bleveFailure = logControl('Failure', 'failureBar', 'failureRange', 'bar g');
+
+const bleveFill = {
+  label: 'Fill',
+  read: item => item.fillShare / PARAMETERS.fillShare.maximum,
+  write: (item, t) => { item.fillShare = Math.round(t * PARAMETERS.fillShare.maximum * 100) / 100; },
+  show: item => percent(item.fillShare),
+  entry: { unit: '%', get: item => item.fillShare * 100, set: (item, value) => { item.fillShare = value / 100; } }
+};
 const roomVent = logControl('Vent', 'ventSquareMetres', 'ventRange', 'm²');
 
 const gasCloud = {
@@ -501,6 +532,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomInterior, { ...fireball, label: 'Roar' }]);
+  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);

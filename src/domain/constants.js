@@ -215,6 +215,54 @@ export const ROOM_EXPLOSION = Object.freeze({
   ignitions: Object.freeze({ centre: Object.freeze({ label: 'Centre' }), far: Object.freeze({ label: 'Far from vent' }) })
 });
 
+const saturation = rows => Object.freeze(rows.map(row => Object.freeze(row)));
+
+/** Doc/design/architecture-decision-10-bleve-tank-farm.md. */
+export const BLEVE = Object.freeze({
+  tntMegajoulesPerKilogram: 4.68,
+  /**
+   * Class A, CoolProp 8.0.0: the saturated state by absolute pressure, rows [bar, °C, liquid kg/m³, vapour kg/m³, the vapour's isentropic
+   * expansion work to 1 atm in kJ/kg]; carbon dioxide class B from the Yellow Book (CPR 14E) Table 7.2; gasoline taken as n-hexane (class C).
+   */
+  fluids: Object.freeze({
+    propane: Object.freeze({
+      label: 'Propane', flammable: true,
+      saturation: saturation([[1.01325, -42.1, 580.9, 2.42, 0], [2, -25.5, 561.1, 4.56, 26], [4, -5.5, 535.9, 8.78, 53.9], [7, 13.4, 509.8, 15.14, 77.6], [10, 26.9, 489.3, 21.68, 93.4],
+        [15, 44, 460.3, 33.31, 111.7], [20, 57.3, 434, 46.23, 124.8], [25, 68.3, 408.2, 61.07, 134.5], [30, 77.7, 381, 78.94, 141.6], [35, 86, 349.5, 102.27, 146.1], [40, 93.4, 304.4, 140.04, 146.5]])
+    }),
+    butane: Object.freeze({
+      label: 'Butane', flammable: true,
+      saturation: saturation([[1.01325, -.5, 601.3, 2.71, 0], [1.5, 10.3, 589.5, 3.91, 14], [2, 18.8, 579.9, 5.13, 24.6], [4, 42, 552.5, 9.93, 51.8], [7, 63.8, 523.9, 17.23, 75.9],
+        [10, 79.5, 501.2, 24.83, 92.3], [15, 99.1, 468.7, 38.59, 112.1], [20, 114.4, 438.7, 54.35, 126.6], [25, 127, 408.2, 73.27, 137.6], [30, 137.7, 374, 97.77, 145.8], [35, 147, 326.4, 136.11, 150.3]])
+    }),
+    gasoline: Object.freeze({
+      label: 'Gasoline', flammable: true,
+      saturation: saturation([[1.01325, 68.7, 613.4, 3.23, 0], [1.2, 74.2, 607.9, 3.79, 5.3], [1.5, 81.8, 600.2, 4.68, 12.5], [2, 92.1, 589.4, 6.16, 22], [3, 107.9, 572.3, 9.1, 36.3],
+        [5, 130.1, 546.3, 15.07, 55.8], [7, 146.3, 525.6, 21.24, 69.6], [10, 165, 498.9, 31.07, 85.3], [15, 188.5, 459.1, 49.7, 104.5], [20, 206.5, 419.3, 72.84, 118.8], [25, 221.3, 372.9, 105.24, 129.9]])
+    }),
+    water: Object.freeze({
+      label: 'Water', flammable: false,
+      saturation: saturation([[1.01325, 100, 958.4, .6, 0], [1.5, 111.3, 949.9, .86, 58.6], [2, 120.2, 942.9, 1.13, 101.6], [4, 143.6, 922.9, 2.16, 205.5], [7, 164.9, 902.6, 3.67, 289.2],
+        [10, 179.9, 887.1, 5.15, 342.3], [15, 198.3, 866.6, 7.59, 401.9], [20, 212.4, 849.8, 10.04, 443.6], [30, 233.9, 821.9, 15, 500.5], [50, 263.9, 777.4, 25.35, 567.5],
+        [80, 295, 722.2, 42.51, 619.9], [120, 324.7, 655.2, 70.11, 650.4]])
+    }),
+    carbonDioxide: Object.freeze({
+      label: 'Carbon dioxide', flammable: false,
+      saturation: saturation([[14.8, -28.9, 1070, 38.5, 98], [21.1, -17.8, 1020, 55, 109], [29.1, -6.7, 963, 78.4, 117]])
+    })
+  }),
+  /** Class C: volume and fill as built; failure in a fire at 1.21 × a 17.24 barg relief valve (Yellow Book Table 7.1, Roberts et al. 2000), a drum's seams near 2 barg. */
+  vessels: Object.freeze({
+    cylinder11: Object.freeze({ label: 'Cylinder 11 kg', vesselCubicMetres: .026, fillShare: .8, failureBar: 20.9 }),
+    cylinder47: Object.freeze({ label: 'Cylinder 47 kg', vesselCubicMetres: .108, fillShare: .8, failureBar: 20.9 }),
+    drum: Object.freeze({ label: 'Drum 200 l', vesselCubicMetres: .2, fillShare: .7, failureBar: 2 }),
+    homeTank: Object.freeze({ label: 'Home tank', vesselCubicMetres: 2, fillShare: .8, failureBar: 20.9 }),
+    roadTanker: Object.freeze({ label: 'Road tanker', vesselCubicMetres: 40, fillShare: .85, failureBar: 20.9 }),
+    railCar: Object.freeze({ label: 'Rail tank car', vesselCubicMetres: 115, fillShare: .85, failureBar: 20.9 }),
+    sphere: Object.freeze({ label: 'Sphere', vesselCubicMetres: 1600, fillShare: .85, failureBar: 20.9 })
+  })
+});
+
 /** Class C. */
 export const UPPER_AIR = Object.freeze({
   topMetres: 80000,
@@ -305,7 +353,9 @@ export const VIEW = Object.freeze({
     volcanoHeightMetres: 6000,
     gasCloudRange: Object.freeze([10, 1e5]),
     roomRange: Object.freeze([1, 1e5]),
-    ventRange: Object.freeze([.05, 500])
+    ventRange: Object.freeze([.05, 500]),
+    vesselRange: Object.freeze([.01, 2000]),
+    failureRange: Object.freeze([1, 40])
   }),
   flash: Object.freeze({
     traverseSeconds: .12,
