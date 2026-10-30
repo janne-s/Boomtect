@@ -55,6 +55,8 @@
       "fillShare": 0.85,
       "failureBar": 20.9,
       "blastShare": 1,
+      "fireballDecibels": -3,
+      "fireballSecondsPerSixthRootKilogram": 0.33,
       "riseTimeSeconds": 0.00004
     },
     {
@@ -74,6 +76,8 @@
       "fillShare": 0.6,
       "failureBar": 12,
       "blastShare": 0.5,
+      "fireballDecibels": 0,
+      "fireballSecondsPerSixthRootKilogram": 0.33,
       "riseTimeSeconds": 0.00004
     }
   ],

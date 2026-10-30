@@ -140,7 +140,7 @@ const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
-const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'riseTimeSeconds']);
+const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -311,7 +311,7 @@ function readRoomExplosion(value, { point, numbers, choice }, path) {
 }
 
 export function defaultBleve(id = 'bleve-1', name = 'BLEVE', seed = 20261030) {
-  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, riseTimeSeconds: 4e-5 };
+  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, fireballDecibels: 0, fireballSecondsPerSixthRootKilogram: .33, riseTimeSeconds: 4e-5 };
   applyVessel(bleve, 'roadTanker');
   return bleve;
 }

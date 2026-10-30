@@ -532,7 +532,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomInterior, { ...fireball, label: 'Roar' }]);
-  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure]);
+  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, fireball]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);

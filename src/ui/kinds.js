@@ -10,7 +10,7 @@ import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, gasExplosionPulse, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, roomExplosion, VENT_TYPES } from '../domain/room-explosion.js';
-import { applyVessel, bleveBlast, bleveChargeKilograms, bleveContents, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
+import { applyVessel, bleveBlast, bleveChargeKilograms, bleveContents, fireballOf, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
 import {
   defaultBarrage, defaultBlast, defaultBleve, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultRoomExplosion, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
@@ -262,7 +262,12 @@ function detailSections(emitter, { updateEmitter }) {
         numbers(VESSEL_NUMBERS)(container);
         selectField(container, { label: 'Fluid', value: emitter.fluid, reliability: 'A', options: FLUID_TYPES.map(type => [type, BLEVE.fluids[type].label]), onCommit: set('fluid') });
       }),
-      section('Source', numbers(['blastShare', 'riseTimeSeconds']))
+      section('Source', container => {
+        numbers(['blastShare'])(container);
+        numberField(container, { key: 'fireballDecibels', label: 'Fireball', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
+        numberField(container, { key: 'fireballSecondsPerSixthRootKilogram', label: 'Roar length', value: emitter.fireballSecondsPerSixthRootKilogram, onCommit: set('fireballSecondsPerSixthRootKilogram') });
+        numbers(['riseTimeSeconds'])(container);
+      })
     ];
   }
   if (emitter.kind === 'gasExplosion') {
@@ -428,7 +433,12 @@ function info(selected, scene) {
   if (selected.kind === 'bleve') {
     const contents = bleveContents(selected, scene.air);
     const kilograms = bleveChargeKilograms(selected, scene.air);
-    return [`${Math.round(contents.celsius)} °C · ${+contents.liquidKilograms.toPrecision(3)} kg liquid · ${+contents.vapourKilograms.toPrecision(3)} kg vapour`, formatAtKilometre(formatPressure(blastPressureAtKilometrePa(kilograms) / 2)), formatCharge(kilograms)];
+    const fireball = fireballOf(selected, scene.air);
+    return [
+      `${Math.round(contents.celsius)} °C · ${+contents.liquidKilograms.toPrecision(3)} kg liquid · ${+contents.vapourKilograms.toPrecision(3)} kg vapour`,
+      ...(fireball ? [`Fireball ${Math.round(fireball.diameterMetres)} m for ${+fireball.visibleSeconds.toPrecision(2)} s`] : []),
+      formatAtKilometre(formatPressure(blastPressureAtKilometrePa(kilograms) / 2)), formatCharge(kilograms)
+    ];
   }
   if (selected.kind === 'roomExplosion') {
     const explosion = roomExplosion(selected, scene.air);

@@ -4,19 +4,19 @@ import { BLEVE } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBleve, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { applyVessel, bleveChargeKilograms, bleveContents, saturation, vesselOf } from '../src/domain/bleve.js';
+import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSources, saturation, vesselOf } from '../src/domain/bleve.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
 
-const bam = { ...defaultBleve(), fluid: 'propane', vesselCubicMetres: 45.36, fillShare: .18, failureBar: 24.5 };
+const bam = { ...defaultBleve(), fluid: 'propane', vesselCubicMetres: 45.36, fillShare: .18, failureBar: 24.5, fireballDecibels: -60 };
 
 function heardPeakPa(emitter, distance) {
   const scene = plainScene('blast');
   scene.emitters = [emitter];
   scene.receivers[0].positionMetres = { x: distance, y: 0, z: 1.7 };
   const value = parseScene(scene);
-  return Math.max(...renderReceiver(prepareScene(value), value.receivers[0], value).samples);
+  return renderReceiver(prepareScene(value), value.receivers[0], value).samples.reduce((largest, sample) => Math.max(largest, sample), 0);
 }
 
 test('a BLEVE opens in Blast mode, takes a vessel, reads unknown choices as defaults, and its scene round-trips', () => {
@@ -83,4 +83,44 @@ test('every vessel preset holds a fluid that fails within its table', () => {
       assert.ok(contents.vapourJoules > 0 && Number.isFinite(contents.liquidKilograms), `${type} ${fluid}`);
     }
   }
+});
+
+test('the fireball takes its size and visible duration from Roberts and the CCPS, within the Spadeadam trials', () => {
+  const fireball = fireballOf({ ...defaultBleve(), vesselCubicMetres: 4.5, fillShare: .85 * 1708 / 1932, failureBar: 23.4 }, STANDARD_AIR);
+  assert.ok(Math.abs(fireball.kilograms / 1708 - 1) < .15, `${fireball.kilograms} kg`);
+  const measured = { diameterMetres: [71, 85], visibleSeconds: [6.6, 7] };
+  assert.ok(fireball.diameterMetres > .8 * measured.diameterMetres[0] && fireball.diameterMetres < 1.2 * measured.diameterMetres[1]);
+  assert.ok(fireball.visibleSeconds > .75 * measured.visibleSeconds[0] && fireball.visibleSeconds < measured.visibleSeconds[1]);
+  const large = fireballOf({ ...defaultBleve(), vesselCubicMetres: 1600 }, STANDARD_AIR);
+  assert.ok(Math.abs(large.visibleSeconds - 2.6 * large.kilograms ** (1 / 6)) < 1e-9);
+  assert.equal(fireballOf({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR), null);
+});
+
+test('the roar rises above the vessel to the fireball\'s centre, follows the heat release, and goes off with its level', () => {
+  const [roar] = fireballRoarSources(defaultBleve(), STANDARD_AIR);
+  const fireball = fireballOf(defaultBleve(), STANDARD_AIR);
+  assert.equal(roar.pulse, 'noise');
+  assert.ok(Math.abs(roar.positionMetres.z - fireball.diameterMetres / 2) < 1e-9);
+  assert.ok(Math.abs(roar.durationSeconds - .33 * fireball.kilograms ** (1 / 6)) < 1e-9);
+  const [quieter] = fireballRoarSources({ ...defaultBleve(), fireballDecibels: -6 }, STANDARD_AIR);
+  assert.ok(Math.abs(20 * Math.log10(roar.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
+  assert.equal(fireballRoarSources({ ...defaultBleve(), fireballDecibels: -60 }, STANDARD_AIR).length, 0);
+  assert.equal(emitterSources({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR).sources.length, 2);
+  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 3);
+});
+
+test('a road tanker heard 125 m away bangs about as far above its roar as the recordings E9 and E11', () => {
+  const scene = plainScene('blast');
+  scene.emitters = [defaultBleve()];
+  scene.receivers[0].positionMetres = { x: 125, y: 0, z: 1.7 };
+  const value = parseScene(scene);
+  const { samples, sampleRate } = renderReceiver(prepareScene(value), value.receivers[0], value);
+  const largest = samples.reduce((most, sample) => Math.max(most, Math.abs(sample)), 0);
+  const first = samples.findIndex(sample => Math.abs(sample) > 1e-4 * largest);
+  const hold = fireballOf(defaultBleve(), STANDARD_AIR).holdSeconds;
+  let sum = 0;
+  const [from, to] = [first + Math.round(.3 * sampleRate), first + Math.round((.1 + hold) * sampleRate)];
+  for (let index = from; index < to; index += 1) sum += samples[index] ** 2;
+  const decibels = 20 * Math.log10(largest / Math.sqrt(sum / (to - from)));
+  assert.ok(decibels > 9 && decibels < 20, `${decibels} dB`);
 });

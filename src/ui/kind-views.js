@@ -4,6 +4,7 @@ import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
 import { cloudRadiusMetres } from '../domain/gas-explosion.js';
 import { roomSideMetres } from '../domain/room-explosion.js';
+import { fireballDiameterMetres } from '../domain/bleve.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
 import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
@@ -349,6 +350,38 @@ export function kindViews() {
     drawBlast(context, emitter, colors, state);
   }
 
+  function fireballRings(emitter) {
+    const vessel = placed(emitter.positionMetres);
+    const radius = fireballDiameterMetres(emitter) / 2;
+    const ring = point => Array.from({ length: DISC_POINTS }, (_, index) => point(2 * Math.PI * index / DISC_POINTS));
+    const centre = { ...vessel, z: vessel.z + radius };
+    return {
+      radius,
+      shadow: ring(angle => { const x = vessel.x + radius * Math.cos(angle); const y = vessel.y + radius * Math.sin(angle); return { x, y, z: ground(x, y) }; }),
+      outlines: [
+        ring(angle => ({ x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle), z: centre.z })),
+        ring(angle => ({ x: centre.x + radius * Math.cos(angle), y: centre.y, z: centre.z + radius * Math.sin(angle) })),
+        ring(angle => ({ x: centre.x, y: centre.y + radius * Math.cos(angle), z: centre.z + radius * Math.sin(angle) }))
+      ]
+    };
+  }
+
+  function drawFireball(context, emitter, colors, selected, state) {
+    const { radius, shadow, outlines } = fireballRings(emitter);
+    if (radius > 0) {
+      const alpha = context.globalAlpha;
+      context.fillStyle = colors.cloud;
+      context.globalAlpha = alpha * .25;
+      polygon(context, shadow); context.fill();
+      context.globalAlpha = alpha * (selected ? .9 : .5);
+      context.strokeStyle = selected ? colors.accent : colors.end;
+      context.lineWidth = selected ? 1.4 : 1;
+      for (const outline of outlines) { polygon(context, outline); context.stroke(); }
+      context.globalAlpha = alpha;
+    }
+    drawBlast(context, emitter, colors, state);
+  }
+
   function roomCorners(emitter) {
     const vent = placed(emitter.positionMetres);
     const half = roomSideMetres(emitter.roomCubicMetres) / 2;
@@ -573,6 +606,17 @@ export function kindViews() {
     draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawGasCloud(context, emitter, colors, selected, state); }
   };
 
+  const fireball = {
+    ...blast,
+    extent(emitter, { include, placed: place }) {
+      const vessel = place(emitter.positionMetres);
+      const radius = fireballDiameterMetres(emitter) / 2;
+      include({ x: vessel.x - radius, y: vessel.y - radius, z: vessel.z });
+      include({ x: vessel.x + radius, y: vessel.y + radius, z: vessel.z + 2 * radius });
+    },
+    draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawFireball(context, emitter, colors, selected, state); }
+  };
+
   const room = {
     ...blast,
     extent(emitter, { include, placed: place }) {
@@ -630,7 +674,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
-    volcano: blast, gasExplosion: gasCloud, roomExplosion: room, bleve: blast,
+    volcano: blast, gasExplosion: gasCloud, roomExplosion: room, bleve: fireball,
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }
