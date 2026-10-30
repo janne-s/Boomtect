@@ -128,9 +128,10 @@ export const GAS_EXPLOSION = Object.freeze({
   expansionRatio: 7.5,
   linearPressureShare: VOLCANO.linearPressureShare,
   pressureWaveStrengths: Object.freeze([3, 7]),
-  /** Class C, fitted to gas explosion recordings (Doc/reference/audio E1–E8): the roar grows over a quarter of the burn, holds to its end, then dies away; deflagrations roar low, strong explosions flat in octaves. */
+  /** Class C, fitted to gas explosion recordings (Doc/reference/audio E1–E12): the roar grows over a quarter of the burn, holds to its end, then dies away; deflagrations roar low, strong explosions flat in octaves; its frequencies fall as the cloud's radius grows, the spectra as fitted for a 150 m³ cloud. */
   roar: Object.freeze({
     riseShare: .25,
+    referenceMetres: 4.15,
     spectrumHz: BLAST.roar.spectrumHz,
     deflagrationDensity: Object.freeze([1.3e-3, 2.3e-3, 5.3e-4, 1.7e-4, 2.4e-7, 4e-9]),
     detonationDensity: Object.freeze([1 / 40, 1 / 141, 1 / 500, 1 / 2000, .4 / 8000, 1e-3 / 16000])
@@ -151,8 +152,8 @@ export const GAS_EXPLOSION = Object.freeze({
     pipeRack: Object.freeze({ label: 'Pipe rack', blockageRatio: .2, obstacleMetres: .43 })
   }),
   confinements: Object.freeze({
-    open: Object.freeze({ label: 'Open', coefficient: .84, exponent: 2.75 }),
-    planes: Object.freeze({ label: 'Between planes', coefficient: 3.38, exponent: 2.25 })
+    open: Object.freeze({ label: 'Open above', coefficient: .84, exponent: 2.75 }),
+    planes: Object.freeze({ label: 'Under a roof', coefficient: 3.38, exponent: 2.25 })
   }),
   ignitions: Object.freeze({
     spark: Object.freeze({ label: 'Spark' }),

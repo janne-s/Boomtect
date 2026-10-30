@@ -158,7 +158,7 @@ export function roomNoiseSamples(seed, durationSeconds, sampleRate, emitter) {
   const samples = new Float64Array(length);
   if (layout.levelPaMetres <= 0) return samples;
   if (explosion.roarPaMetres > 0) {
-    const roar = roarSamples(seed, { burnSeconds: layout.burnSeconds, tailSeconds: layout.tailSeconds, strength: explosion.external.strength }, sampleRate);
+    const roar = roarSamples(seed, { burnSeconds: layout.burnSeconds, tailSeconds: layout.tailSeconds, strength: explosion.external.strength, radiusMetres: roomRadiusMetres(emitter.roomCubicMetres) }, sampleRate);
     const gain = explosion.roarPaMetres / layout.levelPaMetres;
     for (let index = 0; index < Math.min(length, roar.length); index += 1) samples[index] = gain * roar[index];
   }

@@ -91,9 +91,10 @@ export function shockShare(strength) {
 }
 
 /** Class C: a burning cloud's roar, its length the burn plus the fireball's tail, loudest window at unit level. */
-export function roarSamples(seed, { burnSeconds, tailSeconds, strength }, sampleRate) {
+export function roarSamples(seed, { burnSeconds, tailSeconds, strength, radiusMetres }, sampleRate) {
   const share = shockShare(strength);
-  const density = frequencyHz => deflagrationDensity(frequencyHz) ** (1 - share) * detonationDensity(frequencyHz) ** share;
+  const scale = radiusMetres / GAS_EXPLOSION.roar.referenceMetres;
+  const density = frequencyHz => deflagrationDensity(frequencyHz * scale) ** (1 - share) * detonationDensity(frequencyHz * scale) ** share;
   const length = Math.ceil(roarSpanSeconds(burnSeconds, tailSeconds) * sampleRate);
   const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, density);
   const riseSeconds = Math.max(BLAST.roar.riseSeconds, GAS_EXPLOSION.roar.riseShare * burnSeconds);
@@ -109,7 +110,7 @@ export function roarSamples(seed, { burnSeconds, tailSeconds, strength }, sample
 
 export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
   const tailSeconds = gasRoarTailSeconds(emitter);
-  return roarSamples(seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter) }, sampleRate);
+  return roarSamples(seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres) }, sampleRate);
 }
 
 export function gasExplosionSources(emitter, air, surface = null) {

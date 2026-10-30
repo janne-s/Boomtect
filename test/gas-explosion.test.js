@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, combustionSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
+import { cloudRadiusMetres, combustionSamples, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { blastPressureAtKilometrePa } from '../src/domain/blast-pulse.js';
 import { plainScene } from './plain-scene.js';
 
@@ -116,4 +116,14 @@ test('a deflagration roars for its burn time before it dies away, and a detonati
   const [, quick] = gasExplosionSources(fast, STANDARD_AIR);
   const sharp = combustionSamples(7, quick.durationSeconds, rate, fast);
   assert.ok(rms(sharp, 0, .02, rate) > .5 * rms(sharp, .02, .07, rate));
+});
+
+test('a bigger cloud roars lower', () => {
+  const centroid = cloudCubicMetres => {
+    const samples = roarSamples(3, { burnSeconds: .2, tailSeconds: .5, strength: 2, radiusMetres: cloudRadiusMetres(cloudCubicMetres) }, 8000);
+    let [low, total] = [0, 0];
+    for (let index = 1; index < samples.length; index += 1) { const step = samples[index] - samples[index - 1]; low += samples[index] ** 2; total += step ** 2; }
+    return Math.sqrt(total / low);
+  };
+  assert.ok(centroid(5000) < .6 * centroid(150), `${centroid(5000)} against ${centroid(150)}`);
 });
