@@ -177,6 +177,7 @@ export const ROOM_EXPLOSION = Object.freeze({
   dustStatic: 1.54,
   expansionRatio: 7.5,
   emptyTurbulenceShare: .24,
+  extinctionShare: .25,
   farIgnitionPressureFactor: 3,
   externalPressureShare: .5,
   externalDilution: 3,

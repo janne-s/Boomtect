@@ -88,7 +88,7 @@ export const roomEquivalentKilograms = emitter => roomCombustionJoules(emitter) 
 
 const ejectedShare = emitter => (emitter.ignition === 'far' ? 1 : Math.PI / 6) * (1 - 1 / ROOM_EXPLOSION.expansionRatio);
 
-/** Class A: the stored compression V·P/(γP₀) leaves through the opening at the Bernoulli rate; a monopole p·r = ρ/(4π)·dQ/dt over the opening time (class C). */
+/** Class A: the stored compression V·P/(γP₀) leaves through the opening at the Bernoulli rate; a monopole p·r = ρ/(4π)·dQ/dt over the opening time (class C), positive only while the flow starts. */
 export function breakPulse(emitter, pressures, air) {
   const { densityKilogramsPerCubicMetre: density, dischargeCoefficient, heatCapacityRatio } = ROOM_EXPLOSION;
   const storedCubicMetres = emitter.roomCubicMetres * pressures.openPa / (heatCapacityRatio * air.pressureKpa * 1000);
@@ -96,17 +96,17 @@ export function breakPulse(emitter, pressures, air) {
   const effective = Math.min(flow, 2 * storedCubicMetres / pressures.openingSeconds);
   const peakPaMetres = density * effective / (4 * Math.PI * pressures.openingSeconds);
   const onsetSeconds = pressures.openingSeconds;
-  const durationSeconds = Math.max(2 * onsetSeconds, storedCubicMetres / Math.max(effective, 1e-12));
+  const durationSeconds = 2 * onsetSeconds;
   return { peakPaMetres, onsetSeconds, durationSeconds, decay: BLAST_PULSE.decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, BLAST_PULSE.decay) };
 }
 
-/** Class A: the room is compact, so its volume production radiates as the free flame's 2ρ(1 − 1/σ)S² at the edge of a cloud of its volume, halved because the ground doubles it. */
+/** Class A: the room is compact, so its volume production radiates as the free flame's 2ρ(1 − 1/σ)S² at the edge of a cloud of its volume, halved because the ground doubles it; it rises over the burn and turns over as the flame dies at the walls, in a quarter of the burn (class C). */
 export function burnPulse(emitter, pressures) {
   const { densityKilogramsPerCubicMetre: density, expansionRatio } = ROOM_EXPLOSION;
   const sourcePa = 2 * density * (1 - 1 / expansionRatio) * pressures.flameMetresPerSecond ** 2;
   const peakPaMetres = sourcePa * roomRadiusMetres(emitter.roomCubicMetres) / 2;
   const onsetSeconds = pressures.burnSeconds;
-  const durationSeconds = pressures.burnSeconds;
+  const durationSeconds = ROOM_EXPLOSION.extinctionShare * pressures.burnSeconds;
   return { sourcePa, peakPaMetres, onsetSeconds, durationSeconds, decay: BLAST_PULSE.decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, BLAST_PULSE.decay) };
 }
 
