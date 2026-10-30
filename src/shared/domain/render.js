@@ -1470,12 +1470,33 @@ export function addTails(sum, from, tails) {
   });
 }
 
-export function finishSum(sum, sampleRate) {
-  let peakPa = 0;
-  const channels = sum.channels.map((samples, channel) => {
-    const result = new Float32Array(samples.length);
+const SILENT_TAIL_SHARE = 1e-6;
+
+/** The frame is a power of two long, so its end is mostly silence: kept only while some channel is within 120 dB of the loudest sample. */
+function heardLength(channels) {
+  let loudest = 0;
+  for (const samples of channels) {
     for (let index = 0; index < samples.length; index += 1) {
       if (!Number.isFinite(samples[index])) throw new RangeError('The render produced a non-finite sample.');
+      loudest = Math.max(loudest, Math.abs(samples[index]));
+    }
+  }
+  const floor = loudest * SILENT_TAIL_SHARE;
+  let length = 0;
+  for (const samples of channels) {
+    for (let index = samples.length - 1; index >= length; index -= 1) {
+      if (Math.abs(samples[index]) > floor) { length = index + 1; break; }
+    }
+  }
+  return length;
+}
+
+export function finishSum(sum, sampleRate) {
+  let peakPa = 0;
+  const length = heardLength(sum.channels);
+  const channels = sum.channels.map((samples, channel) => {
+    const result = new Float32Array(length);
+    for (let index = 0; index < length; index += 1) {
       result[index] = samples[index];
       if (channel === 0) peakPa = Math.max(peakPa, Math.abs(samples[index]));
     }
