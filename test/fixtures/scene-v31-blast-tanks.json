@@ -79,6 +79,33 @@
       "fireballDecibels": 0,
       "fireballSecondsPerSixthRootKilogram": 0.33,
       "riseTimeSeconds": 0.00004
+    },
+    {
+      "id": "tank-farm-1",
+      "name": "Depot",
+      "kind": "tankFarm",
+      "enabled": true,
+      "seed": 13,
+      "startSeconds": 0,
+      "centreMetres": {
+        "x": 300,
+        "y": -200,
+        "z": 0
+      },
+      "headingDegrees": 30,
+      "tankCount": 9,
+      "spacingMetres": 30,
+      "vessel": "cylinder47",
+      "otherVessel": "railCar",
+      "otherShare": 0.2,
+      "fluid": "butane",
+      "ignitionTank": 5,
+      "spreadMetresPerSecond": 1.5,
+      "heatingSeconds": 15,
+      "heatingSpread": 0.4,
+      "openingCloudCubicMetres": 3000,
+      "fireballDecibels": -3,
+      "riseTimeSeconds": 0.00004
     }
   ],
   "receivers": [

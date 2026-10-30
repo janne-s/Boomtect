@@ -1,4 +1,5 @@
 import { barrageRounds } from '../domain/barrage.js';
+import { tankFarmRounds } from '../domain/tank-farm.js';
 import { emitterFlashes, fireworksRounds } from '../domain/emitters.js';
 import { boosterPath, flightMembers, whipPath } from '../domain/flight.js';
 import { flightPath } from '../shared/domain/trajectory.js';
@@ -55,11 +56,11 @@ const bursts = new Map();
 
 export const cachedBursts = (emitter, air) => cached(bursts, emitter, air, () => showerMembers(emitter).map(meteor => meteorBursts(meteor, air)));
 
-export const isFieldKind = emitter => emitter.kind === 'barrage' || emitter.kind === 'fireworks';
+export const isFieldKind = emitter => emitter.kind === 'barrage' || emitter.kind === 'fireworks' || emitter.kind === 'tankFarm';
 export const isFlightKind = emitter => emitter.kind === 'flight' || emitter.kind === 'formation';
 export const isTrackKind = emitter => isFlightKind(emitter) || emitter.kind === 'whip' || emitter.kind === 'booster' || emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 const rounds = new Map();
 
 export const cachedRounds = (emitter, air) => cached(rounds, emitter, emitter.kind === 'fireworks' ? air : null,
-  () => (emitter.kind === 'fireworks' ? fireworksRounds(emitter, air) : barrageRounds(emitter)));
+  () => (emitter.kind === 'fireworks' ? fireworksRounds(emitter, air) : emitter.kind === 'tankFarm' ? tankFarmRounds(emitter) : barrageRounds(emitter)));

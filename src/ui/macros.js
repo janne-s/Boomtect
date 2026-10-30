@@ -497,6 +497,17 @@ const bleveVessel = {
 };
 
 const bleveFluid = gasChoice('Fluid', 'fluid', FLUID_TYPES, BLEVE.fluids);
+const farmVessel = gasChoice('Vessel', 'vessel', VESSEL_TYPES, BLEVE.vessels);
+const farmTanks = {
+  label: 'Tanks',
+  read: item => clamp01(logPosition(item.tankCount, [1, 60])),
+  write: (item, t) => { item.tankCount = Math.max(1, Math.round(logValue(t, [1, 60]))); },
+  show: item => String(item.tankCount),
+  entry: { integer: true, get: item => item.tankCount, set: (item, value) => { item.tankCount = value; } }
+};
+const farmSpacing = logControl('Spacing', 'spacingMetres', 'spacingRange', 'm');
+const farmSpread = logControl('Fire spread', 'spreadMetresPerSecond', 'spreadRange', 'm/s');
+const farmHeating = logControl('Heating', 'heatingSeconds', 'heatingRange', 's');
 const bleveSize = logControl('Size', 'vesselCubicMetres', 'vesselRange', 'm³');
 const bleveFailure = logControl('Failure', 'failureBar', 'failureRange', 'bar g');
 
@@ -532,6 +543,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomInterior, { ...fireball, label: 'Roar' }]);
+  if (emitter.kind === 'tankFarm') return timed([farmTanks, farmVessel, bleveFluid, farmSpacing, farmSpread, farmHeating, fireball]);
   if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, fireball]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);

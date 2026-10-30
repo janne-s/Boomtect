@@ -1,5 +1,5 @@
 import { followerFields, followsField } from '../shared/domain/follower.js';
-import { FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
+import { BLEVE, FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
 import { createScene } from '../shared/domain/scene.js';
 import { BLAST_PULSE } from './blast-pulse.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
@@ -8,7 +8,7 @@ import { FLASH_TYPES } from './lightning.js';
 import { applyEruption, ERUPTION_NUMBERS } from './volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from './gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, VENT_TYPES } from './room-explosion.js';
-import { applyVessel, FLUID_TYPES, VESSEL_NUMBERS } from './bleve.js';
+import { applyVessel, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES } from './bleve.js';
 
 export { DEFAULT_PLACE, DEFAULT_QUALITY, defaultReceiver, headingToward, PLACE_NAME_KINDS, placeLabel, QUALITY_NUMBERS, QUALITY_SWITCHES, SceneError, TERRAIN_DEFAULTS } from '../shared/domain/scene.js';
 
@@ -106,7 +106,15 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   vesselCubicMetres: { minimum: .005, maximum: 5000, unit: 'm³', label: 'Vessel', reliability: null },
   fillShare: { minimum: 0, maximum: .95, unit: '', label: 'Fill', reliability: null },
   failureBar: { minimum: .2, maximum: 120, unit: 'bar g', label: 'Failure pressure', reliability: 'C' },
-  blastShare: { minimum: 0, maximum: 1, unit: '', label: 'Blast share', reliability: 'C' }
+  blastShare: { minimum: 0, maximum: 1, unit: '', label: 'Blast share', reliability: 'C' },
+  tankCount: { minimum: 1, maximum: 60, unit: '', label: 'Tanks', reliability: null, integer: true },
+  spacingMetres: { minimum: 1, maximum: 500, unit: 'm', label: 'Spacing', reliability: null },
+  otherShare: { minimum: 0, maximum: 1, unit: '', label: 'Other vessels', reliability: null },
+  ignitionTank: { minimum: 1, maximum: 60, unit: '', label: 'First tank', reliability: null, integer: true },
+  spreadMetresPerSecond: { minimum: .05, maximum: 50, unit: 'm/s', label: 'Fire spread', reliability: 'C' },
+  heatingSeconds: { minimum: 0, maximum: 600, unit: 's', label: 'Heating', reliability: 'C' },
+  heatingSpread: { minimum: 0, maximum: 1.5, unit: '', label: 'Heating spread σ', reliability: 'C' },
+  openingCloudCubicMetres: { minimum: 0, maximum: 1e6, unit: 'm³', label: 'Opening cloud', reliability: null }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -140,6 +148,10 @@ const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const TANK_FARM_NUMBERS = Object.freeze([
+  'startSeconds', 'headingDegrees', 'tankCount', 'spacingMetres', 'otherShare', 'ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread',
+  'openingCloudCubicMetres', 'fireballDecibels', 'riseTimeSeconds'
+]);
 const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
@@ -311,7 +323,7 @@ function readRoomExplosion(value, { point, numbers, choice }, path) {
 }
 
 export function defaultBleve(id = 'bleve-1', name = 'BLEVE', seed = 20261030) {
-  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, fireballDecibels: 0, fireballSecondsPerSixthRootKilogram: .33, riseTimeSeconds: 4e-5 };
+  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, fireballDecibels: 0, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: 4e-5 };
   applyVessel(bleve, 'roadTanker');
   return bleve;
 }
@@ -322,6 +334,40 @@ function readBleve(value, { point, numbers, choice }, path) {
     fluid: choice(value.fluid, FLUID_TYPES, defaultBleve().fluid, `${path}.fluid`),
     ...numbers(value, BLEVE_NUMBERS, path)
   };
+}
+
+/** Class C as a default. */
+export function defaultTankFarm(id = 'tank-farm-1', name = 'Tank farm', seed = 20261031) {
+  return {
+    id, name, kind: 'tankFarm', enabled: true, seed,
+    startSeconds: 0,
+    centreMetres: { x: 0, y: 0, z: 0 },
+    headingDegrees: 0,
+    tankCount: 12,
+    spacingMetres: 25,
+    vessel: 'homeTank',
+    otherVessel: 'roadTanker',
+    otherShare: .25,
+    fluid: 'propane',
+    ignitionTank: 1,
+    spreadMetresPerSecond: 2,
+    heatingSeconds: 20,
+    heatingSpread: .5,
+    openingCloudCubicMetres: 0,
+    fireballDecibels: 0,
+    riseTimeSeconds: 4e-5
+  };
+}
+
+function readTankFarm(value, { check, point, numbers, choice }, path) {
+  const defaults = defaultTankFarm();
+  return onGround(check, {
+    centreMetres: point(value.centreMetres, `${path}.centreMetres`),
+    vessel: choice(value.vessel, VESSEL_TYPES, defaults.vessel, `${path}.vessel`),
+    otherVessel: choice(value.otherVessel, VESSEL_TYPES, defaults.otherVessel, `${path}.otherVessel`),
+    fluid: choice(value.fluid, FLUID_TYPES, defaults.fluid, `${path}.fluid`),
+    ...numbers(value, TANK_FARM_NUMBERS, path)
+  }, 'centreMetres', path);
 }
 
 /** Class C as a default. */
@@ -512,6 +558,7 @@ const KINDS = Object.freeze({
   gasExplosion: { defaults: () => defaultGasExplosion(), read: readGasExplosion },
   roomExplosion: { defaults: () => defaultRoomExplosion(), read: readRoomExplosion },
   bleve: { defaults: () => defaultBleve(), read: readBleve },
+  tankFarm: { defaults: () => defaultTankFarm(), read: readTankFarm },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
@@ -529,7 +576,7 @@ export const { PARAMETERS, MODES, defaultScene, parseScene, readScene, serialize
   anchor: emitterAnchor,
   modes: {
     thunder: { kinds: ['lightning', 'storm'], emitter: () => defaultLightning(), receiverMetres: { x: 1400, y: 0, z: 1.7 } },
-    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
+    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve', 'tankFarm'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
     sonic: { kinds: ['flight', 'formation', 'meteor', 'shower', 'whip', 'booster'], emitter: () => defaultFlight(), receiverMetres: { x: 0, y: 0, z: 1.7 } }
   },
   kinds: KINDS,

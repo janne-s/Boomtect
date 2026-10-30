@@ -4,6 +4,7 @@ import { fireballSamples } from './fireball.js';
 import { combustionSamples } from './gas-explosion.js';
 import { roomNoiseSamples } from './room-explosion.js';
 import { fireballRoarSamples } from './bleve.js';
+import { openingExplosion, openingSeed } from './tank-farm.js';
 import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './flight.js';
 import { flightPath, withApproach } from '../shared/domain/trajectory.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
@@ -44,6 +45,10 @@ export const SOURCE_KINDS = Object.freeze({
   gasExplosion: { sources: table, noise: combustionSamples },
   roomExplosion: { sources: table, noise: roomNoiseSamples },
   bleve: { sources: table, noise: fireballRoarSamples },
+  tankFarm: {
+    sources: table,
+    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : fireballRoarSamples(seed, durationSeconds, sampleRate))
+  },
   flight: moving(flights),
   formation: moving(flights),
   meteor: moving(meteors),

@@ -382,6 +382,25 @@ export function kindViews() {
     drawBlast(context, emitter, colors, state);
   }
 
+  function drawTankFarm(context, emitter, colors, selected, state) {
+    const alpha = context.globalAlpha;
+    context.strokeStyle = selected ? colors.accent : colors.end;
+    context.lineWidth = selected ? 1.4 : 1;
+    context.fillStyle = colors.end;
+    for (const round of cachedRounds(emitter, scene.air)) {
+      const p = frame.project(placed(round.positionMetres));
+      if (round.kind === 'gasExplosion') {
+        context.globalAlpha = alpha * .35;
+        context.beginPath(); context.arc(p.x, p.y, 3, 0, 2 * Math.PI); context.stroke();
+        continue;
+      }
+      context.globalAlpha = alpha * (selected ? .9 : .6);
+      context.beginPath(); context.arc(p.x, p.y, 1.5 + Math.cbrt(round.vesselCubicMetres), 0, 2 * Math.PI); context.stroke();
+    }
+    context.globalAlpha = alpha;
+    for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
+  }
+
   function roomCorners(emitter) {
     const vent = placed(emitter.positionMetres);
     const half = roomSideMetres(emitter.roomCubicMetres) / 2;
@@ -642,6 +661,16 @@ export function kindViews() {
     draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawBarrage(context, emitter, colors, selected, state); }
   };
 
+  const tankFarm = {
+    ...field,
+    handles: (emitter, box, tools) => { use(tools); return [{ type: 'emitter', id: emitter.id, field: 'centreMetres', point: placed(emitter.centreMetres), onGround: true, role: 'start' }]; },
+    extent(emitter, { include, placed: place, scene: current }) {
+      include(place(emitter.centreMetres));
+      cachedRounds(emitter, current.air).forEach(round => include(place(round.positionMetres)));
+    },
+    draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawTankFarm(context, emitter, colors, selected, state); }
+  };
+
   const track = {
     handles(emitter, box, tools) {
       use(tools);
@@ -674,7 +703,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
-    volcano: blast, gasExplosion: gasCloud, roomExplosion: room, bleve: fireball,
+    volcano: blast, gasExplosion: gasCloud, roomExplosion: room, bleve: fireball, tankFarm,
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }

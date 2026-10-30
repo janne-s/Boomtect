@@ -10,9 +10,10 @@ import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, gasExplosionPulse, IGNITION_TYPES } from '../domain/gas-explosion.js';
 import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, roomExplosion, VENT_TYPES } from '../domain/room-explosion.js';
+import { tankFarmTanks } from '../domain/tank-farm.js';
 import { applyVessel, bleveBlast, bleveChargeKilograms, bleveContents, fireballOf, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
 import {
-  defaultBarrage, defaultBlast, defaultBleve, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultRoomExplosion, defaultMeteor, defaultShower, defaultStorm, defaultVolcano, defaultWhip, PARAMETERS
+  defaultBarrage, defaultBlast, defaultBleve, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning, defaultRoomExplosion, defaultMeteor, defaultShower, defaultStorm, defaultTankFarm, defaultVolcano, defaultWhip, PARAMETERS
 } from '../domain/scene.js';
 import { newSeed } from '../shared/domain/random.js';
 import { formatMetres, formatMetresSpan } from '../shared/ui/canvas.js';
@@ -22,7 +23,7 @@ import { macrosFor } from './macros.js';
 import { formatAtKilometre, formatCharge, formatPressure } from '../shared/ui/levels.js';
 import { blastPressureAtKilometrePa } from '../domain/blast-pulse.js';
 
-const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano', gasExplosion: 'Gas explosion', roomExplosion: 'Room explosion', bleve: 'BLEVE' });
+const KIND_LABELS = Object.freeze({ blast: 'Blast', storm: 'Storm', barrage: 'Barrage', flight: 'Flight', formation: 'Formation', meteor: 'Meteor', shower: 'Shower', whip: 'Whip', booster: 'Booster', fireworks: 'Fireworks', volcano: 'Volcano', gasExplosion: 'Gas explosion', roomExplosion: 'Room explosion', bleve: 'BLEVE', tankFarm: 'Tank farm' });
 const FLASH_TYPE_LABELS = Object.freeze({ 'cloud-to-ground': 'Ground flash', 'intra-cloud': 'Cloud flash' });
 
 const hasSeed = emitter => !['blast', 'meteor', 'whip', 'booster'].includes(emitter.kind) && !isFlightKind(emitter);
@@ -58,6 +59,10 @@ function emitterSummary(emitter, scene) {
   if (emitter.follows) return `${emitter.body === 'rocket' ? `${formatMetres(emitter.lengthMetres)} rocket` : FLIGHT.bodies[emitter.body].label} on ${emitter.follows.app}'s ${emitter.follows.name}${emitter.paths.length > 1 ? `, ${emitter.paths.length} paths` : ''}`;
   if (isFlightKind(emitter)) return `${emitter.kind === 'formation' ? `${emitter.memberCount} × ` : ''}${FLIGHT.bodies[emitter.body].label} at Mach ${emitter.mach.toFixed(2)} and ${flightHeightLabel(emitter, scene)} for ${emitter.durationSeconds} s`;
   if (emitter.kind === 'fireworks') return `${emitter.shellCount} shells of about ${Math.round(emitter.shellDiameterMillimetres)} mm over ${emitter.durationSeconds} s, ${Math.round(emitter.crackleShare * 100)} % crackling`;
+  if (emitter.kind === 'tankFarm') {
+    const mix = emitter.otherShare > 0 ? `${BLEVE.vessels[emitter.vessel].label.toLowerCase()} and ${Math.round(emitter.otherShare * 100)} % ${BLEVE.vessels[emitter.otherVessel].label.toLowerCase()}` : BLEVE.vessels[emitter.vessel].label.toLowerCase();
+    return `${emitter.tankCount} × ${mix} of ${BLEVE.fluids[emitter.fluid].label.toLowerCase()}, ${formatMetres(emitter.spacingMetres)} apart`;
+  }
   if (emitter.kind === 'barrage') {
     const salvos = Math.ceil(emitter.roundCount / emitter.salvoSize);
     return `${emitter.roundCount} rounds of ${formatCharge(emitter.chargeKilograms)} in ${salvos} salvo${salvos > 1 ? 's' : ''} over ${emitter.durationSeconds} s`;
@@ -247,6 +252,24 @@ function detailSections(emitter, { updateEmitter }) {
       })
     ];
   }
+  if (emitter.kind === 'tankFarm') {
+    const vesselField = (label, key) => container => selectField(container, { label, value: emitter[key], reliability: 'C', options: VESSEL_TYPES.map(type => [type, BLEVE.vessels[type].label]), onCommit: set(key) });
+    return [
+      centrePlacement,
+      section('Tanks', container => {
+        numbers(['tankCount', 'spacingMetres', 'headingDegrees'])(container);
+        vesselField('Vessel', 'vessel')(container);
+        vesselField('Other vessel', 'otherVessel')(container);
+        numbers(['otherShare'])(container);
+        selectField(container, { label: 'Fluid', value: emitter.fluid, reliability: 'A', options: FLUID_TYPES.map(type => [type, BLEVE.fluids[type].label]), onCommit: set('fluid') });
+      }),
+      section('Fire', numbers(['ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread', 'openingCloudCubicMetres'])),
+      section('Source', container => {
+        numberField(container, { key: 'fireballDecibels', label: 'Fireball', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
+        numbers(['riseTimeSeconds'])(container);
+      })
+    ];
+  }
   if (emitter.kind === 'bleve') {
     return [
       section('Placement', container => {
@@ -365,6 +388,13 @@ function wavefrontAmplitudes(emitter, scene, surface) {
       return [`${emitter.id}:${index}`, front(boom.overpressurePa * height, boom.durationSeconds)];
     }));
   }
+  if (emitter.kind === 'tankFarm') {
+    return new Map(cachedRounds(emitter, air).map(round => {
+      if (round.kind === 'gasExplosion') { const pulse = gasExplosionPulse(round, air); return [round.id, front(pulse.peakPaMetres, pulse.durationSeconds + pulse.onsetSeconds)]; }
+      const [shock] = blastSources(bleveBlast(round, air), air);
+      return [round.id, front(shock.amplitudePaMetres / 2, shock.durationSeconds)];
+    }));
+  }
   if (isFieldKind(emitter)) return new Map(cachedRounds(emitter, air).map(round => [round.id, blastFront(round)]));
   const energy = new Map();
   for (const source of emitterSources(emitter, air, surface).sources) {
@@ -430,6 +460,11 @@ function info(selected, scene) {
     const pulse = gasExplosionPulse(selected, scene.air);
     return [`Strength ${pulse.strength.toFixed(1)} · ${+(pulse.sourcePa / 1000).toPrecision(3)} kPa in the cloud`, formatAtKilometre(formatPressure(pulse.peakPaMetres / GAS_EXPLOSION.referenceMetres)), formatCharge(pulse.kilograms)];
   }
+  if (selected.kind === 'tankFarm') {
+    const tanks = tankFarmTanks(selected);
+    const strongest = Math.max(...tanks.map(tank => bleveChargeKilograms(tank, scene.air)));
+    return [`${tanks.length} BLEVEs over ${+(tanks.at(-1).startSeconds - tanks[0].startSeconds).toPrecision(2)} s`, `Largest ${formatAtKilometre(formatPressure(blastPressureAtKilometrePa(strongest) / 2))}`];
+  }
   if (selected.kind === 'bleve') {
     const contents = bleveContents(selected, scene.air);
     const kilograms = bleveChargeKilograms(selected, scene.air);
@@ -470,7 +505,7 @@ function groundAnchored(field, item) {
   return field === 'positionMetres';
 }
 
-const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
+const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve', 'tankFarm', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [kind, Object.freeze({
   label: emitterKindLabel,
@@ -515,6 +550,7 @@ export const ADD_EMITTERS = Object.freeze({
   gasExplosion: add(defaultGasExplosion, 'Gas explosion', 'blast'),
   roomExplosion: add(defaultRoomExplosion, 'Room explosion', 'blast'),
   bleve: add(defaultBleve, 'BLEVE', 'blast'),
+  tankFarm: add(defaultTankFarm, 'Tank farm', 'blast'),
   flight: add(defaultFlight, 'Flight', 'sonic'),
   formation: add(defaultFormation, 'Formation', 'sonic'),
   meteor: add(defaultMeteor, 'Meteor', 'sonic'),

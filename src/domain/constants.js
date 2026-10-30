@@ -220,6 +220,7 @@ const saturation = rows => Object.freeze(rows.map(row => Object.freeze(row)));
 /** Doc/design/architecture-decision-10-bleve-tank-farm.md. */
 export const BLEVE = Object.freeze({
   tntMegajoulesPerKilogram: 4.68,
+  roarSecondsPerSixthRootKilogram: .33,
   /**
    * Class A, CoolProp 8.0.0: the saturated state by absolute pressure, rows [bar, °C, liquid kg/m³, vapour kg/m³, the vapour's isentropic
    * expansion work to 1 atm in kJ/kg]; carbon dioxide class B from the Yellow Book (CPR 14E) Table 7.2; gasoline taken as n-hexane (class C).
@@ -277,6 +278,18 @@ export const BLEVE = Object.freeze({
     railCar: Object.freeze({ label: 'Rail tank car', vesselCubicMetres: 115, fillShare: .85, failureBar: 20.9 }),
     sphere: Object.freeze({ label: 'Sphere', vesselCubicMetres: 1600, fillShare: .85, failureBar: 20.9 })
   })
+});
+
+/**
+ * Class C, an authored timing (Doc/design/architecture-decision-10-bleve-tank-farm.md): the fire spreads from the first tank at a set speed;
+ * a tank fails after a heating time growing with the cube root of its volume against a 2 m³ tank's; a fireball reaching a tank halves the
+ * heating it has left. An opening vapour cloud explosion burns as a dense cloud of the farm's fuel.
+ */
+export const TANK_FARM = Object.freeze({
+  referenceCubicMetres: 2,
+  dominoShare: .5,
+  openingCongestion: 'dense',
+  openingFuels: Object.freeze({ propane: 'propane', butane: 'propane', gasoline: 'gasoline' })
 });
 
 /** Class C. */
@@ -371,7 +384,10 @@ export const VIEW = Object.freeze({
     roomRange: Object.freeze([1, 1e5]),
     ventRange: Object.freeze([.05, 500]),
     vesselRange: Object.freeze([.01, 2000]),
-    failureRange: Object.freeze([1, 40])
+    failureRange: Object.freeze([1, 40]),
+    spacingRange: Object.freeze([2, 200]),
+    spreadRange: Object.freeze([.1, 20]),
+    heatingRange: Object.freeze([1, 300])
   }),
   flash: Object.freeze({
     traverseSeconds: .12,

@@ -86,6 +86,11 @@ microphone along the Mach cone.
   bangs less; the fill, the failure pressure, and the share of the energy that
   reaches the blast set it. A flammable load then roars as a fireball that grows
   with the whole load and rises above the vessel.
+- **Tank farm** — Rows of vessels, one kind or a mix of two, that a fire spreads
+  through from a first tank: each bursts as a BLEVE once the fire has reached
+  it and it has heated, the larger the slower, and a fireball reaching its
+  neighbours hurries them, so the bangs gather pace through the farm. A vapour
+  cloud explosion at the first tank may open it.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -118,7 +123,8 @@ microphone along the Mach cone.
   height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
   confinement, ignition, and roar for a gas explosion; material, room, vent,
   vent strength, interior, and roar for a room explosion; vessel, fluid, size,
-  fill, failure pressure, and fireball for a BLEVE, each with its onset when the scene
+  fill, failure pressure, and fireball for a BLEVE; tanks, vessel, fluid,
+  spacing, fire spread, heating, and fireball for a tank farm, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -449,6 +455,7 @@ B/C marks a part that combines the two.
 | Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals) | A/C |
 | BLEVE blast | the vapour space's isentropic expansion work at the failure pressure, from CoolProp 8.0.0 saturation tables (carbon dioxide from the Yellow Book, CPR 14E, Table 7.2; gasoline as n-hexane), doubled for the ground (Yellow Book A_sb = 2) and heard as a TNT charge of that energy: the flashing liquid is too slow to make a shock (Birk et al. 2007); 4.5 kPa 100 m from the BAM rail car (2.5 kPa measured, 4.5 kPa by Birk's estimate); failure in a fire at 1.21 × a 17.24 barg relief valve; the second shock timed as TNT's | A/B/C |
 | BLEVE fireball | the whole load burns as one fireball 5.8 M^⅓ m across, visible for 0.45 M^⅓ s, or 2.6 M^⅙ s from 30 t (Roberts 1982, CCPS 1994; Roberts et al. 2000 measured 41–85 m and 3–7 s for 279–1708 kg); its roar sits at its centre, rises in 0.1 s, holds for 0.33 M^⅙ s and dies by 30 dB over as long again, its octaves fitted to two recordings of tank fireballs (E9, E11); its sound power is 0.2 % of the mean heat release, fitted to their bang over roar of 9–14 dB and far above an open flame's 10⁻⁶–10⁻⁵ | B/C |
+| Tank farm timing | authored, not a heat transfer model: the fire spreads from the first tank at a set speed; a tank fails after a heating time growing with the cube root of its volume (against a 2 m³ tank's), spread log-normally; a tank within a failing one's fireball radius has half its remaining heating; an opening cloud burns as a dense cloud of the farm's fuel (butane as propane) | C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
