@@ -2,6 +2,7 @@ import { FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW } from '../
 import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
+import { cloudRadiusMetres } from '../domain/gas-explosion.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
 import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
@@ -313,6 +314,40 @@ export function kindViews() {
     if (stroke) drawBurst(context, frame.project(placed(emitter.positionMetres)), stroke, colors);
   }
 
+  function cloudDome(emitter) {
+    const centre = placed(emitter.positionMetres);
+    const radius = cloudRadiusMetres(emitter.cloudCubicMetres);
+    const arc = (count, point) => Array.from({ length: count }, (_, index) => point(Math.PI * index / (count - 1)));
+    const base = Array.from({ length: DISC_POINTS }, (_, index) => {
+      const angle = 2 * Math.PI * index / DISC_POINTS;
+      const x = centre.x + radius * Math.cos(angle); const y = centre.y + radius * Math.sin(angle);
+      return { x, y, z: Math.max(centre.z, ground(x, y)) };
+    });
+    const meridian = heading => arc(DISC_POINTS / 2 + 1, angle => ({
+      x: centre.x + radius * Math.cos(angle) * Math.cos(heading), y: centre.y + radius * Math.cos(angle) * Math.sin(heading), z: centre.z + radius * Math.sin(angle)
+    }));
+    return { centre, radius, base, meridians: [meridian(0), meridian(Math.PI / 2)] };
+  }
+
+  function drawGasCloud(context, emitter, colors, selected, state) {
+    const { base, meridians } = cloudDome(emitter);
+    const alpha = context.globalAlpha;
+    context.fillStyle = colors.cloud;
+    context.globalAlpha = alpha * .35;
+    polygon(context, base); context.fill();
+    context.globalAlpha = alpha * (selected ? .9 : .6);
+    context.strokeStyle = selected ? colors.accent : colors.end;
+    context.lineWidth = selected ? 1.4 : 1;
+    polygon(context, base); context.stroke();
+    for (const meridian of meridians) {
+      context.beginPath();
+      meridian.forEach((point, index) => { const p = frame.project(point); if (index) context.lineTo(p.x, p.y); else context.moveTo(p.x, p.y); });
+      context.stroke();
+    }
+    context.globalAlpha = alpha;
+    drawBlast(context, emitter, colors, state);
+  }
+
   function drawBarrage(context, emitter, colors, selected, state) {
     const { x, y } = emitter.centreMetres;
     context.strokeStyle = selected ? colors.accent : colors.end;
@@ -499,6 +534,17 @@ export function kindViews() {
     draw(context, emitter, tools, { colors, state }) { use(tools); drawBlast(context, emitter, colors, state); }
   };
 
+  const gasCloud = {
+    ...blast,
+    extent(emitter, { include, placed: place }) {
+      const centre = place(emitter.positionMetres);
+      const radius = cloudRadiusMetres(emitter.cloudCubicMetres);
+      include({ x: centre.x - radius, y: centre.y - radius, z: centre.z });
+      include({ x: centre.x + radius, y: centre.y + radius, z: centre.z + radius });
+    },
+    draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawGasCloud(context, emitter, colors, selected, state); }
+  };
+
   const field = {
     handles: (emitter, box, tools) => { use(tools); return ring(emitter, true); },
     extent(emitter, { include, placed: place, scene: current }) {
@@ -545,7 +591,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
-    volcano: blast, gasExplosion: blast,
+    volcano: blast, gasExplosion: gasCloud,
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }
