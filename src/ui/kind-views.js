@@ -3,6 +3,7 @@ import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
 import { cloudRadiusMetres } from '../domain/gas-explosion.js';
+import { roomSideMetres } from '../domain/room-explosion.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
 import { soundSpeedAt } from '../shared/domain/trajectory.js';
 
@@ -348,6 +349,33 @@ export function kindViews() {
     drawBlast(context, emitter, colors, state);
   }
 
+  function roomCorners(emitter) {
+    const vent = placed(emitter.positionMetres);
+    const half = roomSideMetres(emitter.roomCubicMetres) / 2;
+    const base = Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ground(vent.x + sx * half, vent.y + sy * half)));
+    const ring = z => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: vent.x + sx * half, y: vent.y + sy * half, z }));
+    return { floor: ring(base), roof: ring(base + 2 * half) };
+  }
+
+  function drawRoom(context, emitter, colors, selected, state) {
+    const { floor, roof } = roomCorners(emitter);
+    const alpha = context.globalAlpha;
+    context.fillStyle = colors.cloud;
+    context.globalAlpha = alpha * .35;
+    polygon(context, floor); context.fill();
+    context.globalAlpha = alpha * (selected ? .9 : .6);
+    context.strokeStyle = selected ? colors.accent : colors.end;
+    context.lineWidth = selected ? 1.4 : 1;
+    polygon(context, floor); context.stroke();
+    polygon(context, roof); context.stroke();
+    floor.forEach((corner, index) => {
+      const a = frame.project(corner); const b = frame.project(roof[index]);
+      context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
+    });
+    context.globalAlpha = alpha;
+    drawBlast(context, emitter, colors, state);
+  }
+
   function drawBarrage(context, emitter, colors, selected, state) {
     const { x, y } = emitter.centreMetres;
     context.strokeStyle = selected ? colors.accent : colors.end;
@@ -545,6 +573,17 @@ export function kindViews() {
     draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawGasCloud(context, emitter, colors, selected, state); }
   };
 
+  const room = {
+    ...blast,
+    extent(emitter, { include, placed: place }) {
+      const vent = place(emitter.positionMetres);
+      const half = roomSideMetres(emitter.roomCubicMetres) / 2;
+      include({ x: vent.x - half, y: vent.y - half, z: vent.z });
+      include({ x: vent.x + half, y: vent.y + half, z: vent.z + 2 * half });
+    },
+    draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawRoom(context, emitter, colors, selected, state); }
+  };
+
   const field = {
     handles: (emitter, box, tools) => { use(tools); return ring(emitter, true); },
     extent(emitter, { include, placed: place, scene: current }) {
@@ -591,7 +630,7 @@ export function kindViews() {
 
   return {
     lightning: flash, storm, blast, barrage: field, fireworks: field,
-    volcano: blast, gasExplosion: gasCloud,
+    volcano: blast, gasExplosion: gasCloud, roomExplosion: room,
     flight: track, formation: track, meteor: track, shower: track, whip: { ...track, close: true }, booster: track
   };
 }

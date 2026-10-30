@@ -7,6 +7,7 @@ import { BODY_TYPES } from './flight.js';
 import { FLASH_TYPES } from './lightning.js';
 import { applyEruption, ERUPTION_NUMBERS } from './volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from './gas-explosion.js';
+import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, VENT_TYPES } from './room-explosion.js';
 
 export { DEFAULT_PLACE, DEFAULT_QUALITY, defaultReceiver, headingToward, PLACE_NAME_KINDS, placeLabel, QUALITY_NUMBERS, QUALITY_SWITCHES, SceneError, TERRAIN_DEFAULTS } from '../shared/domain/scene.js';
 
@@ -96,7 +97,11 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   codaDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Coda', reliability: 'C' },
   codaSeconds: { minimum: .2, maximum: 30, unit: 's', label: 'Coda length', reliability: 'C' },
   thumpShare: { minimum: 0, maximum: 1, unit: '', label: 'Thumps', reliability: 'C' },
-  cloudCubicMetres: { minimum: 1, maximum: 1e6, unit: 'm³', label: 'Cloud', reliability: null }
+  cloudCubicMetres: { minimum: 1, maximum: 1e6, unit: 'm³', label: 'Cloud', reliability: null },
+  roomCubicMetres: { minimum: 1, maximum: 1e5, unit: 'm³', label: 'Room', reliability: null },
+  ventSquareMetres: { minimum: .01, maximum: 1e4, unit: 'm²', label: 'Vent', reliability: null },
+  structureKilopascals: { minimum: 1, maximum: 1000, unit: 'kPa', label: 'Structure', reliability: 'C' },
+  ringDecibels: { minimum: -60, maximum: 20, unit: 'dB', label: 'Ring', reliability: 'C' }
 });
 
 const CHANNEL_NUMBERS = Object.freeze([
@@ -129,6 +134,7 @@ const FIREWORKS_NUMBERS = Object.freeze([
 const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -264,6 +270,37 @@ function readGasExplosion(value, { point, numbers, choice }, path) {
     confinement: choice(value.confinement, CONFINEMENT_TYPES, defaults.confinement, `${path}.confinement`),
     ignition: choice(value.ignition, IGNITION_TYPES, defaults.ignition, `${path}.ignition`),
     ...numbers(value, GAS_EXPLOSION_NUMBERS, path)
+  };
+}
+
+export function defaultRoomExplosion(id = 'room-explosion-1', name = 'Room explosion', seed = 20261030) {
+  return {
+    id, name, kind: 'roomExplosion', enabled: true, seed,
+    startSeconds: 0,
+    positionMetres: { x: 0, y: 0, z: 1.5 },
+    material: 'naturalGas',
+    roomCubicMetres: 60,
+    ventSquareMetres: 2,
+    ventStrength: 'window',
+    interior: 'furnished',
+    ignition: 'centre',
+    structureKilopascals: 15,
+    ringDecibels: 0,
+    fireballDecibels: -20,
+    fireballSecondsPerSixthRootKilogram: .92,
+    riseTimeSeconds: 4e-5
+  };
+}
+
+function readRoomExplosion(value, { point, numbers, choice }, path) {
+  const defaults = defaultRoomExplosion();
+  return {
+    positionMetres: point(value.positionMetres, `${path}.positionMetres`),
+    material: choice(value.material, MATERIAL_TYPES, defaults.material, `${path}.material`),
+    ventStrength: choice(value.ventStrength, VENT_TYPES, defaults.ventStrength, `${path}.ventStrength`),
+    interior: choice(value.interior, INTERIOR_TYPES, defaults.interior, `${path}.interior`),
+    ignition: choice(value.ignition, ROOM_IGNITION_TYPES, defaults.ignition, `${path}.ignition`),
+    ...numbers(value, ROOM_EXPLOSION_NUMBERS, path)
   };
 }
 
@@ -453,6 +490,7 @@ const KINDS = Object.freeze({
   barrage: { defaults: () => defaultBarrage(), read: (value, fields, path) => onGround(fields.check, blastFields(fields, value, path, BARRAGE_NUMBERS, 'centreMetres', defaultBarrage().explosive), 'centreMetres', path) },
   volcano: { defaults: () => defaultVolcano(), read: (value, { point, numbers }, path) => ({ positionMetres: point(value.positionMetres, `${path}.positionMetres`), ...numbers(value, VOLCANO_NUMBERS, path), ...followsField(value) }) },
   gasExplosion: { defaults: () => defaultGasExplosion(), read: readGasExplosion },
+  roomExplosion: { defaults: () => defaultRoomExplosion(), read: readRoomExplosion },
   fireworks: { defaults: () => defaultFireworks(), read: (value, { check, point, numbers }, path) => onGround(check, { centreMetres: point(value.centreMetres, `${path}.centreMetres`), ...numbers(value, FIREWORKS_NUMBERS, path) }, 'centreMetres', path) },
   flight: { defaults: () => defaultFlight(), read: readFlight },
   formation: { defaults: () => defaultFormation(), read: readFlight },
@@ -470,7 +508,7 @@ export const { PARAMETERS, MODES, defaultScene, parseScene, readScene, serialize
   anchor: emitterAnchor,
   modes: {
     thunder: { kinds: ['lightning', 'storm'], emitter: () => defaultLightning(), receiverMetres: { x: 1400, y: 0, z: 1.7 } },
-    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
+    blast: { kinds: ['blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion'], emitter: () => defaultBlast(), receiverMetres: { x: 400, y: 0, z: 1.7 } },
     sonic: { kinds: ['flight', 'formation', 'meteor', 'shower', 'whip', 'booster'], emitter: () => defaultFlight(), receiverMetres: { x: 0, y: 0, z: 1.7 } }
   },
   kinds: KINDS,

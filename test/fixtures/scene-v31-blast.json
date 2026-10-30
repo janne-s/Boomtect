@@ -176,6 +176,54 @@
       "fireballDecibels": -20,
       "fireballSecondsPerSixthRootKilogram": 0.92,
       "riseTimeSeconds": 0.00004
+    },
+    {
+      "id": "room-1",
+      "name": "Kitchen",
+      "kind": "roomExplosion",
+      "enabled": true,
+      "seed": 20261030,
+      "startSeconds": 0,
+      "positionMetres": {
+        "x": -120,
+        "y": 60,
+        "z": 1.2
+      },
+      "material": "naturalGas",
+      "roomCubicMetres": 60,
+      "ventSquareMetres": 2,
+      "ventStrength": "window",
+      "interior": "furnished",
+      "ignition": "centre",
+      "structureKilopascals": 15,
+      "ringDecibels": 0,
+      "fireballDecibels": -20,
+      "fireballSecondsPerSixthRootKilogram": 0.92,
+      "riseTimeSeconds": 0.00004
+    },
+    {
+      "id": "room-2",
+      "name": "Silo",
+      "kind": "roomExplosion",
+      "enabled": true,
+      "seed": 7,
+      "startSeconds": 0,
+      "positionMetres": {
+        "x": 150,
+        "y": -90,
+        "z": 8
+      },
+      "material": "dustSt2",
+      "roomCubicMetres": 800,
+      "ventSquareMetres": 12,
+      "ventStrength": "panel",
+      "interior": "empty",
+      "ignition": "far",
+      "structureKilopascals": 80,
+      "ringDecibels": -6,
+      "fireballDecibels": -20,
+      "fireballSecondsPerSixthRootKilogram": 0.92,
+      "riseTimeSeconds": 0.00004
     }
   ],
   "receivers": [

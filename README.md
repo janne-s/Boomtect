@@ -44,7 +44,7 @@ microphone along the Mach cone.
   selected emitter's sound off the ground, for the microphone's height.
 - **Levels** — A microphone shows its peak in pascals and decibels and its
   loudest A-weighted Fast level (LAFmax, IEC 61672-1). A blast, barrage,
-  volcano, or gas explosion shows its pressure and level 1 km away.
+  volcano, gas explosion, or room explosion shows its pressure and level 1 km away.
 
 ## Emitters
 
@@ -70,8 +70,15 @@ microphone along the Mach cone.
   deflagration or detonates: methane, propane, gasoline vapour, ethylene, hydrogen, or the
   propylene and ethylene oxide of fuel-air explosives. Congestion,
   confinement, the fuel, and the cloud's size set its strength, from a soft whump that rises over the flame's
-  passage to a shock like a charge's; a burster charge detonates it. The roar
-  of its fireball follows.
+  passage to a shock like a charge's; a burster charge detonates it. Its burning
+  roars for the flame's passage and dies away with the fireball.
+- **Room explosion** — An explosion inside a room, a building, or a silo that
+  vents through a window, a light panel, a door, or an open doorway: natural
+  gas, propane, oil mist, dust of class St1 to St3, or the smoke gas of a
+  backdraft. The vent's bang when it breaks, the burning, the mixture pushed out
+  ahead of the flame exploding outside, and the room ringing low through its
+  opening follow one another; an empty room is far gentler than a furnished one,
+  and walls weaker than the pressure give way.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -102,7 +109,8 @@ microphone along the Mach cone.
   salvo, charge, and fireball for a barrage; size, duration, shells, shells per
   salvo, shell size, and crackle for a fireworks display; eruption, size, crater
   height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
-  confinement, ignition, and fireball for a gas explosion, each with its onset when the scene
+  confinement, ignition, and roar for a gas explosion; material, room, vent,
+  vent strength, interior, and roar for a room explosion, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -427,7 +435,10 @@ B/C marks a part that combines the two.
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
 | Gas explosion strength | GAME correlation for a spark in the cloud's centre (Eggen 1998, HSE CRR 202/1998): `P₀ = 0.84 (VBR·L/D)^2.75 S_L^2.7 D^0.7` bar in the open, `3.38 (…)^2.25` between planes, the flame's path L the cloud's radius; congestion sets the volume blockage VBR and obstacle diameter D (open 1 %, sparse 5 %, dense 10 % of 0.3 m, pipe rack 20 % of 0.43 m); the fuel its burning velocity S_L (methane 0.40, propane 0.45, ethylene 0.66 m/s as GAME used them; gasoline vapour 0.40, propylene oxide 0.82, ethylene oxide 1.08, hydrogen 2.4 m/s beyond its fit); kept within the TNO Multi-Energy range 1 kPa (strength 1) to 1 MPa (10); a burster charge detonates the cloud | B/C |
 | Gas explosion level | the source pressure falls as 1/r from the edge of a hemispherical cloud of 3.0–4.0 MJ/m³ of stoichiometric mixture, halved because the ground doubles it, never above a TNT blast of the same energy at 4.68 MJ/kg; 1.15 kPa and 46 ms 1 km from a 10 m dense propane cloud of strength 7.2 (Van den Berg et al. 1991: about 1 kPa and 60 ms at strength 7) | B/C |
-| Gas explosion shape | Friedlander pulse lasting the TNT blast's positive phase or the burn time, whichever is longer; the burn time is the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5); below strength 7 the pulse rises linearly over up to the whole burn time, a pressure wave, and from 7 it is a shock; the fireball's roar lasts the Blast's fireball time plus the burn time | A/C |
+| Gas explosion shape | Friedlander pulse lasting the TNT blast's positive phase or the burn time, whichever is longer; the burn time is the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5); below strength 7 the pulse rises linearly over up to the whole burn time, a pressure wave, and from 7 it is a shock | A/C |
+| Gas explosion roar | noise that grows over a quarter of the burn time, holds to its end, and falls 30 dB over 0.92 s·kg^⅙ of TNT equivalent; its spectrum runs from a deflagration's low roar to flat octaves between strengths 3 and 7; 20 dB under the pulse; fitted to recordings of gas explosions 75–450 m away | C |
+| Room explosion pressure | NFPA 68 (2018): `P_red = (A_s·0.0223·λ·S_u / A_v)²` bar for gases and mists, λ the turbulent enhancement of §7.2.6.1 for the room and its vent; `A_v = 10⁻⁴(1 + 1.54 P_stat^{4/3}) K_St V^{3/4} √(P_max/P_red − 1)` for dusts, K_St 150, 250, 400 bar·m/s; these bound designs, so an empty room takes 0.24 λ (Cooper et al. 1986; Harrison & Eyre 1987); ignition far from the vent triples it; the room opens at its vent's strength (window 5, light panel 1.5, door 2.5 kPa), and walls weaker than the pressure (15 kPa) cap it | B/C |
+| Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals) | A/C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
@@ -462,7 +473,9 @@ Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
 or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
 its stars' burning; a whip's swish; and a gas cloud's spreading, its flame's
 acceleration through the obstacles, separate congested regions in one cloud,
-BLEVEs, and dust explosions.
+and BLEVEs; for a room explosion, rooms bursting one after another, the
+acoustic peak of empty steel vessels, collapse and debris, the vent's
+directivity, a secondary dust explosion, and the fire before a backdraft.
 
 Boomtect is a creative tool. Where published models exist it follows them,
 but a result is a plausible event, not a reconstruction or a measurement.
@@ -511,6 +524,7 @@ What each change does to the sound:
 | More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
 | Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
 | Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes`, a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive |
+| Room explosion smaller `ventSquareMetres`, `interior` `furnished`, `ignition` `far`, a stronger `ventStrength` | more pressure inside and a louder explosion outside, up to the walls' `structureKilopascals`; `material` `smokeGas` with `ventStrength` `open` is a backdraft's slow whoosh; `ringDecibels` the low ring |
 | Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |
 | Flight higher | a weaker, slightly longer boom; faster `mach`, a wider carpet |
 | `ground.type` `water` or `rigid` | a strong reflection right after the direct sound |

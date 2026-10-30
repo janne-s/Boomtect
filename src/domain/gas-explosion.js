@@ -53,26 +53,34 @@ const friedlanderArea = (seconds, durationSeconds, decay) => {
   return durationSeconds * (integral(seconds / durationSeconds) - integral(0));
 };
 
+export function onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, decay) {
+  return onsetSeconds > 0 ? peakPaMetres * onsetSeconds / friedlanderArea(onsetSeconds, durationSeconds, decay) : peakPaMetres;
+}
+
 /** Class B level: the source pressure falls as 1/R from the cloud's edge, never above the TNT blast of the same energy; halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
-export function gasExplosionPulse(emitter, air) {
-  const sourcePa = gasSourcePa(emitter);
+export function deflagrationPulse({ sourcePa, radiusMetres, kilograms }, air) {
   const strength = strengthOfPa(sourcePa);
-  const radiusMetres = cloudRadiusMetres(emitter.cloudCubicMetres);
-  const kilograms = gasEquivalentKilograms(emitter);
   const peakPaMetres = Math.min(sourcePa * radiusMetres / 2, blastPressureAtKilometrePa(kilograms) * 1000);
   const burnSeconds = radiusMetres / flameMetresPerSecond(sourcePa, air);
   const onsetSeconds = burnSeconds * (1 - shockShare(strength));
   const durationSeconds = Math.max(BLAST_PULSE.durationSecondsPerCubeRootKilogram * Math.cbrt(kilograms), burnSeconds);
   const decay = BLAST_PULSE.decay;
-  const onsetPeak = onsetSeconds > 0 ? friedlanderArea(onsetSeconds, durationSeconds, decay) / onsetSeconds : 1;
-  return { strength, sourcePa, radiusMetres, kilograms, peakPaMetres, burnSeconds, onsetSeconds, durationSeconds, decay, amplitudePaMetres: peakPaMetres / onsetPeak };
+  return { strength, sourcePa, radiusMetres, kilograms, peakPaMetres, burnSeconds, onsetSeconds, durationSeconds, decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, decay) };
 }
+
+export const gasExplosionPulse = (emitter, air) => deflagrationPulse({ sourcePa: gasSourcePa(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres), kilograms: gasEquivalentKilograms(emitter) }, air);
+
+export const pulseSource = (common, pulse, air) => ({
+  ...common, amplitudePaMetres: pulse.amplitudePaMetres, pulse: 'friedlander', durationSeconds: pulse.durationSeconds, onsetSeconds: pulse.onsetSeconds, decay: pulse.decay,
+  spanSeconds: friedlanderSpanSeconds(pulse.durationSeconds, pulse.decay),
+  linearRadiusMetres: pulse.peakPaMetres / (GAS_EXPLOSION.linearPressureShare * air.pressureKpa * 1000)
+});
 
 export const gasPaMetres = (emitter, air) => gasExplosionPulse(emitter, air).peakPaMetres;
 
 export const gasRoarTailSeconds = emitter => emitter.fireballSecondsPerSixthRootKilogram * gasEquivalentKilograms(emitter) ** (1 / 6);
 
-const gasRoarSpanSeconds = (burnSeconds, tailSeconds) => burnSeconds + tailSeconds * 70 / BLAST.roar.durationDecibels;
+export const roarSpanSeconds = (burnSeconds, tailSeconds) => burnSeconds + tailSeconds * 70 / BLAST.roar.durationDecibels;
 
 const deflagrationDensity = tableDensity(GAS_EXPLOSION.roar.spectrumHz, GAS_EXPLOSION.roar.deflagrationDensity);
 const detonationDensity = tableDensity(GAS_EXPLOSION.roar.spectrumHz, GAS_EXPLOSION.roar.detonationDensity);
@@ -82,13 +90,11 @@ export function shockShare(strength) {
   return Math.min(1, Math.max(0, (strength - soft) / (sharp - soft)));
 }
 
-/** Class C: the burning cloud's roar, its length the burn plus the fireball's tail. */
-export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
-  const tailSeconds = gasRoarTailSeconds(emitter);
-  const burnSeconds = Math.max(0, durationSeconds - tailSeconds);
-  const share = shockShare(gasStrength(emitter));
+/** Class C: a burning cloud's roar, its length the burn plus the fireball's tail, loudest window at unit level. */
+export function roarSamples(seed, { burnSeconds, tailSeconds, strength }, sampleRate) {
+  const share = shockShare(strength);
   const density = frequencyHz => deflagrationDensity(frequencyHz) ** (1 - share) * detonationDensity(frequencyHz) ** share;
-  const length = Math.ceil(gasRoarSpanSeconds(burnSeconds, tailSeconds) * sampleRate);
+  const length = Math.ceil(roarSpanSeconds(burnSeconds, tailSeconds) * sampleRate);
   const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, density);
   const riseSeconds = Math.max(BLAST.roar.riseSeconds, GAS_EXPLOSION.roar.riseShare * burnSeconds);
   const decay = BLAST.roar.durationDecibels / 20 * Math.LN10 / tailSeconds;
@@ -101,19 +107,20 @@ export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
   return scaleToLoudestWindow(samples, Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate)));
 }
 
+export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
+  const tailSeconds = gasRoarTailSeconds(emitter);
+  return roarSamples(seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter) }, sampleRate);
+}
+
 export function gasExplosionSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const pulse = gasExplosionPulse(emitter, air);
   const common = { flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
-  const shock = {
-    ...common, amplitudePaMetres: pulse.amplitudePaMetres, pulse: 'friedlander', durationSeconds: pulse.durationSeconds, onsetSeconds: pulse.onsetSeconds, decay: pulse.decay,
-    spanSeconds: friedlanderSpanSeconds(pulse.durationSeconds, pulse.decay),
-    linearRadiusMetres: pulse.peakPaMetres / (GAS_EXPLOSION.linearPressureShare * air.pressureKpa * 1000)
-  };
+  const shock = pulseSource(common, pulse, air);
   const tailSeconds = gasRoarTailSeconds(emitter);
   const roar = {
     ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * pulse.peakPaMetres, pulse: 'noise', noiseSeed: emitter.seed,
-    durationSeconds: pulse.burnSeconds + tailSeconds, decay: 0, spanSeconds: gasRoarSpanSeconds(pulse.burnSeconds, tailSeconds), linearRadiusMetres: 0
+    durationSeconds: pulse.burnSeconds + tailSeconds, decay: 0, spanSeconds: roarSpanSeconds(pulse.burnSeconds, tailSeconds), linearRadiusMetres: 0
   };
   return emitter.fireballDecibels > FIREBALL_OFF_DECIBELS ? [shock, roar] : [shock];
 }

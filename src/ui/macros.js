@@ -1,6 +1,7 @@
-import { GAS_EXPLOSION, VIEW, VOLCANO } from '../domain/constants.js';
+import { GAS_EXPLOSION, ROOM_EXPLOSION, VIEW, VOLCANO } from '../domain/constants.js';
 import { applyEruption, ERUPTION_TYPES, eruptionOf } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, IGNITION_TYPES } from '../domain/gas-explosion.js';
+import { INTERIOR_TYPES, MATERIAL_TYPES, VENT_TYPES } from '../domain/room-explosion.js';
 import { formatCharge } from '../shared/ui/levels.js';
 import { PARAMETERS } from '../domain/scene.js';
 import { clamp01, kilo, logPosition, logValue, METRES, metres, percent } from '../shared/ui/macros.js';
@@ -462,6 +463,21 @@ const gasCongestion = gasChoice('Congestion', 'congestion', CONGESTION_TYPES, GA
 const gasConfinement = gasChoice('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements);
 const gasIgnition = gasChoice('Ignition', 'ignition', IGNITION_TYPES, GAS_EXPLOSION.ignitions);
 
+const roomMaterial = gasChoice('Material', 'material', MATERIAL_TYPES, ROOM_EXPLOSION.materials);
+const roomVentStrength = gasChoice('Vent strength', 'ventStrength', VENT_TYPES, ROOM_EXPLOSION.vents);
+const roomInterior = gasChoice('Interior', 'interior', INTERIOR_TYPES, ROOM_EXPLOSION.interiors);
+
+const logControl = (label, key, rangeKey, unit) => ({
+  label,
+  read: item => clamp01(logPosition(item[key], VIEW.macros[rangeKey])),
+  write: (item, t) => { item[key] = +logValue(t, VIEW.macros[rangeKey]).toPrecision(2); },
+  show: item => `${+item[key].toPrecision(3)} ${unit}`,
+  entry: { unit, get: item => item[key], set: (item, value) => { item[key] = value; } }
+});
+
+const roomSize = logControl('Room', 'roomCubicMetres', 'roomRange', 'm³');
+const roomVent = logControl('Vent', 'ventSquareMetres', 'ventRange', 'm²');
+
 const gasCloud = {
   label: 'Cloud',
   read: item => clamp01(logPosition(item.cloudCubicMetres, VIEW.macros.gasCloudRange)),
@@ -484,6 +500,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
+  if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomInterior, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);

@@ -4,7 +4,7 @@ export * from '../shared/domain/constants.js';
 
 export const APP_VERSION = '0.80.0';
 
-export const MODEL_VERSION = '36.1.0';
+export const MODEL_VERSION = '36.2.0';
 
 export const TNT_JOULES_PER_KILOGRAM = 4.184e6;
 
@@ -160,6 +160,50 @@ export const GAS_EXPLOSION = Object.freeze({
   })
 });
 
+/** Class B: NFPA 68 (2018) eq. 7.2.1a with 7.2.1.1 and λ from 7.2.6.1 for gases and mists, eq. 8.2.1.1 and Table B.1.2.4 for dusts, burning velocities and maximum pressures from Tables D.1(a) and D.2; class C: the empty-room factor on λ fitted to Cooper et al. 1986 Fig. 1 and Harrison & Eyre 1987 Table II, the far-ignition factor and external peak share from Harrison & Eyre Table II, the external source radius from their §3.4, the ring from Cooper Fig. 1, vent and wall strengths, dust burning velocities, smoke gas fitted to Rosberg 2001. Doc/design/architecture-decision-9-vented-explosion.md. */
+export const ROOM_EXPLOSION = Object.freeze({
+  densityKilogramsPerCubicMetre: 1.2,
+  viscosityPascalSeconds: 1.8e-5,
+  soundMetresPerSecond: 343,
+  dischargeCoefficient: .7,
+  heatCapacityRatio: 1.4,
+  flameReynolds: 4000,
+  flameExponent: .39,
+  ventFactor: 1.23,
+  ventMetresPerSecond: 2.37e-3,
+  gasCoefficient: .0223,
+  dustCoefficient: 1e-4,
+  dustStatic: 1.54,
+  expansionRatio: 7.5,
+  emptyTurbulenceShare: .24,
+  farIgnitionPressureFactor: 3,
+  externalPressureShare: .5,
+  externalDilution: 3,
+  wallMetres: .25,
+  wallOpenSeconds: .03,
+  ringSoundShare: 1.45,
+  ringPressureShare: .4,
+  ringCycles: 5,
+  ringFloor: .05,
+  materials: Object.freeze({
+    naturalGas: Object.freeze({ label: 'Natural gas', burningMetresPerSecond: .40, megajoulesPerCubicMetre: 3.22, maximumBar: 7.1 }),
+    propane: Object.freeze({ label: 'Propane', burningMetresPerSecond: .46, megajoulesPerCubicMetre: 3.48, maximumBar: 7.9 }),
+    oilMist: Object.freeze({ label: 'Oil mist', burningMetresPerSecond: .46, megajoulesPerCubicMetre: 3.5, maximumBar: 7 }),
+    dustSt1: Object.freeze({ label: 'Dust St1', kSt: 150, burningMetresPerSecond: .25, megajoulesPerCubicMetre: 3.5, maximumBar: 10 }),
+    dustSt2: Object.freeze({ label: 'Dust St2', kSt: 250, burningMetresPerSecond: .42, megajoulesPerCubicMetre: 3.5, maximumBar: 10 }),
+    dustSt3: Object.freeze({ label: 'Dust St3', kSt: 400, burningMetresPerSecond: .67, megajoulesPerCubicMetre: 3.5, maximumBar: 12 }),
+    smokeGas: Object.freeze({ label: 'Smoke gas', burningMetresPerSecond: .06, megajoulesPerCubicMetre: 1.5, maximumBar: 3, mixingLimited: true })
+  }),
+  vents: Object.freeze({
+    open: Object.freeze({ label: 'Open', kilopascals: 0, openSeconds: .005 }),
+    window: Object.freeze({ label: 'Window', kilopascals: 5, openSeconds: .005 }),
+    panel: Object.freeze({ label: 'Light panel', kilopascals: 1.5, openSeconds: .02 }),
+    door: Object.freeze({ label: 'Door', kilopascals: 2.5, openSeconds: .03 })
+  }),
+  interiors: Object.freeze({ empty: Object.freeze({ label: 'Empty' }), furnished: Object.freeze({ label: 'Furnished' }) }),
+  ignitions: Object.freeze({ centre: Object.freeze({ label: 'Centre' }), far: Object.freeze({ label: 'Far from vent' }) })
+});
+
 /** Class C. */
 export const UPPER_AIR = Object.freeze({
   topMetres: 80000,
@@ -248,7 +292,9 @@ export const VIEW = Object.freeze({
     volcanoChargeRange: Object.freeze([.01, 1e6]),
     volcanoRiseRange: Object.freeze([2e-5, 3e-3]),
     volcanoHeightMetres: 6000,
-    gasCloudRange: Object.freeze([10, 1e5])
+    gasCloudRange: Object.freeze([10, 1e5]),
+    roomRange: Object.freeze([1, 1e5]),
+    ventRange: Object.freeze([.05, 500])
   }),
   flash: Object.freeze({
     traverseSeconds: .12,
