@@ -3,8 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, combustionSamples, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
-import { blastPressureAtKilometrePa } from '../src/domain/blast-pulse.js';
+import { cloudRadiusMetres, combustionSamples, multiEnergyOverpressure, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -65,12 +64,17 @@ test('a 10 m hemisphere near strength 7 gives about 1 kPa and 60 ms near 1 km, a
   assert.equal(pulse.onsetSeconds, 0);
 });
 
-test('a detonated cloud is no louder than TNT of the same combustion energy', () => {
-  const explosion = { ...defaultGasExplosion(), fuel: 'propyleneOxide', ignition: 'charge', cloudCubicMetres: 500 };
-  const pulse = gasExplosionPulse(explosion, STANDARD_AIR);
-  const kilograms = GAS_EXPLOSION.fuels.propyleneOxide.megajoulesPerCubicMetre * 500 / GAS_EXPLOSION.tntMegajoulesPerKilogram;
-  assert.ok(Math.abs(pulse.kilograms - kilograms) < 1e-9);
-  assert.ok(Math.abs(pulse.peakPaMetres - blastPressureAtKilometrePa(kilograms) * 1000) < 1e-6);
+test('the level follows the Multi-Energy curves read from GAME Figure 1, and strong clouds merge far away', () => {
+  const at = (kpa, scaledDistance) => multiEnergyOverpressure(kpa * 1000 * (1 + 1e-9), scaledDistance, 101325);
+  assert.ok(Math.abs(at(1000, 10) / .0243 - 1) < .01);
+  assert.ok(Math.abs(at(20, 20) / .00596 - 1) < .03);
+  assert.ok(Math.abs(at(10, 30) / .00214 - 1) < .03);
+  assert.ok(Math.abs(at(5, .3) / (5000 / 101325) - 1) < .01);
+  const strong = [{ congestion: 'dense' }, { congestion: 'dense', confinement: 'planes' }, { congestion: 'pipeRack' }, { congestion: 'open', ignition: 'charge' }]
+    .map(change => gasExplosionPulse({ ...defaultGasExplosion(), ...change }, STANDARD_AIR).peakPaMetres);
+  strong.forEach(level => assert.ok(Math.abs(20 * Math.log10(level / strong[0])) < .5));
+  const sparse = ['open', 'planes'].map(confinement => gasExplosionPulse({ ...defaultGasExplosion(), congestion: 'sparse', confinement }, STANDARD_AIR).peakPaMetres);
+  assert.ok(20 * Math.log10(sparse[1] / sparse[0]) > 3);
 });
 
 test('a weak deflagration rises over its burn time, and the flame speed gives back its source pressure', () => {

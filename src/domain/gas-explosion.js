@@ -1,4 +1,4 @@
-import { BLAST_PULSE, blastPressureAtKilometrePa } from './blast-pulse.js';
+import { BLAST_PULSE } from './blast-pulse.js';
 import { BLAST, GAS_EXPLOSION } from './constants.js';
 import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
@@ -57,10 +57,37 @@ export function onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, deca
   return onsetSeconds > 0 ? peakPaMetres * onsetSeconds / friedlanderArea(onsetSeconds, durationSeconds, decay) : peakPaMetres;
 }
 
-/** Class B level: the source pressure falls as 1/R from the cloud's edge, never above the TNT blast of the same energy; halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
+function mergedOverpressure(scaledDistance) {
+  const { mergedScaledDistances: distances, mergedOverpressures: pressures } = GAS_EXPLOSION.multiEnergy;
+  let band = 0;
+  while (band < distances.length - 2 && scaledDistance > distances[band + 1]) band += 1;
+  const slope = Math.log(pressures[band + 1] / pressures[band]) / Math.log(distances[band + 1] / distances[band]);
+  return pressures[band] * (scaledDistance / distances[band]) ** slope;
+}
+
+function classOverpressure(strengthClass, scaledDistance, ambientPa) {
+  const { farFieldShares, kneeExponent: n } = GAS_EXPLOSION.multiEnergy;
+  const source = GAS_EXPLOSION.strengthPressuresKpa[strengthClass - 1] * 1000 / ambientPa;
+  const decay = strengthClass <= farFieldShares.length ? farFieldShares[strengthClass - 1] * source / scaledDistance : mergedOverpressure(scaledDistance);
+  return (source ** -n + decay ** -n) ** (-1 / n);
+}
+
+/** Class B: the Multi-Energy overpressure ΔP/p₀ of a source pressure at a scaled distance, between the classes on a log scale, and in proportion below strength 1. */
+export function multiEnergyOverpressure(sourcePa, scaledDistance, ambientPa) {
+  const strength = strengthOfPa(sourcePa);
+  if (strength < 1) return classOverpressure(1, scaledDistance, ambientPa) * sourcePa / (GAS_EXPLOSION.strengthPressuresKpa[0] * 1000);
+  const lower = Math.min(9, Math.floor(strength));
+  const share = Math.min(1, strength - lower);
+  return classOverpressure(lower, scaledDistance, ambientPa) ** (1 - share) * classOverpressure(lower + 1, scaledDistance, ambientPa) ** share;
+}
+
+/** Class B level: the Multi-Energy curve at its reference scaled distance, carried as 1/r, halved because the ground doubles it. Class C shape: the pulse rises over the burn time while the wave is a pressure wave, and is a shock from strength 7. */
 export function deflagrationPulse({ sourcePa, radiusMetres, kilograms }, air) {
   const strength = strengthOfPa(sourcePa);
-  const peakPaMetres = Math.min(sourcePa * radiusMetres / 2, blastPressureAtKilometrePa(kilograms) * 1000);
+  const ambientPa = air.pressureKpa * 1000;
+  const scaleMetres = Math.cbrt(kilograms * GAS_EXPLOSION.tntMegajoulesPerKilogram * 1e6 / ambientPa);
+  const reference = GAS_EXPLOSION.multiEnergy.referenceScaledDistance;
+  const peakPaMetres = multiEnergyOverpressure(sourcePa, reference, ambientPa) * reference * ambientPa * scaleMetres / 2;
   const burnSeconds = radiusMetres / flameMetresPerSecond(sourcePa, air);
   const onsetSeconds = burnSeconds * (1 - shockShare(strength));
   const durationSeconds = Math.max(BLAST_PULSE.durationSecondsPerCubeRootKilogram * Math.cbrt(kilograms), burnSeconds);
