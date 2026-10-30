@@ -249,7 +249,7 @@ export function defaultGasExplosion(id = 'gas-explosion-1', name = 'Gas explosio
     congestion: 'dense',
     confinement: 'open',
     ignition: 'spark',
-    fireballDecibels: -14,
+    fireballDecibels: -20,
     fireballSecondsPerSixthRootKilogram: .92,
     riseTimeSeconds: 4e-5
   };

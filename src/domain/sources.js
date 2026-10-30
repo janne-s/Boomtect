@@ -1,6 +1,7 @@
 import { BOOSTER, FLIGHT } from './constants.js';
 import { emitterSourceTable } from './emitters.js';
 import { fireballSamples } from './fireball.js';
+import { combustionSamples } from './gas-explosion.js';
 import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './flight.js';
 import { flightPath, withApproach } from '../shared/domain/trajectory.js';
 import { meteorBooms, meteorTrack, showerMembers } from './meteor.js';
@@ -38,7 +39,7 @@ export const SOURCE_KINDS = Object.freeze({
   barrage: blasting,
   fireworks: blasting,
   volcano: { sources: table, noise: codaSamples },
-  gasExplosion: blasting,
+  gasExplosion: { sources: table, noise: combustionSamples },
   flight: moving(flights),
   formation: moving(flights),
   meteor: moving(meteors),

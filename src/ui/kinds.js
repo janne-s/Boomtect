@@ -235,7 +235,11 @@ function detailSections(emitter, { updateEmitter }) {
         choose('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements)(container);
         choose('Ignition', 'ignition', IGNITION_TYPES, GAS_EXPLOSION.ignitions)(container);
       }),
-      section('Source', numbers(['fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']))
+      section('Source', container => {
+        numberField(container, { key: 'fireballDecibels', label: 'Roar', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
+        numberField(container, { key: 'fireballSecondsPerSixthRootKilogram', label: 'Roar tail', value: emitter.fireballSecondsPerSixthRootKilogram, onCommit: set('fireballSecondsPerSixthRootKilogram') });
+        numbers(['riseTimeSeconds'])(container);
+      })
     ];
   }
   if (emitter.kind === 'barrage') {

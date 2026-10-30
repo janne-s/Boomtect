@@ -484,7 +484,7 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'flight') return [machNumber, flightHeight, flightHeading, flightClimb, flightAcceleration, flightTurn, flightTime];
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
-  if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, fireball]);
+  if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
 }

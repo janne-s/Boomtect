@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
+import { cloudRadiusMetres, combustionSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { blastPressureAtKilometrePa } from '../src/domain/blast-pulse.js';
 import { plainScene } from './plain-scene.js';
 
@@ -96,4 +96,24 @@ test('a rendered gas explosion peaks at its level after its onset and falls off 
   const peakSeconds = near.startSeconds + nearPeak.index / near.sampleRate - arrival;
   assert.ok(Math.abs(peakSeconds - pulse.onsetSeconds) < .01, `peak ${peakSeconds} s after arrival, onset ${pulse.onsetSeconds} s`);
   assert.ok(near.samples.every(Number.isFinite));
+});
+
+test('a deflagration roars for its burn time before it dies away, and a detonation at once', () => {
+  const rms = (samples, from, to, rate) => {
+    let sum = 0;
+    for (let index = Math.round(from * rate); index < Math.round(to * rate); index += 1) sum += samples[index] ** 2;
+    return Math.sqrt(sum / (Math.round(to * rate) - Math.round(from * rate)));
+  };
+  const rate = 8000;
+  const slow = { ...defaultGasExplosion(), fuel: 'methane', congestion: 'open', cloudCubicMetres: 1000 };
+  const burn = gasExplosionPulse(slow, STANDARD_AIR).burnSeconds;
+  const [, roar] = gasExplosionSources(slow, STANDARD_AIR);
+  assert.ok(Math.abs(roar.durationSeconds - burn - gasRoarTailSeconds(slow)) < 1e-12);
+  const samples = combustionSamples(7, roar.durationSeconds, rate, slow);
+  assert.ok(rms(samples, 0, .05 * burn, rate) < .3 * rms(samples, .5 * burn, burn, rate));
+  assert.ok(rms(samples, burn + 2 * gasRoarTailSeconds(slow) / 3, burn + gasRoarTailSeconds(slow), rate) < .2 * rms(samples, .5 * burn, burn, rate));
+  const fast = { ...slow, ignition: 'charge' };
+  const [, quick] = gasExplosionSources(fast, STANDARD_AIR);
+  const sharp = combustionSamples(7, quick.durationSeconds, rate, fast);
+  assert.ok(rms(sharp, 0, .02, rate) > .5 * rms(sharp, .02, .07, rate));
 });

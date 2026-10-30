@@ -128,6 +128,13 @@ export const GAS_EXPLOSION = Object.freeze({
   expansionRatio: 7.5,
   linearPressureShare: VOLCANO.linearPressureShare,
   pressureWaveStrengths: Object.freeze([3, 7]),
+  /** Class C, fitted to gas explosion recordings (Doc/reference/audio E1–E8): the roar grows over a quarter of the burn, holds to its end, then dies away; deflagrations roar low, strong explosions flat in octaves. */
+  roar: Object.freeze({
+    riseShare: .25,
+    spectrumHz: BLAST.roar.spectrumHz,
+    deflagrationDensity: Object.freeze([1.3e-3, 2.3e-3, 5.3e-4, 1.7e-4, 2.4e-7, 4e-9]),
+    detonationDensity: Object.freeze([1 / 40, 1 / 141, 1 / 500, 1 / 2000, .4 / 8000, 1e-3 / 16000])
+  }),
   fuels: Object.freeze({
     methane: Object.freeze({ label: 'Methane', megajoulesPerCubicMetre: 3.22, burningMetresPerSecond: .40 }),
     propane: Object.freeze({ label: 'Propane', megajoulesPerCubicMetre: 3.48, burningMetresPerSecond: .45 }),
