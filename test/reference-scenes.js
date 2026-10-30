@@ -5,8 +5,8 @@ import {
   receiverResult, renderReceiver, renderReceiverRange, sumSegments, tailResponses, tailSamples, tailStretches, tracePart
 } from '../src/domain/render.js';
 import {
-  defaultBarrage, defaultBlast, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultLightning,
-  defaultMeteor, defaultReceiver, defaultScene, defaultShower, defaultStorm, defaultVolcano, defaultWhip, parseScene
+  defaultBarrage, defaultBlast, defaultBleve, defaultBooster, defaultCloudFlash, defaultFireworks, defaultFlight, defaultFormation, defaultGasExplosion, defaultLightning,
+  defaultMeteor, defaultReceiver, defaultRoomExplosion, defaultScene, defaultShower, defaultStorm, defaultTankFarm, defaultVolcano, defaultWhip, parseScene
 } from '../src/domain/scene.js';
 import { syntheticTerrain } from './terrain-fixture.js';
 
@@ -20,6 +20,10 @@ const EMITTERS = Object.freeze({
   barrage: ['blast', () => ({ ...defaultBarrage(), durationSeconds: 8, roundCount: 6, airburstShare: .5 })],
   fireworks: ['blast', () => ({ ...defaultFireworks(), durationSeconds: 8, shellCount: 4, starCount: 10 })],
   volcano: ['blast', () => defaultVolcano()],
+  gasExplosion: ['blast', () => defaultGasExplosion()],
+  roomExplosion: ['blast', () => defaultRoomExplosion()],
+  bleve: ['blast', () => ({ ...defaultBleve(), vesselCubicMetres: 2, fillShare: .65 })],
+  tankFarm: ['blast', () => ({ ...defaultTankFarm(), tankCount: 3, spacingMetres: 40, heatingSeconds: 2, openingCloudCubicMetres: 500 })],
   flight: ['flights', () => defaultFlight(), { rich: true }],
   formation: ['flights', () => ({ ...defaultFormation(), memberCount: 2 }), { rich: true }],
   whip: ['flights', () => defaultWhip(), { rich: true }],
