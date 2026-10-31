@@ -308,6 +308,10 @@ export const VIEW = Object.freeze({
   }),
   terrain: Object.freeze({
     drawCells: 110,
+    movingCells: 55,
+    settleMilliseconds: 200,
+    seamPixels: .35,
+    maskLevels: 32,
     light: Object.freeze({ x: -1, y: 1, z: 1.6 }),
     fogShare: .6,
     edgeShare: .05,

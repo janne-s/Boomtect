@@ -128,6 +128,7 @@ const charge = {
 
 const blastHeight = {
   label: 'Height',
+  lockedByDefault: true,
   read: item => clamp01(logPosition(Math.max(.5, item.positionMetres.z), [.5, 5000])),
   write: (item, t) => { item.positionMetres = { ...item.positionMetres, z: +logValue(t, [.5, 5000]).toPrecision(3) }; },
   show: item => metres(item.positionMetres.z),
@@ -211,6 +212,7 @@ const flightHeight = {
 
 const flightHeading = {
   label: 'Heading',
+  lockedByDefault: true,
   read: item => item.headingDegrees / 360,
   write: (item, t) => { item.headingDegrees = Math.round(t * 360) % 360; },
   show: item => `${Math.round(item.headingDegrees)}°`,
@@ -243,6 +245,7 @@ const flightTurn = {
 
 const flightTime = {
   label: 'Flight time',
+  lockedByDefault: true,
   read: item => clamp01(logPosition(item.durationSeconds, [1, 600])),
   write: (item, t) => { item.durationSeconds = Math.max(1, Math.round(logValue(t, [1, 600]))); },
   show: item => `${item.durationSeconds} s`,
@@ -316,6 +319,7 @@ const whipMach = {
 
 const whipHeight = {
   label: 'Height',
+  lockedByDefault: true,
   read: item => clamp01(logPosition(Math.max(.1, item.startMetres.z), [.1, 10])),
   write: (item, t) => { item.startMetres = { ...item.startMetres, z: +logValue(t, [.1, 10]).toPrecision(2) }; },
   show: item => metres(item.startMetres.z),
@@ -332,6 +336,7 @@ const whipCracker = {
 
 const onset = {
   label: 'Onset',
+  lockedByDefault: true,
   read: item => clamp01(Math.cbrt(item.startSeconds / range('startSeconds')[1])),
   write: (item, t) => { item.startSeconds = +(range('startSeconds')[1] * t ** 3).toFixed(2); },
   show: item => `${+item.startSeconds.toFixed(2)} s`,
@@ -429,6 +434,7 @@ const volcanoSize = {
 
 const volcanoHeight = {
   label: 'Crater height',
+  lockedByDefault: true,
   read: item => clamp01(Math.sqrt(item.positionMetres.z / VIEW.macros.volcanoHeightMetres)),
   write: (item, t) => { item.positionMetres = { ...item.positionMetres, z: Math.round(t * t * VIEW.macros.volcanoHeightMetres / 10) * 10 }; },
   show: item => metres(item.positionMetres.z),

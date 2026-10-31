@@ -25,13 +25,17 @@ import { composeListening, firstArrivalSeconds, LISTENING_LABELS, listeningKind 
 import { createOrientationBall } from './orientation-ball.js';
 import { createMobileLayout } from './mobile.js';
 import { createSettings } from './settings.js';
+import { createRandomiser, ENVIRONMENT } from './randomiser.js';
+import { createPresets } from './presets.js';
+import { ENVIRONMENT_PRESETS } from '../domain/presets.js';
+import { ENVIRONMENT_CONTROLS } from '../domain/randomise.js';
 import { createPlayer, renderComposition } from './player.js';
 import { drawArrivals, drawWaveform, plotSeconds } from './plots.js';
 import { attachSplitters } from './splitters.js';
 import { attachTimelineSeek } from './timeline.js';
 import { createRenderMarker, renderLoadText, unfinishedRenderText } from './render-marker.js';
 import { createFrontStyle } from './front-style.js';
-import { outerSpheres, sampleEnvelopeSources } from './wavefront-envelope.js';
+import { outerSpheres, sampleEnvelopeSources, spreadPick } from './wavefront-envelope.js';
 import { formatMicrophoneLevels } from './levels.js';
 import { createActionMenu } from './action-menu.js';
 
@@ -41,7 +45,7 @@ export function startFrame(tect) {
     onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, linkModes = {}, follower = null
   } = tect;
   const { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene } = tect.scene;
-  const { actionField, checkboxField, numberField, pointFields, selectField, textField } = tect.fields;
+  const { actionField, checkboxField, numberField, pointFields, selectField } = tect.fields;
   const frontStyle = createFrontStyle(tect.propagationStyle);
 
   for (const [mode, { label, button: icon }] of Object.entries(MODE_SETTINGS)) {
@@ -110,7 +114,7 @@ export function startFrame(tect) {
   }
 
   const preferences = {
-    realDelay: true, wavefronts: Object.fromEntries(MODES.map(mode => [mode, true])), contours: true, names: false, map: false, ...tectPreferences, autoRender: true, preview: false, mode: MODES[0],
+    realDelay: true, wavefronts: Object.fromEntries(MODES.map(mode => [mode, true])), contours: true, names: false, map: false, scrollPans: false, ...tectPreferences, autoRender: true, preview: false, mode: MODES[0],
     terrainDraft: { cellMetres: 30 }, cubeViews: {},
     panelWidth: 340, resultsHeight: 220,
     ...(storage.read(PREFERENCES_STORAGE_KEY) ?? {})
@@ -295,7 +299,8 @@ export function startFrame(tect) {
     mapTiles: area => mapLayer.tiles(state.scene.place, area),
     ghosts: () => (link.partner() ? linked.emitters : []),
     onGhost: ghost => link.send('select', { id: ghost.id }),
-    clouds: () => state.preferences.clouds
+    clouds: () => state.preferences.clouds,
+    scrollPans: () => state.preferences.scrollPans
   })];
 
   function groundAnchored(handle, item) {
@@ -347,6 +352,15 @@ export function startFrame(tect) {
     }
     storeScene();
     return true;
+  }
+
+  /** A name changes no sound, so the render stands. */
+  function rename(change) {
+    if (!applyScene(change)) return;
+    refreshPanel();
+    drawInfo();
+    redrawViews();
+    drawResults();
   }
 
   function commit(change) {
@@ -568,6 +582,12 @@ export function startFrame(tect) {
     showResults();
   }
 
+  function linkIcon(name) {
+    const icon = element('i', `fa-solid ${name}`);
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+  }
+
   function drawLink() {
     const holder = $('link-buttons');
     const partner = link.partner();
@@ -575,7 +595,12 @@ export function startFrame(tect) {
       const item = element('button', partner === name ? 'link-button linked' : 'link-button');
       item.type = 'button';
       const waiting = link.offering() === name;
-      item.textContent = partner === name ? (linked.error ? `${name} · not matched` : name) : waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
+      item.textContent = partner === name && linked.error ? `${name} · not matched` : name;
+      if (partner !== name) {
+        item.prepend(waiting ? element('span', 'link-dot updating') : linkIcon(link.present(name) ? 'fa-link' : 'fa-arrow-up-right-from-square'));
+        item.title = waiting ? `Linking ${name}…` : link.present(name) ? `Link ${name}` : `Open ${name}`;
+        item.setAttribute('aria-label', item.title);
+      }
       if (partner === name) {
         item.prepend(element('span', linked.error ? 'link-dot error' : linked.updating ? 'link-dot updating' : 'link-dot'));
         item.title = linked.error ?? (linked.updating ? `${name} is updating its sound` : `Linked with ${name}`);
@@ -1148,8 +1173,19 @@ export function startFrame(tect) {
   const emitterSummary = emitter => kinds[emitter.kind].summary(emitter, state.scene);
   const emitterWarnings = emitter => kinds[emitter.kind].warnings?.(emitter, state.scene) ?? [];
 
+  const findIn = (items, id) => items.find(item => item.id === id);
+  const renameEmitter = (id, name) => rename(scene => { findIn(scene.emitters, id).name = name; });
   const updateEmitter = (id, change) => commit(scene => change(scene.emitters.find(emitter => emitter.id === id)));
   const updateReceiver = (id, change) => commit(scene => change(scene.receivers.find(receiver => receiver.id === id)));
+
+  const quickControls = (emitter, scene) => kinds[emitter.kind].macros(emitter, { onset: scene.emitters.length > 1 || emitter.startSeconds > 0 });
+  const randomiser = createRandomiser({
+    state, commit, savePreferences, refreshPanel: () => refreshPanel(),
+    controlsOf: quickControls,
+    upperWind: scene => Boolean(MODE_SETTINGS[scene.mode].upperWind)
+  });
+  randomiser.menu($('randomise'));
+  const presets = createPresets({ tect: prefix, storageKey: `${prefix}-presets`, state, commit, readScene, kinds, download });
 
   function preview(change) {
     change(state.scene);
@@ -1221,6 +1257,7 @@ export function startFrame(tect) {
     const id = `macro-${emitter.id}-${macro.label}`;
     const label = element('label', '', macro.label);
     label.htmlFor = id;
+    const labelCell = randomiser.lockCell(label, emitter.kind, macro);
     const steps = macro.steps ?? VIEW.panels.macroSteps;
     const value = element(macro.entry ? 'button' : 'span', 'macro-value', macro.show(emitter));
     if (macro.entry) {
@@ -1277,7 +1314,7 @@ export function startFrame(tect) {
         input.addEventListener('dblclick', reset);
       }
       holder.append(lower, upper);
-      container.append(label, holder, value);
+      container.append(labelCell, holder, value);
       return;
     }
     const input = slider(macro.read(emitter));
@@ -1287,7 +1324,42 @@ export function startFrame(tect) {
     input.addEventListener('input', () => { holdViews(true); paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
     input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
     input.addEventListener('dblclick', reset);
-    container.append(label, input, value);
+    container.append(labelCell, input, value);
+  }
+
+  /** An open card's name is renamed in place; a closed card's name opens it as the rest of its header does. */
+  function cardName(name, selected, onRename) {
+    const label = element('span', 'name', name);
+    if (!selected) return label;
+    label.classList.add('renamable');
+    label.title = 'Rename';
+    label.addEventListener('click', event => {
+      event.stopPropagation();
+      const field = element('input', 'card-name');
+      field.type = 'text';
+      field.maxLength = 64;
+      field.value = name;
+      field.setAttribute('aria-label', 'Name');
+      let done = false;
+      const finish = apply => {
+        if (done) return;
+        done = true;
+        const next = field.value.trim();
+        if (apply && next && next !== name) onRename(next);
+        else field.replaceWith(label);
+      };
+      field.addEventListener('click', inner => inner.stopPropagation());
+      field.addEventListener('keydown', inner => {
+        inner.stopPropagation();
+        if (inner.key === 'Enter') { inner.preventDefault(); finish(true); }
+        if (inner.key === 'Escape') { inner.preventDefault(); finish(false); }
+      });
+      field.addEventListener('blur', () => finish(true));
+      label.replaceWith(field);
+      field.focus();
+      field.select();
+    });
+    return label;
   }
 
   function cardNode(selected, { checked, title, onCheck, onToggle }, ...parts) {
@@ -1326,7 +1398,7 @@ export function startFrame(tect) {
       checked: emitter.enabled, title: 'Enabled',
       onCheck: on => updateEmitter(emitter.id, item => { item.enabled = on; }),
       onToggle: () => { state.selection = selected ? { type: null, id: null } : { type: 'emitter', id: emitter.id }; refreshPanel(); }
-    }, element('span', 'name', emitter.name), element('span', 'kind', emitterKindLabel(emitter)), remove);
+    }, cardName(emitter.name, selected, name => renameEmitter(emitter.id, name)), element('span', 'kind', emitterKindLabel(emitter)), remove);
     if (selected) {
       const summary = element('p', 'card-summary', emitterSummary(emitter));
       liveFields.summary = item => { summary.textContent = emitterSummary(item); };
@@ -1339,7 +1411,7 @@ export function startFrame(tect) {
         card.append(warnings);
       }
       const macros = element('div', 'macros');
-      kinds[emitter.kind].macros(emitter, { onset: scene.emitters.length > 1 || emitter.startSeconds > 0 }).forEach(macro => macroRow(macros, emitter, macro));
+      quickControls(emitter, scene).forEach(macro => macroRow(macros, emitter, macro));
       card.append(macros);
       const actions = element('div', 'card-actions');
       actions.append(button('Details…', () => openDetails(emitter.id)));
@@ -1352,6 +1424,10 @@ export function startFrame(tect) {
         source.enabled = false;
         return { ...structuredClone(source), id: uniqueId(source.kind, next.emitters), name: `${source.name} variant`.slice(0, 64), ...(seeded ? { seed: newSeed() } : {}), enabled: true };
       }), { disabled: scene.emitters.length >= RENDER.maximumEmitters, title: seeded ? 'Copy with a new seed; the original is switched off' : 'Copy to change; the original is switched off' }));
+      const tools = randomiser.diceButtons(emitter.id);
+      const bookmark = presets.button(emitter.id);
+      if (bookmark) tools.prepend(bookmark);
+      actions.append(tools);
       card.append(actions);
     }
     container.append(card);
@@ -1419,10 +1495,9 @@ export function startFrame(tect) {
       checked: receiver.listen, title: 'Listen',
       onCheck: on => commitListening(next => { next.receivers.find(item => item.id === receiver.id).listen = on; }),
       onToggle: () => { select(selected ? { type: null, id: null } : { type: 'receiver', id: receiver.id }); refreshPanel(); }
-    }, element('span', 'name', receiver.name), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`), remove);
+    }, cardName(receiver.name, selected, name => rename(scene => { findIn(scene.receivers, receiver.id).name = name; })), element('span', 'kind', `${RECEIVER_TYPE_LABELS[receiver.type]} · ${formatMetres(receiver.positionMetres.z)}`), remove);
     if (selected) {
       const fields = element('div', 'fields');
-      textField(fields, { label: 'Name', value: receiver.name, onCommit: value => updateReceiver(receiver.id, item => { item.name = value; }) });
       selectField(fields, {
         label: 'Type', value: receiver.type, options: Object.entries(RECEIVER_TYPE_LABELS),
         onCommit: value => {
@@ -1476,7 +1551,7 @@ export function startFrame(tect) {
     $('details-title').textContent = kind === emitter.name ? emitter.name : `${emitter.name} · ${kind}`;
     const body = $('details-body');
     const scroll = body.scrollTop;
-    body.replaceChildren(...kinds[emitter.kind].details(emitter, { updateEmitter, scene: state.scene }).map(({ title, build }) => {
+    body.replaceChildren(...kinds[emitter.kind].details(emitter, { updateEmitter, renameEmitter, scene: state.scene }).map(({ title, build }) => {
       const group = element('section', 'details-section');
       group.append(element('h3', '', title));
       const fields = element('div', 'fields');
@@ -1661,7 +1736,7 @@ export function startFrame(tect) {
     checkboxField(container, { label: 'Contours', value: state.preferences.contours, onCommit: value => { state.preferences.contours = value; savePreferences(); redrawViews(); } });
   }
 
-  const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates });
+  const placeMap = createPlaceMap($('place-map'), $('place-overlay'), { onChange: showPlaceCoordinates, scrollPans: () => state.preferences.scrollPans });
   let placeShown = '';
 
   function showPlaceCoordinates({ latitude, longitude }) {
@@ -1782,7 +1857,7 @@ export function startFrame(tect) {
     checkboxField(environment, { label: 'Ground reflection', value: scene.ground.enabled, reliability: 'B', onCommit: value => commit(next => { next.ground.enabled = value; }) });
     selectField(environment, {
       label: 'Ground', value: scene.ground.type, reliability: 'B',
-      options: GROUND_TYPES.map(type => [type, GROUND_LABELS[type]]),
+      key: 'groundType', options: GROUND_TYPES.map(type => [type, GROUND_LABELS[type]]),
       onCommit: value => commit(next => { next.ground.type = value; })
     });
     checkboxField(environment, { label: 'Forest', value: scene.ground.forest, reliability: 'B', onCommit: value => commit(next => { next.ground.forest = value; }) });
@@ -1791,6 +1866,13 @@ export function startFrame(tect) {
       numberField(environment, { key: 'forestDensity', value: scene.ground.forestDensity, onCommit: value => commit(next => { next.ground.forestDensity = value; }) });
     }
     checkboxField(environment, { label: 'Surroundings', value: scene.ground.surroundings, reliability: 'C', onCommit: value => commit(next => { next.ground.surroundings = value; }) });
+    for (const control of ENVIRONMENT_CONTROLS) {
+      const label = environment.querySelector(`[data-key="${control.key}"]`)?.labels?.[0];
+      if (label) randomiser.lockCell(label, ENVIRONMENT, control);
+    }
+    const environmentTools = randomiser.diceButtons(ENVIRONMENT);
+    environmentTools.prepend(presets.button(ENVIRONMENT_PRESETS));
+    $('environment-tools').replaceChildren(environmentTools);
 
     const terrainFields = $('terrain-fields');
     terrainFields.replaceChildren();
@@ -2079,6 +2161,7 @@ export function startFrame(tect) {
     const wavefronts = wavefrontsShown() ? { profile, spheres, total: frontStyle.levelDependent ? wavefrontCandidates(state.scene).length : spheres.length, shadowShare: frontStyle.shadowShare } : null;
     const flights = new Map();
     let cones = [];
+    let members = 0;
     for (const emitter of state.scene.emitters) {
       if (!emitter.enabled) continue;
       const paths = kinds[emitter.kind].tracks(emitter, state.scene);
@@ -2093,16 +2176,18 @@ export function startFrame(tect) {
       }));
       if (!state.preferences.cone) continue;
       const amplitudes = coneAmplitudes(emitter);
+      const first = members;
+      members += paths.length;
       paths.forEach((path, member) => {
         const cone = kinds[emitter.kind].cone(path, now, profile, emitter, state.scene, member);
         if (!cone) return;
         const { amplitude, frequencyHz } = amplitudes.get(`${emitter.id}:${member}`) ?? { amplitude: 0, frequencyHz: 1000 };
         const strengths = cone.radii.map(radius => frontStyle.strength(amplitude, radius, frequencyHz, state.scene.air));
         const strength = Math.max(...strengths);
-        if (strength > 0) cones.push({ ...cone, strengths, strength });
+        if (strength > 0) cones.push({ ...cone, strengths, strength, place: first + member });
       });
     }
-    cones = cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies);
+    cones = frontStyle.levelDependent ? cones.sort((a, b) => b.strength - a.strength).slice(0, VIEW.cone.bodies) : spreadPick(cones, VIEW.cone.bodies, cone => cone.place, members);
     return { seconds: now, strokes, receivers, sound, wavefronts, flights, cones };
   }
 
@@ -2756,6 +2841,11 @@ export function startFrame(tect) {
       after: () => redrawViews()
     },
     ...Object.fromEntries(Object.keys(tectToggles).map(id => [id, { read: () => state.preferences[id], write: on => { state.preferences[id] = on; }, after: () => redrawViews() }])),
+    'scroll-pans': {
+      read: () => state.preferences.scrollPans,
+      write: on => { state.preferences.scrollPans = on; },
+      after: () => syncScrollIcon()
+    },
     names: {
       read: () => state.preferences.names,
       write: on => { state.preferences.names = on; },
@@ -2775,6 +2865,15 @@ export function startFrame(tect) {
       }
     }
   });
+
+  function syncScrollIcon() {
+    const pans = Boolean(state.preferences.scrollPans);
+    const button = $('scroll-pans');
+    button.title = pans ? 'Scrolling pans' : 'Scrolling zooms';
+    button.setAttribute('aria-label', button.title);
+    button.querySelector('i').className = `fa-solid ${pans ? 'fa-hand' : 'fa-computer-mouse'}`;
+  }
+  syncScrollIcon();
 
   function syncToggles() {
     for (const [id, { read }] of Object.entries(TOGGLES)) $(id).setAttribute('aria-pressed', String(Boolean(read())));

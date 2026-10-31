@@ -1,11 +1,12 @@
 import { VIEW } from '../domain/constants.js';
 import { fitCanvas, palette } from './canvas.js';
+import { wheelGesture } from './wheel.js';
 import { tilePixelMetres, tileX, tileY } from '../domain/terrain.js';
 
 const TILE_SIZE = 256;
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
+export function createPlaceMap(mapCanvas, overlayCanvas, { onChange, scrollPans = () => false }) {
   let centre = { latitude: 61.5, longitude: 23.8 };
   let zoom = 11;
   let extentMetres = 5000;
@@ -105,7 +106,9 @@ export function createPlaceMap(mapCanvas, overlayCanvas, { onChange }) {
   overlayCanvas.addEventListener('pointercancel', release);
   overlayCanvas.addEventListener('wheel', event => {
     event.preventDefault();
-    zoomBy(2 ** (-event.deltaY * VIEW.placeMap.zoomPerPixel));
+    const { zoomPixels, panX, panY } = wheelGesture(event, scrollPans());
+    if (zoomPixels === undefined) moveBy(-panX, -panY);
+    else zoomBy(2 ** (-zoomPixels * VIEW.placeMap.zoomPerPixel));
   }, { passive: false });
   new ResizeObserver(draw).observe(mapCanvas);
 

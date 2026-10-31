@@ -22,9 +22,23 @@ function at(group, index) {
   return { ...a, emitted: a.emitted + share * (b.emitted - a.emitted), point: Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, a.point[axis] + share * (b.point[axis] - a.point[axis])])) };
 }
 
+/**
+ * At most `limit` of `items`, each with its place `indexOf(item)` among `total`: an even spread over all of them comes
+ * first and the rest fill what is left, so a salvo's last rounds are drawn as its first are and a choice does not jump.
+ */
+export function spreadPick(items, limit, indexOf, total) {
+  if (items.length <= limit) return items;
+  const stride = Math.max(1, Math.ceil(total / limit));
+  const rank = item => (indexOf(item) % stride === 0 ? 0 : total) + indexOf(item);
+  const kept = new Set([...items].sort((a, b) => rank(a) - rank(b)).slice(0, limit));
+  return items.filter(item => kept.has(item));
+}
+
 /** Class C: bounded interpolation of emission histories for indicative geometry. */
 export function sampleEnvelopeSources(candidates, now, maximum = VIEW.wavefront.spheres) {
-  const groups = groupsOf(candidates).filter(group => group[0].emitted < now).slice(0, Math.min(VIEW.wavefront.groups, Math.floor(maximum / 2)));
+  const all = groupsOf(candidates);
+  const started = all.filter(group => group[0].emitted < now);
+  const groups = spreadPick(started, Math.min(VIEW.wavefront.groups, Math.floor(maximum / 2)), group => all.indexOf(group), all.length);
   return groups.flatMap((group, member) => {
     let low = 0;
     let high = group.length - 1;

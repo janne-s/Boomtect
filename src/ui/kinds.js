@@ -34,7 +34,7 @@ const eruptionLabel = emitter => { const type = eruptionOf(emitter); return type
 const isMeteorKind = emitter => emitter.kind === 'meteor' || emitter.kind === 'shower';
 
 function emitterKindLabel(emitter) {
-  return emitter.kind === 'lightning' ? FLASH_TYPE_LABELS[emitter.flashType] : KIND_LABELS[emitter.kind];
+  return emitter.kind === 'lightning' ? FLASH_TYPE_LABELS[emitter.flashType] ?? 'Lightning' : KIND_LABELS[emitter.kind];
 }
 
 function flightHeightLabel(emitter, scene) {
@@ -81,12 +81,12 @@ function emitterSummary(emitter, scene) {
 }
 
 
-function detailSections(emitter, { updateEmitter }) {
+function detailSections(emitter, { updateEmitter, renameEmitter }) {
   const set = key => value => updateEmitter(emitter.id, item => { item[key] = value; });
   const section = (title, build) => ({ title, build });
   const numbers = keys => container => keys.forEach(key => numberField(container, { key, value: emitter[key], onCommit: set(key) }));
   const placement = container => {
-    textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
+    textField(container, { label: 'Name', value: emitter.name, onCommit: name => renameEmitter(emitter.id, name) });
     if (hasSeed(emitter)) seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
     numberField(container, { key: 'startSeconds', value: emitter.startSeconds, onCommit: set('startSeconds') });
   };
@@ -182,7 +182,7 @@ function detailSections(emitter, { updateEmitter }) {
   );
   if (emitter.follows && emitter.kind !== 'volcano') {
     return [
-      section('Placement', container => textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') })),
+      section('Placement', container => textField(container, { label: 'Name', value: emitter.name, onCommit: name => renameEmitter(emitter.id, name) })),
       bodySection()
     ];
   }
@@ -212,7 +212,7 @@ function detailSections(emitter, { updateEmitter }) {
     return [
       section('Placement', container => {
         if (emitter.follows) {
-          textField(container, { label: 'Name', value: emitter.name, onCommit: set('name') });
+          textField(container, { label: 'Name', value: emitter.name, onCommit: name => renameEmitter(emitter.id, name) });
           seedField(container, { value: emitter.seed, onCommit: set('seed'), onNew: () => set('seed')(newSeed()) });
           return;
         }
@@ -506,10 +506,61 @@ function groundAnchored(field, item) {
   return field === 'positionMetres';
 }
 
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Copies the keys a preset has that the emitter has too; a group is merged, so a preset short of a field leaves the emitter's own. */
+function given(item, values, keys) {
+  for (const key of keys) {
+    if (!(key in values) || !(key in item)) continue;
+    item[key] = isRecord(item[key]) && isRecord(values[key]) ? { ...item[key], ...values[key] } : values[key];
+  }
+}
+
+const pick = (emitter, keys) => Object.fromEntries(keys.filter(key => key in emitter).map(key => [key, emitter[key]]));
+
+const OWN_KEYS = Object.freeze(['id', 'name', 'kind', 'enabled', 'seed', 'follows', 'paths']);
+const PATH_KEYS = Object.freeze(['startMetres', 'startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'durationSeconds']);
+const METEOR_PATH_KEYS = Object.freeze(['startMetres', 'startSeconds', 'headingDegrees', 'entryDegrees', 'endHeightMetres']);
+
+/** A flight is where and when the emitter is, and how a moving one goes, so it sounds the same past the microphones; the device is the rest. */
+const FLIGHTS = Object.freeze({
+  lightning: ['flashType', 'baseMetres', 'topMetres', 'startSeconds'],
+  storm: ['centreMetres', 'startSeconds'],
+  barrage: ['centreMetres', 'startSeconds'],
+  fireworks: ['centreMetres', 'startSeconds'],
+  tankFarm: ['centreMetres', 'headingDegrees', 'startSeconds'],
+  blast: ['positionMetres', 'startSeconds'],
+  volcano: ['positionMetres', 'startSeconds'],
+  gasExplosion: ['positionMetres', 'startSeconds'],
+  roomExplosion: ['positionMetres', 'startSeconds'],
+  bleve: ['positionMetres', 'startSeconds'],
+  flight: PATH_KEYS,
+  formation: [...PATH_KEYS, 'memberCount', 'lateralSpacingMetres', 'trailSpacingMetres'],
+  meteor: METEOR_PATH_KEYS,
+  shower: [...METEOR_PATH_KEYS, 'radiusMetres', 'durationSeconds'],
+  whip: ['startMetres', 'startSeconds', 'headingDegrees', 'climbDegrees'],
+  booster: ['padMetres', 'startSeconds', 'headingDegrees', 'descentDegrees', 'startHeightMetres', 'mach']
+});
+const DEVICE_SECTIONS = Object.freeze({ formation: 'flight', shower: 'meteor' });
+const FLIGHT_SECTIONS = Object.freeze({ storm: 'field', barrage: 'field', fireworks: 'field', tankFarm: 'field', blast: 'point', volcano: 'point', gasExplosion: 'point', roomExplosion: 'point', bleve: 'point', formation: 'flight', shower: 'meteor' });
+
+const deviceKeys = emitter => Object.keys(emitter).filter(key => !OWN_KEYS.includes(key) && !FLIGHTS[emitter.kind].includes(key));
+
+/** A device preset is what sounds (decision 18), loading between kinds that share its section; a flight preset is its place and path. */
+const presetFor = kind => Object.freeze({
+  section: DEVICE_SECTIONS[kind] ?? kind,
+  take: emitter => pick(emitter, deviceKeys(emitter)),
+  give: (emitter, values) => given(emitter, values, deviceKeys(emitter)),
+  flightSection: FLIGHT_SECTIONS[kind] ?? kind,
+  takeFlight: emitter => pick(emitter, FLIGHTS[emitter.kind]),
+  giveFlight: (emitter, values) => given(emitter, values, FLIGHTS[emitter.kind])
+});
+
 const KINDS = Object.freeze(['lightning', 'storm', 'blast', 'barrage', 'fireworks', 'volcano', 'gasExplosion', 'roomExplosion', 'bleve', 'tankFarm', 'flight', 'formation', 'meteor', 'shower', 'whip', 'booster']);
 
 export const KIND_PANELS = Object.freeze(Object.fromEntries(KINDS.map(kind => [kind, Object.freeze({
   label: emitterKindLabel,
+  preset: presetFor(kind),
   summary: emitterSummary,
   macros: macrosFor,
   details: detailSections,

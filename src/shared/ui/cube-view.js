@@ -3,6 +3,7 @@ import { grazingRange, inShadow, pathProfile, soundSpeedProfile } from '../domai
 import { meanPlaneFrame } from '../domain/terrain-propagation.js';
 import { fitCanvas, formatMetres, niceStep, palette } from './canvas.js';
 import { currentSurface, useTerrain } from './geometry-cache.js';
+import { wheelGesture } from './wheel.js';
 
 const OUTLINE_STEPS = 48;
 const OUTLINE_DIRECTIONS = Object.freeze(Array.from({ length: OUTLINE_STEPS }, (_, step) => {
@@ -103,7 +104,7 @@ function handles(scene, box, kinds, tools) {
 }
 
 export function createCubeView(canvas, options) {
-  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [], ghosts = () => [], onGhost = null } = options;
+  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [], ghosts = () => [], onGhost = null, scrollPans = () => false } = options;
   let scene = null;
   let selection = null;
   let view = { ...VIEW.box.defaultView };
@@ -114,7 +115,10 @@ export function createCubeView(canvas, options) {
   let held = false;
   let lastBox = null;
   let terrainLayer = null;
-  let terrainMeshCache = null;
+  let maskLayer = null;
+  const terrainMeshes = new Map();
+  let viewMoving = false;
+  let viewSettle = null;
   let rippleLayer = null;
   let terrainBoundary = null;
   let relief = null;
@@ -463,9 +467,10 @@ export function createCubeView(canvas, options) {
     return Math.max(smooth(outside / (VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0))), 1 - smooth(inside / (VIEW.terrain.edgeShare * Math.max(east - west, north - south))));
   }
 
-  function terrainMesh(surface, box, striped, colors) {
+  function terrainMesh(surface, box, striped, colors, limit) {
     const key = [box.x0, box.x1, box.y0, box.y1, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
-    if (terrainMeshCache?.key === key && terrainMeshCache.surface === surface) return terrainMeshCache;
+    const cached = terrainMeshes.get(limit);
+    if (cached?.key === key && cached.surface === surface) return cached;
     const { bounds } = surface;
     const fogMetres = VIEW.terrain.fogShare * Math.max(box.x1 - box.x0, box.y1 - box.y0);
     const west = Math.max(bounds.west, box.x0 - fogMetres);
@@ -473,7 +478,7 @@ export function createCubeView(canvas, options) {
     const east = Math.min(bounds.east, box.x1 + fogMetres);
     const north = Math.min(bounds.north, box.y1 + fogMetres);
     const side = Math.max(east - west, north - south);
-    const cells = Math.max(2, Math.min(VIEW.terrain.drawCells, Math.ceil(side / surface.cellMetres)));
+    const cells = Math.max(2, Math.min(limit, Math.ceil(side / surface.cellMetres)));
     const spacing = side / cells;
     const vertices = [];
     for (let row = 0; row <= cells; row += 1) {
@@ -509,11 +514,12 @@ export function createCubeView(canvas, options) {
         const stripe = striped && Math.floor((height - lowest) / band) % 2 === 1 ? .82 : 1;
         const shaded = mixColors(dark, light, lit * lit).map(value => value * stripe);
         const [r, g, b] = mixColors(shaded, fogColor, fog);
-        quads.push({ indices, centreX, centreY, depth: 0, color: `rgb(${r},${g},${b})`, mask: `rgba(255,255,255,${(1 - fog).toFixed(3)})` });
+        quads.push({ indices, centreX, centreY, depth: 0, color: `rgb(${r},${g},${b})`, maskLevel: Math.round((1 - fog) * VIEW.terrain.maskLevels) });
       }
     }
-    terrainMeshCache = { key, surface, vertices, quads };
-    return terrainMeshCache;
+    const mesh = { key, surface, vertices, quads };
+    terrainMeshes.set(limit, mesh);
+    return mesh;
   }
 
   function terrainLayers(colors) {
@@ -521,35 +527,71 @@ export function createCubeView(canvas, options) {
     const { box, farX, farY } = frame;
     const ratio = window.devicePixelRatio || 1;
     const striped = contours();
-    const key = [frame.key, canvas.width, canvas.height, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
+    const limit = viewMoving ? VIEW.terrain.movingCells : VIEW.terrain.drawCells;
+    const key = [frame.key, limit, canvas.width, canvas.height, striped, colors.ground, colors.line, colors.muted, colors.panel].join('|');
     if (terrainLayer?.key === key && terrainLayer.surface === surface) return terrainLayer;
-    const layers = (terrainLayer?.layers ?? [null, null, null]).map(layer => {
+    const layers = (terrainLayer?.layers ?? [null, null]).map(layer => {
       layer = sized(layer);
-      const paint = layer.getContext('2d');
-      paint.setTransform(ratio, 0, 0, ratio, 0, 0);
-      paint.lineWidth = .6;
+      layer.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
       return layer;
     });
-    const { vertices, quads } = terrainMesh(surface, box, striped, colors);
+    const { vertices, quads } = terrainMesh(surface, box, striped, colors, limit);
     const projected = vertices.map(frame.project);
     const behind = (x, y) => (farX === box.x1 ? x > box.x1 : x < box.x0) || (farY === box.y1 ? y > box.y1 : y < box.y0);
     for (const quad of quads) quad.depth = projected[quad.indices[0]].depth + projected[quad.indices[1]].depth + projected[quad.indices[2]].depth + projected[quad.indices[3]].depth;
     const ordered = [...quads].sort((a, b) => b.depth - a.depth);
     const paints = layers.map(layer => layer.getContext('2d'));
-    for (const { indices, centreX, centreY, color, mask } of ordered) {
-      const front = paints[behind(centreX, centreY) ? 0 : 1];
-      for (const [paint, style] of [[front, color], [paints[2], mask]]) {
-        paint.beginPath();
-        paint.moveTo(projected[indices[0]].x, projected[indices[0]].y);
-        for (let corner = 1; corner < 4; corner += 1) paint.lineTo(projected[indices[corner]].x, projected[indices[corner]].y);
-        paint.closePath();
-        paint.fillStyle = style;
-        paint.fill();
-        if (paint !== paints[2]) { paint.strokeStyle = style; paint.stroke(); }
+    const seam = VIEW.terrain.seamPixels;
+    for (const { indices, centreX, centreY, color } of ordered) {
+      const paint = paints[behind(centreX, centreY) ? 0 : 1];
+      let middleX = 0;
+      let middleY = 0;
+      for (const index of indices) { middleX += projected[index].x / 4; middleY += projected[index].y / 4; }
+      paint.beginPath();
+      for (let corner = 0; corner < 4; corner += 1) {
+        const { x, y } = projected[indices[corner]];
+        const grow = seam / (Math.hypot(x - middleX, y - middleY) || Infinity);
+        if (corner) paint.lineTo(x + (x - middleX) * grow, y + (y - middleY) * grow);
+        else paint.moveTo(x + (x - middleX) * grow, y + (y - middleY) * grow);
       }
+      paint.fillStyle = color;
+      paint.fill();
     }
-    terrainLayer = { key, surface, layers };
+    terrainLayer = { key, surface, layers, projected, quads, mask: null };
     return terrainLayer;
+  }
+
+  /** Every quad wound the same way: a nonzero fill would cut holes where the terrain folds over itself. */
+  function terrainMask(colors) {
+    const terrain = terrainLayers(colors);
+    if (terrain.mask) return terrain.mask;
+    const { projected, quads } = terrain;
+    const paths = new Map();
+    for (const { indices, maskLevel } of quads) {
+      if (!maskLevel) continue;
+      if (!paths.has(maskLevel)) paths.set(maskLevel, new Path2D());
+      const path = paths.get(maskLevel);
+      const corners = indices.map(index => projected[index]);
+      let area = 0;
+      for (let corner = 0; corner < 4; corner += 1) {
+        const a = corners[corner];
+        const b = corners[(corner + 1) % 4];
+        area += a.x * b.y - b.x * a.y;
+      }
+      if (area < 0) corners.reverse();
+      path.moveTo(corners[0].x, corners[0].y);
+      for (let corner = 1; corner < 4; corner += 1) path.lineTo(corners[corner].x, corners[corner].y);
+    }
+    maskLayer = sized(maskLayer);
+    const paint = maskLayer.getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    paint.setTransform(ratio, 0, 0, ratio, 0, 0);
+    for (const [level, path] of paths) {
+      paint.fillStyle = `rgba(255,255,255,${level / VIEW.terrain.maskLevels})`;
+      paint.fill(path);
+    }
+    terrain.mask = maskLayer;
+    return maskLayer;
   }
 
   function drawTerrain(context, colors, back) {
@@ -711,17 +753,36 @@ export function createCubeView(canvas, options) {
     }
     const { lit, width, depth } = terrainBoundary;
     if (lit.every(Boolean)) return;
-    const path = new Path2D();
-    const bounds = emptyBounds();
-    for (let row = 0; row < VIEW.shadowBoundary.terrainCells; row += 1) {
-      for (let column = 0; column < VIEW.shadowBoundary.terrainCells; column += 1) {
-        if (!lit[row * VIEW.shadowBoundary.terrainCells + column]) continue;
-        const x0 = box.x0 + column * width;
-        const y0 = box.y0 + row * depth;
-        addPolygon(path, [[x0, y0], [x0 + width, y0], [x0 + width, y0 + depth], [x0, y0 + depth]].map(([x, y]) => frame.project({ x, y, z: ground(x, y) })), bounds);
+    if (terrainBoundary.frameKey !== frame.key) {
+      const cells = VIEW.shadowBoundary.terrainCells;
+      const isLit = (row, column) => row >= 0 && row < cells && column >= 0 && column < cells && lit[row * cells + column] === 1;
+      const corner = (row, column) => {
+        const x = box.x0 + column * width;
+        const y = box.y0 + row * depth;
+        return frame.project({ x, y, z: ground(x, y) });
+      };
+      const path = new Path2D();
+      const edge = (a, b) => { path.moveTo(a.x, a.y); path.lineTo(b.x, b.y); };
+      for (let row = 0; row < cells; row += 1) {
+        for (let column = 0; column < cells; column += 1) {
+          if (!isLit(row, column)) continue;
+          if (!isLit(row - 1, column)) edge(corner(row, column), corner(row, column + 1));
+          if (!isLit(row + 1, column)) edge(corner(row + 1, column), corner(row + 1, column + 1));
+          if (!isLit(row, column - 1)) edge(corner(row, column), corner(row + 1, column));
+          if (!isLit(row, column + 1)) edge(corner(row, column + 1), corner(row + 1, column + 1));
+        }
       }
+      terrainBoundary.path = path;
+      terrainBoundary.frameKey = frame.key;
     }
-    unionOutline(context, path, colors.muted, { fillAlpha: 0, edgeAlpha: VIEW.shadowBoundary.edgeAlpha, bounds });
+    context.save();
+    context.globalAlpha *= VIEW.shadowBoundary.edgeAlpha;
+    context.strokeStyle = colors.muted;
+    context.lineWidth = VIEW.box.outlinePixels;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.stroke(terrainBoundary.path);
+    context.restore();
   }
 
   function drawWavefronts(context, colors, { profile, spheres, total, shadowShare = VIEW.wavefront.shadowShare }) {
@@ -878,7 +939,7 @@ export function createCubeView(canvas, options) {
     for (const { path, bounds, alpha } of rings) unionOutline(paint, path, colors.glow, { fillAlpha: 0, edgeAlpha: alpha * strength, bounds });
     paint.setTransform(1, 0, 0, 1, 0, 0);
     paint.globalCompositeOperation = 'destination-in';
-    paint.drawImage(terrainLayers(colors).layers[2], x0, y0, width, height, x0, y0, width, height);
+    paint.drawImage(terrainMask(colors), x0, y0, width, height, x0, y0, width, height);
     context.save();
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.drawImage(rippleLayer, x0, y0, width, height, x0, y0, width, height);
@@ -1216,6 +1277,9 @@ export function createCubeView(canvas, options) {
 
   function changeView(next) {
     view = next;
+    viewMoving = true;
+    clearTimeout(viewSettle);
+    viewSettle = setTimeout(() => { viewMoving = false; requestDraw(); }, VIEW.terrain.settleMilliseconds);
     if (frame && scene) {
       frame = computeFrame(frame.width, frame.height);
       requestDraw();
@@ -1352,12 +1416,9 @@ export function createCubeView(canvas, options) {
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     const { x, y } = localPoint(event);
-    const scale = event.deltaMode === 1 ? VIEW.box.wheelLinePixels : 1;
-    const deltaX = event.deltaX * scale;
-    const deltaY = event.deltaY * scale;
-    const mouseWheel = event.deltaMode === 1 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 40 && Number.isInteger(event.deltaY));
-    if (event.ctrlKey || mouseWheel) zoomAt(Math.exp(-deltaY * VIEW.box.zoomPerPixel * (event.ctrlKey ? 2 : 1)), x, y);
-    else panBy(-deltaX, -deltaY);
+    const { zoomPixels, panX, panY } = wheelGesture(event, scrollPans());
+    if (zoomPixels === undefined) panBy(-panX, -panY);
+    else zoomAt(Math.exp(-zoomPixels * VIEW.box.zoomPerPixel), x, y);
     onView(view);
   }, { passive: false });
   let gestureScale = 1;

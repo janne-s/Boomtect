@@ -33,6 +33,7 @@
       <div class="modes" role="radiogroup" aria-label="Mode"></div>
       <button type="button" id="play" class="primary" disabled aria-pressed="false" aria-keyshortcuts="Space">Play</button>
       <button type="button" class="icon-toggle" id="settings" data-recovery-dialog="settings-dialog" aria-haspopup="dialog" aria-label="Settings" title="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
+      <button type="button" class="icon-toggle" id="randomise" aria-haspopup="menu" aria-expanded="false" aria-label="Randomise" title="Randomise"><i class="fa-solid fa-dice-five" aria-hidden="true"></i></button>
       <div class="icon-toggles" role="group" aria-label="Rendering and playback">
         <button type="button" class="icon-toggle" id="auto-render" aria-pressed="true" aria-label="Auto render" title="Auto render"><i class="fa-solid fa-repeat" aria-hidden="true"></i></button>
         <button type="button" class="icon-toggle" id="real-delay" aria-pressed="true" aria-label="Real delay" title="Real delay"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></button>
@@ -65,6 +66,7 @@
             <button type="button" class="icon-toggle" id="wavefront" aria-pressed="false" aria-label="Wavefronts" title="Wavefronts"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="names" aria-pressed="false" aria-label="Place names" title="Place names" hidden><i class="fa-solid fa-tag" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="map" aria-pressed="false" aria-label="Map" title="Map" hidden><i class="fa-solid fa-map" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle scroll-pans" id="scroll-pans" aria-pressed="false" aria-label="Scrolling zooms" title="Scrolling zooms"><i class="fa-solid fa-computer-mouse" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="zoom-in" aria-label="Zoom in" title="Zoom in" hidden><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="zoom-out" aria-label="Zoom out" title="Zoom out" hidden><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
           </div>
@@ -116,7 +118,7 @@
           <div class="list" id="receiver-list"></div>
         </section>
         <details class="group" data-sheet="environment">
-          <summary><i class="fa-solid fa-wind" aria-hidden="true"></i>Air and ground</summary>
+          <summary><i class="fa-solid fa-wind" aria-hidden="true"></i>Air and ground<span class="section-tools" id="environment-tools"></span></summary>
           <div class="fields" id="environment-fields"></div>
         </details>
         <details class="group" data-sheet="terrain">

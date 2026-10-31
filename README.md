@@ -31,8 +31,27 @@ microphone along the Mach cone.
   loaded terrain goes on beyond it and fades toward its own edge.
 - **Points and shadows** — Drag a point to move it horizontally, or its shadow
   on the floor or a wall to move it in that plane.
-- **View** — Drag empty space to turn, pinch or wheel to zoom, two fingers,
-  Shift-drag, or the right button to pan, double-click to reset.
+- **View** — Drag empty space to turn, pinch or scroll to zoom, Shift-scroll,
+  Shift-drag, or the right button to pan, double-click to reset. The mouse
+  button in the view turns into a hand and lets two-finger scrolling pan.
+  Terrain draws coarser while the view moves.
+- **Randomise** — The dice on an emitter rolls its quick controls; heading,
+  onset, flight time, and the height of a blast, crater, or whip stay locked
+  until unlocked. The dice on Air and ground rolls the air and ground values
+  within everyday weather and keeps the switches. The arrow beside it steps
+  back through its rolls. The dice in the bar rolls every enabled emitter and
+  the air at once, sets how far a roll moves from the present values, and
+  shows locks that keep a control as it is.
+- **Presets** — The bookmark beside a dice opens one presets window, on its
+  Emitter or its Air and ground tab, that saves under a name and loads back
+  the emitter's device, its flight (where and when it is, and how it moves),
+  or both, or the air and ground with their switches; other kinds' presets
+  show dimmed. A device leaves the emitter's flight and a flight its device;
+  the name stays. A place fits every kind at one point (blast, volcano, gas
+  explosion, room explosion, BLEVE) and every kind over an area (storm,
+  barrage, fireworks, tank farm); a flight's path fits a formation. A
+  meteoroid loads into a shower and back. Presets stay in the browser through
+  an app reset, and Export library and Import library keep them in one file.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
   one. A storm's edge handle sets its size, and its grey handles move the
   cloud base and top up and down.
@@ -366,9 +385,9 @@ holds. One direction stands for sound that arrives from many.
 
 ## Rumbletect
 
-**Open Rumbletect** opens [Rumbletect](https://github.com/janne-s/Rumbletect) in its own
-window and links the two windows. When Rumbletect is already open, the button
-reads **Link Rumbletect**. Rumbletect makes the engines of jets, airliners, and
+**Rumbletect** in the bar opens [Rumbletect](https://github.com/janne-s/Rumbletect) in its own
+window and links the two windows. When Rumbletect is already open, a link icon
+replaces the arrow. Rumbletect makes the engines of jets, airliners, and
 rockets, and the roar of an eruption.
 
 - **One scene** — The place, terrain, air, ground, microphones, and render

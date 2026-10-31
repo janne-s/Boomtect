@@ -106,10 +106,11 @@ export function createFields(parameters, ownDisplay = {}) {
     append(container, labelFor(label, '', id), input, badge(null));
   }
 
-  function selectField(container, { label, value, options, onCommit, reliability = null }) {
+  function selectField(container, { label, value, options, onCommit, reliability = null, key = null }) {
     const id = `field-${fieldCounter += 1}`;
     const select = document.createElement('select');
     select.id = id;
+    if (key) select.dataset.key = key;
     for (const [optionValue, optionLabel] of options) select.add(new Option(optionLabel, optionValue, false, optionValue === value));
     select.addEventListener('change', () => onCommit(select.value));
     append(container, labelFor(label, '', id), select, badge(reliability));

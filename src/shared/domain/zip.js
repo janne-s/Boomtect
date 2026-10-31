@@ -16,7 +16,17 @@ export function crc32(bytes) {
 
 const bytesOf = value => value instanceof Uint8Array ? value : new Uint8Array(value);
 
-export function zipStore(files) {
+/** The MS-DOS time and date a ZIP entry carries, in local time; zero would read as 1980 or, west of Greenwich, 1979. */
+export function dosDateTime(date) {
+  const year = Math.min(2107, Math.max(1980, date.getFullYear()));
+  return {
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1),
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+  };
+}
+
+export function zipStore(files, modified = new Date()) {
+  const stamp = dosDateTime(modified);
   const encoder = new TextEncoder();
   const entries = files.map(file => ({ name: encoder.encode(file.name), data: bytesOf(file.data) }));
   const localSize = entries.reduce((sum, entry) => sum + 30 + entry.name.length + entry.data.length, 0);
@@ -33,6 +43,8 @@ export function zipStore(files) {
     view.setUint16(offset + 4, 20, true);
     view.setUint16(offset + 6, 0x0800, true);
     view.setUint16(offset + 8, 0, true);
+    view.setUint16(offset + 10, stamp.time, true);
+    view.setUint16(offset + 12, stamp.date, true);
     view.setUint32(offset + 14, checksum, true);
     view.setUint32(offset + 18, entry.data.length, true);
     view.setUint32(offset + 22, entry.data.length, true);
@@ -47,6 +59,8 @@ export function zipStore(files) {
     view.setUint16(offset + 4, 20, true);
     view.setUint16(offset + 6, 20, true);
     view.setUint16(offset + 8, 0x0800, true);
+    view.setUint16(offset + 12, stamp.time, true);
+    view.setUint16(offset + 14, stamp.date, true);
     view.setUint32(offset + 16, entry.checksum, true);
     view.setUint32(offset + 20, entry.data.length, true);
     view.setUint32(offset + 24, entry.data.length, true);
