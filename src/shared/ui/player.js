@@ -60,7 +60,9 @@ async function binauralRenderer(context, order) {
   if (!renderers.has(order)) {
     const hrirPathList = hrirFiles(order).map(bytes => URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
     const renderer = order === 1 ? Omnitone.createFOARenderer(context, { hrirPathList }) : Omnitone.createHOARenderer(context, { ambisonicOrder: order, hrirPathList });
-    renderers.set(order, renderer.initialize().then(() => {
+    const loaded = renderer.initialize();
+    loaded.finally(() => hrirPathList.forEach(url => URL.revokeObjectURL(url))).catch(() => {});
+    renderers.set(order, loaded.then(() => {
       renderer.output.connect(context.destination);
       return renderer;
     }));
