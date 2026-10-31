@@ -151,10 +151,10 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
       choice.setAttribute('role', 'radiogroup');
       choice.setAttribute('aria-label', 'Save');
       for (const [key, label] of PARTS) {
-        const option = textButton(label, () => { parts = key; render(); }, 'preset-part-choice');
-        option.setAttribute('role', 'radio');
-        option.setAttribute('aria-checked', String(parts === key));
-        option.disabled = key !== 'device' && !current.flightSection;
+        const input = Object.assign(node('input'), { type: 'radio', name: 'preset-parts', checked: parts === key, disabled: key !== 'device' && !current.flightSection });
+        input.addEventListener('change', () => { parts = key; render(); });
+        const option = node('label', 'preset-part-choice');
+        option.append(input, label);
         choice.append(option);
       }
       holder.append(choice);

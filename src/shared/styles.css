@@ -118,7 +118,8 @@ textarea:focus-visible {
 dialog:focus {
   outline: none;
 }
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   display: inline-grid;
   flex: none;
   place-content: center;
@@ -140,17 +141,32 @@ input[type="checkbox"]::before {
   content: "";
   transform: scale(0);
 }
-input[type="checkbox"]:hover {
+input[type="radio"] {
+  border-radius: 50%;
+}
+input[type="radio"]::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  content: "";
+  transform: scale(0);
+}
+input[type="checkbox"]:hover,
+input[type="radio"]:hover {
   box-shadow: inset 0 0 0 1px var(--muted);
 }
-input[type="checkbox"]:checked {
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
   background: var(--accent);
   box-shadow: none;
 }
-input[type="checkbox"]:checked::before {
+input[type="checkbox"]:checked::before,
+input[type="radio"]:checked::before {
   transform: scale(1);
 }
-input[type="checkbox"]:disabled {
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
   cursor: not-allowed;
   opacity: .5;
 }
@@ -868,17 +884,21 @@ button.macro-value:hover {
 }
 .preset-parts {
   display: flex;
-  gap: 2px;
+  gap: 18px;
 }
 .preset-part-choice {
-  flex: 1;
-  background: var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
+  cursor: pointer;
 }
-.preset-part-choice[aria-checked="true"] {
-  background: var(--raised);
+.preset-part-choice:has(input:checked) {
   color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.preset-part-choice:has(input:disabled) {
+  color: var(--faint);
+  cursor: not-allowed;
 }
 .preset-part {
   margin-left: 8px;
