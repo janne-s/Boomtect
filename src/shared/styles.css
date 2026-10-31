@@ -1892,6 +1892,29 @@ details summary {
   .info-section .warning {
     color: var(--accent);
   }
+  .modes button:not([aria-checked="true"]):hover:not(:disabled),
+  .bar .icon-toggle:hover:not(:disabled) {
+    background: var(--raised);
+  }
+  .view-tools .icon-toggle:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--raised) 80%, transparent);
+  }
+  .sheet-tabs button:hover:not(:disabled) {
+    background: var(--panel-dim);
+  }
+  .plot-play:hover:not(:disabled),
+  .icon-button:hover:not(:disabled),
+  .lock-button:hover:not(:disabled) {
+    background: none;
+  }
+  .icon-toggle:hover:not(:disabled):not([aria-pressed="true"]),
+  .icon-button:hover:not(:disabled),
+  .lock-button:hover:not([aria-pressed="true"]) {
+    color: var(--faint);
+  }
+  .bar .mobile-actions:hover:not(:disabled) {
+    color: var(--ink);
+  }
 }
 
 @media (max-width: 420px) {
@@ -1902,6 +1925,9 @@ details summary {
   }
   #play .play-label {
     display: none;
+  }
+  .bar #play:hover:not(:disabled) {
+    background: var(--accent);
   }
   #play .play-icon {
     display: inline-block;
