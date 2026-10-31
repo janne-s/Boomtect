@@ -291,6 +291,7 @@ figcaption {
 
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
@@ -468,7 +469,10 @@ figcaption {
 .status.error {
   color: var(--accent);
 }
-.spacer {
+.bar > * {
+  flex: none;
+}
+.bar > .spacer {
   flex: 1;
 }
 
@@ -1381,9 +1385,6 @@ details summary {
     grid-template-columns: 1fr;
     grid-template-rows: 180px 160px;
   }
-  .bar {
-    flex-wrap: wrap;
-  }
 }
 
 .place-dialog {
@@ -1953,6 +1954,7 @@ details summary {
   }
   .modes button,
   .bar #settings,
+  .bar #randomise,
   .bar .mobile-actions,
   .bar .github-link {
     width: 32px;
