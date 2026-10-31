@@ -1,3 +1,5 @@
+import { binauralChannels } from '../domain/binaural.js';
+
 export const LISTENING_LABELS = Object.freeze({
   none: 'No microphone',
   mono: 'Mono',
@@ -72,4 +74,39 @@ export function composeListening(scene, results) {
     peakPa,
     parts: listening.length
   };
+}
+
+/**
+ * A composition's stereo as the player wires it offline, computed here in double precision: a browser's own decoder can add noise in
+ * proportion to a strong infrasound. Heads through the SADIE decoder, a lone or mixed omni on both sides, a pair as left and right, and
+ * a surround's omnis panned at equal power by their bearing.
+ */
+export function compositionStereo(composition, gain) {
+  const { kind, length, order } = composition;
+  const stereo = [new Float32Array(length), new Float32Array(length)];
+  const add = (channel, samples, scale) => {
+    const target = stereo[channel];
+    for (let index = 0, end = Math.min(length, samples.length); index < end; index += 1) target[index] += scale * samples[index];
+  };
+  if (kind === 'binaural' || kind === 'mix') {
+    for (const head of composition.heads) {
+      binauralChannels(head.channels, order, head.headingDegrees, head.pitchDegrees).forEach((ear, channel) => add(channel, ear, gain));
+    }
+    for (const omni of composition.omnis) [0, 1].forEach(channel => add(channel, omni.channel, gain));
+    return stereo;
+  }
+  if (kind === 'surround') {
+    for (const omni of composition.omnis) {
+      const angle = (Math.sin(omni.bearing) + 1) * Math.PI / 4;
+      add(0, omni.channel, gain * Math.cos(angle));
+      add(1, omni.channel, gain * Math.sin(angle));
+    }
+    return stereo;
+  }
+  if (kind === 'pair') {
+    composition.omnis.forEach((omni, channel) => add(channel, omni.channel, gain));
+    return stereo;
+  }
+  for (const omni of composition.omnis) [0, 1].forEach(channel => add(channel, omni.channel, gain));
+  return stereo;
 }

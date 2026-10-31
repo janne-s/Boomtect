@@ -2219,7 +2219,7 @@ export function startFrame(tect) {
     if (resuming) { resuming.again = true; return; }
     if (!player.playing() || !player.clock()) return;
     resuming = { again: false };
-    const start = player.unlock(state.scene.render.sampleRate, { continuing: true });
+    const start = player.unlock({ continuing: true });
     let started = false;
     try {
       const [current] = await start.wait(Promise.all([listening(), start.ready]));
@@ -2249,7 +2249,7 @@ export function startFrame(tect) {
   /** Call it first thing in a user gesture, which the audio context needs. */
   async function startPlayback() {
     const { results } = state;
-    const start = player.unlock(state.scene.render.sampleRate);
+    const start = player.unlock();
     setStatus('Starting audio…');
     try {
       let current;

@@ -235,13 +235,14 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     onChange();
   }
 
-  function replaceContext(sampleRate) {
+  // At the output's own rate: a context at another rate is resampled at the output, whose images of a strong infrasound sing as a tone.
+  function replaceContext() {
     watchSleep();
     const retired = context;
     detachContext?.();
     detachContext = null;
     if (retired) retired.close().catch(() => {});
-    context = new AudioContext({ sampleRate });
+    context = new AudioContext();
     observeContext(context);
     stale = false;
   }
@@ -273,7 +274,7 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
   navigator.audioSession?.addEventListener('statechange', sessionChanged);
 
   /** Keep session activation and resume synchronous with the Play gesture. */
-  function unlock(sampleRate, { continuing = false } = {}) {
+  function unlock({ continuing = false } = {}) {
     if (!continuing) stop();
     pending?.abort();
     const controller = new AbortController();
@@ -297,7 +298,7 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
         }
         checkSleep();
         // Safari can report running while its output is silent after sleep or a change of output, so then a new one.
-        if (!context || stale || context.state === 'closed' || context.sampleRate !== sampleRate) replaceContext(sampleRate);
+        if (!context || stale || context.state === 'closed') replaceContext();
       }
       attempt.context = context;
       const resumed = context.resume();

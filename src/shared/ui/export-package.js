@@ -2,8 +2,7 @@ export const AMBISONIC_CONVENTION = 'AmbiX (ACN, SN3D); front = north, left = we
 import { wavByteLength, encodeFloat32Wav } from '../domain/wav.js';
 import { serializeHandoff } from '../domain/handoff.js';
 import { zipStore } from '../domain/zip.js';
-import { composeListening } from './listening.js';
-import { renderComposition } from './player.js';
+import { composeListening, compositionStereo } from './listening.js';
 
 const EXPORT_ITEMS = Object.freeze(['scene', 'stereo', 'microphones', 'ambix']);
 const HANDOFF_BYTES = 2048;
@@ -64,7 +63,7 @@ export async function exportFiles(plan, selected, stem, describe, echotect) {
   };
   const scaled = channel => channel.map(value => value * gain);
   if (selected.has('stereo')) {
-    const stereo = await renderComposition(listening, gain);
+    const stereo = compositionStereo(listening, gain);
     const offset = Math.round((listening.startSeconds - timeline.startSeconds) * timeline.sampleRate);
     add('-stereo', aligned ? placed(stereo, offset, timeline.length) : stereo, `Stereo: ${listening.label}`);
   }
@@ -72,7 +71,7 @@ export async function exportFiles(plan, selected, stem, describe, echotect) {
     for (const microphone of microphones) {
       if (isHead(plan, microphone)) {
         const single = { ...everyone, kind: 'binaural', heads: [microphone], omnis: [], parts: 1 };
-        add(`-${slug(microphone.name)}`, await renderComposition(single, gain), `${microphone.name}: binaural, left and right`);
+        add(`-${slug(microphone.name)}`, compositionStereo(single, gain), `${microphone.name}: binaural, left and right`);
       } else {
         add(`-${slug(microphone.name)}`, [scaled(microphone.channels[0])], `${microphone.name}: pressure`);
       }
