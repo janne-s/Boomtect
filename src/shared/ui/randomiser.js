@@ -74,7 +74,7 @@ export function createRandomiser({ state, commit, controlsOf, upperWind, savePre
   function diceButtons(target) {
     const holder = document.createElement('span');
     holder.className = 'dice-buttons';
-    holder.append(iconButton('icon-button dice-button', 'fa-dice-five', 'Randomise', () => roll([target])));
+    holder.append(iconButton('icon-button dice-button', 'fa-dice', 'Randomise', () => roll([target])));
     if (rolled(target)) holder.append(iconButton('icon-button dice-button', 'fa-arrow-rotate-left', 'Previous roll', () => back(target)));
     return holder;
   }
@@ -127,7 +127,7 @@ export function createRandomiser({ state, commit, controlsOf, upperWind, savePre
       const locksItem = action('Locks', 'fa-lock', () => { preferences().showLocks = !preferences().showLocks; savePreferences(); refreshPanel(); });
       locksItem.setAttribute('aria-pressed', String(Boolean(preferences().showLocks)));
       node.replaceChildren(
-        action('Randomise all', 'fa-dice-five', () => roll(allTargets())),
+        action('Randomise all', 'fa-dice', () => roll(allTargets())),
         action('Previous roll', 'fa-arrow-rotate-left', () => back(), !ownRolls().length),
         document.createElement('hr'),
         amountRow,
