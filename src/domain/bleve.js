@@ -102,6 +102,7 @@ function drawPuffs(random, riseSeconds, holdSeconds) {
 const growthDensity = tableDensity(BLEVE.fireball.growth.spectrumHz, BLEVE.fireball.growth.spectrumDensity);
 
 const PUFF_STEP = 32;
+const BURST_SEED = 0x2545f491;
 let lastEnvelopes = null;
 
 function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
@@ -153,13 +154,22 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   });
   let thump = null;
   if (thumping) {
-    const growthEnd = growth.endDecibels / 20 * Math.LN10 / growth.endSeconds;
+    const { endDecibels, endSeconds, burstDecibels, burstSpreadDecibels, burstTimeSpread, puffCeiling, tiltSpreadDecibels } = growth;
+    const growthEnd = endDecibels / 20 * Math.LN10 / endSeconds;
     const growing = Math.min(length, Math.round(holdSeconds * sampleRate));
     const meanPower = lowPower.subarray(0, growing).reduce((sum, value) => sum + value, 0) / Math.max(1, growing);
+    const shape = createRandom((puffSeed ^ BURST_SEED) >>> 0);
+    const burst = 10 ** ((burstDecibels + burstSpreadDecibels * normalDeviate(shape)) / 20);
+    const burstSeconds = (2 - Math.SQRT2) * holdSeconds / BLEVE.fireball.swell.growthRate * Math.exp(burstTimeSpread * normalDeviate(shape));
+    const tilt = tiltSpreadDecibels * normalDeviate(shape);
+    const ceiling = Math.max(1, burst / 10 ** (2 / 20));
     thump = new Float64Array(length);
     for (let index = 0; index < length; index += 1) {
       const t = index / sampleRate;
-      thump[index] = (t < riseSeconds ? t / riseSeconds : 1) * Math.sqrt(1 + lowPower[index] / meanPower) * (t < holdSeconds ? 1 : Math.exp(-growthEnd * (t - holdSeconds)));
+      const x = t / burstSeconds;
+      const bursting = burst * (x * Math.exp(1 - x)) ** 2;
+      const holding = Math.min(ceiling, (t < riseSeconds ? t / riseSeconds : 1) * Math.sqrt(1 + Math.min(puffCeiling, lowPower[index] / meanPower)) * 10 ** (tilt * Math.min(t, holdSeconds) / holdSeconds / 20));
+      thump[index] = Math.hypot(bursting, holding) * (t < holdSeconds ? 1 : Math.exp(-growthEnd * (t - holdSeconds)));
     }
   }
   lastEnvelopes = { key, length, layers, thump };
@@ -168,7 +178,8 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
 
 /**
  * Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed;
- * the growth thump, at `growthShare` of the roar's loudest window, follows the low puffs until the fireball has grown.
+ * the growth thump, at `growthShare` of the roar's loudest window, bursts as the fireball's growth accelerates most, then follows the low
+ * puffs, held under the burst, until the fireball has grown.
  */
 export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed, growthShare = 0) {
   const { length, layers, thump: thumpEnvelope } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, growthShare > 0);

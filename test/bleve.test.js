@@ -178,6 +178,19 @@ test('the growing fireball thumps low until it has grown, at a share of its swel
   assert.ok(after < 1, `${after} dB once grown`);
 });
 
+test('the thump bursts as the growth accelerates most, at a time and level of its seed, and its hold stays under the burst', () => {
+  const [sampleRate, hold] = [8000, 1.6];
+  const peaks = [];
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const thumping = fireballRoarSamples(seed, hold, sampleRate, seed, 30);
+    const windows = Array.from({ length: 32 }, (_, step) => bandEnergy(thumping, sampleRate, [40, 160], [step * .05, (step + 1) * .05]));
+    const onset = Math.max(...windows.slice(0, 10));
+    peaks.push(windows.indexOf(onset));
+    assert.ok(Math.max(...windows.slice(16, 32)) < onset, `seed ${seed}: the hold rises over the burst`);
+  }
+  assert.ok(new Set(peaks).size > 1, `burst windows ${peaks}`);
+});
+
 function bangOverRoarDecibels(emitter, distance) {
   const scene = plainScene('blast');
   scene.emitters = [emitter];
