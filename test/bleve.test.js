@@ -4,7 +4,7 @@ import { BLEVE } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBleve, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSources, saturation, vesselOf } from '../src/domain/bleve.js';
+import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSources, fireballSwell, saturation, vesselOf } from '../src/domain/bleve.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -106,7 +106,19 @@ test('the roar rises above the vessel to the fireball\'s centre, follows the hea
   assert.ok(Math.abs(20 * Math.log10(roar.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
   assert.equal(fireballRoarSources({ ...defaultBleve(), fireballDecibels: -60 }, STANDARD_AIR).length, 0);
   assert.equal(emitterSources({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR).sources.length, 2);
-  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 3);
+  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 4);
+  assert.equal(fireballRoarSources({ ...defaultBleve(), swellDecibels: -60 }, STANDARD_AIR).length, 1);
+});
+
+test('the growing fireball swells as a monopole as large as Betteridge & Phillips measured, peaking early in its growth', () => {
+  const lng = { kilograms: 681, diameterMetres: 4.8 * Math.cbrt(681), holdSeconds: 1.2 };
+  const swell = fireballSwell(lng, STANDARD_AIR);
+  assert.ok(Math.abs(2 * swell.peakPaMetres / 100 / 300 - 1) < .1, `${2 * swell.peakPaMetres / 100} Pa at 100 m`);
+  assert.ok(swell.onsetSeconds < swell.positiveSeconds && swell.positiveSeconds < lng.holdSeconds);
+  const [, louder] = fireballRoarSources({ ...defaultBleve(), swellDecibels: 0 }, STANDARD_AIR);
+  const [, quieter] = fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR);
+  assert.equal(louder.pulse, 'friedlander');
+  assert.ok(Math.abs(20 * Math.log10(louder.amplitudePaMetres / quieter.amplitudePaMetres) - 12) < 1e-9);
 });
 
 function bangOverRoarDecibels(emitter, distance) {

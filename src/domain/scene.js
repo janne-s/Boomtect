@@ -91,6 +91,7 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   lateralSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Lateral spacing', reliability: null },
   trailSpacingMetres: { minimum: 0, maximum: 20000, unit: 'm', label: 'Trail spacing', reliability: null },
   fireballDecibels: { minimum: -60, maximum: 0, unit: 'dB', label: 'Fireball', reliability: 'C' },
+  swellDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Swell', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   equivalentChargeKilograms: { minimum: .001, maximum: 1e7, unit: 'kg TNT', label: 'Equivalent charge', reliability: 'C' },
@@ -150,9 +151,9 @@ const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres',
 const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const TANK_FARM_NUMBERS = Object.freeze([
   'startSeconds', 'headingDegrees', 'tankCount', 'spacingMetres', 'otherShare', 'ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread',
-  'openingCloudCubicMetres', 'fireballDecibels', 'riseTimeSeconds'
+  'openingCloudCubicMetres', 'fireballDecibels', 'swellDecibels', 'riseTimeSeconds'
 ]);
-const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const BLEVE_NUMBERS = Object.freeze(['startSeconds', ...VESSEL_NUMBERS, 'blastShare', 'fireballDecibels', 'swellDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 
 const FLIGHT_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'lengthMetres', 'shapeFactor', 'riseTimeSeconds']);
 
@@ -323,7 +324,7 @@ function readRoomExplosion(value, { point, numbers, choice }, path) {
 }
 
 export function defaultBleve(id = 'bleve-1', name = 'BLEVE', seed = 20261030) {
-  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, fireballDecibels: 0, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: 4e-5 };
+  const bleve = { id, name, kind: 'bleve', enabled: true, seed, startSeconds: 0, positionMetres: { x: 0, y: 0, z: 0 }, fluid: 'propane', blastShare: 1, fireballDecibels: 0, swellDecibels: BLEVE.fireball.swell.defaultDecibels, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: 4e-5 };
   applyVessel(bleve, 'roadTanker');
   return bleve;
 }
@@ -355,6 +356,7 @@ export function defaultTankFarm(id = 'tank-farm-1', name = 'Tank farm', seed = 2
     heatingSpread: .5,
     openingCloudCubicMetres: 0,
     fireballDecibels: 0,
+    swellDecibels: BLEVE.fireball.swell.defaultDecibels,
     riseTimeSeconds: 4e-5
   };
 }

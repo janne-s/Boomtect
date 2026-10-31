@@ -1,5 +1,6 @@
 import { BLAST_PULSE } from './blast-pulse.js';
 import { BLAST, BLEVE } from './constants.js';
+import { onsetAmplitude, positivePhaseShare, pulseSource } from './gas-explosion.js';
 import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
 import { speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
@@ -94,13 +95,46 @@ export function fireballRoarSamples(seed, holdSeconds, sampleRate) {
 
 export const fireballDiameterMetres = emitter => fireballOf(emitter, STANDARD_AIR)?.diameterMetres ?? 0;
 
+const SWELL_PEAK_SHARE = (2 - Math.SQRT2) / 2;
+
+const swellOnsetShare = (() => {
+  let [low, high] = [0, 1];
+  for (let step = 0; step < 50; step += 1) {
+    const middle = (low + high) / 2;
+    if (middle / positivePhaseShare(middle, BLAST_PULSE.decay) < SWELL_PEAK_SHARE) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+})();
+
+/** Class B level and timing; class C shape: the monopole's positive phase as a Friedlander pulse rising to its peak. */
+export function fireballSwell(fireball, air) {
+  const { expansionRatio, growthRate } = BLEVE.fireball.swell;
+  const density = air.pressureKpa * 1000 / (287.05 * (air.temperatureCelsius + 273.15));
+  const volume = Math.PI * fireball.diameterMetres ** 3 / 6;
+  const rate = growthRate / fireball.holdSeconds;
+  const peak = 2 * SWELL_PEAK_SHARE;
+  const acceleration = volume * rate ** 2 / 2 * peak * (2 - peak) * Math.exp(-peak);
+  const peakPaMetres = density * (1 - 1 / expansionRatio) * acceleration / (4 * Math.PI);
+  const positiveSeconds = 2 / rate;
+  const decay = BLAST_PULSE.decay;
+  const durationSeconds = positiveSeconds / positivePhaseShare(swellOnsetShare, decay);
+  const onsetSeconds = swellOnsetShare * durationSeconds;
+  return { peakPaMetres, positiveSeconds, onsetSeconds, durationSeconds, decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, decay), agingRadiusMetres: fireball.diameterMetres / 2 };
+}
+
+function swellSource(common, swell, decibels, air) {
+  const gain = 10 ** (decibels / 20);
+  return pulseSource(common, { ...swell, peakPaMetres: gain * swell.peakPaMetres, amplitudePaMetres: gain * swell.amplitudePaMetres }, air);
+}
+
 export function fireballRoarSources(emitter, air, surface = null) {
   const fireball = fireballOf(emitter, air);
   if (!fireball || emitter.fireballDecibels <= FIREBALL_OFF_DECIBELS) return [];
   const ground = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
+  const common = { flash: 0, positionMetres: { ...ground, z: ground.z + fireball.diameterMetres / 2 }, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
   return [{
-    flash: 0, positionMetres: { ...ground, z: ground.z + fireball.diameterMetres / 2 }, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds,
-    amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * roarPaMetres(fireball, air), pulse: 'noise', noiseSeed: emitter.seed,
+    ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * roarPaMetres(fireball, air), pulse: 'noise', noiseSeed: emitter.seed,
     durationSeconds: fireball.holdSeconds, decay: 0, spanSeconds: roarSpanSeconds(fireball.holdSeconds), linearRadiusMetres: 0
-  }];
+  }, ...(emitter.swellDecibels > FIREBALL_OFF_DECIBELS ? [swellSource(common, fireballSwell(fireball, air), emitter.swellDecibels, air)] : [])];
 }

@@ -142,6 +142,14 @@ const fireball = {
   entry: { unit: 'dB', get: item => item.fireballDecibels, set: (item, value) => { item.fireballDecibels = value; } }
 };
 
+const swell = {
+  label: 'Swell',
+  read: item => clamp01((item.swellDecibels - range('swellDecibels')[0]) / (range('swellDecibels')[1] - range('swellDecibels')[0])),
+  write: (item, t) => { const [low, high] = range('swellDecibels'); item.swellDecibels = Math.round(low + t * (high - low)); },
+  show: item => `${item.swellDecibels} dB`,
+  entry: { unit: 'dB', get: item => item.swellDecibels, set: (item, value) => { item.swellDecibels = value; } }
+};
+
 const barrageSize = {
   label: 'Size',
   read: item => clamp01(logPosition(Math.max(10, item.radiusMetres), [10, 5000])),
@@ -543,8 +551,8 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomInterior, { ...fireball, label: 'Roar' }]);
-  if (emitter.kind === 'tankFarm') return timed([farmTanks, farmVessel, bleveFluid, farmSpacing, farmSpread, farmHeating, fireball]);
-  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, fireball]);
+  if (emitter.kind === 'tankFarm') return timed([farmTanks, farmVessel, bleveFluid, farmSpacing, farmSpread, farmHeating, fireball, swell]);
+  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, fireball, swell]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);
