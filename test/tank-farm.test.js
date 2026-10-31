@@ -6,7 +6,7 @@ import { SOURCE_KINDS } from '../src/domain/sources.js';
 import { defaultTankFarm, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
 import { openingExplosion, openingSeed, tankFarmLayout, tankFarmRounds, tankFarmTanks } from '../src/domain/tank-farm.js';
 import { combustionSamples } from '../src/domain/gas-explosion.js';
-import { fireballRoarSamples } from '../src/domain/bleve.js';
+import { bleveRoarSamples } from '../src/domain/bleve.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -68,7 +68,7 @@ test('an opening cloud explodes at the first tank when the farm is set and its f
   assert.equal(openingExplosion({ ...farm, fluid: 'water' }), null);
   const noise = SOURCE_KINDS.tankFarm.noise;
   assert.deepEqual(noise(openingSeed(farm), .5, 8000, farm), combustionSamples(openingSeed(farm), .5, 8000, opening));
-  assert.deepEqual(noise(12345, .5, 8000, farm), fireballRoarSamples(12345, .5, 8000, tankFarmTanks(farm)[0].seed));
+  assert.deepEqual(noise(12345, .5, 8000, farm), bleveRoarSamples(12345, .5, 8000, tankFarmTanks(farm)[0]));
 });
 
 test('a small farm renders finite, its bangs, roars and swells from every tank', () => {

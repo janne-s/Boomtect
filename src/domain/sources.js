@@ -3,7 +3,7 @@ import { emitterSourceTable } from './emitters.js';
 import { fireballSamples } from './fireball.js';
 import { combustionSamples } from './gas-explosion.js';
 import { roomNoiseSamples } from './room-explosion.js';
-import { bleveRoarSamples, fireballRoarSamples } from './bleve.js';
+import { bleveRoarSamples } from './bleve.js';
 import { openingExplosion, openingSeed, tankFarmTanks } from './tank-farm.js';
 import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './flight.js';
 import { flightPath, withApproach } from '../shared/domain/trajectory.js';
@@ -47,7 +47,7 @@ export const SOURCE_KINDS = Object.freeze({
   bleve: { sources: table, noise: bleveRoarSamples },
   tankFarm: {
     sources: table,
-    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : fireballRoarSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm)[0].seed))
+    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : bleveRoarSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm)[0]))
   },
   flight: moving(flights),
   formation: moving(flights),

@@ -285,7 +285,15 @@ export const BLEVE = Object.freeze({
      * of butane); 294 Pa against 300 Pa measured 100 m from 681 kg of LNG ignited 0.5 s after the burst (Betteridge & Phillips 2015).
      * Class C: off by default for a fire's BLEVE, whose cloud burns as it forms; Birk et al. (2007) saw no wave from 800 kg.
      */
-    swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -60 })
+    swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -60 }),
+    /**
+     * Class C: the turbulent share of the monopole, heard as a low thump while the fireball grows and ending with its growth (E11: 1.6 s,
+     * then 11 dB down in 0.1 s; E9: 0.7 s); its octaves are E9's and E11's over the growth, its level a share of the smooth swell's peak.
+     */
+    growth: Object.freeze({
+      spectrumHz: Object.freeze([31.5, 63, 125, 250, 500, 1000]), spectrumDensity: Object.freeze([1, 1, .29, .032, .004, .0005]),
+      turbulentShare: .045, endDecibels: 30, endSeconds: .1, defaultDecibels: 0
+    })
   }),
   /** Class C: volume and fill as built; failure in a fire at 1.21 × a 17.24 barg relief valve (Yellow Book Table 7.1, Roberts et al. 2000), a drum's seams near 2 barg. */
   vessels: Object.freeze({

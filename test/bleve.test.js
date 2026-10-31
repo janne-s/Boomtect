@@ -4,7 +4,7 @@ import { BLEVE } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBleve, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSamples, fireballRoarSources, fireballSwell, saturation, vesselOf } from '../src/domain/bleve.js';
+import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSamples, fireballRoarSources, fireballSwell, growthShareOf, saturation, vesselOf } from '../src/domain/bleve.js';
 import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { plainScene } from './plain-scene.js';
 
@@ -158,6 +158,24 @@ test('the roar swells low and darkens high over its hold, its puffs shared by bo
   const [first, second] = [fireballRoarSamples(10, hold, sampleRate, 10), fireballRoarSamples(11, hold, sampleRate, 10)];
   assert.notDeepEqual(first.slice(0, 100), second.slice(0, 100));
   assert.ok(correlation(envelope(first), envelope(second)) > .8);
+});
+
+test('the growing fireball thumps low until it has grown, at a share of its swell, and goes off with its level', () => {
+  const [sampleRate, hold] = [8000, 1.6];
+  const share = growthShareOf(defaultBleve());
+  assert.ok(share > 1, `${share}`);
+  assert.ok(Math.abs(20 * Math.log10(share / growthShareOf({ ...defaultBleve(), growthDecibels: -6 })) - 6) < 1e-9);
+  assert.equal(growthShareOf({ ...defaultBleve(), growthDecibels: -60 }), 0);
+  assert.equal(growthShareOf({ ...defaultBleve(), fluid: 'water' }), 0);
+  let [growing, after] = [0, 0];
+  for (const seed of [1, 2, 3, 4]) {
+    const plain = fireballRoarSamples(seed, hold, sampleRate);
+    const thumping = fireballRoarSamples(seed, hold, sampleRate, seed, share);
+    growing += 10 * Math.log10(bandEnergy(thumping, sampleRate, [40, 160], [.2, 1.4]) / bandEnergy(plain, sampleRate, [40, 160], [.2, 1.4])) / 4;
+    after += 10 * Math.log10(bandEnergy(thumping, sampleRate, [40, 160], [1.8, 2.2]) / bandEnergy(plain, sampleRate, [40, 160], [1.8, 2.2])) / 4;
+  }
+  assert.ok(growing > 3, `${growing} dB while growing`);
+  assert.ok(after < 1, `${after} dB once grown`);
 });
 
 function bangOverRoarDecibels(emitter, distance) {
