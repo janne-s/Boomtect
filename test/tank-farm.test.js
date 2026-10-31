@@ -68,7 +68,9 @@ test('an opening cloud explodes at the first tank when the farm is set and its f
   assert.equal(openingExplosion({ ...farm, fluid: 'water' }), null);
   const noise = SOURCE_KINDS.tankFarm.noise;
   assert.deepEqual(noise(openingSeed(farm), .5, 8000, farm), combustionSamples(openingSeed(farm), .5, 8000, opening));
-  assert.deepEqual(noise(12345, .5, 8000, farm), bleveRoarSamples(12345, .5, 8000, tankFarmTanks(farm)[0]));
+  const [first, second] = tankFarmTanks(farm);
+  assert.deepEqual(noise(first.seed + 1, .5, 8000, farm), bleveRoarSamples(first.seed + 1, .5, 8000, first));
+  assert.notDeepEqual(noise(second.seed, .5, 8000, farm).slice(0, 100), noise(first.seed, .5, 8000, farm).slice(0, 100));
 });
 
 test('a small farm renders finite, its bangs, roars and swells from every tank', () => {

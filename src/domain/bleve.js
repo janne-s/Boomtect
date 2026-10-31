@@ -1,7 +1,7 @@
 import { BLAST_PULSE } from './blast-pulse.js';
 import { BLAST, BLEVE } from './constants.js';
 import { onsetAmplitude, positivePhaseShare, pulseSource } from './gas-explosion.js';
-import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
+import { scaleToLoudestWindow, spectralNoise, spectralNoisePair, tableDensity } from './fireball.js';
 import { speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
@@ -101,61 +101,90 @@ function drawPuffs(random, riseSeconds, holdSeconds) {
 
 const growthDensity = tableDensity(BLEVE.fireball.growth.spectrumHz, BLEVE.fireball.growth.spectrumDensity);
 
-/**
- * Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed;
- * the growth thump, at `growthShare` of the roar's loudest window, follows the low puffs until the fireball has grown.
- */
-export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed, growthShare = 0) {
+const PUFF_STEP = 32;
+let lastEnvelopes = null;
+
+function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
+  const key = `${puffSeed}:${holdSeconds}:${sampleRate}:${thumping}`;
+  if (lastEnvelopes?.key === key) return lastEnvelopes;
   const { tailDecibels, puffs: { floorDecibels, darkeningDecibels, swellPeakShareOfHold, swellFloor }, growth } = BLEVE.fireball;
   const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
-  const random = createRandom(seed);
-  const noises = layerDensities.map(density => spectralNoise(random, nextPowerOfTwo(length), sampleRate, density));
   const puffs = drawPuffs(createRandom(puffSeed), riseSeconds, holdSeconds);
   const decay = tailDecibels / 20 * Math.LN10 / holdSeconds;
   const burnSeconds = riseSeconds + holdSeconds;
   const floor = 10 ** (floorDecibels / 20);
   const swellPeakSeconds = swellPeakShareOfHold * holdSeconds;
-  const shaped = noises.map(() => new Float64Array(length));
-  const thump = growthShare > 0 ? spectralNoise(random, nextPowerOfTwo(length), sampleRate, growthDensity) : null;
-  const growthEnd = growth.endDecibels / 20 * Math.LN10 / growth.endSeconds;
-  const lowPower = thump ? new Float64Array(length) : null;
+  const layers = layerDensities.map(() => new Float64Array(length));
+  const steps = Math.ceil(length / PUFF_STEP) + 1;
+  const puffPower = layers.map((_, layer) => Float64Array.from({ length: steps }, (__, step) => {
+    const t = step * PUFF_STEP / sampleRate;
+    let power = floor ** 2;
+    for (const { onsetSeconds, attackSeconds, gains } of puffs) {
+      if (t <= onsetSeconds) continue;
+      const x = (t - onsetSeconds) / attackSeconds;
+      power += (gains[layer] * x * Math.exp(1 - x)) ** 2;
+    }
+    return power;
+  }));
+  const lowPower = thumping ? new Float64Array(length) : null;
   let plainEnergy = 0;
-  const layerEnergy = new Float64Array(noises.length);
+  const layerEnergy = new Float64Array(layers.length);
   for (let index = 0; index < length; index += 1) {
     const t = index / sampleRate;
     const envelope = t < riseSeconds ? t / riseSeconds : t < burnSeconds ? 1 : Math.exp(-decay * (t - burnSeconds));
     plainEnergy += envelope ** 2;
     const burnt = Math.min(t, burnSeconds) / burnSeconds;
     const swelling = t < swellPeakSeconds ? Math.max(swellFloor, t / swellPeakSeconds * Math.exp(1 - t / swellPeakSeconds)) : 1;
-    for (let layer = 0; layer < noises.length; layer += 1) {
-      let power = floor ** 2;
-      for (const { onsetSeconds, attackSeconds, gains } of puffs) {
-        if (t <= onsetSeconds) continue;
-        const x = (t - onsetSeconds) / attackSeconds;
-        power += (gains[layer] * x * Math.exp(1 - x)) ** 2;
-      }
-      if (layer === 0 && thump) lowPower[index] = power;
+    const step = Math.floor(index / PUFF_STEP);
+    const share = index / PUFF_STEP - step;
+    for (let layer = 0; layer < layers.length; layer += 1) {
+      const power = puffPower[layer][step] + share * (puffPower[layer][step + 1] - puffPower[layer][step]);
+      if (layer === 0 && thumping) lowPower[index] = power;
       const tilt = (layer === 0 ? swelling : 1) * 10 ** (-darkeningDecibels[layer] * burnt / 20);
       const value = envelope * tilt * Math.sqrt(power);
       layerEnergy[layer] += value ** 2;
-      shaped[layer][index] = value;
+      layers[layer][index] = value;
     }
   }
+  layers.forEach((shaped, layer) => {
+    const scale = layerEnergy[layer] > 0 ? Math.sqrt(plainEnergy / layerEnergy[layer]) : 0;
+    for (let index = 0; index < length; index += 1) shaped[index] = scale * shaped[index];
+  });
+  let thump = null;
+  if (thumping) {
+    const growthEnd = growth.endDecibels / 20 * Math.LN10 / growth.endSeconds;
+    const growing = Math.min(length, Math.round(holdSeconds * sampleRate));
+    const meanPower = lowPower.subarray(0, growing).reduce((sum, value) => sum + value, 0) / Math.max(1, growing);
+    thump = new Float64Array(length);
+    for (let index = 0; index < length; index += 1) {
+      const t = index / sampleRate;
+      thump[index] = (t < riseSeconds ? t / riseSeconds : 1) * Math.sqrt(1 + lowPower[index] / meanPower) * (t < holdSeconds ? 1 : Math.exp(-growthEnd * (t - holdSeconds)));
+    }
+  }
+  lastEnvelopes = { key, length, layers, thump };
+  return lastEnvelopes;
+}
+
+/**
+ * Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed;
+ * the growth thump, at `growthShare` of the roar's loudest window, follows the low puffs until the fireball has grown.
+ */
+export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed, growthShare = 0) {
+  const { length, layers, thump: thumpEnvelope } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, growthShare > 0);
+  const random = createRandom(seed);
+  const size = nextPowerOfTwo(length);
+  const noises = spectralNoisePair(random, size, sampleRate, layerDensities);
+  const [high, thump] = growthShare > 0 ? spectralNoisePair(random, size, sampleRate, [layerDensities[2], growthDensity]) : [spectralNoise(random, size, sampleRate, layerDensities[2]), null];
+  noises.push(high);
   const samples = new Float64Array(length);
   for (let layer = 0; layer < noises.length; layer += 1) {
-    const scale = layerEnergy[layer] > 0 ? Math.sqrt(plainEnergy / layerEnergy[layer]) : 0;
-    for (let index = 0; index < length; index += 1) samples[index] += scale * shaped[layer][index] * noises[layer][index];
+    for (let index = 0; index < length; index += 1) samples[index] += layers[layer][index] * noises[layer][index];
   }
   const window = Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate));
   scaleToLoudestWindow(samples, window);
   if (!thump) return samples;
-  const growing = Math.min(length, Math.round(holdSeconds * sampleRate));
-  const meanPower = lowPower.subarray(0, growing).reduce((sum, value) => sum + value, 0) / Math.max(1, growing);
-  for (let index = 0; index < length; index += 1) {
-    const t = index / sampleRate;
-    thump[index] *= (t < riseSeconds ? t / riseSeconds : 1) * Math.sqrt(1 + lowPower[index] / meanPower) * (t < holdSeconds ? 1 : Math.exp(-growthEnd * (t - holdSeconds)));
-  }
+  for (let index = 0; index < length; index += 1) thump[index] *= thumpEnvelope[index];
   const thumping = scaleToLoudestWindow(thump.subarray(0, length), window);
   for (let index = 0; index < length; index += 1) samples[index] += growthShare * thumping[index];
   return samples;

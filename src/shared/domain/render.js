@@ -1309,21 +1309,37 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
   const sends = scene.ground.forest;
   const lanes = channels + (sends ? 1 : 0);
   if (!selected.length) return { startSample: 0, channels: Array.from({ length: channels }, () => new Float64Array(0)), send: sends ? new Float64Array(0) : null, nonlinearPaths: 0, pathCount: 0, truncated: beyond > 0 };
-  // Class C: a noise source radiates from a whole volume, so its reflection does not interfere with it.
-  const noises = preparedEmitters.map(({ sources, noise, emitter }) => {
-    let index = 0;
-    while (index < sources.length && sources.pulse[index] !== PULSE_NOISE) index += 1;
-    if (index === sources.length) return null;
-    const seconds = sources.durationSeconds[index];
-    return [0, 1].map(part => ({ samples: noise((sources.noiseSeed[index] + part) >>> 0, seconds, sampleRate, emitter), impulses: null }));
-  });
-  const noiseLength = Math.max(0, ...noises.map(noisy => (noisy ? noisy[0].samples.length : 0)));
-  const outputs = Array.from({ length: lanes }, () => new Float64Array(last - first + noiseLength));
+  // Class C: a noise source radiates from a whole volume, so its reflection does not interfere with it; each seed and length has its own noise.
+  const slots = [];
+  const slotOf = new Int32Array(paths.count).fill(-1);
+  const slotKeys = new Map();
+  for (const index of selected) {
+    if (!paths.diffuse[index]) continue;
+    const sources = pathSources(preparedEmitters, paths, index);
+    const source = paths.source[index];
+    const emitterIndex = paths.emitter[index];
+    const key = `${emitterIndex}:${sources.noiseSeed[source]}:${sources.durationSeconds[source]}`;
+    if (!slotKeys.has(key)) {
+      slotKeys.set(key, slots.length);
+      slots.push({ emitterIndex, seed: sources.noiseSeed[source], seconds: sources.durationSeconds[source], from: Infinity, to: -Infinity });
+    }
+    const slot = slots[slotKeys.get(key)];
+    const plan = plans[frameGroup(paths, index)];
+    slot.from = Math.min(slot.from, frameOf[index] * plan.hop - first);
+    slot.to = Math.max(slot.to, frameOf[index] * plan.hop - first + plan.size);
+    slotOf[index] = slotKeys.get(key);
+  }
+  for (const slot of slots) {
+    const { noise, emitter } = preparedEmitters[slot.emitterIndex];
+    slot.parts = [0, 1].map(part => ({ samples: noise((slot.seed + part) >>> 0, slot.seconds, sampleRate, emitter), impulses: null }));
+  }
+  const outputLength = Math.max(last - first, ...slots.map(slot => slot.to + slot.parts[0].samples.length));
+  const outputs = Array.from({ length: lanes }, () => new Float64Array(outputLength));
   const gains = new Float64Array(lanes);
   const echoes = scene.render.quality.coarseEchoes ? { key: null, spectrum: null } : null;
   const echoOrder = echoes ? new Map(selected.filter(index => grainEcho(preparedEmitters, paths, index)).map(index => [index, `${pathSources(preparedEmitters, paths, index).noiseSeed[paths.source[index]]}:${echoDirection(paths, index)}`])) : null;
   const byEcho = (a, b) => (echoOrder?.has(a) && echoOrder.has(b) ? (echoOrder.get(a) < echoOrder.get(b) ? -1 : echoOrder.get(a) > echoOrder.get(b) ? 1 : 0) : 0);
-  selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || byEcho(a, b) || a - b);
+  selected.sort((a, b) => frameGroup(paths, a) - frameGroup(paths, b) || frameOf[a] - frameOf[b] || slotOf[a] - slotOf[b] || byEcho(a, b) || a - b);
   const groundRe = new Float64Array(GROUND_GRID_POINTS);
   const groundIm = new Float64Array(GROUND_GRID_POINTS);
   const ends = [0, 1].map(() => ({ re: new Float64Array(GROUND_GRID_POINTS), im: new Float64Array(GROUND_GRID_POINTS), rotation: null }));
@@ -1337,10 +1353,11 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     const group = frameGroup(paths, selected[cursor]);
     const emitterIndex = paths.emitter[selected[cursor]];
     const frame = frameOf[selected[cursor]];
+    const slotIndex = slotOf[selected[cursor]];
     const plan = plans[group];
     const spectra = Array.from({ length: lanes }, () => ({ real: new Float64Array(plan.size), imaginary: new Float64Array(plan.size) }));
     shared?.start(group, frame);
-    while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame) {
+    while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame && slotOf[selected[cursor]] === slotIndex) {
       const index = selected[cursor];
       const sources = pathSources(preparedEmitters, paths, index);
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
@@ -1353,13 +1370,15 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       cursor += 1;
     }
     shared?.finish(spectra);
-    const at = frame * plan.hop - first;
+    let at = frame * plan.hop - first;
     const part = group % FRAME_GROUPS - DIFFUSE_GROUP;
     let target = outputs;
     if (part >= 0) {
-      const noisy = noises[emitterIndex][part];
-      noisy.impulses ??= Array.from({ length: lanes }, () => new Float64Array(last - first));
+      const slot = slots[slotIndex];
+      const noisy = slot.parts[part];
+      noisy.impulses ??= Array.from({ length: lanes }, () => new Float64Array(slot.to - slot.from));
       target = noisy.impulses;
+      at -= slot.from;
     }
     for (let channel = 0; channel < lanes; channel += 2) {
       const blocks = channel + 1 < lanes ? synthesizeFramePair(spectra[channel], spectra[channel + 1], plan.size, sampleRate)
@@ -1371,9 +1390,9 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     }
     onProgress?.(traceShare + (1 - traceShare) * doneWeight / totalWeight);
   }
-  for (const noisy of noises) {
-    for (const { samples, impulses } of noisy ?? []) {
-      if (impulses) convolveAdd(outputs, impulses, samples);
+  for (const slot of slots) {
+    for (const { samples, impulses } of slot.parts) {
+      if (impulses) convolveAdd(outputs.map(output => output.subarray(slot.from)), impulses, samples);
     }
   }
   return { startSample: first, channels: outputs.slice(0, channels), send: sends ? outputs[channels] : null, nonlinearPaths, pathCount: selected.length, truncated: beyond > 0 };

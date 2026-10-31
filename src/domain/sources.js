@@ -47,7 +47,7 @@ export const SOURCE_KINDS = Object.freeze({
   bleve: { sources: table, noise: bleveRoarSamples },
   tankFarm: {
     sources: table,
-    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : bleveRoarSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm)[0]))
+    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : bleveRoarSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm).find(tank => (seed - tank.seed) >>> 0 <= 1)))
   },
   flight: moving(flights),
   formation: moving(flights),
