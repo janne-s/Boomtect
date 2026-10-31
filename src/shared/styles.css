@@ -257,9 +257,10 @@ figcaption {
   color: var(--mic);
 }
 .plot-play {
+  --icon-bg: none;
   margin-right: 6px;
   padding: 0 4px;
-  background: none;
+  background: var(--icon-bg);
   color: var(--ink);
   line-height: 16px;
   vertical-align: top;
@@ -310,9 +311,6 @@ figcaption {
   height: 28px;
   color: var(--ink);
 }
-.github-link:hover {
-  color: var(--accent);
-}
 .bar .mobile-actions,
 .play-icon {
   display: none;
@@ -337,13 +335,8 @@ figcaption {
   font-size: 11px;
   color: var(--muted);
 }
-.bar #settings,
-.bar #randomise {
+.bar :is(#settings, #randomise) {
   color: var(--muted);
-}
-.bar #settings:hover:not(:disabled),
-.bar #randomise:hover:not(:disabled) {
-  color: var(--ink);
 }
 .link-dot {
   width: 7px;
@@ -418,17 +411,15 @@ figcaption {
   gap: 2px;
 }
 .icon-toggle {
+  --icon-bg: var(--raised);
   display: inline-grid;
   place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
+  background: var(--icon-bg);
   color: var(--faint);
   font-size: 13px;
-}
-.icon-toggle:hover:not(:disabled):not([aria-pressed="true"]),
-.lock-button:hover:not([aria-pressed="true"]) {
-  color: var(--muted);
 }
 .icon-toggle[aria-pressed="true"] {
   color: var(--accent);
@@ -481,8 +472,13 @@ figcaption {
   gap: 2px;
   margin-right: 6px;
 }
+.modes button {
+  --icon-bg: var(--raised);
+  background: var(--icon-bg);
+}
 .modes button[aria-checked="true"] {
-  background: var(--accent-soft);
+  --icon-bg: var(--accent-soft);
+  background: var(--icon-bg);
   color: var(--accent);
 }
 .modes button i {
@@ -610,6 +606,7 @@ canvas {
   margin: 0;
 }
 .icon-button {
+  --icon-bg: none;
   display: inline-grid;
   place-items: center;
   width: 22px;
@@ -617,11 +614,10 @@ canvas {
   margin: -3px -6px -3px 0;
   padding: 0;
   border: 0;
-  background: none;
+  background: var(--icon-bg);
   color: var(--faint);
   font-size: 12px;
 }
-.icon-button:hover,
 .icon-button:focus-visible {
   color: var(--accent);
 }
@@ -794,12 +790,13 @@ button.macro-value:hover {
   white-space: nowrap;
 }
 .lock-button {
+  --icon-bg: none;
   flex: none;
   width: 16px;
   height: 16px;
   padding: 0;
   border: 0;
-  background: none;
+  background: var(--icon-bg);
   color: var(--faint);
   font-size: 10px;
 }
@@ -1042,7 +1039,7 @@ button.macro-value:hover {
   flex-direction: column;
 }
 .view-tools .icon-toggle {
-  background: color-mix(in srgb, var(--raised) 80%, transparent);
+  --icon-bg: color-mix(in srgb, var(--raised) 80%, transparent);
 }
 @media not (any-pointer: fine) {
   .scroll-pans {
@@ -1193,13 +1190,6 @@ button.macro-value:hover {
   background: var(--accent);
   mix-blend-mode: screen;
 }
-.overlay-hint {
-  right: 14px;
-  bottom: 12px;
-  max-width: 40%;
-  color: var(--faint);
-  text-align: right;
-}
 
 dialog {
   width: min(920px, calc(100% - 32px));
@@ -1339,13 +1329,6 @@ dialog::backdrop {
   grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
-}
-.notes {
-  overflow-y: auto;
-  border-radius: 4px;
-  background: var(--panel);
-  padding: 10px 12px;
-  color: var(--muted);
 }
 .summary {
   margin: 0 0 6px;
@@ -1609,6 +1592,22 @@ details summary {
   display: none;
 }
 
+@media (min-width: 701px) {
+  .icon-toggle:hover:not(:disabled):not([aria-pressed="true"]),
+  .lock-button:hover:not([aria-pressed="true"]) {
+    color: var(--muted);
+  }
+  .bar :is(#settings, #randomise):hover:not(:disabled) {
+    color: var(--ink);
+  }
+  .icon-button:hover {
+    color: var(--accent);
+  }
+  .github-link:hover {
+    color: var(--accent);
+  }
+}
+
 @media (max-width: 700px) {
   html,
   body {
@@ -1620,6 +1619,8 @@ details summary {
     flex-direction: column;
   }
   .bar {
+    --bar-button: 36px;
+    --bar-button-width: 36px;
     flex-wrap: nowrap;
     gap: 4px;
     padding: 8px;
@@ -1639,8 +1640,8 @@ details summary {
     margin-right: 0;
   }
   .modes button {
-    width: 36px;
-    height: 36px;
+    width: var(--bar-button-width);
+    height: var(--bar-button);
     padding: 0;
     font-size: 15px;
   }
@@ -1651,17 +1652,13 @@ details summary {
     display: none;
   }
   .bar #play {
-    flex: none;
     width: 64px;
-    height: 36px;
+    height: var(--bar-button);
   }
-  .bar #settings,
-  .bar #randomise,
-  .bar .mobile-actions,
+  .bar :is(#settings, #randomise, #more),
   .bar .github-link {
-    flex: none;
-    width: 36px;
-    height: 36px;
+    width: var(--bar-button-width);
+    height: var(--bar-button);
     color: var(--ink);
   }
   .bar .mobile-actions {
@@ -1714,10 +1711,11 @@ details summary {
     gap: 4px;
   }
   .sheet-tabs button {
+    --icon-bg: var(--panel-dim);
     flex: 1;
     height: 40px;
     padding: 0;
-    background: var(--panel-dim);
+    background: var(--icon-bg);
     color: var(--muted);
     font-size: 16px;
   }
@@ -1901,35 +1899,15 @@ details summary {
   .info-section .warning {
     color: var(--accent);
   }
-  .modes button:not([aria-checked="true"]):hover:not(:disabled),
-  .bar .icon-toggle:hover:not(:disabled) {
-    background: var(--raised);
-  }
-  .view-tools .icon-toggle:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--raised) 80%, transparent);
-  }
-  .sheet-tabs button:hover:not(:disabled) {
-    background: var(--panel-dim);
-  }
-  .plot-play:hover:not(:disabled),
-  .icon-button:hover:not(:disabled),
-  .lock-button:hover:not(:disabled) {
-    background: none;
-  }
-  .icon-toggle:hover:not(:disabled):not([aria-pressed="true"]),
-  .icon-button:hover:not(:disabled),
-  .lock-button:hover:not([aria-pressed="true"]) {
-    color: var(--faint);
-  }
-  .bar .mobile-actions:hover:not(:disabled) {
-    color: var(--ink);
+  :is(.icon-toggle, .icon-button, .lock-button, .modes button, .sheet-tabs button, .plot-play):hover:not(:disabled) {
+    background: var(--icon-bg);
   }
 }
 
 @media (max-width: 420px) {
   .bar #play {
-    min-width: 36px;
-    width: 36px;
+    min-width: var(--bar-button-width);
+    width: var(--bar-button-width);
     padding: 0;
   }
   #play .play-label {
@@ -1949,18 +1927,8 @@ details summary {
 
 @media (max-width: 360px) {
   .bar {
+    --bar-button-width: 32px;
     gap: 2px;
     padding: 6px;
-  }
-  .modes button,
-  .bar #settings,
-  .bar #randomise,
-  .bar .mobile-actions,
-  .bar .github-link {
-    width: 32px;
-  }
-  .bar #play {
-    min-width: 32px;
-    width: 32px;
   }
 }
