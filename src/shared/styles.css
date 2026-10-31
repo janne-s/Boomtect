@@ -334,7 +334,15 @@ figcaption {
 }
 .link-button .fa-solid {
   font-size: 11px;
-  color: var(--faint);
+  color: var(--muted);
+}
+.bar #settings,
+.bar #randomise {
+  color: var(--muted);
+}
+.bar #settings:hover:not(:disabled),
+.bar #randomise:hover:not(:disabled) {
+  color: var(--ink);
 }
 .link-dot {
   width: 7px;
