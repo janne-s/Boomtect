@@ -68,11 +68,11 @@ test('an opening cloud explodes at the first tank when the farm is set and its f
   assert.equal(openingExplosion({ ...farm, fluid: 'water' }), null);
   const noise = SOURCE_KINDS.tankFarm.noise;
   assert.deepEqual(noise(openingSeed(farm), .5, 8000, farm), combustionSamples(openingSeed(farm), .5, 8000, opening));
-  assert.deepEqual(noise(12345, .5, 8000, farm), fireballRoarSamples(12345, .5, 8000));
+  assert.deepEqual(noise(12345, .5, 8000, farm), fireballRoarSamples(12345, .5, 8000, tankFarmTanks(farm)[0].seed));
 });
 
 test('a small farm renders finite, its bangs, roars and swells from every tank', () => {
-  const farm = { ...defaultTankFarm(), tankCount: 3, spacingMetres: 40, heatingSeconds: 2, openingCloudCubicMetres: 500 };
+  const farm = { ...defaultTankFarm(), tankCount: 3, spacingMetres: 40, heatingSeconds: 2, openingCloudCubicMetres: 500, swellDecibels: -12 };
   assert.equal(emitterSources(farm, STANDARD_AIR).sources.length, 3 * 4 + 2);
   const scene = plainScene('blast');
   scene.emitters = [farm];

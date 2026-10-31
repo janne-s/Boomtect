@@ -271,12 +271,21 @@ export const BLEVE = Object.freeze({
     spectrumHz: Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
     spectrumDensity: Object.freeze([1, .49, .038, .012, .008, .0055, .0021, .0012, 5.9e-5]),
     /**
+     * Class C, fitted to E9 and E11: the roar as overlapping puffs of venting and burning, each with its own onset, level, length, and
+     * colour, over three layers split at the crossovers; the high layer darkens over the hold while the low one swells to its peak.
+     */
+    puffs: Object.freeze({
+      count: 10, onsetPower: 1.5, shortestShareOfHold: .15, longestShareOfHold: .5, attackShare: .3,
+      spreadDecibels: 5, layerSpreadDecibels: 3, colourDecibels: 4, floorDecibels: -12,
+      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 16]), swellPeakShareOfHold: .6, swellFloor: .1
+    }),
+    /**
      * Class B: the growing fireball as a monopole, p r = ρ(1 − 1/σ) V̈ / 4π (Thomas & Williams 1966, Strehlow 1980), its volume
      * 1 − e^(−kt)(1 + kt + (kt)²/2) of the sphere 5.8 M^⅓ across, reaching 90 % over the roar's hold (Johnson 1990: 1.2–2 s for 1–2 t
      * of butane); 294 Pa against 300 Pa measured 100 m from 681 kg of LNG ignited 0.5 s after the burst (Betteridge & Phillips 2015).
-     * Class C: −12 dB by default for a fire's BLEVE, whose cloud burns as it forms; Birk et al. (2007) saw no wave from 800 kg.
+     * Class C: off by default for a fire's BLEVE, whose cloud burns as it forms; Birk et al. (2007) saw no wave from 800 kg.
      */
-    swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -12 })
+    swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -60 })
   }),
   /** Class C: volume and fill as built; failure in a fire at 1.21 × a 17.24 barg relief valve (Yellow Book Table 7.1, Roberts et al. 2000), a drum's seams near 2 barg. */
   vessels: Object.freeze({

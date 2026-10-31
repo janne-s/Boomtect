@@ -4,7 +4,7 @@ import { onsetAmplitude, positivePhaseShare, pulseSource } from './gas-explosion
 import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
 import { speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
-import { createRandom } from '../shared/domain/random.js';
+import { createRandom, normalDeviate } from '../shared/domain/random.js';
 import { onGround } from '../shared/domain/terrain.js';
 
 export const FLUID_TYPES = Object.freeze(Object.keys(BLEVE.fluids));
@@ -78,20 +78,70 @@ export const roarSpanSeconds = holdSeconds => roarRiseSeconds(holdSeconds) + hol
 
 const roarDensity = tableDensity(BLEVE.fireball.spectrumHz, BLEVE.fireball.spectrumDensity);
 
-export function fireballRoarSamples(seed, holdSeconds, sampleRate) {
-  const { tailDecibels } = BLEVE.fireball;
+const layerWeights = (() => {
+  const [low, high] = BLEVE.fireball.puffs.crossoversHz;
+  const lowShare = frequencyHz => 1 / (1 + (frequencyHz / low) ** 4);
+  const highShare = frequencyHz => 1 / (1 + (high / frequencyHz) ** 4);
+  return [lowShare, frequencyHz => Math.max(0, 1 - lowShare(frequencyHz) - highShare(frequencyHz)), highShare];
+})();
+
+const layerDensities = layerWeights.map(share => frequencyHz => share(frequencyHz) * roarDensity(frequencyHz));
+
+function drawPuffs(random, riseSeconds, holdSeconds) {
+  const { count, onsetPower, shortestShareOfHold, longestShareOfHold, attackShare, spreadDecibels, layerSpreadDecibels, colourDecibels } = BLEVE.fireball.puffs;
+  return Array.from({ length: count }, (_, index) => {
+    const onsetSeconds = index === 0 ? 0 : (riseSeconds + holdSeconds) * random() ** onsetPower;
+    const attackSeconds = attackShare * holdSeconds * (index === 0 ? shortestShareOfHold : shortestShareOfHold + random() * (longestShareOfHold - shortestShareOfHold));
+    const decibels = index === 0 ? 0 : spreadDecibels * normalDeviate(random);
+    const colour = index === 0 ? 1 : normalDeviate(random);
+    const gains = layerWeights.map((_, layer) => 10 ** ((decibels + layerSpreadDecibels * normalDeviate(random) + colourDecibels * colour * (layer - 1)) / 20));
+    return { onsetSeconds, attackSeconds, gains };
+  });
+}
+
+/** Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed. */
+export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed) {
+  const { tailDecibels, puffs: { floorDecibels, darkeningDecibels, swellPeakShareOfHold, swellFloor } } = BLEVE.fireball;
   const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
-  const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, roarDensity);
+  const random = createRandom(seed);
+  const noises = layerDensities.map(density => spectralNoise(random, nextPowerOfTwo(length), sampleRate, density));
+  const puffs = drawPuffs(createRandom(puffSeed), riseSeconds, holdSeconds);
   const decay = tailDecibels / 20 * Math.LN10 / holdSeconds;
-  const samples = new Float64Array(length);
+  const burnSeconds = riseSeconds + holdSeconds;
+  const floor = 10 ** (floorDecibels / 20);
+  const swellPeakSeconds = swellPeakShareOfHold * holdSeconds;
+  const shaped = noises.map(() => new Float64Array(length));
+  let plainEnergy = 0;
+  const layerEnergy = new Float64Array(noises.length);
   for (let index = 0; index < length; index += 1) {
     const t = index / sampleRate;
-    const envelope = t < riseSeconds ? t / riseSeconds : t < riseSeconds + holdSeconds ? 1 : Math.exp(-decay * (t - riseSeconds - holdSeconds));
-    samples[index] = noise[index] * envelope;
+    const envelope = t < riseSeconds ? t / riseSeconds : t < burnSeconds ? 1 : Math.exp(-decay * (t - burnSeconds));
+    plainEnergy += envelope ** 2;
+    const burnt = Math.min(t, burnSeconds) / burnSeconds;
+    const swelling = t < swellPeakSeconds ? Math.max(swellFloor, t / swellPeakSeconds * Math.exp(1 - t / swellPeakSeconds)) : 1;
+    for (let layer = 0; layer < noises.length; layer += 1) {
+      let power = floor ** 2;
+      for (const { onsetSeconds, attackSeconds, gains } of puffs) {
+        if (t <= onsetSeconds) continue;
+        const x = (t - onsetSeconds) / attackSeconds;
+        power += (gains[layer] * x * Math.exp(1 - x)) ** 2;
+      }
+      const tilt = (layer === 0 ? swelling : 1) * 10 ** (-darkeningDecibels[layer] * burnt / 20);
+      const value = envelope * tilt * Math.sqrt(power);
+      layerEnergy[layer] += value ** 2;
+      shaped[layer][index] = value;
+    }
+  }
+  const samples = new Float64Array(length);
+  for (let layer = 0; layer < noises.length; layer += 1) {
+    const scale = layerEnergy[layer] > 0 ? Math.sqrt(plainEnergy / layerEnergy[layer]) : 0;
+    for (let index = 0; index < length; index += 1) samples[index] += scale * shaped[layer][index] * noises[layer][index];
   }
   return scaleToLoudestWindow(samples, Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate)));
 }
+
+export const bleveRoarSamples = (seed, holdSeconds, sampleRate, emitter) => fireballRoarSamples(seed, holdSeconds, sampleRate, emitter.seed);
 
 export const fireballDiameterMetres = emitter => fireballOf(emitter, STANDARD_AIR)?.diameterMetres ?? 0;
 

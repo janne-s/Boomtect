@@ -4,7 +4,8 @@ import { BLEVE } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBleve, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSources, fireballSwell, saturation, vesselOf } from '../src/domain/bleve.js';
+import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSamples, fireballRoarSources, fireballSwell, saturation, vesselOf } from '../src/domain/bleve.js';
+import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -106,8 +107,8 @@ test('the roar rises above the vessel to the fireball\'s centre, follows the hea
   assert.ok(Math.abs(20 * Math.log10(roar.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
   assert.equal(fireballRoarSources({ ...defaultBleve(), fireballDecibels: -60 }, STANDARD_AIR).length, 0);
   assert.equal(emitterSources({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR).sources.length, 2);
-  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 4);
-  assert.equal(fireballRoarSources({ ...defaultBleve(), swellDecibels: -60 }, STANDARD_AIR).length, 1);
+  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 3);
+  assert.equal(fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR).length, 2);
 });
 
 test('the growing fireball swells as a monopole as large as Betteridge & Phillips measured, peaking early in its growth', () => {
@@ -119,6 +120,44 @@ test('the growing fireball swells as a monopole as large as Betteridge & Phillip
   const [, quieter] = fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR);
   assert.equal(louder.pulse, 'friedlander');
   assert.ok(Math.abs(20 * Math.log10(louder.amplitudePaMetres / quieter.amplitudePaMetres) - 12) < 1e-9);
+});
+
+function bandEnergy(samples, sampleRate, [lowHz, highHz], [fromSeconds, toSeconds]) {
+  const size = nextPowerOfTwo(samples.length);
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  re.set(samples);
+  fft(re, im);
+  for (let bin = 0; bin < size; bin += 1) {
+    const frequencyHz = Math.min(bin, size - bin) * sampleRate / size;
+    if (frequencyHz < lowHz || frequencyHz >= highHz) { re[bin] = 0; im[bin] = 0; }
+  }
+  fft(re, im, true);
+  let sum = 0;
+  for (let index = Math.round(fromSeconds * sampleRate); index < Math.round(toSeconds * sampleRate); index += 1) sum += re[index] ** 2;
+  return sum;
+}
+
+test('the roar swells low and darkens high over its hold, its puffs shared by both noise parts', () => {
+  const [sampleRate, hold] = [8000, 1.6];
+  let [swell, darkening] = [0, 0];
+  for (const seed of [1, 2, 3, 4]) {
+    const roar = fireballRoarSamples(seed, hold, sampleRate);
+    swell += 10 * Math.log10(bandEnergy(roar, sampleRate, [20, 80], [.6, .9]) / bandEnergy(roar, sampleRate, [20, 80], [.05, .2]) / 2) / 4;
+    darkening += 10 * Math.log10(bandEnergy(roar, sampleRate, [1000, 4000], [.05, .35]) / bandEnergy(roar, sampleRate, [1000, 4000], [1.3, 1.6])) / 4;
+  }
+  assert.ok(swell > 6, `low band swells ${swell} dB`);
+  assert.ok(darkening > 6, `high band darkens ${darkening} dB`);
+  const envelope = samples => Array.from({ length: 30 }, (_, step) => Math.log(bandEnergy(samples, sampleRate, [20, 4000], [step * .08, (step + 1) * .08]) + 1e-30));
+  const correlation = (a, b) => {
+    const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length;
+    const [ma, mb] = [mean(a), mean(b)];
+    const dot = (x, mx, y, my) => x.reduce((sum, value, index) => sum + (value - mx) * (y[index] - my), 0);
+    return dot(a, ma, b, mb) / Math.sqrt(dot(a, ma, a, ma) * dot(b, mb, b, mb));
+  };
+  const [first, second] = [fireballRoarSamples(10, hold, sampleRate, 10), fireballRoarSamples(11, hold, sampleRate, 10)];
+  assert.notDeepEqual(first.slice(0, 100), second.slice(0, 100));
+  assert.ok(correlation(envelope(first), envelope(second)) > .8);
 });
 
 function bangOverRoarDecibels(emitter, distance) {
