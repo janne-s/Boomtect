@@ -109,18 +109,31 @@ test('the roar rises above the vessel to the fireball\'s centre, follows the hea
   assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 3);
 });
 
-test('a road tanker heard 125 m away bangs about as far above its roar as the recordings E9 and E11', () => {
+function bangOverRoarDecibels(emitter, distance) {
   const scene = plainScene('blast');
-  scene.emitters = [defaultBleve()];
-  scene.receivers[0].positionMetres = { x: 125, y: 0, z: 1.7 };
+  scene.emitters = [emitter];
+  scene.receivers[0].positionMetres = { x: distance, y: 0, z: 1.7 };
   const value = parseScene(scene);
   const { samples, sampleRate } = renderReceiver(prepareScene(value), value.receivers[0], value);
   const largest = samples.reduce((most, sample) => Math.max(most, Math.abs(sample)), 0);
   const first = samples.findIndex(sample => Math.abs(sample) > 1e-4 * largest);
-  const hold = fireballOf(defaultBleve(), STANDARD_AIR).holdSeconds;
+  const hold = fireballOf(emitter, STANDARD_AIR).holdSeconds;
   let sum = 0;
   const [from, to] = [first + Math.round(.3 * sampleRate), first + Math.round((.1 + hold) * sampleRate)];
   for (let index = from; index < to; index += 1) sum += samples[index] ** 2;
-  const decibels = 20 * Math.log10(largest / Math.sqrt(sum / (to - from)));
-  assert.ok(decibels > 9 && decibels < 20, `${decibels} dB`);
+  return 20 * Math.log10(largest / Math.sqrt(sum / (to - from)));
+}
+
+test('a road tanker heard 125 m away bangs above its roar by more than the level-managed recordings E9 and E11', () => {
+  const decibels = bangOverRoarDecibels(defaultBleve(), 125);
+  assert.ok(decibels > 14 && decibels < 35, `${decibels} dB`);
+});
+
+test('a small vessel bursting at low pressure is heard as its bang, its fireball held to half its visible duration', () => {
+  const can = { ...defaultBleve(), fluid: 'gasoline', vesselCubicMetres: .01, fillShare: 0, failureBar: 1 };
+  const fireball = fireballOf(can, STANDARD_AIR);
+  assert.ok(Math.abs(fireball.holdSeconds - fireball.visibleSeconds / 2) < 1e-12);
+  const [roar] = fireballRoarSources(can, STANDARD_AIR);
+  assert.ok(roar.spanSeconds < 2 * fireball.visibleSeconds);
+  assert.ok(heardPeakPa(can, 100) < 1.5 * heardPeakPa({ ...can, fireballDecibels: -60 }, 100));
 });

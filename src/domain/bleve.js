@@ -50,17 +50,17 @@ export const bleveBlast = (emitter, air) => ({
   riseTimeSeconds: emitter.riseTimeSeconds, fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0
 });
 
-/** Class B: the whole contents burn as one fireball (Roberts 1982, CCPS 1994); its roar holds for k M^⅙ (class C). */
+/** Class B: the whole contents burn as one fireball (Roberts 1982, CCPS 1994); its roar holds for k M^⅙ or half the visible duration (class C). */
 export function fireballOf(emitter, air) {
   const heat = BLEVE.fluids[emitter.fluid].combustionMegajoulesPerKilogram;
   if (!(heat > 0)) return null;
   const contents = bleveContents(emitter, air);
   const kilograms = contents.liquidKilograms + contents.vapourKilograms;
-  const { diameterMetresPerCubeRootKilogram, secondsPerCubeRootKilogram, largeKilograms, largeSecondsPerSixthRootKilogram } = BLEVE.fireball;
+  const { diameterMetresPerCubeRootKilogram, secondsPerCubeRootKilogram, largeKilograms, largeSecondsPerSixthRootKilogram, holdShareOfVisible } = BLEVE.fireball;
   const visibleSeconds = kilograms < largeKilograms ? secondsPerCubeRootKilogram * Math.cbrt(kilograms) : largeSecondsPerSixthRootKilogram * kilograms ** (1 / 6);
   return {
     kilograms, visibleSeconds, diameterMetres: diameterMetresPerCubeRootKilogram * Math.cbrt(kilograms),
-    holdSeconds: emitter.fireballSecondsPerSixthRootKilogram * kilograms ** (1 / 6), heatWatts: kilograms * heat * 1e6 / visibleSeconds
+    holdSeconds: Math.min(emitter.fireballSecondsPerSixthRootKilogram * kilograms ** (1 / 6), holdShareOfVisible * visibleSeconds), heatWatts: kilograms * heat * 1e6 / visibleSeconds
   };
 }
 
@@ -71,12 +71,15 @@ export function roarPaMetres(fireball, air) {
   return Math.sqrt(watts * density * speedOfSoundMetresPerSecond(air.temperatureCelsius) / (2 * Math.PI)) / 2;
 }
 
-export const roarSpanSeconds = holdSeconds => BLEVE.fireball.riseSeconds + holdSeconds * (1 + 70 / BLEVE.fireball.tailDecibels);
+const roarRiseSeconds = holdSeconds => Math.min(BLEVE.fireball.riseSeconds, BLEVE.fireball.riseShareOfHold * holdSeconds);
+
+export const roarSpanSeconds = holdSeconds => roarRiseSeconds(holdSeconds) + holdSeconds * (1 + 70 / BLEVE.fireball.tailDecibels);
 
 const roarDensity = tableDensity(BLEVE.fireball.spectrumHz, BLEVE.fireball.spectrumDensity);
 
 export function fireballRoarSamples(seed, holdSeconds, sampleRate) {
-  const { riseSeconds, tailDecibels } = BLEVE.fireball;
+  const { tailDecibels } = BLEVE.fireball;
+  const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
   const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, roarDensity);
   const decay = tailDecibels / 20 * Math.LN10 / holdSeconds;

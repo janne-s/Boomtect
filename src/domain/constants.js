@@ -254,8 +254,9 @@ export const BLEVE = Object.freeze({
   }),
   /**
    * Class B: the fireball's diameter 5.8 M^⅓ and visible duration 0.45 M^⅓, 2.6 M^⅙ from 30 t (Roberts 1982, CCPS 1994; within about 20 % of
-   * Roberts et al. 2000). Class C: its roar rises in 0.1 s, holds for k M^⅙ and dies by 30 dB over as long again, its spectrum fitted to
-   * Doc/reference/audio E9 and E11, its sound power a share of the mean heat release fitted to their bang over roar.
+   * Roberts et al. 2000). Class C: its roar rises in 0.1 s or half its hold, holds for k M^⅙ or half the visible duration and dies by 30 dB
+   * over as long again, its spectrum fitted to Doc/reference/audio E9 and E11, its sound power a share of the mean heat release at the
+   * turbulent-flame end of the literature's range.
    */
   fireball: Object.freeze({
     diameterMetresPerCubeRootKilogram: 5.8,
@@ -263,8 +264,10 @@ export const BLEVE = Object.freeze({
     largeKilograms: 30000,
     largeSecondsPerSixthRootKilogram: 2.6,
     riseSeconds: .1,
+    riseShareOfHold: .5,
+    holdShareOfVisible: .5,
     tailDecibels: 30,
-    acousticEfficiency: 2e-3,
+    acousticEfficiency: 1e-4,
     spectrumHz: Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
     spectrumDensity: Object.freeze([1, .49, .038, .012, .008, .0055, .0021, .0012, 5.9e-5])
   }),
