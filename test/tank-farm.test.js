@@ -31,18 +31,26 @@ test('the tanks stand in rows centred on the farm, turned with its heading', () 
   assert.ok(Math.abs(turned[3].x - straight[3].y) < 1e-9 && Math.abs(turned[3].y + straight[3].x) < 1e-9);
 });
 
-test('the fire reaches the tanks from the first one, and a fireball nearby hurries the next', () => {
+test('the fire reaches the tanks from the first one, which fails at the start, and a fireball nearby hurries the next', () => {
   const far = { ...even, spacingMetres: 200 };
   const tanks = tankFarmTanks(far);
   const first = tanks.find(tank => tank.id.endsWith(':0'));
   assert.equal(tanks[0], first);
-  assert.ok(Math.abs(first.startSeconds - far.heatingSeconds) < 1e-9);
+  assert.ok(Math.abs(first.startSeconds - far.startSeconds) < 1e-9);
   const second = tanks.find(tank => tank.id.endsWith(':1'));
-  assert.ok(Math.abs(second.startSeconds - (200 / far.spreadMetresPerSecond + far.heatingSeconds)) < 1e-9);
+  assert.ok(Math.abs(second.startSeconds - far.startSeconds - 200 / far.spreadMetresPerSecond) < 1e-9);
   const near = tankFarmTanks({ ...even, spacingMetres: 10 });
   const hurried = near.find(tank => tank.id.endsWith(':1'));
-  const unhurried = 10 / even.spreadMetresPerSecond + even.heatingSeconds;
-  assert.ok(Math.abs(hurried.startSeconds - (even.heatingSeconds + .5 * (unhurried - even.heatingSeconds))) < 1e-9);
+  assert.ok(Math.abs(hurried.startSeconds - even.startSeconds - .5 * 10 / even.spreadMetresPerSecond) < 1e-9);
+  const opened = tankFarmTanks({ ...far, openingCloudCubicMetres: 2000 });
+  assert.ok(Math.abs(opened[0].startSeconds - far.startSeconds - far.heatingSeconds) < 1e-9);
+});
+
+test('a tank is hurried once, so a dense farm of small tanks does not fail all at once', () => {
+  const dense = { ...defaultTankFarm(), vessel: 'cylinder47', otherVessel: 'cylinder47', fluid: 'gasoline', tankCount: 60, spacingMetres: 2, heatingSeconds: 10 };
+  const times = tankFarmTanks(dense).map(tank => tank.startSeconds);
+  const together = times.slice(1).filter((time, index) => time - times[index] < 1e-3).length;
+  assert.ok(together < 3, `${together} tanks within 1 ms of the one before`);
 });
 
 test('the mix takes the other vessel by its share', () => {

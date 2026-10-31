@@ -31,7 +31,7 @@ export function openingExplosion(farm) {
   };
 }
 
-/** Class C: each tank's BLEVE, the fire reaching it from the first tank and a fireball nearby hurrying it. */
+/** Class C: each tank's BLEVE, the fire reaching it from the first tank and the first fireball reaching it hurrying it once; without an opening cloud the first tank fails at the start. */
 export function tankFarmTanks(farm) {
   const random = createRandom(farm.seed);
   const positions = tankFarmLayout(farm);
@@ -49,16 +49,22 @@ export function tankFarmTanks(farm) {
     };
   });
   const pending = new Set(tanks);
+  const hurried = new Set();
   while (pending.size) {
     const failing = [...pending].reduce((first, tank) => (tank.startSeconds < first.startSeconds ? tank : first));
     pending.delete(failing);
     const reach = (fireballOf(failing, STANDARD_AIR)?.diameterMetres ?? 0) / 2;
     for (const tank of pending) {
       const distance = Math.hypot(tank.positionMetres.x - failing.positionMetres.x, tank.positionMetres.y - failing.positionMetres.y);
-      if (distance <= reach) tank.startSeconds = failing.startSeconds + TANK_FARM.dominoShare * (tank.startSeconds - failing.startSeconds);
+      if (distance > reach || hurried.has(tank)) continue;
+      tank.startSeconds = failing.startSeconds + TANK_FARM.dominoShare * (tank.startSeconds - failing.startSeconds);
+      hurried.add(tank);
     }
   }
-  return tanks.sort((a, b) => a.startSeconds - b.startSeconds);
+  tanks.sort((a, b) => a.startSeconds - b.startSeconds);
+  const wait = openingExplosion(farm) ? 0 : tanks[0].startSeconds - farm.startSeconds;
+  for (const tank of tanks) tank.startSeconds -= wait;
+  return tanks;
 }
 
 export const tankFarmRounds = farm => [...(openingExplosion(farm) ? [openingExplosion(farm)] : []), ...tankFarmTanks(farm)];
