@@ -285,7 +285,7 @@ const meteorEntry = {
 const meteorEnd = {
   label: 'End height',
   read: item => clamp01(item.endHeightMetres / Math.max(1, item.startMetres.z)),
-  write: (item, t) => { item.endHeightMetres = Math.min(item.startMetres.z - 1000, Math.round(t * item.startMetres.z / 100) * 100); },
+  write: (item, t) => { item.endHeightMetres = Math.max(0, Math.min(item.startMetres.z - 1000, Math.round(t * item.startMetres.z / 100) * 100)); },
   show: item => metres(item.endHeightMetres),
   entry: { units: METRES, get: item => item.endHeightMetres, set: (item, value) => { item.endHeightMetres = value; } }
 };
