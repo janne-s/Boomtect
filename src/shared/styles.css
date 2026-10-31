@@ -417,6 +417,10 @@ figcaption {
   color: var(--faint);
   font-size: 13px;
 }
+.icon-toggle:hover:not(:disabled):not([aria-pressed="true"]),
+.lock-button:hover:not([aria-pressed="true"]) {
+  color: var(--muted);
+}
 .icon-toggle[aria-pressed="true"] {
   color: var(--accent);
 }
