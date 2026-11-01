@@ -319,15 +319,13 @@ export const BLEVE = Object.freeze({
      */
     swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -60 }),
     /**
-     * Class C: the turbulent share of the monopole, heard as a low thump while the fireball grows and ending with its growth (E11: 1.6 s,
-     * then 11 dB down in 0.1 s; E9: 0.7 s); its octaves are E9's and E11's over the growth, its level a share of the smooth swell's peak.
-     * It opens with a burst at the swell's peak acceleration, (2 − √2)/k, falling 10 dB over 1.5 times as long (E11: up in 0.09 s,
-     * down in 0.31 s; E9 0.01 and 0.4 s); the burst's level and time and the hold's tilt vary with the seed.
+     * Class C: the turbulent share of the monopole, heard as one low thump, a burst at the swell's peak acceleration, (2 − √2)/k,
+     * falling 10 dB over 1.5 times as long (E11: up in 0.09 s, down in 0.31 s; E9 0.01 and 0.4 s); its octaves are E9's and E11's,
+     * its level a share of the smooth swell's peak; the burst's level and time vary with the seed. The growth's held low part is the roar's.
      */
     thump: Object.freeze({
       spectrumHz: Object.freeze([31.5, 63, 125, 250, 500, 1000]), spectrumDensity: Object.freeze([1, 1, .29, .032, .004, .0005]),
-      turbulentShare: .045, endDecibels: 30, endSeconds: .1, defaultDecibels: 0,
-      burstDecibels: 6, burstSpreadDecibels: 3, burstTimeSpread: .3, puffCeiling: 3, tiltSpreadDecibels: 3
+      turbulentShare: .045, defaultDecibels: 0, burstSpreadDecibels: 3, burstTimeSpread: .3
     })
   }),
   /**

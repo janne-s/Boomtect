@@ -91,10 +91,10 @@ const THUMP_SEED = 0x6c8e9cf5;
 export const thumpSeed = emitter => (emitter.seed ^ THUMP_SEED) >>> 0;
 let lastEnvelopes = null;
 
-function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
-  const key = `${puffSeed}:${holdSeconds}:${sampleRate}:${thumping}`;
+function roarEnvelopes(puffSeed, holdSeconds, sampleRate) {
+  const key = `${puffSeed}:${holdSeconds}:${sampleRate}`;
   if (lastEnvelopes?.key === key) return lastEnvelopes;
-  const { tailDecibels, puffs: config, thump: shaping } = BLEVE.fireball;
+  const { tailDecibels, puffs: config } = BLEVE.fireball;
   const { floorDecibels, darkeningDecibels } = config;
   const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
@@ -103,7 +103,6 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   const burnSeconds = riseSeconds + holdSeconds;
   const layers = layerDensities.map(() => new Float64Array(length));
   const puffPower = puffPowers(puffs, layers.length, length, sampleRate, floorDecibels);
-  const lowPower = thumping ? new Float64Array(length) : null;
   let plainEnergy = 0;
   const layerEnergy = new Float64Array(layers.length);
   for (let index = 0; index < length; index += 1) {
@@ -113,7 +112,6 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
     const burnt = Math.min(t, burnSeconds) / burnSeconds;
     for (let layer = 0; layer < layers.length; layer += 1) {
       const power = puffPowerAt(puffPower[layer], index);
-      if (layer === 0 && thumping) lowPower[index] = power;
       const tilt = 10 ** (-darkeningDecibels[layer] * burnt / 20);
       const value = envelope * tilt * Math.sqrt(power);
       layerEnergy[layer] += value ** 2;
@@ -124,27 +122,7 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
     const scale = layerEnergy[layer] > 0 ? Math.sqrt(plainEnergy / layerEnergy[layer]) : 0;
     for (let index = 0; index < length; index += 1) shaped[index] = scale * shaped[index];
   });
-  let thump = null;
-  if (thumping) {
-    const { endDecibels, endSeconds, burstDecibels, burstSpreadDecibels, burstTimeSpread, puffCeiling, tiltSpreadDecibels } = shaping;
-    const growthEnd = endDecibels / 20 * Math.LN10 / endSeconds;
-    const growing = Math.min(length, Math.round(holdSeconds * sampleRate));
-    const meanPower = lowPower.subarray(0, growing).reduce((sum, value) => sum + value, 0) / Math.max(1, growing);
-    const shape = createRandom((puffSeed ^ BURST_SEED) >>> 0);
-    const burst = 10 ** ((burstDecibels + burstSpreadDecibels * normalDeviate(shape)) / 20);
-    const burstSeconds = (2 - Math.SQRT2) * holdSeconds / BLEVE.fireball.swell.growthRate * Math.exp(burstTimeSpread * normalDeviate(shape));
-    const tilt = tiltSpreadDecibels * normalDeviate(shape);
-    const ceiling = Math.max(1, burst / 10 ** (2 / 20));
-    thump = new Float64Array(length);
-    for (let index = 0; index < length; index += 1) {
-      const t = index / sampleRate;
-      const x = t / burstSeconds;
-      const bursting = burst * (x * Math.exp(1 - x)) ** 2;
-      const holding = Math.min(ceiling, (t < riseSeconds ? t / riseSeconds : 1) * Math.sqrt(1 + Math.min(puffCeiling, lowPower[index] / meanPower)) * 10 ** (tilt * Math.min(t, holdSeconds) / holdSeconds / 20));
-      thump[index] = Math.hypot(bursting, holding) * (t < holdSeconds ? 1 : Math.exp(-growthEnd * (t - holdSeconds)));
-    }
-  }
-  lastEnvelopes = { key, length, layers, thump };
+  lastEnvelopes = { key, length, layers };
   return lastEnvelopes;
 }
 
@@ -152,7 +130,7 @@ const loudestWindow = sampleRate => Math.max(1, Math.round(BLAST.roar.windowSeco
 
 /** Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed. */
 export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed) {
-  const { length, layers } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, false);
+  const { length, layers } = roarEnvelopes(puffSeed, holdSeconds, sampleRate);
   const random = createRandom(seed);
   const size = nextPowerOfTwo(length);
   const noises = [...spectralNoisePair(random, size, sampleRate, layerDensities), spectralNoise(random, size, sampleRate, layerDensities[2])];
@@ -163,13 +141,22 @@ export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = se
   return scaleToLoudestWindow(samples, loudestWindow(sampleRate));
 }
 
-/** Class C: the growth thump bursts as the fireball's growth accelerates most, then follows the vessel's low puffs, held under the burst, until the fireball has grown. */
+/** Class C: the growth thump, one burst as the fireball's growth accelerates most, at a level and time of the vessel's seed. */
 export function fireballThumpSamples(seed, holdSeconds, sampleRate, puffSeed = seed) {
-  const { length, thump: envelope } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, true);
+  const { burstSpreadDecibels, burstTimeSpread } = BLEVE.fireball.thump;
+  const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
+  const shape = createRandom((puffSeed ^ BURST_SEED) >>> 0);
+  const level = 10 ** (burstSpreadDecibels * normalDeviate(shape) / 20);
+  const burstSeconds = (2 - Math.SQRT2) * holdSeconds / BLEVE.fireball.swell.growthRate * Math.exp(burstTimeSpread * normalDeviate(shape));
   const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, thumpDensity);
   const samples = new Float64Array(length);
-  for (let index = 0; index < length; index += 1) samples[index] = envelope[index] * noise[index];
-  return scaleToLoudestWindow(samples, loudestWindow(sampleRate));
+  for (let index = 0; index < length; index += 1) {
+    const x = index / sampleRate / burstSeconds;
+    samples[index] = (x * Math.exp(1 - x)) ** 2 * noise[index];
+  }
+  scaleToLoudestWindow(samples, loudestWindow(sampleRate));
+  for (let index = 0; index < length; index += 1) samples[index] *= level;
+  return samples;
 }
 
 /** Class C like the thump itself: its loudest window, a turbulent share of the swell's peak. */

@@ -171,14 +171,14 @@ test('the roar, the thump and the swell are each their own source, at their own 
   assert.equal(sources({ ...defaultBleve(), fluid: 'water' }).length, 0);
 });
 
-test('the thump sounds low while the fireball grows and stops once it has grown', () => {
+test('the thump is one low burst early in the growth, gone well before the fireball has grown', () => {
   const [sampleRate, hold] = [8000, 1.6];
   let drop = 0;
   for (const seed of [1, 2, 3, 4]) {
     const thump = fireballThumpSamples(seed, hold, sampleRate);
-    drop += 10 * Math.log10(bandEnergy(thump, sampleRate, [40, 160], [.2, 1.4]) / bandEnergy(thump, sampleRate, [40, 160], [1.8, 2.2])) / 4;
+    drop += 10 * Math.log10(bandEnergy(thump, sampleRate, [40, 160], [0, .5]) / bandEnergy(thump, sampleRate, [40, 160], [.9, 1.5])) / 4;
   }
-  assert.ok(drop > 20, `${drop} dB down once grown`);
+  assert.ok(drop > 20, `${drop} dB down by the second half of the growth`);
 });
 
 test('the thump bursts as the growth accelerates most, at a time and level of its seed, and its hold stays under the burst', () => {
