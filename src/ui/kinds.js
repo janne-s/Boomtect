@@ -317,7 +317,7 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
       section('Source', container => {
         numberField(container, { key: 'fireballDecibels', label: 'Roar', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
         numberField(container, { key: 'fireballSecondsPerSixthRootKilogram', label: 'Roar tail', value: emitter.fireballSecondsPerSixthRootKilogram, onCommit: set('fireballSecondsPerSixthRootKilogram') });
-        numbers(['riseTimeSeconds'])(container);
+        numbers(['puffBlend', 'riseTimeSeconds'])(container);
       })
     ];
   }

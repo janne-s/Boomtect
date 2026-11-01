@@ -148,7 +148,8 @@ export const GAS_EXPLOSION = Object.freeze({
     puffs: Object.freeze({
       count: 10, onsetPower: 1.5, shortestShareOfHold: .15, longestShareOfHold: .5, attackShare: .3,
       spreadDecibels: 5, layerSpreadDecibels: 3, colourDecibels: 4, floorDecibels: -6,
-      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 18]), activeShareOfTail: .2
+      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 18]), activeShareOfTail: .2,
+      defaultBlend: .6, blendLengthening: 3
     })
   }),
   fuels: Object.freeze({

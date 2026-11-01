@@ -167,14 +167,16 @@ export function roarSamples(seed, { burnSeconds, tailSeconds, strength, radiusMe
 const PUFF_LAYERS = puffLayerWeights(GAS_EXPLOSION.roar.puffs.crossoversHz);
 
 /** Class C: the roar as puffs drawn from the cloud's seed, each layer keeping the plain roar's energy, so that its spectrum and level stay. */
-export function puffedRoarSamples(seed, puffSeed, { burnSeconds, tailSeconds, strength, radiusMetres }, sampleRate) {
+export function puffedRoarSamples(seed, puffSeed, { burnSeconds, tailSeconds, strength, radiusMetres, blend = GAS_EXPLOSION.roar.puffs.defaultBlend }, sampleRate) {
   const config = GAS_EXPLOSION.roar.puffs;
   const density = roarDensity(strength, radiusMetres);
   const densities = PUFF_LAYERS.map(share => frequencyHz => share(frequencyHz) * density(frequencyHz));
   const length = Math.ceil(roarSpanSeconds(burnSeconds, tailSeconds) * sampleRate);
   const envelope = roarEnvelope(burnSeconds, tailSeconds);
   const activeSeconds = burnSeconds + config.activeShareOfTail * tailSeconds;
-  const powers = puffPowers(drawPuffs(createRandom(puffSeed), burnSeconds + tailSeconds, activeSeconds, config, PUFF_LAYERS.length), PUFF_LAYERS.length, length, sampleRate, config.floorDecibels);
+  const onsetSpanSeconds = activeSeconds + blend * (burnSeconds + tailSeconds - activeSeconds);
+  const puffs = drawPuffs(createRandom(puffSeed), onsetSpanSeconds, activeSeconds, config, PUFF_LAYERS.length, blend * config.blendLengthening);
+  const powers = puffPowers(puffs, PUFF_LAYERS.length, length, sampleRate, config.floorDecibels);
   const random = createRandom(seed);
   const size = nextPowerOfTwo(length);
   const noises = [...spectralNoisePair(random, size, sampleRate, densities), spectralNoise(random, size, sampleRate, densities[2])];
@@ -199,7 +201,7 @@ export function puffedRoarSamples(seed, puffSeed, { burnSeconds, tailSeconds, st
 
 export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
   const tailSeconds = gasRoarTailSeconds(emitter);
-  return puffedRoarSamples(seed, emitter.seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres) }, sampleRate);
+  return puffedRoarSamples(seed, emitter.seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres), blend: emitter.puffBlend }, sampleRate);
 }
 
 export function gasExplosionSources(emitter, air, surface = null) {
