@@ -17,6 +17,7 @@ import { secondaryShockDelay, weakShockPulse } from './shocks.js';
 import { riseSmoothing, tripleTerm } from './pulses.js';
 import { createRandom, normalDeviate } from './random.js';
 import { loudestDecibelsA } from './levels.js';
+import { lowCut } from './low-cut.js';
 import {
   creepingCoefficient, inShadow, pathProfile, PATH_DIRECT, PATH_ECHO, PATH_GROUND, PATH_SCATTER, PATH_SHADOW, rayBetween, reflectedRay, shadowPath, soundSpeedProfile, speedAt
 } from './refraction.js';
@@ -1569,12 +1570,22 @@ export function partitionSeconds(preparedEmitters, scene, count, tables = scene.
   return boundaries;
 }
 
+/** The low cut filters every channel alike, so the ambisonic field keeps its directions. */
+function lowCutResult(combined, hz, sampleRate) {
+  if (!(hz > 0) || !combined.channels[0]?.length) return combined;
+  const channels = combined.channels.map(channel => lowCut(channel, hz, sampleRate));
+  let peakPa = 0;
+  for (const value of channels[0]) peakPa = Math.max(peakPa, Math.abs(value));
+  return { ...combined, channels, peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], sampleRate) };
+}
+
 export function receiverResult(receiver, scene, combined, arrivals, nonlinearPaths) {
+  const heard = lowCutResult(combined, scene.render.lowCutHz, scene.render.sampleRate);
   return {
     receiverId: receiver.id,
     sampleRate: scene.render.sampleRate,
-    ...combined,
-    samples: combined.channels[0],
+    ...heard,
+    samples: heard.channels[0],
     speedOfSound: soundSpeedProfile(scene.air).groundSpeed,
     arrivals,
     nonlinearPaths,

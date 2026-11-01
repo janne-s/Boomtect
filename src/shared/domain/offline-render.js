@@ -139,6 +139,7 @@ export function renderSceneFiles(scene, tect, { ambix = false } = {}) {
     tect: tectOf(scene),
     scene: 'scene.json',
     fullScalePa: +(1 / gain).toPrecision(6),
+    lowCutHz: scene.render.lowCutHz,
     ambisonicConvention: ambix ? AMBIX_CONVENTION : undefined,
     place: scene.place,
     terrain: scene.terrain ? { cellMetres: scene.terrain.cellMetres, patches: scene.terrain.patches.length, datumMetres: +scene.terrain.datumMetres.toFixed(1), echoes: scene.terrain.echoes } : null,

@@ -1903,6 +1903,12 @@ export function startFrame(tect) {
     if (scene.render.levelMode === 'fixed') {
       numberField(output, { key: 'fullScalePa', value: scene.render.fullScalePa, onCommit: value => commitListening(next => { next.render.fullScalePa = value; }) });
     }
+    const cuts = [0, 20, 30].includes(scene.render.lowCutHz) ? [0, 20, 30] : [0, 20, 30, scene.render.lowCutHz].sort((a, b) => a - b);
+    selectField(output, {
+      label: 'Low cut', value: String(scene.render.lowCutHz),
+      options: cuts.map(hz => [String(hz), hz ? `${hz} Hz` : 'Off']),
+      onCommit: value => commit(next => { next.render.lowCutHz = Number(value); })
+    });
     checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
     checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
     numberField(output, { key: 'distanceLossPercent', value: scene.render.distanceLossPercent, onCommit: value => commit(next => { next.render.distanceLossPercent = value; }) });
