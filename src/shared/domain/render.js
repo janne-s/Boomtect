@@ -413,6 +413,9 @@ function withNearest(paths) {
  * Class C, a creative departure: beyond the receiver's nearest path, spreading falls as r^share instead of r, so a
  * Distance loss of 50 % halves the decibels a source loses with distance. Absorption, shocks and all else keep the true path.
  */
+/** A mix choice, not a model value: the emitter's share of what the microphone hears, scaled after propagation. */
+export const mixFactor = emitter => 10 ** ((emitter.mixDecibels ?? 0) / 20);
+
 export function distanceLossFactor(spreadMetres, nearestMetres, distanceLossPercent = 100) {
   if (!(distanceLossPercent < 100) || !(spreadMetres > nearestMetres) || !(nearestMetres > 0)) return 1;
   return (spreadMetres / nearestMetres) ** (1 - distanceLossPercent / 100);
@@ -536,7 +539,8 @@ export function arrivalTable(preparedEmitters, receiver, scene, options = {}) {
     elevations[index] = Math.asin(Math.max(-1, Math.min(1, paths.direction[3 * index + 2]))) * 180 / Math.PI;
     levels[index] = 20 * Math.log10(sources.amplitudePaMetres[paths.source[index]] * paths.amplitudeScale[index] / Math.max(paths.spreadMetres[index], 1e-3) * distanceLossFactor(paths.spreadMetres[index], paths.nearestSpreadMetres, scene.render.distanceLossPercent))
       + (paths.creepNepers[index] > 0 ? 20 * Math.log10(Math.hypot(...shadowResponse(VIEW.arrivalDiagramHz, paths.creepNepers[index], floor, diagramCreep(paths.creepRadius[index])))) : 0)
-      + edgeDecibels(paths, index, VIEW.arrivalDiagramHz);
+      + edgeDecibels(paths, index, VIEW.arrivalDiagramHz)
+      + (preparedEmitters[paths.emitter[index]].emitter.mixDecibels ?? 0);
   }
   return { count: paths.count, seconds, metres: paths.metres.slice(0, paths.count), heights, levels, bearings, elevations, kinds: paths.kind.slice(0, paths.count) };
 }
@@ -1363,6 +1367,8 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
       const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       if (sends) gains[channels] = forestSend(Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity);
+      const mix = mixFactor(preparedEmitters[emitterIndex].emitter);
+      if (mix !== 1) for (let lane = 0; lane < lanes; lane += 1) gains[lane] *= mix;
       const grain = sources.pulse[paths.source[index]] === PULSE_GRAIN
         ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) : null;
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared, grain);

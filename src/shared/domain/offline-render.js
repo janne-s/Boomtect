@@ -101,6 +101,12 @@ export function sceneBounds(scene, prepared, others = []) {
 
 const tectOf = scene => String(scene.format ?? 'tect').replace(/\.scene$/, '');
 
+/** Emitters mixed away from what propagation gives, so that a summary never reads as a physical prediction. */
+function mixedEmitters(scene) {
+  const mixed = scene.emitters.filter(emitter => emitter.enabled && (emitter.mixDecibels ?? 0) !== 0);
+  return mixed.length ? Object.fromEntries(mixed.map(emitter => [emitter.name, emitter.mixDecibels])) : undefined;
+}
+
 export function renderSceneFiles(scene, tect, { ambix = false } = {}) {
   const started = performance.now();
   const prepared = tect.prepareScene(scene);
@@ -137,6 +143,7 @@ export function renderSceneFiles(scene, tect, { ambix = false } = {}) {
     place: scene.place,
     terrain: scene.terrain ? { cellMetres: scene.terrain.cellMetres, patches: scene.terrain.patches.length, datumMetres: +scene.terrain.datumMetres.toFixed(1), echoes: scene.terrain.echoes } : null,
     modelVersion: scene.modelVersion,
+    mixDecibels: mixedEmitters(scene),
     renderSeconds: +((performance.now() - started) / 1000).toFixed(1),
     microphones
   };

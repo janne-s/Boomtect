@@ -1551,7 +1551,8 @@ export function startFrame(tect) {
     $('details-title').textContent = kind === emitter.name ? emitter.name : `${emitter.name} · ${kind}`;
     const body = $('details-body');
     const scroll = body.scrollTop;
-    body.replaceChildren(...kinds[emitter.kind].details(emitter, { updateEmitter, renameEmitter, scene: state.scene }).map(({ title, build }) => {
+    const mix = { title: 'Mix', build: container => numberField(container, { key: 'mixDecibels', value: emitter.mixDecibels ?? 0, onCommit: value => updateEmitter(emitter.id, item => { item.mixDecibels = value; }) }) };
+    body.replaceChildren(...[...kinds[emitter.kind].details(emitter, { updateEmitter, renameEmitter, scene: state.scene }), mix].map(({ title, build }) => {
       const group = element('section', 'details-section');
       group.append(element('h3', '', title));
       const fields = element('div', 'fields');

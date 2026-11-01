@@ -42,6 +42,7 @@ export const PARAMETERS = Object.freeze({
   treeHeightMetres: { minimum: 2, maximum: 50, unit: 'm', label: 'Tree height', reliability: 'C' },
   forestDensity: { minimum: .05, maximum: 1, unit: '', label: 'Forest density', reliability: 'C' },
   surroundingsSeconds: { minimum: .5, maximum: 20, unit: 's', label: 'Surroundings tail', reliability: 'C' },
+  mixDecibels: { minimum: -60, maximum: 20, unit: 'dB', label: 'Mix', reliability: null },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
   windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
@@ -180,7 +181,8 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
     check(Object.hasOwn(kinds, value.kind), `${path}.kind is not supported.`);
     check(typeof value.enabled === 'boolean', `${path}.enabled must be true or false.`);
     check(isSeed(value.seed), `${path}.seed must be a 32-bit unsigned integer.`);
-    const common = { id: text(value.id, `${path}.id`), name: text(value.name, `${path}.name`), kind: value.kind, enabled: value.enabled, seed: value.seed };
+    const mixDecibels = value.mixDecibels === undefined ? 0 : number(value.mixDecibels, 'mixDecibels', `${path}.mixDecibels`);
+    const common = { id: text(value.id, `${path}.id`), name: text(value.name, `${path}.name`), kind: value.kind, enabled: value.enabled, seed: value.seed, ...(mixDecibels ? { mixDecibels } : {}) };
     return { ...common, ...kinds[value.kind].read(value, fields, path) };
   }
 
