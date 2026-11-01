@@ -404,7 +404,7 @@ export function kindViews() {
   function roomCorners(emitter) {
     const vent = placed(emitter.positionMetres);
     const half = roomSideMetres(emitter.roomCubicMetres) / 2;
-    const base = Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ground(vent.x + sx * half, vent.y + sy * half)));
+    const base = emitter.positionMetres.z + Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ground(vent.x + sx * half, vent.y + sy * half)));
     const ring = z => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: vent.x + sx * half, y: vent.y + sy * half, z }));
     return { floor: ring(base), roof: ring(base + 2 * half) };
   }
