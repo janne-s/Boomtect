@@ -1,5 +1,5 @@
 import { followerFields, followsField } from '../shared/domain/follower.js';
-import { BLEVE, FLIGHT, MODEL_VERSION, THUNDER } from './constants.js';
+import { BLEVE, FLIGHT, MODEL_VERSION, ROOM_EXPLOSION, THUNDER } from './constants.js';
 import { createScene } from '../shared/domain/scene.js';
 import { BLAST_PULSE } from './blast-pulse.js';
 import { EXPLOSIVE_TYPES } from './explosives.js';
@@ -307,7 +307,7 @@ export function defaultRoomExplosion(id = 'room-explosion-1', name = 'Room explo
     structureKilopascals: 15,
     ringDecibels: 0,
     fireballDecibels: -20,
-    fireballSecondsPerSixthRootKilogram: .92,
+    fireballSecondsPerSixthRootKilogram: ROOM_EXPLOSION.roarSecondsPerSixthRootKilogram,
     riseTimeSeconds: 4e-5
   };
 }

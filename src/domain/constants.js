@@ -196,6 +196,8 @@ export const ROOM_EXPLOSION = Object.freeze({
   ringPressureShare: .4,
   ringCycles: 5,
   ringFloor: .05,
+  /** Class C: the roar's tail per kg^⅙, fitted to the apartment explosions Doc/reference/audio E13 and E16 (−20 dB 0.4–0.7 s after the arrival). */
+  roarSecondsPerSixthRootKilogram: .33,
   materials: Object.freeze({
     naturalGas: Object.freeze({ label: 'Natural gas', burningMetresPerSecond: .40, megajoulesPerCubicMetre: 3.22, maximumBar: 7.1 }),
     propane: Object.freeze({ label: 'Propane', burningMetresPerSecond: .46, megajoulesPerCubicMetre: 3.48, maximumBar: 7.9 }),

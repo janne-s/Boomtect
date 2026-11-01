@@ -3,7 +3,7 @@ import test from 'node:test';
 import { ROOM_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultRoomExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { breakPulse, dustVentedBar, gasVentedBar, ringHz, roomExplosion, roomPressures, turbulenceFactor } from '../src/domain/room-explosion.js';
+import { breakPulse, dustVentedBar, gasVentedBar, ringHz, roomExplosion, roomPressures, roomRoarTailSeconds, turbulenceFactor } from '../src/domain/room-explosion.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -74,4 +74,11 @@ test('a rendered room explosion is finite and loudest after its window breaks', 
   result.samples.forEach((sample, index) => { if (Math.abs(sample) > Math.abs(result.samples[loudest])) loudest = index; });
   const seconds = result.startSeconds + loudest / result.sampleRate - 200 / 340.3;
   assert.ok(seconds >= roomPressures(value.emitters[0]).openSeconds - .01, `loudest ${seconds} s after ignition`);
+});
+
+test('a kitchen\'s roar ends within the apartment recordings\' half second, not a fireball\'s', () => {
+  const kitchen = { ...defaultRoomExplosion(), material: 'propane', roomCubicMetres: 40 };
+  assert.equal(kitchen.fireballSecondsPerSixthRootKilogram, ROOM_EXPLOSION.roarSecondsPerSixthRootKilogram);
+  const seconds = roomRoarTailSeconds(kitchen);
+  assert.ok(seconds > .4 && seconds < .7, `${seconds.toFixed(2)} s`);
 });
