@@ -174,7 +174,13 @@ export const GAS_EXPLOSION = Object.freeze({
   ignitions: Object.freeze({
     spark: Object.freeze({ label: 'Spark' }),
     charge: Object.freeze({ label: 'Burster charge' })
-  })
+  }),
+  /**
+   * Class B procedure, class C layout: the Yellow Book's Multi-Energy method (CPR 14E §5.5.4) splits a cloud into obstructed regions,
+   * each its own source of its own strength, and the open rest; here the regions hold a share of the cloud, at the cloud's congestion,
+   * seeded 0.3–0.9 of its radius out, and the open rest burns uncongested, each region bursting as its flame reaches the region's centre.
+   */
+  regions: Object.freeze({ denseShare: .15, nearestShareOfRadius: .3, farthestShareOfRadius: .9, openCongestion: 'open' })
 });
 
 /** Class B: NFPA 68 (2018) eq. 7.2.1a with 7.2.1.1 and λ from 7.2.6.1 for gases and mists, eq. 8.2.1.1 and Table B.1.2.4 for dusts, burning velocities and maximum pressures from Tables D.1(a) and D.2; class C: the empty-room factor on λ fitted to Cooper et al. 1986 Fig. 1 and Harrison & Eyre 1987 Table II, the far-ignition factor and external peak share from Harrison & Eyre Table II, the external source radius from their §3.4, the ring from Cooper Fig. 1, vent and wall strengths, dust burning velocities, smoke gas fitted to Rosberg 2001. Doc/design/architecture-decision-9-vented-explosion.md. */

@@ -306,6 +306,7 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
       }),
       section('Cloud', container => {
         numbers(['cloudCubicMetres'])(container);
+        numberField(container, { key: 'denseRegions', value: emitter.denseRegions, onCommit: set('denseRegions'), idle });
         choose('Fuel', 'fuel', FUEL_TYPES, GAS_EXPLOSION.fuels)(container);
         choose('Congestion', 'congestion', CONGESTION_TYPES, GAS_EXPLOSION.congestions, { idle })(container);
         choose('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements, { idle })(container);

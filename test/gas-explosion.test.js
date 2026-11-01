@@ -3,7 +3,7 @@ import test from 'node:test';
 import { GAS_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultGasExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { cloudRadiusMetres, combustionSamples, multiEnergyOverpressure, multiEnergyPositivePhase, positivePhaseShare, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
+import { cloudRadiusMetres, combustionSamples, gasRegions, multiEnergyOverpressure, multiEnergyPositivePhase, positivePhaseShare, roarSamples, flameMetresPerSecond, gasExplosionPulse, gasExplosionSources, gasRoarTailSeconds, gasSourcePa, gasStrength, strengthOfPa } from '../src/domain/gas-explosion.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -156,4 +156,19 @@ test('a bigger cloud roars lower', () => {
     return Math.sqrt(total / low);
   };
   assert.ok(centroid(5000) < .6 * centroid(150), `${centroid(5000)} against ${centroid(150)}`);
+});
+
+test('dense regions burst one by one as the open cloud\'s slow flame reaches them, none by default or for a detonation', () => {
+  const sources = emitter => gasExplosionSources(emitter, STANDARD_AIR);
+  assert.equal(sources(defaultGasExplosion()).length, 2);
+  assert.equal(gasRegions({ ...defaultGasExplosion(), denseRegions: 3, ignition: 'charge' }, STANDARD_AIR), null);
+  const split = gasRegions({ ...defaultGasExplosion(), denseRegions: 3 }, STANDARD_AIR);
+  assert.equal(split.regions.length, 3);
+  assert.ok(split.open.strength < 2 && split.regions.every(region => region.pulse.strength > split.open.strength + 2));
+  assert.ok(split.regions.every(region => region.delaySeconds > 0 && region.delaySeconds < split.open.burnSeconds));
+  const radius = cloudRadiusMetres(defaultGasExplosion().cloudCubicMetres);
+  assert.ok(split.regions.every(({ offsetMetres: { x, y } }) => Math.hypot(x, y) <= .9 * radius + 1e-9));
+  const rendered = sources({ ...defaultGasExplosion(), denseRegions: 3 });
+  assert.equal(rendered.length, 5);
+  assert.deepEqual(rendered.slice(1, 4).map(source => source.emissionSeconds), split.regions.map(region => region.delaySeconds));
 });

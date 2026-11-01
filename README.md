@@ -81,9 +81,12 @@ microphone along the Mach cone.
 - **Gas explosion** — A flammable cloud on the ground, from a soft whump to a
   sharp bang as its congestion, confinement, fuel, and size set it; a burster
   charge detonates it, as a fuel-air explosive. Its burning roars and dies away.
+  Dense regions in an otherwise open cloud burst one by one as the flame reaches
+  them.
 - **Room explosion** — Gas, mist, dust, or a backdraft's smoke gas exploding in
   a room, a building, or a silo: the vent and the walls bang and crack as they
   give way, the mixture pushed out explodes outside, and the room rings low.
+  The vent faces one way, and behind the room the sound is darker and quieter.
 - **BLEVE** — A vessel of liquefied gas bursting in a fire, from a gas cylinder
   to a sphere: the bang of its vapour space, then, for a flammable load, the
   roar and low thump of its fireball.
@@ -121,7 +124,7 @@ microphone along the Mach cone.
   salvo, shell size, and crackle for a fireworks display; eruption, size, crater
   height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
   confinement, ignition, and roar for a gas explosion; material, room, vent,
-  vent strength, structure, interior, and roar for a room explosion; vessel,
+  vent strength, structure, interior, roar, and heading for a room explosion; vessel,
   fluid, size, fill, failure pressure, roar, and thump for a BLEVE; tanks,
   vessel, fluid, spacing, fire spread, heating, roar, and thump for a tank
   farm, each with its onset when the scene
@@ -452,11 +455,11 @@ B/C marks a part that combines the two.
 | Volcano pulse | Friedlander pulse with the sound energy of a Blast of its equivalent charge, about 10 Pa (Strombolian) to 10²–10³ Pa (Vulcanian) 1 km away (Johnson 2003), its positive phase 0.5–3 s | B/C |
 | Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
-| Gas explosion strength | the GAME correlation (Eggen 1998) from congestion, confinement, fuel, and cloud size, within the TNO Multi-Energy strengths 1–10; a burster charge detonates the cloud | B/C |
+| Gas explosion strength | the GAME correlation (Eggen 1998) from congestion, confinement, fuel, and cloud size, within the TNO Multi-Energy strengths 1–10; a burster charge detonates the cloud; dense regions are separate sources in an uncongested cloud, as the Yellow Book splits a cloud | B/C |
 | Gas explosion level and shape | TNO Multi-Energy blast curves and positive phases, digitised from GAME (Van den Berg et al. 1991: about 1 kPa and 60 ms 1 km from a 10 m dense propane cloud); a weak deflagration rises slowly, a strong one is a shock | B/C |
 | Gas explosion roar | seeded puffs of burning noise over the burn and the fireball's tail, darkening as they go, fitted to recordings of gas explosions 75–450 m away | C |
 | Room explosion pressure | NFPA 68 vent sizing for gases, mists, and dusts, lower for an empty room (Cooper et al. 1986; Harrison & Eyre 1987); the vent opens at its strength, and weaker walls give way | B/C |
-| Room explosion sound | the vent and the walls bang and crack as they open, the burning room sounds as a compact source, the mixture pushed out explodes outside (Harrison & Eyre 1987), and the room rings through its opening; crack and roar fitted to two recorded apartment gas explosions | A/C |
+| Room explosion sound | the vent and the walls bang and crack as they open, the burning room sounds as a compact source, the mixture pushed out explodes outside (Harrison & Eyre 1987), and the room rings through its opening; behind the room the sound is shadowed, the high tones most; crack and roar fitted to two recorded apartment gas explosions | A/C |
 | BLEVE blast | the vapour space's expansion energy at the failure pressure (CoolProp tables) as a TNT charge, doubled for the ground; the flashing liquid makes no shock (Birk et al. 2007) | A/B/C |
 | BLEVE fireball | size and duration from Roberts (1982) and the CCPS; Roar, its burning as seeded puffs, and Thump, the low swell of its growth (Thomas & Williams 1966; Betteridge & Phillips 2015), fitted to two recorded tank fireballs | B/C |
 | Tank farm | authored timing: the fire spreads from the first tank, and each fails after heating, sooner when a neighbour's fireball reaches it; failure pressures and fills spread as in Birk et al. (2007) | B/C |
@@ -540,8 +543,8 @@ What each change does to the sound:
 | `flashType` `intra-cloud` (Cloud flash) | a channel inside the cloud, its sound spread out in time |
 | More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
 | Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
-| Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes` (under a roof), a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive; `puffBlend` 0 holds the roar's puffs early, 1 lets them merge |
-| Room explosion smaller `ventSquareMetres`, `interior` `furnished`, `ignition` `far`, a stronger `ventStrength` | more pressure inside and a louder explosion outside, up to the walls' `structureKilopascals`; a bigger vent cracks louder; `material` `smokeGas` with `ventStrength` `open` is a backdraft's slow whoosh; `ringDecibels` the low ring, `crackDecibels` the crack |
+| Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes` (under a roof), a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive; `denseRegions` 1–5 adds bangs within a slow whump; `puffBlend` 0 holds the roar's puffs early, 1 lets them merge |
+| Room explosion smaller `ventSquareMetres`, `interior` `furnished`, `ignition` `far`, a stronger `ventStrength` | more pressure inside and a louder explosion outside, up to the walls' `structureKilopascals`; a bigger vent cracks louder; `headingDegrees` the way the vent faces, quieter and darker behind; `material` `smokeGas` with `ventStrength` `open` is a backdraft's slow whoosh; `ringDecibels` the low ring, `crackDecibels` the crack |
 | BLEVE bigger `vesselCubicMetres`, emptier `fillShare`, higher `failureBar` | a stronger bang; a flammable `fluid` adds a fireball's roar (`fireballDecibels`) and its low thump (`thumpDecibels`) |
 | Tank farm more `tankCount`, faster `spreadMetresPerSecond`, shorter `heatingSeconds` | the bangs closer together; `openingCloudCubicMetres` opens the farm with a vapour cloud explosion |
 | Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |

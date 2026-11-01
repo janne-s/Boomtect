@@ -28,7 +28,7 @@ export function openingExplosion(farm) {
   return {
     id: `${farm.id}:opening`, name: farm.name, kind: 'gasExplosion', enabled: true, seed: openingSeed(farm), startSeconds: farm.startSeconds,
     positionMetres: ignition, cloudCubicMetres: farm.openingCloudCubicMetres, fuel, congestion: TANK_FARM.openingCongestion, confinement: 'open', ignition: 'spark',
-    fireballDecibels: -20, fireballSecondsPerSixthRootKilogram: .92, puffBlend: GAS_EXPLOSION.roar.puffs.defaultBlend, riseTimeSeconds: farm.riseTimeSeconds
+    fireballDecibels: -20, fireballSecondsPerSixthRootKilogram: .92, puffBlend: GAS_EXPLOSION.roar.puffs.defaultBlend, denseRegions: 0, riseTimeSeconds: farm.riseTimeSeconds
   };
 }
 

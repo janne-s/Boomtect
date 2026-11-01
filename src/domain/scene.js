@@ -94,6 +94,7 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   swellDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Swell', reliability: 'C' },
   thumpDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Thump', reliability: 'C' },
   puffBlend: { minimum: 0, maximum: 1, unit: '', label: 'Puff blend', reliability: 'C' },
+  denseRegions: { minimum: 0, maximum: 5, unit: '', label: 'Dense regions', reliability: 'C', integer: true },
   crackDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Crack', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
@@ -150,7 +151,7 @@ const FIREWORKS_NUMBERS = Object.freeze([
 
 const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
-const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'puffBlend', 'riseTimeSeconds']);
+const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'puffBlend', 'denseRegions', 'riseTimeSeconds']);
 const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'crackDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const TANK_FARM_NUMBERS = Object.freeze([
   'startSeconds', 'headingDegrees', 'tankCount', 'spacingMetres', 'otherShare', 'ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread',
@@ -280,6 +281,7 @@ export function defaultGasExplosion(id = 'gas-explosion-1', name = 'Gas explosio
     fireballDecibels: -20,
     fireballSecondsPerSixthRootKilogram: .92,
     puffBlend: GAS_EXPLOSION.roar.puffs.defaultBlend,
+    denseRegions: 0,
     riseTimeSeconds: 4e-5
   };
 }

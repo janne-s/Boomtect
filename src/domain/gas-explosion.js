@@ -199,20 +199,51 @@ export function puffedRoarSamples(seed, puffSeed, { burnSeconds, tailSeconds, st
   return scaleToLoudestWindow(samples, Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate)));
 }
 
+const roarStrength = emitter => (emitter.ignition !== 'charge' && emitter.denseRegions > 0
+  ? strengthOfPa(gasSourcePa(partOf(emitter, 1 - GAS_EXPLOSION.regions.denseShare, GAS_EXPLOSION.regions.openCongestion)))
+  : gasStrength(emitter));
+
 export function combustionSamples(seed, durationSeconds, sampleRate, emitter) {
   const tailSeconds = gasRoarTailSeconds(emitter);
-  return puffedRoarSamples(seed, emitter.seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: gasStrength(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres), blend: emitter.puffBlend }, sampleRate);
+  return puffedRoarSamples(seed, emitter.seed, { burnSeconds: Math.max(0, durationSeconds - tailSeconds), tailSeconds, strength: roarStrength(emitter), radiusMetres: cloudRadiusMetres(emitter.cloudCubicMetres), blend: emitter.puffBlend }, sampleRate);
+}
+
+const REGION_SEED = 0x3c6ef372;
+
+const partOf = (emitter, share, congestion) => ({ ...emitter, cloudCubicMetres: share * emitter.cloudCubicMetres, congestion });
+
+const partPulse = (part, air) => deflagrationPulse({ sourcePa: gasSourcePa(part), radiusMetres: cloudRadiusMetres(part.cloudCubicMetres), kilograms: gasEquivalentKilograms(part) }, air);
+
+/** The open rest and the dense regions of a spark-lit cloud, each region's offset from the centre and the time its flame reaches it; none for a detonation or without regions. */
+export function gasRegions(emitter, air) {
+  const count = emitter.ignition === 'charge' ? 0 : emitter.denseRegions;
+  if (!(count > 0)) return null;
+  const { denseShare, nearestShareOfRadius, farthestShareOfRadius, openCongestion } = GAS_EXPLOSION.regions;
+  const open = partPulse(partOf(emitter, 1 - denseShare, openCongestion), air);
+  const openSpeed = flameMetresPerSecond(open.sourcePa, air);
+  const radius = cloudRadiusMetres(emitter.cloudCubicMetres);
+  const random = createRandom((emitter.seed ^ REGION_SEED) >>> 0);
+  const regions = Array.from({ length: count }, () => {
+    const pulse = partPulse(partOf(emitter, denseShare / count, emitter.congestion), air);
+    const distance = radius * (nearestShareOfRadius + (farthestShareOfRadius - nearestShareOfRadius) * random());
+    const angle = 2 * Math.PI * random();
+    return { pulse, offsetMetres: { x: distance * Math.cos(angle), y: distance * Math.sin(angle), z: 0 }, delaySeconds: distance / openSpeed };
+  });
+  return { open, regions };
 }
 
 export function gasExplosionSources(emitter, air, surface = null) {
-  const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
-  const pulse = gasExplosionPulse(emitter, air);
+  const placedAt = offset => (surface ? onGround(surface, { ...emitter.positionMetres, x: emitter.positionMetres.x + offset.x, y: emitter.positionMetres.y + offset.y }) : { ...emitter.positionMetres, x: emitter.positionMetres.x + offset.x, y: emitter.positionMetres.y + offset.y });
+  const positionMetres = placedAt({ x: 0, y: 0 });
+  const split = gasRegions(emitter, air);
+  const pulse = split ? split.open : gasExplosionPulse(emitter, air);
   const common = { flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
-  const shock = pulseSource(common, pulse, air);
+  const shocks = [pulseSource(common, pulse, air), ...(split?.regions ?? []).map(region => pulseSource({ ...common, positionMetres: placedAt(region.offsetMetres), emissionSeconds: emitter.startSeconds + region.delaySeconds }, region.pulse, air))];
+  const loudest = Math.max(pulse.peakPaMetres, ...(split?.regions ?? []).map(region => region.pulse.peakPaMetres));
   const tailSeconds = gasRoarTailSeconds(emitter);
   const roar = {
-    ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * pulse.peakPaMetres, pulse: 'noise', noiseSeed: emitter.seed,
+    ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * loudest, pulse: 'noise', noiseSeed: emitter.seed,
     durationSeconds: pulse.burnSeconds + tailSeconds, decay: 0, spanSeconds: roarSpanSeconds(pulse.burnSeconds, tailSeconds), linearRadiusMetres: 0
   };
-  return emitter.fireballDecibels > FIREBALL_OFF_DECIBELS ? [shock, roar] : [shock];
+  return emitter.fireballDecibels > FIREBALL_OFF_DECIBELS ? [...shocks, roar] : shocks;
 }

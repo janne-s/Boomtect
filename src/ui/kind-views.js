@@ -2,7 +2,7 @@ import { FIREWORKS, STANDARD_GRAVITY_METRES_PER_SECOND_SQUARED, VIEW } from '../
 import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
-import { cloudRadiusMetres } from '../domain/gas-explosion.js';
+import { cloudRadiusMetres, gasRegions } from '../domain/gas-explosion.js';
 import { roomSideMetres, ventFacing } from '../domain/room-explosion.js';
 import { fireballDiameterMetres } from '../domain/bleve.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
@@ -345,6 +345,18 @@ export function kindViews() {
       context.beginPath();
       meridian.forEach((point, index) => { const p = frame.project(point); if (index) context.lineTo(p.x, p.y); else context.moveTo(p.x, p.y); });
       context.stroke();
+    }
+    for (const region of gasRegions(emitter, scene.air)?.regions ?? []) {
+      const at = { ...emitter.positionMetres, x: emitter.positionMetres.x + region.offsetMetres.x, y: emitter.positionMetres.y + region.offsetMetres.y };
+      const dome = cloudDome({ positionMetres: at, cloudCubicMetres: 2 * Math.PI * region.pulse.radiusMetres ** 3 / 3 });
+      context.globalAlpha = alpha * .35;
+      polygon(context, dome.base); context.fill();
+      context.globalAlpha = alpha * (selected ? .9 : .6);
+      for (const meridian of [dome.base, ...dome.meridians]) {
+        context.beginPath();
+        meridian.forEach((point, index) => { const p = frame.project(point); if (index) context.lineTo(p.x, p.y); else context.moveTo(p.x, p.y); });
+        context.stroke();
+      }
     }
     context.globalAlpha = alpha;
     drawBlast(context, emitter, colors, state);
