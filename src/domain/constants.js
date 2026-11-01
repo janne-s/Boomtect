@@ -325,6 +325,9 @@ export const BLEVE = Object.freeze({
  */
 export const TANK_FARM = Object.freeze({
   referenceCubicMetres: 2,
+  /** Class B: Birk et al. 2007 Table 3, nine 2000 l propane tanks in fire, failing at 1563–1894 kPa g (σ of the logarithm .07) with fills spread .05–.09 about their series' mean. */
+  failureSpread: .07,
+  fillSpread: .07,
   dominoShare: .5,
   openingCongestion: 'dense',
   openingFuels: Object.freeze({ propane: 'propane', butane: 'propane', gasoline: 'gasoline' })

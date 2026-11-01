@@ -4,6 +4,7 @@ import { createRandom, normalDeviate } from '../shared/domain/random.js';
 
 const STANDARD_AIR = Object.freeze({ pressureKpa: 101.325, temperatureCelsius: 15 });
 const SEED_RANGE = 0x100000000;
+const VESSEL_SEED = 0x27d4eb2f;
 
 /** Rows along the heading, centred on the farm; the first tank sits at the back left corner. */
 export function tankFarmLayout(farm) {
@@ -31,20 +32,26 @@ export function openingExplosion(farm) {
   };
 }
 
-/** Class C: each tank's BLEVE, the fire reaching it from the first tank and the first fireball reaching it hurrying it once; without an opening cloud the first tank fails at the start. */
+/**
+ * Class C: each tank's BLEVE, the fire reaching it from the first tank and the first fireball reaching it hurrying it once; without an opening cloud the first tank fails at the start.
+ * Each tank's failure pressure and fill spread as in Birk et al. 2007, drawn apart from the timing.
+ */
 export function tankFarmTanks(farm) {
   const random = createRandom(farm.seed);
   const positions = tankFarmLayout(farm);
   const ignition = positions[Math.min(farm.tankCount, farm.ignitionTank) - 1];
   const sigma = farm.heatingSpread;
+  const spread = createRandom((farm.seed ^ VESSEL_SEED) >>> 0);
   const tanks = positions.map((positionMetres, index) => {
     const vessel = random() < farm.otherShare ? farm.otherVessel : farm.vessel;
     const { label, ...numbers } = BLEVE.vessels[vessel];
+    const failureBar = numbers.failureBar * Math.exp(TANK_FARM.failureSpread * normalDeviate(spread));
+    const fillShare = Math.min(.95, Math.max(.05, numbers.fillShare + TANK_FARM.fillSpread * normalDeviate(spread)));
     const heating = farm.heatingSeconds * Math.cbrt(numbers.vesselCubicMetres / TANK_FARM.referenceCubicMetres) * Math.exp(sigma * normalDeviate(random) - sigma ** 2 / 2);
     const arrival = Math.hypot(positionMetres.x - ignition.x, positionMetres.y - ignition.y) / farm.spreadMetresPerSecond;
     return {
       id: `${farm.id}:${index}`, name: `${farm.name} ${index + 1}`, kind: 'bleve', enabled: true, seed: Math.floor(random() * SEED_RANGE),
-      startSeconds: farm.startSeconds + arrival + heating, positionMetres, fluid: farm.fluid, ...numbers, blastShare: 1,
+      startSeconds: farm.startSeconds + arrival + heating, positionMetres, fluid: farm.fluid, ...numbers, failureBar, fillShare, blastShare: 1,
       fireballDecibels: farm.fireballDecibels, swellDecibels: farm.swellDecibels, growthDecibels: farm.growthDecibels, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: farm.riseTimeSeconds
     };
   });

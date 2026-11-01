@@ -8,6 +8,7 @@ import { openingExplosion, openingSeed, tankFarmLayout, tankFarmRounds, tankFarm
 import { combustionSamples } from '../src/domain/gas-explosion.js';
 import { bleveRoarSamples } from '../src/domain/bleve.js';
 import { plainScene } from './plain-scene.js';
+import { BLEVE } from '../src/domain/constants.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
 const even = { ...defaultTankFarm(), heatingSpread: 0, otherShare: 0 };
@@ -56,6 +57,17 @@ test('a tank is hurried once, so a dense farm of small tanks does not fail all a
 test('the mix takes the other vessel by its share', () => {
   assert.ok(tankFarmTanks({ ...defaultTankFarm(), otherShare: 0 }).every(tank => tank.vesselCubicMetres === 2));
   assert.ok(tankFarmTanks({ ...defaultTankFarm(), otherShare: 1 }).every(tank => tank.vesselCubicMetres === 40));
+});
+
+test('tanks of one vessel fail at their own pressure and fill, spread about the vessel', () => {
+  const tanks = tankFarmTanks({ ...defaultTankFarm(), tankCount: 40, otherShare: 0 });
+  const pressures = new Set(tanks.map(tank => tank.failureBar));
+  assert.equal(pressures.size, tanks.length);
+  const vessel = BLEVE.vessels[defaultTankFarm().vessel];
+  const logs = tanks.map(tank => Math.log(tank.failureBar / vessel.failureBar));
+  assert.ok(Math.abs(logs.reduce((sum, value) => sum + value, 0) / logs.length) < .05);
+  assert.ok(tanks.every(tank => tank.fillShare >= .05 && tank.fillShare <= .95 && Math.abs(tank.fillShare - vessel.fillShare) < .4));
+  assert.deepEqual(tanks.map(tank => tank.startSeconds), tankFarmTanks({ ...defaultTankFarm(), tankCount: 40, otherShare: 0 }).map(tank => tank.startSeconds));
 });
 
 test('an opening cloud explodes at the first tank when the farm is set and its fuel burns', () => {
