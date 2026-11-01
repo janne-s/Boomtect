@@ -23,10 +23,6 @@ const textButton = (text, onClick, className = '') => {
   return button;
 };
 
-/**
- * One window for the library: an emitter's device on one tab, the air and ground on the other. Presets stay in the
- * browser apart from the app's own data, so that a reset leaves them, and are saved to or merged from one file.
- */
 export function createPresets({ tect, storageKey, state, commit, readScene, kinds, download }) {
   const title = `${tect[0].toUpperCase()}${tect.slice(1)}`;
 
@@ -40,7 +36,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
   const emitterOf = (scene, id) => scene.emitters.find(item => item.id === id);
   const presetOf = emitter => (emitter ? kinds[emitter.kind].preset ?? null : null);
 
-  /** Each device section and then each flight section once, named after the first kind that gives it, in the tect's order of kinds. */
   const emitterSections = [];
   const addSection = (section, label) => { if (!emitterSections.some(([known]) => known === section)) emitterSections.push([section, label]); };
   for (const [kind, panel] of Object.entries(kinds)) if (panel.preset) addSection(panel.preset.section, panel.label({ kind }));
@@ -52,14 +47,12 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
   let message = '';
   let confirming = null;
 
-  /** The emitter the Emitter tab saves from and loads into: the one whose bookmark opened it while it exists, else the selected one. */
   function currentEmitter() {
     const chosen = emitterOf(state.scene, emitterId);
     if (chosen) return chosen;
     return state.selection.type === 'emitter' ? emitterOf(state.scene, state.selection.id) ?? null : null;
   }
 
-  /** A follower's path comes from the tect it follows, so it has no flight of its own to save or load. */
   const flies = (emitter, preset) => Boolean(preset?.takeFlight && !emitter.follows);
 
   function slot() {
@@ -93,7 +86,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
     };
   }
 
-  /** A device preset loads into its own kind's section, a flight into its flight section, and both only where both fit. */
   function loadable(preset, section) {
     const current = slot();
     if (!current || tab === ENVIRONMENT_PRESETS) return Boolean(current);
@@ -105,7 +97,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
   dialog.setAttribute('aria-labelledby', 'presets-title');
   const fileInput = Object.assign(node('input'), { type: 'file', accept: 'application/json,.json', hidden: true });
 
-  /** A preset's values are read as an opened scene's are, so a library from another version still loads. */
   function apply(preset) {
     const { give, pick } = slot();
     let read;
@@ -141,7 +132,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
     return row;
   }
 
-  /** One save row under the list: the name, and for an emitter that flies, whether its device, its flight, or both. */
   function saveRow() {
     const current = slot();
     const holder = node('div', 'preset-save-area');
@@ -191,7 +181,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
     return button;
   }
 
-  /** The emitter's own device and flight sections first and loadable, the other kinds dimmed below, so the whole library shows. */
   function emitterBody(body) {
     const emitter = currentEmitter();
     const current = emitter ? slot() : null;
@@ -263,7 +252,6 @@ export function createPresets({ tect, storageKey, state, commit, readScene, kind
     dialog.focus();
   }
 
-  /** Only an emitter whose kind gives its device as a preset has the button; it opens the window on its own tab. */
   function button(next) {
     if (next !== ENVIRONMENT_PRESETS && !presetOf(emitterOf(state.scene, next))) return null;
     const element = node('button', 'icon-button dice-button');

@@ -2,7 +2,6 @@ import { TECT_MESSAGES, TECT_PORTS as LOCAL_PORTS } from '../domain/handoff.js';
 
 const PAGES = 'https://janne-s.github.io';
 const LOOPBACK = ['localhost', '127.0.0.1'].includes(location.hostname);
-// A tect served by its own local server, by localhost or by the machine's address in the local network, finds the others on the same host.
 const LOCAL = LOOPBACK || (location.protocol === 'http:' && Object.values(LOCAL_PORTS).includes(Number(location.port)));
 const HOST = LOOPBACK ? '127.0.0.1' : location.hostname;
 

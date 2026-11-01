@@ -61,7 +61,6 @@ export function startFrame(tect) {
   const sceneStorageKey = mode => `${prefix}.scene.${mode}`;
   const linkedStorageKey = mode => `${prefix}.linked.scene.${mode}`;
   const FRESH_LINK_KEY = 'tect.link.fresh';
-  /** A window the link opened starts with no emitters of its own, and its saved scenes stay as they were. */
   const freshLink = () => { try { return sessionStorage.getItem(FRESH_LINK_KEY) === '1'; } catch { return false; } };
   const setFreshLink = on => { try { if (on) sessionStorage.setItem(FRESH_LINK_KEY, '1'); else sessionStorage.removeItem(FRESH_LINK_KEY); } catch {} };
   const loadedAt = performance.now();
@@ -354,7 +353,6 @@ export function startFrame(tect) {
     return true;
   }
 
-  /** A name changes no sound, so the render stands. */
   function rename(change) {
     if (!applyScene(change)) return;
     refreshPanel();
@@ -380,7 +378,6 @@ export function startFrame(tect) {
     if (!(peakPa > 0)) for (const value of result.channels[0]) peakPa = Math.max(peakPa, Math.abs(value));
     return { ...result, samples: result.channels[0], peakPa };
   };
-  /** Real keeps both tects' pressures as they are; Balanced lifts the quieter one to the louder one's loudest A-weighted level. */
   function linkGains(partner = partnerResults()) {
     if (state.preferences.partner.balance !== 'balanced' || !partner?.length || !state.ownResults) return { own: 1, partner: 1 };
     return balancedGains([...state.ownResults.values()], partner);
@@ -391,7 +388,6 @@ export function startFrame(tect) {
 
   let resultsStamp = 0;
 
-  /** The own render and the linked tect's at the same microphones, summed; everything heard, plotted, and exported comes from this. */
   function showResults() {
     resultsStamp += 1;
     const partner = link.partner() ? partnerResults() : null;
@@ -420,7 +416,6 @@ export function startFrame(tect) {
     link.send('mix', { state: 'ready', key: state.ownKey, results }, results.flatMap(result => result.channels.map(samples => samples.buffer)));
   }
 
-  /** The leading window sends its shared part again, at most every few seconds, when the two have drifted apart. */
   function resendScene() {
     if (!link.partner() || !link.leads() || performance.now() - linked.resentAt < VIEW.linkResendMilliseconds) return;
     linked.resentAt = performance.now();
@@ -428,7 +423,6 @@ export function startFrame(tect) {
     link.send('scene', { shared: sharedPart(state.scene) });
   }
 
-  /** The emitters and the sound sent again, the sound rendered first when it is not this scene's. */
   function sendEverything() {
     if (!link.partner()) return;
     sendEmitters();
@@ -436,7 +430,6 @@ export function startFrame(tect) {
     else startRender();
   }
 
-  /** Sync again: this window's scene, as an edit would send it, then everything both ways; a held sound is taken. */
   function syncAgain() {
     if (!link.partner()) return;
     adoptHeld();
@@ -480,7 +473,6 @@ export function startFrame(tect) {
 
   const thinned = (count, limit) => Math.max(1, Math.ceil(count / limit));
 
-  /** What the linked tect draws of each enabled emitter here: its paths or points, thinned, and where its name goes. */
   function emitterGhosts() {
     return state.scene.emitters.filter(emitter => emitter.enabled && !(emitter.follows && emitter.follows.app === link.partner())).map(emitter => {
       const kind = kinds[emitter.kind];
@@ -504,12 +496,10 @@ export function startFrame(tect) {
     });
   }
 
-  /** Keeps one follower here for every emitter of the linked tect this tect can give a sound to; one removed here stays removed while its source is there. */
   function syncFollowers() {
     const partner = link.partner();
     if (!partner || !follower) return;
     const followed = new Map(linked.emitters.filter(ghost => ghost.follow).map(ghost => [ghost.id, ghost]));
-    // A source the linked tect has removed is forgotten, so that a new one under its id is followed again.
     for (const key of linked.created) if (key.startsWith(`${partner}:`) && !followed.has(key.slice(partner.length + 1))) linked.created.delete(key);
     const emitters = state.scene.emitters.filter(emitter => !(emitter.follows?.app === partner && !followed.has(emitter.follows.id)));
     let changed = emitters.length !== state.scene.emitters.length;
@@ -556,7 +546,6 @@ export function startFrame(tect) {
     requestRender();
   }
 
-  /** A linked tect asks for this tect's sound in full, or without terrain echoes, for its export. */
   async function serveRequest(variant, key) {
     if (key !== sceneKey(state.scene)) {
       if (link.leads()) resendScene(); else link.send('want', {});
@@ -572,7 +561,6 @@ export function startFrame(tect) {
     return resultsForPartner(state.ownResults);
   }
 
-  /** Own and linked sound at full quality, for an export or Echotect. */
   async function fullResults() {
     const partnerFull = link.partner() ? link.request('full', sceneKey(state.scene)) : null;
     if (state.resultsPreview || (!state.ownResults && !ownSilent())) await renderFull();
@@ -805,7 +793,6 @@ export function startFrame(tect) {
     return entry;
   }
 
-  /** A worker stays for the revision, so one that traced renders with the scene it has already prepared. */
   function spawnWorker(revision, message, job, transfer = []) {
     const idle = state.workers.filter(entry => !entry.job);
     const preparing = message.type === 'trace' || message.type === 'render';
@@ -860,7 +847,6 @@ export function startFrame(tect) {
         spawnWorker(revision, { type: 'responses', scene, receivers: [index], channels: range }, { onResult: data => resolve(data.responses[0]) });
       }))).then(joinResponses)))
       : Promise.resolve(scene.receivers.map(() => null));
-    // A worker the browser stops, as when it runs out of memory, may never report; this ends the wait.
     state.watchdog = setInterval(() => {
       if (revision !== state.revision || performance.now() - state.heard < RENDER.stallSeconds * 1000) return;
       failRender(`The render stopped responding${renderLoadText(renderMarker.held() ?? {})}, likely out of memory`);
@@ -886,7 +872,7 @@ export function startFrame(tect) {
           let tracedPaths;
           try {
             tracedPaths = scene.receivers.map((receiver, receiverIndex) => assemblePaths(prepared, receiver, scene, traced[receiverIndex]));
-            // The parts are in the assembled paths now; holding them would keep both through the render.
+            // Released here: holding them would keep both through the render.
             traced.fill(null);
             arrivals = scene.receivers.map((receiver, receiverIndex) => arrivalTable(prepared, receiver, scene, { paths: tracedPaths[receiverIndex] }));
           } catch (error) {
@@ -944,7 +930,7 @@ export function startFrame(tect) {
       }, [...new Set(transfer)]);
     });
     releaseWorkers(state.workers.filter(entry => !entry.job));
-    // The workers' handlers would otherwise keep the whole table alive through the render.
+    // Released here: the handlers would keep the table alive through the render.
     tracedPaths.fill(null);
   }
 
@@ -1117,7 +1103,6 @@ export function startFrame(tect) {
     return state.playedPeak?.results === state.results && state.playedPeak.key === key ? state.playedPeak.peakPa : raw;
   }
 
-  /** Composes what Play will hear as soon as there is a result, so Play neither waits for it nor starts beside it. */
   function prepareListening() {
     if (!state.results) return;
     listening().catch(error => setStatus(`Preparing playback failed: ${error.message}`, true));
@@ -1125,7 +1110,6 @@ export function startFrame(tect) {
 
   const decodedPeaks = new WeakMap();
 
-  /** The binaural decoder changes both peak and level with the content and the order, so the heard peak is measured after it. */
   function decodedPeak(composition) {
     if (!decodedPeaks.has(state.results)) decodedPeaks.set(state.results, new Map());
     const peaks = decodedPeaks.get(state.results);
@@ -1160,7 +1144,6 @@ export function startFrame(tect) {
     return { composition, gain, playbackGain };
   }
 
-  /** Files sound as Play does without the ear model, the heard peak at the target, yet no microphone's pressure passes full scale. */
   function exportGain({ composition, playbackGain }) {
     const { levelMode, fullScalePa } = state.scene.render;
     if (levelMode === 'fixed') return 1 / fullScalePa;
@@ -1337,7 +1320,6 @@ export function startFrame(tect) {
     container.append(labelCell, input, value);
   }
 
-  /** An open card's name is renamed in place; a closed card's name opens it as the rest of its header does. */
   function cardName(name, selected, onRename) {
     const label = element('span', 'name', name);
     if (!selected) return label;
@@ -1545,7 +1527,6 @@ export function startFrame(tect) {
     renderDetails();
     if ($('details').open) return;
     $('details').showModal();
-    // Focus the dialog itself, so its first control is not ringed when it opens.
     $('details').focus();
   }
 
@@ -1765,7 +1746,6 @@ export function startFrame(tect) {
     $('place-query').value = place.name;
     placeShown = place.name;
     $('place-dialog').showModal();
-    // Focus the dialog itself, so its first control is not ringed when it opens.
     $('place-dialog').focus();
     placeMap.show(place, placeExtentMetres());
     showPlaceCoordinates(place);
@@ -2083,7 +2063,6 @@ export function startFrame(tect) {
     }));
   }
 
-  /** A cross at the right of the linked tect's half of the pressure plot, after its peak, that unlinks it. */
   function placeUnlink(shown) {
     let cross = $('plot-unlink');
     if (!cross) {
@@ -2104,7 +2083,6 @@ export function startFrame(tect) {
     cross.style.right = `${VIEW.plots.rightPixels - 4}px`;
   }
 
-  /** An M before each lane's name that takes that tect out of what is played and exported; one lane at a time. */
   function placeMutes(shown) {
     const lanes = { own: appName, partner: link.partner() };
     const band = ($('waveform').clientHeight - VIEW.plots.bottomPixels - VIEW.plots.topPixels) / 2;
@@ -2508,7 +2486,6 @@ export function startFrame(tect) {
     }
   }
 
-  /** Each tect's sound in its own files at its real level, on one full scale and one time axis per microphone, with one scene file for both. */
   async function separateFiles(choice, dry, gain, selected, stem, describe) {
     const withEchoes = { scene: state.scene, own: state.ownResults, partner: partnerResults() };
     const difference = (a, b) => (a && b ? new Map([...a].map(([id, result]) => [id, b.get(id) ? resultDifference(result, b.get(id)) : result])) : a);
@@ -2536,7 +2513,6 @@ export function startFrame(tect) {
     return files;
   }
 
-  /** The surroundings' rumble stays off too, so that the render with echoes less this one is the echoes alone. */
   async function withoutTerrainEchoes(gain) {
     if (!echoesActive(state.scene)) return { plan: exportPlan(state.scene, state.results, gain), results: state.results, scene: state.scene, own: state.ownResults, partner: partnerResults() };
     const scene = withoutEchoes(state.scene);
@@ -2703,7 +2679,6 @@ export function startFrame(tect) {
     $('export-error').hidden = true;
     updateExportSummary();
     $('export-dialog').showModal();
-    // Focus the dialog itself, so its first control is not ringed when it opens.
     $('export-dialog').focus();
   });
 

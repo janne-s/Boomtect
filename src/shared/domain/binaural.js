@@ -54,7 +54,7 @@ function energyCentre(kernel) {
   return 0;
 }
 
-/** Class A: below the crossover the head is small against the wavelength, so each ear hears the pressure at its centre, W, after the filters' own delay; the 256-tap SADIE filters instead turn their lowest octaves over, inverting a blast. */
+/** Class A below the crossover, where the head is small against the wavelength. */
 function withPressureBass(kernels, sampleRate) {
   const delay = energyCentre(kernels[0]);
   return kernels.map((kernel, acn) => {
@@ -97,7 +97,6 @@ export function hrirFiles(order) {
   });
 }
 
-/** The app's headphone listening: the head's rotation, then Omnitone's SADIE decoder as its graph wires it, with the filters' bass corrected as the app loads them into Omnitone. In the browser its higher orders come out mirrored, which the app undoes; here they follow AmbiX. */
 export function binauralChannels(channels, order, headingDegrees = 0, pitchDegrees = 0) {
   const length = channels[0].length;
   const rotated = Array.from({ length: channelCount(order) }, () => new Float64Array(length));

@@ -15,10 +15,6 @@ export const soundSpeedAt = (air, heightMetres) => Math.sqrt(GAMMA_AIR * GAS_CON
 
 const smoothStep = value => { const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t); };
 
-/**
- * The heading `t` seconds into a flight: a steady turn rate; with `flight.turn` a bend of its degrees eased between its
- * seconds; with `flight.arc` a turn of its degrees on its radius, by the `arcMetres` flown level since its seconds.
- */
 function headingAt(flight, t, arcMetres) {
   if (flight.arc) return flight.headingDegrees + Math.sign(flight.arc.degrees) * Math.min(Math.abs(flight.arc.degrees), arcMetres / flight.arc.radiusMetres * 180 / Math.PI);
   return flight.headingDegrees + (flight.turn
@@ -57,7 +53,7 @@ export function flightPath(flight, air) {
   return path;
 }
 
-/** Class C. The supersonic flight's straight approach before its start; a climbing one comes in level at its start height, never from under the ground. */
+/** Class C. */
 export function withApproach(path, air) {
   const speed = path.speed[0];
   const mach = speed / soundSpeedAt(air, path.z[0]);
@@ -96,10 +92,6 @@ function largestTurn(path) {
   return turn;
 }
 
-/**
- * Rings sit on a grid of the path whose spacing is a power of two in samples, so that each keeps its emission
- * point as the cone grows and the grid changes only when the flight so far doubles; a turn takes them closer.
- */
 function coneStride(path, end) {
   const turn = largestTurn(path);
   const even = 2 ** Math.max(0, Math.floor(Math.log2(Math.max(1, end / VIEW.cone.rings))));
@@ -110,7 +102,6 @@ function coneStride(path, end) {
 const frames = new WeakMap();
 const sideways = unit => Math.abs(unit.z) < .9 ? { x: unit.y, y: -unit.x, z: 0 } : { x: 0, y: unit.z, z: -unit.y };
 
-/** A ring's first direction, carried along the path from its start so that a ring's points stay matched to the next one's. */
 function pathFrames(path) {
   if (frames.has(path)) return frames.get(path);
   const count = path.seconds.length;
@@ -170,8 +161,6 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
   const outer = [];
   const stride = coneStride(path, end);
   const reach = Math.max(1, Math.round(stride / 2));
-  // A ring point is on the cone's outer sheet when the neighbouring fronts pass outside it; inside them it is on the
-  // fold's other sheet, the caustic-touched one an accelerating or turning flight adds, which is not drawn.
   const onOuterSheet = (point, index) => {
     const step = Math.min(reach, index, last - index);
     if (step < 1) return true;
@@ -218,11 +207,7 @@ export function machCone(path, now, profile, { profileAt = localProfile, envelop
   return { apex: apex ? at(last) : null, rings, radii, outer, ...(envelope ? { lineEvery: VIEW.cone.lineEvery } : {}) };
 }
 
-/**
- * Class C as a pattern: a V behind the leader, members alternating left and right of its heading, each rank
- * `lateralSpacingMetres` aside and `trailSpacingMetres` back, at the leader's height. Each member keeps the leader's
- * fields with its own id `<leader id>:<index>`; the leader is member 0.
- */
+/** Class C as a pattern. */
 export function formationMembers(leader, count, lateralSpacingMetres, trailSpacingMetres) {
   const heading = leader.headingDegrees * Math.PI / 180;
   const across = { x: Math.cos(heading), y: -Math.sin(heading) };

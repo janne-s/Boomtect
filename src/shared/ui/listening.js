@@ -9,7 +9,6 @@ export const LISTENING_LABELS = Object.freeze({
   mix: 'Mix'
 });
 
-/** When the first wavefront reaches a microphone: its earliest path. Nothing before it is sound, only the render's numerics. */
 export function firstArrivalSeconds(result) {
   const arrivals = result?.arrivals;
   if (!arrivals?.count) return result?.startSeconds ?? Infinity;
@@ -76,11 +75,7 @@ export function composeListening(scene, results) {
   };
 }
 
-/**
- * A composition's stereo as the player wires it offline, computed here in double precision: a browser's own decoder can add noise in
- * proportion to a strong infrasound. Heads through the SADIE decoder, a lone or mixed omni on both sides, a pair as left and right, and
- * a surround's omnis panned at equal power by their bearing.
- */
+/** In double precision here: a browser’s own decoder adds noise in proportion to a strong infrasound. */
 export function compositionStereo(composition, gain) {
   const { kind, length, order } = composition;
   const stereo = [new Float32Array(length), new Float32Array(length)];

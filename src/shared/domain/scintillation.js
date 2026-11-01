@@ -3,11 +3,6 @@ import { createRandom, normalDeviate } from './random.js';
 
 const SCINTILLATION = PROPAGATION.scintillation;
 
-/**
- * Slow log-amplitude fluctuation, frame by frame: a part shared by all frequencies and a part of each band,
- * each a first-order process of correlation time `seconds`. `gainsAt(frame, frequencies)` gives amplitude
- * factors whose mean power is one.
- */
 export function createScintillation({ seed, hopSeconds, decibels = SCINTILLATION.decibels, bandShare = SCINTILLATION.bandShare, seconds = SCINTILLATION.seconds }) {
   const random = createRandom(seed);
   const bands = SCINTILLATION.bandsHz;

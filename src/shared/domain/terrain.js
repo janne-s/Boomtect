@@ -43,7 +43,6 @@ function tileRange(bounds, zoom) {
 
 const tileLatitude = (y, zoom) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zoom))) * 180 / Math.PI;
 
-/** The tiles covering `bounds` at the finest zoom whose pixels are no finer than `pixelMetres` (or the side over `pixelsAcross`), within `maximumTiles`. */
 export function mapTiles({ latitude, longitude, bounds, maximumZoom = VIEW.map.maximumZoom, pixelsAcross = VIEW.map.pixelsAcross, pixelMetres = null, maximumTiles = GROUND.terrain.maximumTileRequests }) {
   const { north, east } = metresPerDegree(latitude);
   const degrees = { west: longitude + bounds.west / east, east: longitude + bounds.east / east, south: latitude + bounds.south / north, north: latitude + bounds.north / north };

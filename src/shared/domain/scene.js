@@ -254,7 +254,6 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
     check(new Set(items.map(item => item.id)).size === items.length, `${path} ids must be unique.`);
   }
 
-  /** Strict unless `intoRange`, which brings each number to its nearest limit as the tolerant reader does. */
   function parseScene(value, { intoRange = false } = {}) {
     if (intoRange && !bringIntoRange) {
       bringIntoRange = true;

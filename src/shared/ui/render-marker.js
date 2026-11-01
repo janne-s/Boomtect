@@ -42,7 +42,6 @@ export function createRenderMarker(storage, key) {
 
 const counted = (count, word) => `${count.toLocaleString('en')} ${word}${count === 1 ? '' : 's'}`;
 
-/** What the render held when it stopped: point sources while tracing, then the sound's length and channels. */
 export function renderLoadText(mark) {
   const parts = [];
   if (typeof mark.phase === 'string' && mark.phase) parts.push(mark.phase);

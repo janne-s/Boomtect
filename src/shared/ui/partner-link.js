@@ -20,10 +20,8 @@ const LEADS_KEY = 'tect.link.leads';
 
 const instanceId = () => randomId();
 
-/** The tect this tab was linked with, kept for the tab's session so that a reload takes the link up again. */
 export const linkedSession = () => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } };
 
-/** Whether this window opened the link; it alone keeps the shared terrain covering both tects' emitters. */
 const setLeads = on => { try { if (on === null) sessionStorage.removeItem(LEADS_KEY); else sessionStorage.setItem(LEADS_KEY, on ? '1' : '0'); } catch {} };
 const leadsSession = () => { try { return sessionStorage.getItem(LEADS_KEY); } catch { return null; } };
 
@@ -44,7 +42,6 @@ function channelPeer(channel, to) {
   return { window: null, channel: true, send: message => channel.postMessage({ ...message, to }), alive: () => true };
 }
 
-/** A window opened under `name` earlier is taken over as it is; only a new, blank one is sent to `url`. */
 function namedWindow(url, name) {
   const target = window.open('', name);
   if (!target) throw new Error(`The browser blocked opening ${name}. Allow pop-ups for this page and try again.`);
@@ -54,10 +51,6 @@ function namedWindow(url, name) {
   return target;
 }
 
-/**
- * Links this tect's window with one other tect's: a window it opened, the one that opened it, or in the same origin any
- * open tect found over a BroadcastChannel. Messages are plain objects; audio goes as transferred buffers where it can.
- */
 export function createPartnerLink({ app, handlers }) {
   const self = instanceId();
   const others = Object.keys(LINKED_TECTS).filter(name => name !== app);
@@ -85,7 +78,6 @@ export function createPartnerLink({ app, handlers }) {
     if (fresh) handlers.onLinked?.(name);
   }
 
-  /** `forget` ends the link for good; otherwise, as when a window reloads or goes quiet, it is taken up again when the partner is heard. */
   function drop({ tell = false, forget = false } = {}) {
     if (!partner) return;
     if (tell) partner.peer.send({ ...base(), type: MESSAGE.bye, forget });
@@ -126,7 +118,6 @@ export function createPartnerLink({ app, handlers }) {
         }
         return;
       case MESSAGE.offer:
-        // The offer repeats until it is answered; a copy from the window already linked is only answered again.
         if (fromPartner) { partner.peer.send({ ...base(), type: MESSAGE.accept }); return; }
         setLeads(false);
         adopt(data.app, data.instance, peerFor(data, source, origin));
@@ -203,7 +194,6 @@ export function createPartnerLink({ app, handlers }) {
   return {
     others,
     partner: () => partner?.app ?? null,
-    /** The window that opened the link leads; for a link taken up without that record, the tect whose name sorts first. */
     leads: () => { const value = leadsSession(); return value === null ? Boolean(partner) && app < partner.app : value === '1'; },
     offering: () => offering?.app ?? null,
     present: name => present.has(name),

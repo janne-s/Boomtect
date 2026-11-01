@@ -17,7 +17,6 @@ export function normalDeviate(random) {
   return radius * Math.cos(2 * Math.PI * random());
 }
 
-/** `count` unit normal deviates using both of each Box–Muller pair: a different sequence from `normalDeviate`, at half its cost. */
 export function normalDeviates(random, count) {
   const deviates = new Float64Array(count);
   for (let index = 0; index < count; index += 2) {

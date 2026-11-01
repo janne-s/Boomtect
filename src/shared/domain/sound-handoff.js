@@ -36,7 +36,6 @@ function energyMean(arrivals, values, include = () => true) {
 
 export const arrivalDistance = arrivals => energyMean(arrivals, arrivals.metres);
 
-/** Through the air alone: at the ground a reflection's vertical intensity cancels the direct sound's. */
 export const arrivalElevation = arrivals => energyMean(arrivals, arrivals.elevations, kind => kind === PATH_DIRECT || kind === PATH_SHADOW);
 
 function propagationContent(scene, terrainEchoes) {

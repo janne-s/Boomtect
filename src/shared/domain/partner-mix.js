@@ -2,12 +2,10 @@ import { loudestDecibelsA } from './levels.js';
 
 const SHARED_KEYS = Object.freeze(['place', 'terrain', 'air', 'ground', 'receivers', 'render']);
 
-/** What linked tects hold in common: the place and its terrain, the air and ground, the microphones, and how a render is made. */
 export const sharedPart = scene => Object.fromEntries(SHARED_KEYS.map(key => [key, scene[key]]));
 
 export const withShared = (scene, shared) => ({ ...scene, ...Object.fromEntries(SHARED_KEYS.filter(key => key in shared).map(key => [key, structuredClone(shared[key])])) });
 
-/** FNV-1a over the shared part's JSON; equal parts give equal keys in every tect. */
 export function sharedKey(shared) {
   const text = JSON.stringify(sharedPart(shared));
   let hash = 0x811c9dc5;
@@ -15,7 +13,6 @@ export function sharedKey(shared) {
   return `${(hash >>> 0).toString(16)}:${text.length}`;
 }
 
-/** The surroundings' rumble stays off too, so that the render with echoes less this one is the echoes alone. */
 export function withoutEchoes(scene) {
   const next = structuredClone(scene);
   if (next.terrain) next.terrain.echoes = false;
@@ -23,7 +20,6 @@ export function withoutEchoes(scene) {
   return next;
 }
 
-/** A render's results as plain data for the linked tect, the samples copied so the own results stay whole. */
 export const resultsForPartner = results => [...results.values()].map(result => ({
   receiverId: result.receiverId,
   sampleRate: result.sampleRate,
@@ -55,7 +51,6 @@ function finished(base, startSeconds, channels, arrivals, truncated) {
   return { ...base, startSeconds, channels, samples: channels[0], peakPa, loudestDecibelsA: loudestDecibelsA(channels[0], base.sampleRate), arrivals, truncated };
 }
 
-/** One microphone's own result at `ownGain` and the linked tect's at `gain`, summed on one time axis: pressures add, being linear. */
 export function mixedResult(own, other, gain, ownGain = 1) {
   if (!own && (!other || !(gain > 0))) return null;
   if ((!other || !(gain > 0)) && ownGain === 1) return own;
@@ -85,7 +80,6 @@ export function mixedResult(own, other, gain, ownGain = 1) {
   return finished(base, start, channels, joinedArrivals(own?.arrivals, other.arrivals), Boolean(own?.truncated || other.truncated));
 }
 
-/** Every microphone of `scene`: its own result, the linked tect's, or both summed. */
 export function mixedResults(scene, own, others, gain, ownGain = 1) {
   const partner = new Map((others ?? []).map(result => [result.receiverId, result]));
   const results = new Map();
@@ -98,7 +92,7 @@ export function mixedResults(scene, own, others, gain, ownGain = 1) {
 
 const loudestOf = results => Math.max(-Infinity, ...results.map(result => (Number.isFinite(result.loudestDecibelsA) ? result.loudestDecibelsA : -Infinity)));
 
-/** Class C. Gains that lift the quieter tect's sound to the louder one's loudest A-weighted level; nothing is turned down. */
+/** Class C. */
 export function balancedGains(own, others) {
   const ownLevel = loudestOf(own ?? []);
   const otherLevel = loudestOf(others ?? []);
@@ -107,7 +101,6 @@ export function balancedGains(own, others) {
   return ratio >= 1 ? { own: 1, partner: ratio } : { own: 1 / ratio, partner: 1 };
 }
 
-/** Each tect's results padded with silence to the span their sum takes at every microphone, so that exported apart they line up. */
 export function separateResults(scene, own, others) {
   const sum = mixedResults(scene, own, others, 1);
   if (!sum) return { own: null, partner: null };

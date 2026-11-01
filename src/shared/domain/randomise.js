@@ -5,10 +5,8 @@ export const RANDOMISE = Object.freeze({ defaultAmount: .5, historyLength: 10 })
 
 const clamp01 = value => Math.min(1, Math.max(0, value));
 
-/** Moves a control's 0–1 position toward a random one; `amount` 1 lands on it, small amounts vary around where the control is. */
 export const rolled = (position, random, amount) => clamp01(position + amount * (random() - position));
 
-/** Rolls each unlocked control of `item` in order, so that a control that depends on an earlier one sees the new value. */
 export function randomiseControls(item, controls, { random, amount, locked = () => false }) {
   for (const control of controls) {
     if (locked(control)) continue;
@@ -65,7 +63,6 @@ const groundType = {
 
 const refracting = scene => scene.air.refraction;
 
-/** The air and ground of the panel; switches stay as they are, and a control applies only while the panel shows it. */
 export const ENVIRONMENT_CONTROLS = Object.freeze([
   ...['temperatureCelsius', 'lapseRateKelvinPerMetre', 'relativeHumidityPercent', 'pressureKpa', 'turbulenceStrength', 'turbulenceScaleMetres']
     .map(key => spanControl('air', key, AIR_SPANS[key], () => true)),
@@ -79,11 +76,9 @@ export const ENVIRONMENT_CONTROLS = Object.freeze([
   spanControl('ground', 'surroundingsSeconds', { span: [1, 12], log: true }, scene => scene.ground.surroundings)
 ]);
 
-/** Whether a control applies is asked as it comes, so that a ground layer rolled above zero also rolls its lapse. */
 export function randomiseEnvironment(scene, { upperWind = false, ...options }) {
   for (const control of ENVIRONMENT_CONTROLS) if (control.applies(scene, { upperWind })) randomiseControls(scene, [control], options);
   return scene;
 }
 
-/** A lock is kept per kind of section and control, so that a variant or a new emitter of the kind keeps it. */
 export const lockKey = (section, control) => `${section}:${control.key ?? control.label}`;

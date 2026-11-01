@@ -38,11 +38,7 @@ export const GROUND = Object.freeze({
   foliageDecibelsPerCubeRootHertz: .006,
   foliageCutoffHz: 10,
   reverbBandsHz: Object.freeze([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
-  /**
-   * Class B 250 Hz–8 kHz: median two-slope fit to the eight Koli impulse responses, snow and summer, 7.2–11 m
-   * (Shelley, Murphy & Chadwick, DAFx 2013; OpenAIR); energy density re the direct sound, dB re 1/s, at the start of each
-   * slope, and its T60, the late one at most 3 s. 31.5–125 Hz and 16 kHz class C. The tail ends `cutDecibels` below its start.
-   */
+  /** Class B 250 Hz–8 kHz: Koli impulse responses (Shelley, Murphy & Chadwick, DAFx 2013), 7.2–11 m; 31.5–125 Hz and 16 kHz class C. */
   forest: Object.freeze({
     earlyDecibels: Object.freeze([-3, 0, 3, 4, 2, 3, 1.5, .2, 5, 2]),
     earlySeconds: Object.freeze([.3, .4, .44, .5, .47, .59, .48, .48, .37, .3]),
@@ -54,7 +50,7 @@ export const GROUND = Object.freeze({
     referenceMetres: 9,
     scatterDecibelsPerMetre: .06
   }),
-  /** Class C: band shape fitted to Doc/reference/audio sonic1–3 and meteor1, scaled to the chosen longest T60; Boomtect's explosion references give 7–21 s on test ranges, about 2 s in towns. */
+  /** Class C: fitted to Doc/reference/audio sonic1–3 and meteor1. */
   surroundings: Object.freeze({
     seconds: Object.freeze([7, 7, 6, 4.5, 3, 2, 1.5, 1, .7, .5]),
     defaultSeconds: 4,
@@ -97,12 +93,7 @@ export const PROPAGATION = Object.freeze({
   shockRisePascalSeconds: .005,
   /** Class C: a crackling grain's shocks are its peaks, this many times its rms pressure. */
   crackleCrest: 4,
-  /**
-   * Class B criterion: a spherical wave's shocks form where its distortion σ = β ω p̂ r ln(r/r₀) / (ρ c³) reaches 1
-   * (Hamilton & Blackstock, Nonlinear Acoustics, ch. 4), p̂ r the grain's peak pressure times distance, ω the source's
-   * `shockHz`, r₀ one wavelength there (C). A crackling grain's shock share grows as smoothstep(σ) (C); a source without
-   * `shockHz` keeps its whole share.
-   */
+  /** Class B criterion (Hamilton & Blackstock, Nonlinear Acoustics, ch. 4); r₀ and the shock share class C. */
   formedDistortion: 1,
   /** Class B criterion a = sin ψ/√(2βε) (Baskar, Coulouvrat & Marchiano 2007); the blend is class C. */
   mergedParameter: 1,
@@ -131,18 +122,13 @@ export const PROPAGATION = Object.freeze({
   longestRises: 8,
   /** Class B: ReVelle's weak-shock theory (1974, 1976), from x = r/R₀ = 10. */
   weakShock: Object.freeze({ startRadii: 10, periodGrowth: .562, periodExponent: .25, extraDecayExponent: -.25 }),
-  /**
-   * Class C: the slow level fluctuation of a long sound through turbulence, a part shared by all bands and a part
-   * of each, fitted to Rumbletect's jet recordings (0.2–2 s fluctuation about 2.3 dB, inter-band correlation
-   * 0.5–0.75). Applied to grains only: a pulse is over before it changes.
-   */
+  /** Class C: fitted to Rumbletect’s jet recordings (about 2.3 dB, inter-band correlation 0.5–0.75). */
   scintillation: Object.freeze({
     decibels: 3.5,
     bandShare: .45,
     seconds: .2,
     bandsHz: Object.freeze([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000])
   }),
-  /** A grain: a sine-windowed frame of this many samples at half overlap. */
   grainSamples: 4096
 });
 
@@ -199,7 +185,6 @@ export const RENDER_COST = Object.freeze({
 
 export const RENDER = Object.freeze({
   maximumSeconds: 400,
-  /** Sound arriving after `maximumSeconds` is left out, the kept end faded over this long. */
   truncationFadeSeconds: .05,
   maximumSources: 1500000,
   maximumEmitters: 8,
@@ -208,7 +193,7 @@ export const RENDER = Object.freeze({
   maximumHeightMetres: 120000,
   sourceCopiesBudget: 1000000,
   tailStretchSeconds: 30,
-  /** What the tail workers may hold at once; a phone tab is stopped at about 1.5 GB. */
+  /** A phone tab is stopped at about 1.5 GB. */
   tailBytesBudget: 512 * 2 ** 20,
   progressWeights: Object.freeze([1, 22, 4.5, 1, 1]),
   stallSeconds: 60,
@@ -219,7 +204,6 @@ export const RENDER = Object.freeze({
   scheduleLeadSeconds: .2,
   fadeSeconds: .05,
   audioResumeSeconds: 8,
-  /** A gap this long in a timer that ticks every audioTickSeconds means the computer slept, and the audio context is made again. */
   audioSleepSeconds: 20,
   audioTickSeconds: 5,
   breakUpDecibels: 20
@@ -287,14 +271,12 @@ export const VIEW = Object.freeze({
     localProfileTolerance: .05,
     rippleAlphas: Object.freeze([.5, .3, .16, .07]),
     rippleSpacingShare: .018,
-    /** A continuous source's lit ring waits at its shadow edge this many front spacings, so the lit edge of nearly concentric fronts never steps back. */
     shadowHoldSpacings: 1.5,
     terrainSpheres: 80,
     visibleAlpha: 1 / 255
   }),
   map: Object.freeze({
     cachedTiles: 320,
-    /** Tiles requested for one view of the map, and the wait before a failed tile is asked for once more. */
     maximumTiles: 120,
     retryMilliseconds: 1500,
     viewMargin: 1.25,

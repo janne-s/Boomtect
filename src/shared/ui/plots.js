@@ -74,7 +74,6 @@ export function plotSeconds(canvas, clientX, clamp = false) {
   return start + Math.min(1, Math.max(0, share)) * (end - start);
 }
 
-/** One plot, or with `lanes` one band per lane stacked top to bottom, each scaled to its own peak and named at its left. */
 export function drawWaveform(canvas, { key, traces, soloId, lanes = null }, playheadSeconds = null) {
   cachedPlot(canvas, key, (context, width, height) => {
     const bands = (lanes ?? [{ label: null, traces }]).map(lane => ({ ...lane, live: lane.traces.filter(trace => trace.result?.samples.length) }));

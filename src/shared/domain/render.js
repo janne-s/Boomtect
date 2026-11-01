@@ -193,7 +193,6 @@ function pathWriter(frame, scene, paths) {
     paths.creepRadius[index] = path.creepRadius ?? 0;
     paths.seconds[index] = (path.emissionSeconds ?? sources.emissionSeconds[sourceIndex]) + path.seconds
       + (sources.secondaryDelaySeconds[sourceIndex] > 0 ? secondaryShockDelay(sources.secondaryDelaySeconds[sourceIndex], sources.secondaryCubeRoot[sourceIndex], path.metres) : 0);
-    // The element's phase spread uses the local wavelength, so its directivity cosine carries c₀/c.
     paths.directivityCos[index] = sources.directed[sourceIndex]
       ? (sources.dx[sourceIndex] * departure.x + sources.dy[sourceIndex] * departure.y + sources.dz[sourceIndex] * departure.z) * profile.groundSpeed / speedAt(profile, sources.z[sourceIndex])
       : 0;
@@ -402,7 +401,6 @@ export function assemblePaths(preparedEmitters, receiver, scene, parts) {
   return withNearest(paths);
 }
 
-/** The shortest spreading distance of a receiver's paths, from which a Distance loss under 100 % eases spreading. */
 function withNearest(paths) {
   let nearest = Infinity;
   for (let index = 0; index < paths.count; index += 1) nearest = Math.min(nearest, paths.spreadMetres[index]);
@@ -410,11 +408,8 @@ function withNearest(paths) {
   return paths;
 }
 
-/**
- * Class C, a creative departure: beyond the receiver's nearest path, spreading falls as r^share instead of r, so a
- * Distance loss of 50 % halves the decibels a source loses with distance. Absorption, shocks and all else keep the true path.
- */
-/** A mix choice, not a model value: the emitter's share of what the microphone hears, scaled after propagation. */
+/** Class C, creative: beyond the nearest path spreading falls as r^share. */
+/** A mix choice, not a model value. */
 export const mixFactor = emitter => 10 ** ((emitter.mixDecibels ?? 0) / 20);
 
 export function distanceLossFactor(spreadMetres, nearestMetres, distanceLossPercent = 100) {
@@ -458,7 +453,7 @@ function crossingEchoRow(crossing, shape = { pulse: 'n-wave' }) {
   };
 }
 
-/** Ground taken level at the ends, class C; the image delay class B. */
+/** Class C: ground level at the ends; the image delay class B. */
 function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   const sourceSine = Math.abs(path.departure.z);
   const receiverSine = Math.abs(path.arrival.z);
@@ -467,7 +462,7 @@ function endImages(path, sourceHeight, receiverHeight, treeHeight) {
   return { sourceHeight, sourceSine, receiverSine, sourceLift: 2 * sourceHeight * sourceSine, receiverLift: 2 * receiverHeight * receiverSine, foliageMetres: foliage };
 }
 
-/** Class C. A mean arrival per bin would space the paths evenly and sound as a tone at 1/scatterBinSeconds. */
+/** Class C. */
 function mergeScattered(merged, cells, cell, path) {
   const arrival = cells.emissionSeconds[cell] + path.seconds;
   const key = Math.floor(arrival / PROPAGATION.scatterBinSeconds) * 64 + arrivalSector(path.arrival);
@@ -756,7 +751,7 @@ function shadowFromExponent(loss, lag, beta, floor) {
   return [magnitude * Math.cos(phase) + floor, magnitude * Math.sin(phase)];
 }
 
-/** Class B criterion, C blend: how far a spherical wave of peak pressure × distance `peakPascalMetres` at `hz` has formed its shocks by `metres`. */
+/** Class B criterion, class C blend. */
 export function shockFormation(peakPascalMetres, hz, metres, air, speed) {
   if (!(hz > 0)) return 1;
   const wavelength = speed / hz;
@@ -787,7 +782,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   if (!(gain > 0)) return;
   const heardGain = gain * distanceLossFactor(paths.spreadMetres[index], paths.nearestSpreadMetres, scene.render.distanceLossPercent);
   const mach = gain / (GAMMA_AIR * scene.air.pressureKpa * 1000);
-  // Steepening undoes absorption beyond the steady shock's own rise.
   const riseSeconds = PROPAGATION.shockRisePascalSeconds / gain;
   const pulseKind = sources.pulse[sourceIndex];
   const crackling = pulseKind === PULSE_GRAIN && !paths.aloft[index] && sources.shockShare[sourceIndex] > 0
@@ -935,7 +929,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
         re = focusPair[0] * duration / 2;
         im = focusPair[1] * duration / 2;
       } else if (hilbert) {
-        // The branch that has touched its caustic arrives turned by a quarter period, i sign ω: a U-wave.
         const turned = re;
         re = -im;
         im = turned;
@@ -959,7 +952,6 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     re *= factor;
     im *= factor;
     if (onset) {
-      // A linear onset: the pulse convolved with a causal boxcar of the onset length.
       const sinc = onsetIm / (onsetStep * bin);
       const nextRe = (re * onsetRe + im * onsetIm) * sinc;
       im = (im * onsetRe - re * onsetIm) * sinc;
@@ -1250,7 +1242,7 @@ function scintillationGain({ lower, share }, levels, bin) {
   return Math.exp(SCINTILLATION_NEPERS * (levels[low] + share[bin] * (levels[high] - levels[low])) - SCINTILLATION_BIAS);
 }
 
-/** The grain's spectrum toward the path's departure from the kind, centred one grain length (its source's duration) after the path's time; a long sound's scintillation, class C, comes with it. */
+/** Class C scintillation of a long sound. */
 function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) {
   const departure = { x: paths.departure[3 * index], y: paths.departure[3 * index + 1], z: paths.departure[3 * index + 2] };
   const seed = sources.noiseSeed[paths.source[index]];
@@ -1266,7 +1258,6 @@ function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, s
   return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
 }
 
-/** Coarse echoes: a grain's echoes leaving within one step of direction share the spectrum of the first of them. */
 function echoDirection(paths, index) {
   const [x, y, z] = [paths.departure[3 * index], paths.departure[3 * index + 1], paths.departure[3 * index + 2]];
   return `${Math.round(Math.atan2(y, x) / COARSE_ECHO_RADIANS)},${Math.round(Math.asin(Math.max(-1, Math.min(1, z))) / COARSE_ECHO_RADIANS)}`;
@@ -1422,7 +1413,6 @@ const surroundingsTail = scene => scene.ground.surroundings && !(echoesActive(sc
 
 const isPoint = value => ['x', 'y', 'z'].every(axis => Number.isFinite(value?.[axis]));
 
-/** The surroundings belong to the place: one tail for each placing of the microphone and the emitters, to the metre. */
 export function surroundingsSeed(receiver, scene) {
   const points = [receiver.positionMetres, ...scene.emitters.filter(emitter => emitter.enabled !== false).flatMap(emitter => Object.values(emitter).filter(isPoint))];
   let hash = 0x811c9dc5;
@@ -1472,7 +1462,6 @@ export function sumSegments(segments, sampleRate, room = 0) {
     }
     return sum;
   };
-  // Each segment lane is let go once summed, so the segments and the sum are never both whole in memory.
   const channels = Array.from({ length: count }, (_, channel) => {
     const sum = lane(segment => segment.channels[channel]);
     for (const segment of present) segment.channels[channel] = null;
@@ -1488,7 +1477,6 @@ export function tailStretches(length, count, shortest = 1) {
   return Array.from({ length: parts }, (_, part) => [Math.floor(part * length / parts), Math.floor((part + 1) * length / parts)]);
 }
 
-/** Runs `count` tail stretches at most `limit` at a time. A tail reaches into the following stretch, so that stretch starts, taking its pressure, before the tail is added. */
 export function queueTails(count, limit, start, done) {
   let next = 0;
   let remaining = count;
@@ -1517,11 +1505,7 @@ export function addTails(sum, from, tails) {
 
 const SILENT_TAIL_SHARE = 1e-6;
 
-/** The frame is a power of two long, so its end is mostly silence: kept only while some channel is within 120 dB of the loudest sample. */
-/**
- * Class C: a source facing out of a body is shadowed behind it, nothing ahead or beside it, most straight behind; low tones bend round
- * the body and high ones do not, the loss rising toward its full depth above the corner, where the wavelength is the body's size.
- */
+/** Class C: a source is shadowed behind the body it faces out of. */
 export function shadowGain(frequencyHz, cornerHz, depthDecibels) {
   const ratio = (frequencyHz / cornerHz) ** 2;
   return 10 ** (-depthDecibels * ratio / (1 + ratio) / 20);
@@ -1554,7 +1538,6 @@ export function finishSum(sum, sampleRate) {
       result[index] = samples[index];
       if (channel === 0) peakPa = Math.max(peakPa, Math.abs(samples[index]));
     }
-    // Let go as soon as copied, so the sum and the result are never both whole in memory.
     sum.channels[channel] = null;
     return result;
   });
@@ -1588,7 +1571,6 @@ export function partitionSeconds(preparedEmitters, scene, count, tables = scene.
   return boundaries;
 }
 
-/** The low cut filters every channel alike, so the ambisonic field keeps its directions. */
 function lowCutResult(combined, hz, sampleRate) {
   if (!(hz > 0) || !combined.channels[0]?.length) return combined;
   const channels = combined.channels.map(channel => lowCut(channel, hz, sampleRate));

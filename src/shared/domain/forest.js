@@ -31,7 +31,6 @@ function forestCutSeconds(band) {
 
 const FOREST_CUTS = Object.freeze(GROUND.reverbBandsHz.map((_, band) => forestCutSeconds(band)));
 
-/** Energy density re the direct sound per second, faded to nothing over the last fifth before the cut. */
 function forestDensity(band, t) {
   const { earlyDecibels, earlySeconds, lateDecibels, lateSeconds } = GROUND.forest;
   const cut = FOREST_CUTS[band];
@@ -76,10 +75,7 @@ export function forestSeed(id) {
   return hash >>> 0;
 }
 
-/**
- * Class C: how strongly a path drives the forest tail, as an amplitude, by its metres under the canopy. The tail takes the
- * energy the trees scatter from the path, which grows as the foliage loss does; at the Koli responses' 9 m it is 1.
- */
+/** Class C: the forest tail’s drive by metres under the canopy, 1 at the Koli responses’ 9 m. */
 export function forestSend(underCanopyMetres) {
   if (!(underCanopyMetres > 0)) return 0;
   const { referenceMetres, scatterDecibelsPerMetre } = GROUND.forest;
@@ -211,7 +207,6 @@ export function addForestTail(outputs, responses, source = outputs[0].slice()) {
   }
 }
 
-/** The forest tail follows `send`, each path's pressure weighted by its `forestSend`; the surroundings follow the pressure and the forest tail. */
 export function diffuseTails(pressure, { forest = null, surroundings = null }, channels, send = null) {
   const length = pressure.length + (forest?.[0].length ?? 0) + (surroundings?.[0].length ?? 0);
   const tails = Array.from({ length: channels }, () => new Float64Array(length));

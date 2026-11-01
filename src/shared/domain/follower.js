@@ -6,7 +6,6 @@ const TEXT_LENGTH = 64;
 const AXES = Object.freeze(['x', 'y', 'z', 'vx', 'vy', 'vz']);
 const tenth = value => Math.round(value * 10) / 10;
 
-/** A path kept with a follower: every sample about `SAVED_STEP_SECONDS` apart, to a tenth of a metre and metre per second. */
 export function savedPath(path) {
   const stride = Math.max(1, Math.round(SAVED_STEP_SECONDS / path.step));
   const count = Math.floor((path.x.length - 1) / stride) + 1;
@@ -17,7 +16,6 @@ export function savedPath(path) {
   };
 }
 
-/** A saved path as the frames sample one, filled in linearly to `TRAJECTORY.stepSeconds` so that motion and cones run as smoothly as on the own paths. */
 export function followedPath(saved) {
   const factor = Math.max(1, Math.round(saved.stepSeconds / TRAJECTORY.stepSeconds));
   const step = saved.stepSeconds / factor;
@@ -50,7 +48,6 @@ function readPath(value) {
   return path;
 }
 
-/** A point follower's link to the emitter it follows; none when the link is missing or broken. */
 export function followsField(value) {
   const follows = value.follows;
   if (!follows || typeof follows !== 'object') return {};
@@ -60,7 +57,7 @@ export function followsField(value) {
   return { follows: { app, id, name: text(follows.name) ?? id } };
 }
 
-/** Class C. A follower's link to the emitter it follows, a rocket's burn time after each path's start, and the paths; none when the link or the paths are missing or broken. */
+/** Class C. */
 export function followerFields(value) {
   const { follows } = followsField(value);
   const paths = (Array.isArray(value.paths) ? value.paths.slice(0, MOST_PATHS) : []).map(readPath).filter(Boolean);
@@ -69,7 +66,6 @@ export function followerFields(value) {
   return { follows: { ...follows, ...burn }, paths };
 }
 
-/** Where and when a follower's first path starts, its heading and climb there, how long it lasts, and its top speed. */
 export function followerPlacement(saved) {
   const [vx, vy, vz] = [saved.vx[0], saved.vy[0], saved.vz[0]];
   const ground = Math.hypot(vx, vy);
@@ -83,7 +79,6 @@ export function followerPlacement(saved) {
   };
 }
 
-/** A seed from the followed emitter's id, so that a follower made again sounds the same. */
 export function followerSeed(app, id) {
   let hash = 0x811c9dc5;
   for (const character of `${app}:${id}`) hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);

@@ -22,7 +22,6 @@ function iconButton(className, name, title, onClick) {
   return node;
 }
 
-/** Rolls the emitters' quick controls and the air and ground; each roll keeps what it replaced, for the session only. */
 export function createRandomiser({ state, commit, controlsOf, upperWind, savePreferences, refreshPanel }) {
   const rolls = [];
   const preferences = () => state.preferences;
@@ -59,7 +58,6 @@ export function createRandomiser({ state, commit, controlsOf, upperWind, savePre
     if (index >= 0) scene.emitters[index] = before;
   }
 
-  /** One target steps back through its own rolls; with no target the last roll is undone everywhere it reached. */
   function back(target = null) {
     const roll = ownRolls().findLast(candidate => target === null || candidate.parts.has(target));
     if (!roll) return;
@@ -85,7 +83,6 @@ export function createRandomiser({ state, commit, controlsOf, upperWind, savePre
     refreshPanel();
   }
 
-  /** In lock mode a lock stands before each control's label; where and when an emitter is start locked. */
   function lockCell(label, section, control) {
     if (!preferences().showLocks) return label;
     const on = locked(section)(control);

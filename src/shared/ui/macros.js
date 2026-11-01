@@ -30,7 +30,6 @@ export function parseEntry(entry, text, item) {
   return entry.integer ? Math.round(value) : value;
 }
 
-/** Sets a macro's value on `item` to its value on `defaults`, exactly through its entry when it has one. */
 export function resetMacro(macro, item, defaults) {
   if (macro.entry && !macro.dual) macro.entry.set(item, macro.entry.get(defaults));
   else macro.write(item, ...[macro.read(defaults)].flat());

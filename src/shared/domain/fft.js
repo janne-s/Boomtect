@@ -61,7 +61,6 @@ export function fft(real, imaginary, inverse = false) {
   if (inverse) for (let index = 0; index < length; index += 1) { real[index] /= length; imaginary[index] /= length; }
 }
 
-/** The spectrum of a real signal from DC to Nyquist through one complex FFT of half its length; equal to `fft` up to rounding. */
 export function realSpectrum(signal) {
   const length = signal.length;
   const half = length / 2;

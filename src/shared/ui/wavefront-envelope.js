@@ -22,10 +22,6 @@ function at(group, index) {
   return { ...a, emitted: a.emitted + share * (b.emitted - a.emitted), point: Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, a.point[axis] + share * (b.point[axis] - a.point[axis])])) };
 }
 
-/**
- * At most `limit` of `items`, each with its place `indexOf(item)` among `total`: an even spread over all of them comes
- * first and the rest fill what is left, so a salvo's last rounds are drawn as its first are and a choice does not jump.
- */
 export function spreadPick(items, limit, indexOf, total) {
   if (items.length <= limit) return items;
   const stride = Math.max(1, Math.ceil(total / limit));

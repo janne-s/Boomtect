@@ -293,7 +293,6 @@ export function createCubeView(canvas, options) {
   const boxStep = box => niceStep(Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0), VIEW.box.gridLines);
   const heightStep = box => Math.min(boxStep(box), niceStep(box.z1 - box.z0, 4));
 
-  /** Each ground axis its own step, as many lines as its span and drawn length allow. */
   function axisStep(span, from, to) {
     const a = frame.project(from);
     const b = frame.project(to);
@@ -786,8 +785,6 @@ export function createCubeView(canvas, options) {
   }
 
   function drawWavefronts(context, colors, { profile, spheres, total, shadowShare = VIEW.wavefront.shadowShare }) {
-    // A flash is dropped whole: dropping a single sphere would uncover the edges it hides. A continuous source's later
-    // fronts are fronts of their own, so only its passed ones go.
     const { box } = frame;
     const innermost = (VIEW.wavefront.rippleAlphas.length - 1) * rippleSpacing();
     const terrain = currentSurface().bounds;
@@ -839,7 +836,6 @@ export function createCubeView(canvas, options) {
       context.clip(outline);
       VIEW.wavefront.rippleAlphas.forEach((alpha, ring) => {
         if (alpha * strength < VIEW.wavefront.visibleAlpha) return;
-        // One boundary for all of a source's fronts; a front out in the refraction shadow only draws dimmer.
         const circles = [];
         for (const { source, centre, radiusMetres, spacingSeconds = 0 } of spheres) {
           const sphere = radiusMetres - ring * spacing;
@@ -859,7 +855,6 @@ export function createCubeView(canvas, options) {
     }
   }
 
-  /** The union's outline of `circles`, each arc at its circle's alpha: a number for all, or a function of the circle. */
   function strokeUnion(context, circles, mapping, color, alpha) {
     const alphaOf = typeof alpha === 'function' ? alpha : () => alpha;
     const strokes = new Map();
@@ -1011,7 +1006,6 @@ export function createCubeView(canvas, options) {
         if (!(strength > 0)) return;
         path = level(strength);
         const points = screen[index];
-        // The cone is open: no ring closes it where its oldest or, once the body has gone, its newest sound lies.
         const open = index === rings.length - 1 || (index === 0 && !apex);
         ring.forEach((point, step) => {
           const next = (step + 1) % ring.length;
@@ -1201,7 +1195,6 @@ export function createCubeView(canvas, options) {
     }
   }
 
-  /** A linked tect's emitters, dimmed and not movable here. */
   function drawGhosts(context, colors, list, state) {
     if (!list.length) return;
     context.save();

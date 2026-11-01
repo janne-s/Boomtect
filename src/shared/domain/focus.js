@@ -12,13 +12,7 @@ export const FOCUS_RANGE = Object.freeze({
   spanTau: FOCUS_TABLE.tau.count * FOCUS_TABLE.tau.step
 });
 
-/**
- * Class B: a fold caustic in the nonlinear Tricomi scaling of Auger & Coulouvrat (2002), as given in Wyle WR 12-21 §6.1.
- * Near the fold the arrival time in emission time s is T₀ + c s + a s³, with c the slope and 6a the third derivative
- * there; b = −c sign a is positive on the lit side, where the two arrivals are ±√(b/3|a|) apart. A ray's curvature
- * T″ = 2√(3|a|b) gives the geometric focusing, so the incoming wave is P z̄^(−1/4) with z̄ = b / (T^⅔ (3|a|)^⅓), T the
- * N-wave's half length. The diffraction layer is δ = T^⅔ (3|a|)^⅓ / |∇b|, and μ = 2β (P / γp) (δ / cT)².
- */
+/** Class B: fold caustic in the Tricomi scaling of Auger & Coulouvrat (2002), via Wyle WR 12-21 §6.1. */
 export function foldScaling({ slope, third, halfSeconds, flatPa, steadyCurvature, slopeGradient, groundPressurePa, groundSoundSpeed }) {
   const cubic = 3 * Math.abs(third / 6);
   if (!(cubic > 0 && halfSeconds > 0 && slopeGradient > 0)) return null;
@@ -47,7 +41,6 @@ function storedRow(muIndex, heightIndex) {
   return Float64Array.from(rows().subarray(row * tau.count, (row + 1) * tau.count), value => value * scale);
 }
 
-/** The waveform at height z̄ for μ, in units of the incoming wave's z̄ = 1 amplitude, from τ = FOCUS_RANGE.startTau; μ between the table's is taken on log μ, z̄ at the nearest row. */
 export function focusWaveform(mu, height) {
   const { mus, heights } = FOCUS_TABLE;
   if (!(height >= FOCUS_RANGE.lowest && height <= FOCUS_RANGE.highest)) return null;
@@ -62,7 +55,6 @@ export function focusWaveform(mu, height) {
 
 const spectra = new Map();
 
-/** The waveform's spectrum ∫ W e^(−iΩτ) dτ, τ from the window's start, on an even grid of Ω. */
 export function focusSpectrum(mu, height) {
   const key = `${Math.round(Math.log(mu) * 200)}:${Math.round((height - FOCUS_TABLE.heights.first) / FOCUS_TABLE.heights.step)}`;
   if (spectra.has(key)) return spectra.get(key);
@@ -81,7 +73,6 @@ export function focusSpectrum(mu, height) {
   return spectrum;
 }
 
-/** The spectrum at Ω, linearly between its grid points, nothing above the table's band. */
 export function focusSpectrumAt(spectrum, omega, out) {
   const position = omega / spectrum.omegaStep;
   const lower = Math.floor(position);

@@ -70,7 +70,6 @@ function solve(a, b) {
   return x;
 }
 
-/** Least squares per degree, exact up to rounding: harmonics of one degree rotate among themselves. */
 export function orientationRotation(headingDegrees, pitchDegrees, order) {
   const heading = headingDegrees * Math.PI / 180;
   const pitch = pitchDegrees * Math.PI / 180;
