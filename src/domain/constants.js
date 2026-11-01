@@ -214,6 +214,8 @@ export const ROOM_EXPLOSION = Object.freeze({
   ringPressureShare: .4,
   ringCycles: 5,
   ringFloor: .05,
+  /** Class C: a ring below this is a slow swing of pressure, not sound, and would hold the render for minutes. */
+  ringLowestHz: 1,
   /** Class C: the roar's tail per kg^⅙, fitted to the apartment explosions Doc/reference/audio E13 and E16 (−20 dB 0.4–0.7 s after the arrival). */
   roarSecondsPerSixthRootKilogram: .33,
   /** Class C, fitted to E13 and E16: the roar's level under the Roar setting, so that 1–4 kHz sits about 20 dB under the opening's 40–160 Hz. */

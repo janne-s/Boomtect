@@ -3,7 +3,7 @@ import test from 'node:test';
 import { ROOM_EXPLOSION } from '../src/domain/constants.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultRoomExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { breakPulse, dustVentedBar, gasVentedBar, ringHz, roomExplosion, roomPressures, roomRoarTailSeconds, turbulenceFactor } from '../src/domain/room-explosion.js';
+import { breakPulse, dustVentedBar, gasVentedBar, ringHz, roomExplosion, roomExplosionSources, roomPressures, roomRoarTailSeconds, turbulenceFactor } from '../src/domain/room-explosion.js';
 import { plainScene } from './plain-scene.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
@@ -95,4 +95,12 @@ test('a vent and a wall that give way crack, louder through a bigger vent, darke
   assert.equal(explosion({ crackDecibels: -60 }).cracks.length, 0);
   const held = explosion({ structureKilopascals: 100, ventSquareMetres: 6 });
   assert.ok(!held.pressures.wallsFail && held.wall === null);
+});
+
+test('a huge room through a tiny vent does not ring below a hertz, so its sound ends with its roar', () => {
+  const room = { ...defaultRoomExplosion(), roomCubicMetres: 1e5, ventSquareMetres: .05, ventStrength: 'open', structureKilopascals: 1000 };
+  const explosion = roomExplosion(room, STANDARD_AIR);
+  assert.ok(explosion.ring.hz < 1 && explosion.ring.paMetres === 0);
+  const noise = roomExplosionSources(room, STANDARD_AIR).find(source => source.pulse === 'noise');
+  assert.ok(noise.spanSeconds < 10);
 });

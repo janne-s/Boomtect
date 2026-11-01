@@ -142,7 +142,8 @@ export function roomRing(emitter, pressures, air = STANDARD_AIR) {
   const omega = 2 * Math.PI * hz;
   const amplitudePa = ROOM_EXPLOSION.ringPressureShare * pressures.insidePa;
   const paMetres = ROOM_EXPLOSION.densityKilogramsPerCubicMetre * omega ** 2 * emitter.roomCubicMetres * amplitudePa / (4 * Math.PI * ROOM_EXPLOSION.heatCapacityRatio * air.pressureKpa * 1000);
-  return { hz, paMetres: emitter.ringDecibels > OFF_DECIBELS ? paMetres * 10 ** (emitter.ringDecibels / 20) : 0, seconds: ROOM_EXPLOSION.ringCycles / hz };
+  const rings = emitter.ringDecibels > OFF_DECIBELS && hz >= ROOM_EXPLOSION.ringLowestHz;
+  return { hz, paMetres: rings ? paMetres * 10 ** (emitter.ringDecibels / 20) : 0, seconds: rings ? ROOM_EXPLOSION.ringCycles / hz : 0 };
 }
 
 export function roomExplosion(emitter, air) {
