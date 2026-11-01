@@ -15,6 +15,11 @@ function append(container, ...elements) {
   elements.forEach(element => container.append(element));
 }
 
+function idleAll(idle, ...elements) {
+  if (idle) elements.forEach(element => element.classList.add('idle'));
+  return elements;
+}
+
 function labelFor(text, unit, id) {
   const label = document.createElement('label');
   label.htmlFor = id;
@@ -39,7 +44,7 @@ let fieldCounter = 0;
 export function createFields(parameters, ownDisplay = {}) {
   const display = key => ownDisplay[key] ?? DISPLAY[key] ?? { scale: 1, unit: parameters[key]?.unit ?? '' };
 
-  function numberField(container, { key, label, value, onCommit, reliability }) {
+  function numberField(container, { key, label, value, onCommit, reliability, idle = false }) {
     const parameter = parameters[key];
     const { scale, unit } = display(key);
     const id = `field-${fieldCounter += 1}`;
@@ -68,7 +73,7 @@ export function createFields(parameters, ownDisplay = {}) {
       }
     });
     input.dataset.committed = value;
-    append(container, labelFor(label ?? parameter.label, unit, id), input, badge(reliability === undefined ? parameter.reliability : reliability));
+    append(container, ...idleAll(idle, labelFor(label ?? parameter.label, unit, id), input, badge(reliability === undefined ? parameter.reliability : reliability)));
     return {
       set(nextValue) {
         input.dataset.committed = nextValue;
@@ -106,14 +111,14 @@ export function createFields(parameters, ownDisplay = {}) {
     append(container, labelFor(label, '', id), input, badge(null));
   }
 
-  function selectField(container, { label, value, options, onCommit, reliability = null, key = null }) {
+  function selectField(container, { label, value, options, onCommit, reliability = null, key = null, idle = false }) {
     const id = `field-${fieldCounter += 1}`;
     const select = document.createElement('select');
     select.id = id;
     if (key) select.dataset.key = key;
     for (const [optionValue, optionLabel] of options) select.add(new Option(optionLabel, optionValue, false, optionValue === value));
     select.addEventListener('change', () => onCommit(select.value));
-    append(container, labelFor(label, '', id), select, badge(reliability));
+    append(container, ...idleAll(idle, labelFor(label, '', id), select, badge(reliability)));
   }
 
   function checkboxField(container, { label, value, onCommit, reliability = null }) {

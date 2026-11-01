@@ -646,6 +646,9 @@ canvas {
 .macros label {
   color: var(--muted);
 }
+.idle {
+  opacity: .45;
+}
 .macros input[type="range"] {
   width: 100%;
 }

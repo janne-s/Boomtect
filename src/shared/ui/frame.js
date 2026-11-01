@@ -1274,9 +1274,12 @@ export function startFrame(tect) {
       input.value = String(Math.round(position * steps));
       return input;
     };
+    const cells = [];
     const showValue = item => {
       value.textContent = macro.show(item);
       if (macro.entry) value.setAttribute('aria-label', `${macro.label} ${value.textContent}`);
+      const idle = Boolean(macro.idle?.(item));
+      for (const cell of cells) cell.classList.toggle('idle', idle);
     };
     const siblings = macroRows.get(container) ?? [];
     macroRows.set(container, siblings);
@@ -1314,6 +1317,8 @@ export function startFrame(tect) {
         input.addEventListener('dblclick', reset);
       }
       holder.append(lower, upper);
+      cells.push(labelCell, holder, value);
+      showValue(emitter);
       container.append(labelCell, holder, value);
       return;
     }
@@ -1324,6 +1329,8 @@ export function startFrame(tect) {
     input.addEventListener('input', () => { holdViews(true); paintTrack(input, 0, Number(input.value) / steps); apply(() => [Number(input.value) / steps]); });
     input.addEventListener('change', () => { holdViews(false); commit(() => {}); });
     input.addEventListener('dblclick', reset);
+    cells.push(labelCell, input, value);
+    showValue(emitter);
     container.append(labelCell, input, value);
   }
 

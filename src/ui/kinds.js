@@ -9,7 +9,7 @@ import { frontProfile } from '../shared/domain/refraction.js';
 import { meteorBoom, showerMembers } from '../domain/meteor.js';
 import { applyEruption, ERUPTION_NUMBERS, ERUPTION_TYPES, eruptionOf, volcanoPaMetres, volcanoSources } from '../domain/volcano.js';
 import { CONFINEMENT_TYPES, CONGESTION_TYPES, FUEL_TYPES, gasExplosionPulse, IGNITION_TYPES } from '../domain/gas-explosion.js';
-import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, roomExplosion, VENT_TYPES } from '../domain/room-explosion.js';
+import { INTERIOR_TYPES, MATERIAL_TYPES, ROOM_IGNITION_TYPES, roomExplosion, roomPressures, VENT_TYPES } from '../domain/room-explosion.js';
 import { tankFarmTanks } from '../domain/tank-farm.js';
 import { applyVessel, bleveBlast, bleveChargeKilograms, bleveContents, fireballOf, FLUID_TYPES, VESSEL_NUMBERS, VESSEL_TYPES, vesselOf } from '../domain/bleve.js';
 import {
@@ -230,8 +230,9 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
     ];
   }
   if (emitter.kind === 'roomExplosion') {
-    const choose = (label, key, types, table) => container => selectField(container, {
-      label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key)
+    const idle = roomPressures(emitter).wallsFail;
+    const choose = (label, key, types, table, options = {}) => container => selectField(container, {
+      label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key), ...options
     });
     return [
       section('Placement', container => {
@@ -239,9 +240,11 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
         pointFields(container, { label: 'Vent', point: emitter.positionMetres, onCommit: set('positionMetres') });
       }),
       section('Room', container => {
-        numbers(['roomCubicMetres', 'ventSquareMetres', 'structureKilopascals'])(container);
+        numbers(['roomCubicMetres'])(container);
+        numberField(container, { key: 'ventSquareMetres', value: emitter.ventSquareMetres, onCommit: set('ventSquareMetres'), idle });
+        numbers(['structureKilopascals'])(container);
         choose('Material', 'material', MATERIAL_TYPES, ROOM_EXPLOSION.materials)(container);
-        choose('Vent strength', 'ventStrength', VENT_TYPES, ROOM_EXPLOSION.vents)(container);
+        choose('Vent strength', 'ventStrength', VENT_TYPES, ROOM_EXPLOSION.vents, { idle })(container);
         choose('Interior', 'interior', INTERIOR_TYPES, ROOM_EXPLOSION.interiors)(container);
         choose('Ignition', 'ignition', ROOM_IGNITION_TYPES, ROOM_EXPLOSION.ignitions)(container);
       }),
@@ -295,8 +298,9 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
     ];
   }
   if (emitter.kind === 'gasExplosion') {
-    const choose = (label, key, types, table) => container => selectField(container, {
-      label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key)
+    const idle = emitter.ignition === 'charge';
+    const choose = (label, key, types, table, options = {}) => container => selectField(container, {
+      label, value: emitter[key], reliability: 'C', options: types.map(type => [type, table[type].label]), onCommit: set(key), ...options
     });
     return [
       section('Placement', container => {
@@ -306,8 +310,8 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
       section('Cloud', container => {
         numbers(['cloudCubicMetres'])(container);
         choose('Fuel', 'fuel', FUEL_TYPES, GAS_EXPLOSION.fuels)(container);
-        choose('Congestion', 'congestion', CONGESTION_TYPES, GAS_EXPLOSION.congestions)(container);
-        choose('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements)(container);
+        choose('Congestion', 'congestion', CONGESTION_TYPES, GAS_EXPLOSION.congestions, { idle })(container);
+        choose('Confinement', 'confinement', CONFINEMENT_TYPES, GAS_EXPLOSION.confinements, { idle })(container);
         choose('Ignition', 'ignition', IGNITION_TYPES, GAS_EXPLOSION.ignitions)(container);
       }),
       section('Source', container => {
