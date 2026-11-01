@@ -330,6 +330,12 @@ export const BLEVE = Object.freeze({
       burstDecibels: 6, burstSpreadDecibels: 3, burstTimeSpread: .3, puffCeiling: 3, tiltSpreadDecibels: 3
     })
   }),
+  /**
+   * Class C, fitted to Birk et al. 2007 Fig. 7 (a 2000 l propane tank, 20 m): a vessel burst's second shock, the released vapour
+   * recompressing after its overexpansion, about 90 ms after the first and 0.8 of it; the Yellow Book (§7.2.1) notes strong second
+   * shocks for vessel bursts, where TNT's is weak and early. Its delay scales with the charge's cube root.
+   */
+  secondShock: Object.freeze({ secondsPerCubeRootKilogram: .073, share: .8 }),
   /** Class C: volume and fill as built; failure in a fire at 1.21 × a 17.24 barg relief valve (Yellow Book Table 7.1, Roberts et al. 2000), a drum's seams near 2 barg. */
   vessels: Object.freeze({
     cylinder11: Object.freeze({ label: 'Cylinder 11 kg', vesselCubicMetres: .026, fillShare: .8, failureBar: 20.9 }),

@@ -1,4 +1,4 @@
-import { BLAST, BOOSTER } from './constants.js';
+import { BLAST, BLEVE, BOOSTER } from './constants.js';
 import { BLAST_PULSE, kinneyGrahamOverpressureRatio } from './blast-pulse.js';
 import { flashSources, lightningEmitterFlashes } from './lightning.js';
 import { barrageRounds } from './barrage.js';
@@ -71,10 +71,14 @@ export function blastSources(emitter, air, surface = null) {
 }
 
 /** Class B: the charge holds the ground's doubling of the energy (Yellow Book A_sb = 2), so its level is halved before the render's ground doubles it. */
-const bleveSources = (emitter, air, surface) => [
-  ...blastSources(bleveBlast(emitter, air), air, surface).map(source => ({ ...source, amplitudePaMetres: source.amplitudePaMetres / 2 })),
-  ...fireballRoarSources(emitter, air, surface)
-];
+function bleveSources(emitter, air, surface) {
+  const blast = bleveBlast(emitter, air);
+  const [first] = blastSources(blast, air, surface).map(source => ({ ...source, amplitudePaMetres: source.amplitudePaMetres / 2 }));
+  if (!first) return fireballRoarSources(emitter, air, surface);
+  const { secondsPerCubeRootKilogram, share } = BLEVE.secondShock;
+  const second = { ...first, emissionSeconds: first.emissionSeconds + secondsPerCubeRootKilogram * Math.cbrt(blast.chargeKilograms), amplitudePaMetres: share * first.amplitudePaMetres };
+  return [first, second, ...fireballRoarSources(emitter, air, surface)];
+}
 
 export function emitterFlashes(emitter, surface = null) {
   if (emitter.kind === 'lightning') return lightningEmitterFlashes(emitter, surface);

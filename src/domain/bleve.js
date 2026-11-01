@@ -47,7 +47,7 @@ export const bleveChargeKilograms = (emitter, air) => 2 * emitter.blastShare * b
 /** Class B far from the vessel (R̄ > 2), conservative near it: a vessel burst's blast as a TNT charge of the same energy; its second shock timed as TNT's (class C). */
 export const bleveBlast = (emitter, air) => ({
   kind: 'blast', seed: emitter.seed, startSeconds: emitter.startSeconds, positionMetres: emitter.positionMetres,
-  chargeKilograms: bleveChargeKilograms(emitter, air), explosive: 'tnt', secondaryShock: true,
+  chargeKilograms: bleveChargeKilograms(emitter, air), explosive: 'tnt', secondaryShock: false,
   linearScaledDistance: BLAST_PULSE.linearScaledDistance, durationSecondsPerCubeRootKilogram: BLAST_PULSE.durationSecondsPerCubeRootKilogram, decay: BLAST_PULSE.decay,
   riseTimeSeconds: emitter.riseTimeSeconds, fireballDecibels: FIREBALL_OFF_DECIBELS, fireballSecondsPerSixthRootKilogram: 0
 });
