@@ -32,29 +32,19 @@ microphone along the Mach cone.
 - **Points and shadows** — Drag a point to move it horizontally, or its shadow
   on the floor or a wall to move it in that plane.
 - **View** — Drag empty space to turn, pinch or scroll to zoom, Shift-scroll,
-  Shift-drag, or the right button to pan, double-click to reset. The mouse
-  button in the view turns into a hand and lets two-finger scrolling pan.
-  Terrain draws coarser while the view moves.
-- **Randomise** — The dice on an emitter rolls its quick controls; heading,
-  onset, flight time, and the height of a blast, crater, or whip stay locked
-  until unlocked. The dice on Air and ground rolls the air and ground values
-  within everyday weather and keeps the switches. The arrow beside it steps
-  back through its rolls. The dice in the bar rolls every enabled emitter and
-  the air at once, sets how far a roll moves from the present values, and
-  shows locks that keep a control as it is.
-- **Mix** — The last section of an emitter's details sets it louder or
-  quieter in decibels against the others, after propagation, so that its
-  sound keeps its shape; the export's summary lists what was mixed.
-- **Presets** — The bookmark beside a dice opens one presets window, on its
-  Emitter or its Air and ground tab, that saves under a name and loads back
-  the emitter's device, its flight (where and when it is, and how it moves),
-  or both, or the air and ground with their switches; other kinds' presets
-  show dimmed. A device leaves the emitter's flight and a flight its device;
-  the name stays. A place fits every kind at one point (blast, volcano, gas
-  explosion, room explosion, BLEVE) and every kind over an area (storm,
-  barrage, fireworks, tank farm); a flight's path fits a formation. A
-  meteoroid loads into a shower and back. Presets stay in the browser through
-  an app reset, and Export library and Import library keep them in one file.
+  Shift-drag, or the right button to pan, double-click to reset. The hand
+  button lets two-finger scrolling pan.
+- **Randomise** — The dice on an emitter rolls its quick controls, with
+  heading, onset, flight time, and height locked until unlocked; on Air and
+  ground it rolls everyday weather. The arrow steps back through the rolls.
+  The dice in the bar rolls everything, sets how far a roll goes, and shows
+  the locks.
+- **Mix** — An emitter louder or quieter in decibels against the others,
+  after propagation, its sound's shape kept.
+- **Presets** — The bookmark beside a dice saves and loads an emitter's
+  device, its flight (where, when, and how it moves), or both, and the air and
+  ground. A place fits every kind at a point or over an area alike. Presets
+  survive an app reset; Export library and Import library keep them in a file.
 - **Channel ends** — A channel starts at the dark circle and ends at the white
   one. A storm's edge handle sets its size, and its grey handles move the
   cloud base and top up and down.
@@ -65,8 +55,8 @@ microphone along the Mach cone.
 - **Shadow boundary** — The line on the ground beyond which refraction lifts the
   selected emitter's sound off the ground, for the microphone's height.
 - **Levels** — A microphone shows its peak in pascals and decibels and its
-  loudest A-weighted Fast level (LAFmax, IEC 61672-1). A blast, barrage,
-  volcano, gas explosion, room explosion, or BLEVE shows its pressure and level 1 km away.
+  loudest A-weighted Fast level (LAFmax, IEC 61672-1). An explosion shows its
+  pressure and level 1 km away.
 
 ## Emitters
 
@@ -99,20 +89,22 @@ microphone along the Mach cone.
   gas, propane, oil mist, dust of class St1 to St3, or the smoke gas of a
   backdraft. The vent's bang when it breaks, the burning, the mixture pushed out
   ahead of the flame exploding outside, and the room ringing low through its
-  opening follow one another; an empty room is far gentler than a furnished one,
-  and walls weaker than the pressure give way.
+  opening follow one another, and the vent and the walls crack as they give way;
+  an empty room is far gentler than a furnished one, and walls weaker than the
+  pressure give way.
 - **BLEVE** — A vessel of liquefied gas that bursts in a fire: an 11 or 47 kg
   cylinder, a 200 l drum, a home tank, a road tanker, a rail tank car, or a
   sphere, holding propane, butane, gasoline, water, or carbon dioxide. Its
   vapour space sets the bang, a vessel burst's double shock, so a fuller vessel
   bangs less; the fill, the failure pressure, and the share of the energy that
   reaches the blast set it. A flammable load then roars as a fireball that grows
-  with the whole load and rises above the vessel.
+  with the whole load.
 - **Tank farm** — Rows of vessels, one kind or a mix of two, that a fire spreads
   through from a first tank: each bursts as a BLEVE once the fire has reached
   it and it has heated, the larger the slower, and a fireball reaching its
-  neighbours hurries them, so the bangs gather pace through the farm. A vapour
-  cloud explosion at the first tank may open it.
+  neighbours hurries them, so the bangs gather pace through the farm. Each tank
+  fails at its own pressure and fill. A vapour cloud explosion at the first tank
+  may open it.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
   turns as set; its booms focus where its rays converge, and the air can turn
@@ -144,9 +136,10 @@ microphone along the Mach cone.
   salvo, shell size, and crackle for a fireworks display; eruption, size, crater
   height, sharpness, coda, coda length, and thumps for a volcano; fuel, cloud, congestion,
   confinement, ignition, and roar for a gas explosion; material, room, vent,
-  vent strength, interior, and roar for a room explosion; vessel, fluid, size,
-  fill, failure pressure, and fireball for a BLEVE; tanks, vessel, fluid,
-  spacing, fire spread, heating, and fireball for a tank farm, each with its onset when the scene
+  vent strength, structure, interior, and roar for a room explosion; vessel,
+  fluid, size, fill, failure pressure, fireball, growth, and swell for a BLEVE;
+  tanks, vessel, fluid, spacing, fire spread, heating, fireball, growth, and
+  swell for a tank farm, each with its onset when the scene
   has more than one emitter or the onset is set; Mach, height, heading, climb,
   acceleration, turn, and flight time for a flight, and the number of aircraft
   for a formation; speed, diameter, entry angle, height, heading, and end height
@@ -251,8 +244,7 @@ microphone along the Mach cone.
   so the quiet's boost would carry into it. On at first.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
 - **Low cut** — Cuts infrasound below 20 Hz (default) or 30 Hz, as a
-  recording chain does, so the audible sound is not set by an inaudible peak;
-  Off keeps the whole field.
+  recording chain does; Off keeps the whole field.
 - **Distance loss** — 100 % is physical; less eases how fast a source fades
   with distance beyond the microphone's nearest path, keeping air absorption
   and ground.
@@ -478,12 +470,13 @@ B/C marks a part that combines the two.
 | Gas explosion strength | GAME correlation for a spark in the cloud's centre (Eggen 1998, HSE CRR 202/1998): `P₀ = 0.84 (VBR·L/D)^2.75 S_L^2.7 D^0.7` bar open above, `3.38 (…)^2.25` under a roof (a cloud between a floor and a ceiling, whose flame can only spread sideways), the flame's path L the cloud's radius; congestion sets the volume blockage VBR and obstacle diameter D (open 1 %, sparse 5 %, dense 10 % of 0.3 m, pipe rack 20 % of 0.43 m); the fuel its burning velocity S_L (methane 0.40, propane 0.45, ethylene 0.66 m/s as GAME used them; gasoline vapour 0.40, propylene oxide 0.82, ethylene oxide 1.08, hydrogen 2.4 m/s beyond its fit); kept within the TNO Multi-Energy range 1 kPa (strength 1) to 1 MPa (10); a burster charge detonates the cloud | B/C |
 | Gas explosion level | the TNO Multi-Energy blast curves, digitised from GAME (Eggen 1998) Figure 1, at the scaled distance R/(E/p₀)^⅓ = 24 and carried as 1/r, halved because the ground doubles it, aging as a weak shock only beyond that distance since the curves hold the aging up to it: strengths 6–10 merge into one curve, so a shock from a dense cloud, one under a roof, and a detonated one are equally loud far away; strengths 1–5 keep their source pressure to 0.7 and then fall as 0.76–0.61 of it over the scaled distance; E is 3.0–4.0 MJ/m³ of stoichiometric mixture; 0.91 kPa 1 km from a 10 m dense propane cloud of strength 7.2 (Van den Berg et al. 1991: about 1 kPa) | B/C |
 | Gas explosion shape | Friedlander pulse whose positive phase is the Multi-Energy duration at the same scaled distance, t₊c₀/(E/p₀)^⅓ = 4.94, 3.02, 2.01, 1.24, 0.70 for strengths 1–5 and 0.518 for the merged 6–10, digitised from GAME Figure 2 (10 m dense propane cloud: 63 ms 1 km away, Van den Berg et al. 1991: about 60 ms); below strength 7 the pulse rises linearly over up to its whole Friedlander duration, a pressure wave, and from 7 it is a shock; the burn time, the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5), sets the roar | B/C |
-| Gas explosion roar | noise that grows over a quarter of the burn time, holds to its end, and falls 30 dB over 0.92 s·kg^⅙ of TNT equivalent; its spectrum runs from a deflagration's low roar to flat octaves between strengths 3 and 7, and its frequencies fall in proportion to the cloud's radius from those of a 150 m³ cloud; 20 dB under the pulse; fitted to recordings of gas explosions 75–450 m away | C |
+| Gas explosion roar | noise that grows over a quarter of the burn time, holds to its end, and falls 30 dB over 0.92 s·kg^⅙ of TNT equivalent; its spectrum runs from a deflagration's low roar to flat octaves between strengths 3 and 7, and its frequencies fall in proportion to the cloud's radius from those of a 150 m³ cloud; 20 dB under the pulse; seeded puffs whose high octaves darken by 18 dB over the burn, held early or spread and merging as Puff blend sets; fitted to recordings of gas explosions 75–450 m away | C |
 | Room explosion pressure | NFPA 68 (2018): `P_red = (A_s·0.0223·λ·S_u / A_v)²` bar for gases and mists, λ the turbulent enhancement of §7.2.6.1 for the room and its vent; `A_v = 10⁻⁴(1 + 1.54 P_stat^{4/3}) K_St V^{3/4} √(P_max/P_red − 1)` for dusts, K_St 150, 250, 400 bar·m/s; these bound designs, so an empty room takes 0.24 λ (Cooper et al. 1986; Harrison & Eyre 1987); ignition far from the vent triples it; the room opens at its vent's strength (window 5, light panel 1.5, door 2.5 kPa), and walls weaker than the pressure (15 kPa) cap it | B/C |
-| Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals); the roar's tail 0.33 s·kg^⅙, fitted to two recorded apartment gas explosions | A/C |
+| Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals); a wall failing after its vent bangs as the vent does, through the whole wall; a strong vent lets out less, × (1 − P_v/P); each opening cracks at a level from its bang, glass bright, doors and walls darker; the roar 20 dB under the explosion, its tail 0.33 s·kg^⅙, and the crack fitted to two recorded apartment gas explosions; no ring below 1 Hz | A/C |
 | BLEVE blast | the vapour space's isentropic expansion work at the failure pressure, from CoolProp 8.0.0 saturation tables (carbon dioxide from the Yellow Book, CPR 14E, Table 7.2; gasoline as n-hexane), doubled for the ground (Yellow Book A_sb = 2) and heard as a TNT charge of that energy: the flashing liquid is too slow to make a shock (Birk et al. 2007); 4.5 kPa 100 m from the BAM rail car (2.5 kPa measured, 4.5 kPa by Birk's estimate); failure in a fire at 1.21 × a 17.24 barg relief valve; the second shock timed as TNT's | A/B/C |
-| BLEVE fireball | the whole load burns as one fireball 5.8 M^⅓ m across, visible for 0.45 M^⅓ s, or 2.6 M^⅙ s from 30 t (Roberts 1982, CCPS 1994; Roberts et al. 2000 measured 41–85 m and 3–7 s for 279–1708 kg); its roar sits at its centre, rises in 0.1 s or half its hold, holds for 0.33 M^⅙ s or half the visible duration and dies by 30 dB over as long again; it is ten seeded puffs of venting and burning, each with its own onset, level, length, and colour, its low octaves swelling to a peak at 0.6 of the hold while its high octaves darken by 16 dB, its fluctuations fitted between E9's and E11's; its octaves fitted to two recordings of tank fireballs (E9, E11); its sound power is 10⁻⁴ of the mean heat release, above an open flame's 10⁻⁶–10⁻⁵, which leaves a road tanker's bang 28 dB over its roar where the level-managed recordings show 9–14 dB; the growing fireball swells as a monopole, ρ(1 − 1/σ)V̈/4π (Thomas & Williams 1966), its volume reaching 90 % over the roar's hold, which gives 294 Pa where 300 Pa was measured 100 m from 681 kg of LNG (Betteridge & Phillips 2015), and is off by default for a fire's BLEVE, whose cloud burns as it forms (Birk et al. 2007); its turbulent share, 0.045 of that peak in the loudest 50 ms, is heard as a low thump of 30–500 Hz octaves fitted to E9 and E11 while the fireball grows, opening with a burst at the growth's peak acceleration, 0.11 of the hold, 6 dB over its hold, the burst's level, time, and the hold's tilt varying with the seed, and ending 30 dB down over 0.1 s once it has grown, set by Growth | B/C |
+| BLEVE fireball | the whole load burns as one fireball 5.8 M^⅓ m across, visible for 0.45 M^⅓ s, or 2.6 M^⅙ s from 30 t (Roberts 1982, CCPS 1994; Roberts et al. 2000 measured 41–85 m and 3–7 s for 279–1708 kg); its roar starts at the vessel, rises in 0.1 s or half its hold, holds for 0.33 M^⅙ s or half the visible duration and dies by 30 dB over as long again, as ten seeded puffs whose low octaves swell and high octaves darken, fitted to two recordings of tank fireballs; its sound power is 10⁻⁴ of the mean heat release; Swell is the growing fireball as a monopole, ρ(1 − 1/σ)V̈/4π (Thomas & Williams 1966; 294 Pa where Betteridge & Phillips 2015 measured 300 Pa 100 m from 681 kg of LNG), off by default because a fire's BLEVE burns as it forms (Birk et al. 2007); Growth is its turbulent share, a low thump while the fireball grows that opens with a burst | B/C |
 | Tank farm timing | authored, not a heat transfer model: the fire spreads from the first tank at a set speed; a tank fails after a heating time growing with the cube root of its volume (against a 2 m³ tank's), spread log-normally; a tank within a failing one's fireball radius has half its remaining heating, once, from the first fireball to reach it; without an opening cloud the first tank fails at the start; an opening cloud burns as a dense cloud of the farm's fuel (butane as propane) | C |
+| Tank farm vessels | each tank's failure pressure log-normal with σ 0.07 and its fill ±0.07 about its vessel's, as nine 2000 l propane tanks failed in fire (Birk et al. 2007) | B |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
@@ -516,9 +509,9 @@ B/C marks a part that combines the two.
 
 Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
 or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
-its stars' burning; a whip's swish; and a gas cloud's spreading, its flame's
-acceleration through the obstacles, separate congested regions in one cloud,
-and BLEVEs; for a room explosion, rooms bursting one after another, the
+its stars' burning; a whip's swish; a gas cloud's spreading, its flame's
+acceleration through the obstacles, and separate congested regions in one
+cloud; a fireball's rise; for a room explosion, rooms bursting one after another, the
 acoustic peak of empty steel vessels, collapse and debris, the vent's
 directivity, a secondary dust explosion, and the fire before a backdraft.
 
@@ -568,8 +561,10 @@ What each change does to the sound:
 | `flashType` `intra-cloud` (Cloud flash) | a channel inside the cloud, its sound spread out in time |
 | More `branchCount`, more `tortuosityDegrees` | more separate claps, a more ragged rumble |
 | Bigger `chargeKilograms` | deeper and longer; a blast's `positionMetres.z` high makes an air burst |
-| Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes` (under a roof), a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive |
-| Room explosion smaller `ventSquareMetres`, `interior` `furnished`, `ignition` `far`, a stronger `ventStrength` | more pressure inside and a louder explosion outside, up to the walls' `structureKilopascals`; `material` `smokeGas` with `ventStrength` `open` is a backdraft's slow whoosh; `ringDecibels` the low ring |
+| Gas explosion bigger `cloudCubicMetres`, `congestion` denser, `confinement` `planes` (under a roof), a faster-burning `fuel` | from a soft whump to a sharp bang; `ignition` `charge` detonates the cloud, a fuel-air explosive; `puffBlend` 0 holds the roar's puffs early, 1 lets them merge |
+| Room explosion smaller `ventSquareMetres`, `interior` `furnished`, `ignition` `far`, a stronger `ventStrength` | more pressure inside and a louder explosion outside, up to the walls' `structureKilopascals`; a bigger vent cracks louder; `material` `smokeGas` with `ventStrength` `open` is a backdraft's slow whoosh; `ringDecibels` the low ring, `crackDecibels` the crack |
+| BLEVE bigger `vesselCubicMetres`, emptier `fillShare`, higher `failureBar` | a stronger bang; a flammable `fluid` adds a fireball's roar, `growthDecibels` its low thump |
+| Tank farm more `tankCount`, faster `spreadMetresPerSecond`, shorter `heatingSeconds` | the bangs closer together; `openingCloudCubicMetres` opens the farm with a vapour cloud explosion |
 | Shorter `riseTimeSeconds` | a sharper crack; longer, a softer thump |
 | Flight higher | a weaker, slightly longer boom; faster `mach`, a wider carpet |
 | `ground.type` `water` or `rigid` | a strong reflection right after the direct sound |
@@ -578,6 +573,7 @@ What each change does to the sound:
 | `ground.surroundings` | the long rumble the land around returns of a loud sound |
 | `ground.surroundingsSeconds` | a longer or shorter rumble |
 | `emitters[].mixDecibels` | the emitter louder or quieter, its sound's shape kept |
+| `render.lowCutHz` `0` | the infrasound kept; 20 (default) or 30 cuts it as a recording does |
 | Humid air | highs carry farther |
 | Wind toward the microphone | louder; against it, a shadow at a distance |
 | Microphone `type` `binaural` with `headingDegrees` and `pitchDegrees` | a stereo file for headphones, facing that way (compass degrees); a higher `render.ambisonicOrder` sharpens the direction |

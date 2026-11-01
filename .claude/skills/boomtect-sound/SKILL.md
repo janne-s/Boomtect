@@ -1,6 +1,6 @@
 ---
 name: boomtect-sound
-description: Renders lightning, storms, blasts, barrages, fireworks, volcanic explosions, sonic booms, meteors, whips, and falling boosters from a request in words, at a place and microphone the request describes, and checks the result by measurement. Use when the user asks for such a sound, a collection of them, or a supersonic jet with its engine.
+description: Renders lightning, storms, blasts, barrages, fireworks, volcanic explosions, gas and fuel-air explosions, explosions in rooms, BLEVEs and tank farms, sonic booms, meteors, whips, and falling boosters from a request in words, at a place and microphone the request describes, and checks the result by measurement. Use when the user asks for such a sound, a collection of them, or a supersonic jet with its engine.
 ---
 
 # Boomtect sound
