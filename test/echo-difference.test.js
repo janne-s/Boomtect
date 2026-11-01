@@ -25,7 +25,6 @@ test('the terrain echoes alone are a render with them less one without: silent b
     else after = Math.max(after, Math.abs(echoes.samples[index]));
     assert.ok(Math.abs(echoes.samples[index] + at(without, seconds) - at(withEchoes, seconds)) < 1e-6 * withEchoes.peakPa);
   }
-  // Within 1e-3 of the peak (−60 dB) before the first echo; measured 8e-5.
   assert.ok(before < 1e-3 * withEchoes.peakPa, `${before / withEchoes.peakPa}`);
   assert.ok(after > 100 * before);
   assert.equal(echoes.peakPa, echoes.samples.reduce((peak, value) => Math.max(peak, Math.abs(value)), 0));
@@ -37,7 +36,6 @@ test('the share of the timeline without echoes ends as much earlier as the last 
     startSeconds, sampleRate: 100, samples: new Float32Array(lengthSeconds * 100),
     arrivals: { count: seconds.length, seconds, kinds }
   });
-  // Ends at 11 s; its last echo at 9 s, its last other path at 3 s: without echoes it ends at 5 s.
   assert.ok(Math.abs(echoFreeShare(new Map([['a', result(1, [2, 3, 9], [0, 1, PATH_ECHO], 10)]])) - .4) < 1e-12);
   assert.equal(echoFreeShare(new Map([['a', result(1, [2, 3], [0, 1], 10)]])), 1);
 });

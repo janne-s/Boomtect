@@ -413,7 +413,6 @@ export function kindViews() {
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
   }
 
-  /** The room stands behind its vent, which sits in the middle of its front wall. */
   function roomCorners(emitter) {
     const vent = placed(emitter.positionMetres);
     const half = roomSideMetres(emitter.roomCubicMetres) / 2;
@@ -535,7 +534,6 @@ export function kindViews() {
     context.globalAlpha = alpha;
   }
 
-  /** A short tick across the path wherever it passes the speed of sound of the air at its height, going faster or slower. */
   function drawSoundBarriers(context, path) {
     const point = index => ({ x: path.x[index], y: path.y[index], z: path.z[index] });
     let before = path.speed[0] >= soundSpeedAt(scene.air, path.z[0]);

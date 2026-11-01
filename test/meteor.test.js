@@ -74,7 +74,6 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
   const bursts = meteorBursts(meteor, air);
   assert.deepEqual(meteorBursts(meteor, air), bursts);
   assert.notDeepEqual(meteorBursts({ ...meteor, seed: meteor.seed + 1 }, air), bursts);
-  // 1 + 2 + 4 + 8 fragments, those whose pressure the trail reaches, and the burst.
   assert.ok(bursts.length > 8 && bursts.length <= 16, `${bursts.length}`);
   const speed = meteor.speedKilometresPerSecond * 1000;
   const ram = z => pressureAtHeightPa(air, z) / (GAS_CONSTANT_AIR_J_PER_KG_KELVIN * temperatureAtHeightKelvin(air, z)) * speed * speed;
@@ -82,7 +81,6 @@ test('a meteor breaks up in generations of fragments from its strength, seeded, 
   assert.ok(Math.abs(energy / (3300 * Math.PI / 6 * meteor.diameterMetres ** 3 * speed * speed / 2) - 1) < 1e-12);
   const breakups = bursts.slice(0, -1);
   for (const burst of breakups) {
-    // Within the pressure spread of one of the generations: S·2^k·e^(±4σ).
     const ratio = Math.log2(ram(burst.positionMetres.z) / (meteor.strengthMegapascals * 1e6));
     assert.ok(ratio > -3 && ratio < meteor.breakupCount + 2, `${ratio}`);
     const share = burst.chargeKilograms * 4.184e6 / (meteor.breakupShare * energy);

@@ -32,10 +32,7 @@ export function openingExplosion(farm) {
   };
 }
 
-/**
- * Class C: each tank's BLEVE, the fire reaching it from the first tank and the first fireball reaching it hurrying it once; without an opening cloud the first tank fails at the start.
- * Each tank's failure pressure and fill spread as in Birk et al. 2007, drawn apart from the timing.
- */
+/** Class C. */
 export function tankFarmTanks(farm) {
   const random = createRandom(farm.seed);
   const positions = tankFarmLayout(farm);

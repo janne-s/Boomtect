@@ -424,7 +424,7 @@ export function defaultFireworks(id = 'fireworks-1', name = 'Fireworks', seed = 
   };
 }
 
-/** Rise time class C until verified. */
+/** Class C. */
 export function defaultFlight(id = 'flight-1', name = 'Flight', seed = 20261013) {
   const body = FLIGHT.bodies.reconnaissance;
   return {

@@ -510,7 +510,6 @@ function groundAnchored(field, item) {
 
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Copies the keys a preset has that the emitter has too; a group is merged, so a preset short of a field leaves the emitter's own. */
 function given(item, values, keys) {
   for (const key of keys) {
     if (!(key in values) || !(key in item)) continue;
@@ -524,7 +523,6 @@ const OWN_KEYS = Object.freeze(['id', 'name', 'kind', 'enabled', 'seed', 'follow
 const PATH_KEYS = Object.freeze(['startMetres', 'startSeconds', 'headingDegrees', 'climbDegrees', 'mach', 'accelerationMetresPerSecondSquared', 'turnDegreesPerSecond', 'durationSeconds']);
 const METEOR_PATH_KEYS = Object.freeze(['startMetres', 'startSeconds', 'headingDegrees', 'entryDegrees', 'endHeightMetres']);
 
-/** A flight is where and when the emitter is, and how a moving one goes, so it sounds the same past the microphones; the device is the rest. */
 const FLIGHTS = Object.freeze({
   lightning: ['flashType', 'baseMetres', 'topMetres', 'startSeconds'],
   storm: ['centreMetres', 'startSeconds'],
@@ -548,7 +546,6 @@ const FLIGHT_SECTIONS = Object.freeze({ storm: 'field', barrage: 'field', firewo
 
 const deviceKeys = emitter => Object.keys(emitter).filter(key => !OWN_KEYS.includes(key) && !FLIGHTS[emitter.kind].includes(key));
 
-/** A device preset is what sounds (decision 18), loading between kinds that share its section; a flight preset is its place and path. */
 const presetFor = kind => Object.freeze({
   section: DEVICE_SECTIONS[kind] ?? kind,
   take: emitter => pick(emitter, deviceKeys(emitter)),
@@ -635,7 +632,6 @@ function followerVolcano(ghost, existing, { partner, uniqueId, scene }) {
 
 export const follower = (ghost, existing, context) => (ghost.follow.role === 'volcano' ? followerVolcano : followerFlight)(ghost, existing, context);
 
-/** A flight on a linked tect's path, so that its booms and Mach cone come from Boomtect; the body is kept once chosen, a rocket's length taken from the linked tect. */
 export function followerFlight(ghost, existing, { partner, uniqueId, scene }) {
   if (scene.mode !== 'sonic') return null;
   const body = ghost.follow.role === 'rocket' ? 'rocket' : ghost.follow.size === 'bomber' ? 'bomber' : 'reconnaissance';

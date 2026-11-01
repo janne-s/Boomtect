@@ -95,7 +95,7 @@ export const roomEquivalentKilograms = emitter => roomCombustionJoules(emitter) 
 const ejectedShare = (emitter, pressures) => (emitter.ignition === 'far' ? 1 : Math.PI / 6) * (1 - 1 / ROOM_EXPLOSION.expansionRatio)
   * Math.max(0, 1 - ROOM_EXPLOSION.vents[emitter.ventStrength].kilopascals * 1000 / pressures.insidePa);
 
-/** Class A: the stored compression V·P/(γP₀) leaves through the opening at the Bernoulli rate; a monopole p·r = ρ/(4π)·dQ/dt over the opening time (class C), positive only while the flow starts. */
+/** Class A: the stored compression leaves at the Bernoulli rate, radiating as a monopole. */
 export function breakPulse(emitter, pressures, air) {
   const { densityKilogramsPerCubicMetre: density, dischargeCoefficient, heatCapacityRatio } = ROOM_EXPLOSION;
   const storedCubicMetres = emitter.roomCubicMetres * pressures.openPa / (heatCapacityRatio * air.pressureKpa * 1000);
@@ -107,7 +107,7 @@ export function breakPulse(emitter, pressures, air) {
   return { peakPaMetres, onsetSeconds, durationSeconds, decay: BLAST_PULSE.decay, amplitudePaMetres: onsetAmplitude(peakPaMetres, onsetSeconds, durationSeconds, BLAST_PULSE.decay) };
 }
 
-/** Class A: the room is compact, so its volume production radiates as the free flame's 2ρ(1 − 1/σ)S² at the edge of a cloud of its volume, halved because the ground doubles it; it rises over the burn and turns over as the flame dies at the walls, in a quarter of the burn (class C). */
+/** Class A: a compact room’s volume production as the free flame’s. */
 export function burnPulse(emitter, pressures) {
   const { densityKilogramsPerCubicMetre: density, expansionRatio } = ROOM_EXPLOSION;
   const sourcePa = 2 * density * (1 - 1 / expansionRatio) * pressures.flameMetresPerSecond ** 2;
@@ -128,7 +128,6 @@ export function externalPulse(emitter, pressures, air) {
   }, air);
 }
 
-/** The wall giving way after its vent has opened: the stored volume at the structure's pressure leaves through the whole wall. */
 export function wallBreakPulse(emitter, pressures, air) {
   if (!pressures.wallBreaksLater) return null;
   return breakPulse(emitter, { ...pressures, openPa: emitter.structureKilopascals * 1000, breakingSquareMetres: pressures.side ** 2, openingSeconds: ROOM_EXPLOSION.wallOpenSeconds }, air);
@@ -226,7 +225,7 @@ export const ventFacing = emitter => {
   return { x: Math.sin(heading), y: Math.cos(heading), z: 0 };
 };
 
-/** The external explosion burns ahead of the vent, its centre a radius out (Harrison & Eyre 1987: 2–5 m); every source is shadowed behind the room. */
+/** Class B: Harrison & Eyre 1987, 2–5 m ahead of the vent. */
 export function roomExplosionSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const explosion = roomExplosion(emitter, air);

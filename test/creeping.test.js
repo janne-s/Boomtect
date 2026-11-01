@@ -42,8 +42,6 @@ test('soft ground never lets more through the shadow than rigid ground, and its 
   for (let frequency = .5; frequency < 20000; frequency *= 1.05) {
     assert.ok(Math.hypot(...shadowResponse(frequency, nepers, 0, transition)) <= Math.hypot(...shadowResponse(frequency, nepers, 0)) * (1 + 1e-12), `${frequency} Hz`);
   }
-  // The impulse response from the transfer function: no energy before time zero, which a circular
-  // inverse transform folds into the end of the buffer.
   const size = 1 << 17;
   const rate = 48000;
   const re = new Float64Array(size);

@@ -5,7 +5,7 @@ import { onGround } from '../shared/domain/terrain.js';
 import { formationMembers, soundSpeedAt } from '../shared/domain/trajectory.js';
 import { foldScaling, FOCUS_RANGE } from '../shared/domain/focus.js';
 
-/** Booms where the arrival is stationary, class A; Carlson's simplified method (NASA TP-1122, 1978), class B with K_p = K_t = 1 class C; focusing class B, its limit class C. */
+/** Class A booms; Carlson (NASA TP-1122) class B, K_p = K_t = 1 class C; focusing class B. */
 
 export const BODY_TYPES = Object.freeze(Object.keys(FLIGHT.bodies));
 
@@ -161,10 +161,6 @@ function stationaryPoint(path, arrival, index, receiver, profile) {
   return { point, emissionSeconds: blend(path.seconds), ray: shadow ? shadowPath(along, point, receiver) : rayBetween(along, point, receiver), along, curvature, blend, shadow };
 }
 
-/**
- * The arrival time's stationary points, minima and maxima, and its folds: where its slope has an extremum, the two
- * arrivals either side meet at a caustic. Class C.
- */
 function arrivalStructure(path, receiver, profile) {
   const count = path.seconds.length;
   if (count < 3) return { stationary: [], folds: [] };
@@ -206,7 +202,6 @@ function arrivalStructure(path, receiver, profile) {
   return { arrival, stationary, folds };
 }
 
-/** A followed rocket's shape factor is its plume's while it burns, its body's after. */
 const shapeFactorAt = (path, flight, emissionSeconds) => (Number.isFinite(flight.follows?.burnSeconds) && emissionSeconds - path.seconds[0] > flight.follows.burnSeconds
   ? FLIGHT.coastShapeFactor : flight.shapeFactor);
 
@@ -257,11 +252,6 @@ function focusedBoom(path, flight, receiver, profile, air, arrival, fold) {
   };
 }
 
-/**
- * Booms where the arrival is stationary: the earlier, a minimum, as an N-wave, the later, a maximum that has touched
- * its caustic, turned by a quarter period into a U-wave; near a fold both come from the focused boom instead. Without
- * `caustics` only the minima boom, as a whip's crack, whose weak-shock caustic would be centimetres from its tip.
- */
 export function flightBooms(path, flight, receiver, profile, air, { caustics = true } = {}) {
   const structure = arrivalStructure(path, receiver, profile);
   const { arrival } = structure;
@@ -275,14 +265,12 @@ export function flightBooms(path, flight, receiver, profile, air, { caustics = t
     const next = ordered[position + 1];
     if (next && point.maximum !== next.maximum) pairs.push([point, next]);
   });
-  // A pair either side of a fold gives it from its own timing: s₀ half their spacing, |a| = Δt / 4s₀³, b = 3|a|s₀².
   const fromPairs = pairs.map(([first, second]) => {
     const spread = (second.index - first.index) * path.step / 2;
     const cubic = Math.abs(arrival[second.index] - arrival[first.index]) / (4 * spread ** 3);
     const sign = first.maximum ? 1 : -1;
     return { index: Math.round((first.index + second.index) / 2), slope: -3 * cubic * spread ** 2 * sign, third: 6 * cubic * sign, pair: [first, second] };
   });
-  // Without a pair a fold can only be the shadow side's, where the arrival comes near stationary without reaching it.
   const lone = folds.filter(fold => !fromPairs.some(({ pair: [first, second] }) => fold.index >= first.index && fold.index <= second.index)
     && fold.slope * Math.sign(fold.third) > 0 && Math.abs(fold.slope) <= FLIGHT.shadowFoldSlope);
   for (const fold of [...fromPairs, ...lone]) {

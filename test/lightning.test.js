@@ -108,7 +108,6 @@ test('a blast is its shock, a secondary shock of 4 % of the charge, and a roar, 
   assert.deepEqual(sources.map(source => source.pulse), ['friedlander', 'friedlander', 'noise']);
   assert.ok(sources.every(source => source.emissionSeconds === 2));
   assert.ok(Math.abs(sources[0].linearRadiusMetres - 20 * Math.cbrt(10)) < 1e-9);
-  // A smaller charge's shock: amplitude and duration scale with the cube root of the share.
   assert.ok(Math.abs(sources[1].amplitudePaMetres / sources[0].amplitudePaMetres - Math.cbrt(.04)) < 1e-9);
   assert.ok(Math.abs(sources[2].amplitudePaMetres / sources[0].amplitudePaMetres - .1) < 1e-9);
   assert.equal(blastSources({ ...defaultBlast(), secondaryShock: false, fireballDecibels: -60 }, air).length, 1);
@@ -143,7 +142,6 @@ test('return-stroke energy falls as e^(−2z/λ) with height, and in-cloud chann
 });
 
 test('a storm whose shared segment budget runs out leaves out the channels that do not fit', () => {
-  // Seed 1 at the largest storm once failed: a late branch's walk outran what was left.
   const storm = { ...defaultStorm('storm', 'Storm', 1), flashCount: 60, branchCount: 50, branchDepth: 3 };
   const flashes = stormFlashes(storm);
   assert.equal(flashes.length, 60);

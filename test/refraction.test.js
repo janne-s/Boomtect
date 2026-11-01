@@ -12,7 +12,6 @@ const air = (overrides = {}) => ({
 const isa = soundSpeedProfile(air());
 const inversion = soundSpeedProfile(air({ lapseRateKelvinPerMetre: -.01 }));
 
-/** Reference ray by RK4 in arc length. */
 function shoot(profile, z0, theta0, horizontal, { reflect = false, step = .5, maximumBounces = 1 } = {}) {
   let state = [0, z0, theta0, 0];
   let s = 0;

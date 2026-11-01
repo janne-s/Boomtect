@@ -109,7 +109,6 @@ function rayTable(air, nx, ny, zs, zr, alphaAt, rays = UPPER_AIR.rays) {
       const c2 = speeds[level + 1];
       if (c2 >= phase) { top = c2 > c1 ? z1 + (phase - c1) / (c2 - c1) * (z2 - z1) : z1; break; }
     }
-    // Rays the troposphere's own wind turns back are the primary boom's (`stationaryArrivals`).
     if (!(top > air.tropopauseMetres)) continue;
     const up = leg(speeds, alphaAt, q, zs, top);
     const down = leg(speeds, alphaAt, q, zr, top);

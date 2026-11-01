@@ -27,7 +27,6 @@ test('the causal foliage loss follows ISO 9613-2 Table A.1 within 0.006 dB/m in 
 test('only the part of a straight path under the canopy passes through foliage', () => {
   assert.equal(foliageMetres(300, 1, 1.7, 15), 300);
   assert.equal(foliageMetres(300, 20, 40, 15), 0);
-  // From 5 m up to 25 m: half of the climb lies under 15 m.
   assert.ok(Math.abs(foliageMetres(300, 25, 5, 15) - 150) < 1e-9);
 });
 
@@ -111,7 +110,6 @@ test('rendered in two ranges with the tails added to their sum in stretches, a f
   const peak = whole.peakPa;
   let error = 0;
   whole.channels.forEach((channel, number) => channel.forEach((value, index) => { error = Math.max(error, Math.abs(value - combined.channels[number][index])); }));
-  // Float32 rounding of the samples.
   assert.ok(error / peak < 1e-6, `${error / peak}`);
 });
 

@@ -21,7 +21,6 @@ export const BLAST_PULSE = Object.freeze({
 
 const STANDARD_PRESSURE_PA = 101325;
 
-/** ∫p²dt of the Friedlander pulse (1 − t/T)·e^(−bt/T), per peak² and T. */
 export function friedlanderEnergyShare(decay) {
   const rate = 2 * decay;
   return 1 / rate - 2 / rate ** 2 + 2 / rate ** 3;

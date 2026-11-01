@@ -29,7 +29,6 @@ export const THUNDER = Object.freeze({
     terminationJunctionRange: Object.freeze([.2, .7]),
     terminationReachRange: Object.freeze([.2, .8])
   }),
-  /** B values still need verification against primary sources. */
   storm: Object.freeze({
     groundStrokeMean: 3.5,                      // B: strokes per ground flash, typically 3–5 (CIGRÉ C4.407)
     groundStrokeMaximum: 10,
@@ -95,7 +94,7 @@ export const FIREWORKS = Object.freeze({
   starStepSeconds: .02
 });
 
-/** Levels and pulse lengths class B (Johnson 2003; Sakurajima, Tungurahua; Doc/reviews/2026-10-22-volcano-recordings.md); the rest class C, fitted to the Dukono, Anak Krakatau and Tavurvur 2014 soundtracks. */
+/** Class B levels and pulse lengths (Johnson 2003); the rest class C. */
 export const VOLCANO = Object.freeze({
   referenceMetres: 1000,
   /** Class C: linear propagation from where the pulse is this share of the air pressure, as a Blast's Z = 20 gives about 4 %. */
@@ -120,7 +119,7 @@ export const VOLCANO = Object.freeze({
   })
 });
 
-/** Strength pressures class B (TNO Multi-Energy, Van den Berg 1985; GAME, Eggen 1998, Figure 10); source pressure class B from the GAME correlation (Eggen 1998, HSE CRR 202/1998 §6.7: P₀ = a(VBR·L/D)^b S_L^2.7 D^0.7 bar, spark ignition, fitted over 0.01–10 bar, D 0.019–0.82 m, VBR 5–50 %, S_L 0.40–0.66 m/s); burning velocities of methane, propane and ethylene as GAME used them, the others class B from NFPA 68 Table D.1 and extrapolated; mixture energies class A from heats of combustion at stoichiometry, 15 °C; congestion presets class C, pipe rack after GAME Annex D. Doc/design/architecture-decision-8-gas-explosion.md. */
+/** Class B strengths (TNO Multi-Energy; GAME, Eggen 1998). */
 export const GAS_EXPLOSION = Object.freeze({
   referenceMetres: 1000,
   strengthPressuresKpa: Object.freeze([1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]),
@@ -128,7 +127,7 @@ export const GAS_EXPLOSION = Object.freeze({
   expansionRatio: 7.5,
   linearPressureShare: VOLCANO.linearPressureShare,
   pressureWaveStrengths: Object.freeze([3, 7]),
-  /** Class B: the Multi-Energy blast curve, digitised from GAME (Eggen 1998) Figure 1: the strengths 6–10 merge into one curve (scaled distance R̄ = R/(E/p₀)^⅓, overpressure ΔP̄ = ΔP/p₀); strengths 1–5 keep their source overpressure to R̄ 0.7, then fall as 0.76, 0.75, 0.71, 0.66, and 0.61 of it over R̄; the level is taken at R̄ 24, where Van den Berg et al. (1991) give about 1 kPa and 60 ms from strength 7; the positive phase t̄₊ = t₊c₀/(E/p₀)^⅓ there for strengths 1–10, digitised from GAME Figure 2. */
+  /** Class B: the Multi-Energy blast curve (GAME, Eggen 1998, Figure 1). */
   multiEnergy: Object.freeze({
     mergedScaledDistances: Object.freeze([.3, .4, .5, .6, 1, 1.5, 2.5, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 70, 90]),
     mergedOverpressures: Object.freeze([12.8, 5.35, 3.31, 1.92, .62, .298, .136, .101, .0721, .0536, .0366, .0243, .0151, .0111, .00699, .00497, .00381, .00252, .00193]),
@@ -137,7 +136,7 @@ export const GAS_EXPLOSION = Object.freeze({
     referenceScaledDistance: 24,
     referencePositivePhases: Object.freeze([4.94, 3.02, 2.01, 1.24, .70, .518, .518, .518, .518, .518])
   }),
-  /** Class C, fitted to gas explosion recordings (Doc/reference/audio E1–E12): the roar grows over a quarter of the burn, holds to its end, then dies away; deflagrations roar low, strong explosions flat in octaves; its frequencies fall as the cloud's radius grows, the spectra as fitted for a 150 m³ cloud. */
+  /** Class C: fitted to the gas explosion recordings E1–E12. */
   roar: Object.freeze({
     riseShare: .25,
     referenceMetres: 4.15,
@@ -175,15 +174,11 @@ export const GAS_EXPLOSION = Object.freeze({
     spark: Object.freeze({ label: 'Spark' }),
     charge: Object.freeze({ label: 'Burster charge' })
   }),
-  /**
-   * Class B procedure, class C layout: the Yellow Book's Multi-Energy method (CPR 14E §5.5.4) splits a cloud into obstructed regions,
-   * each its own source of its own strength, and the open rest; here the regions hold a share of the cloud, at the cloud's congestion,
-   * seeded 0.3–0.9 of its radius out, and the open rest burns uncongested, each region bursting as its flame reaches the region's centre.
-   */
+  /** Class B procedure, class C layout: Multi-Energy (CPR 14E §5.5.4). */
   regions: Object.freeze({ denseShare: .15, nearestShareOfRadius: .3, farthestShareOfRadius: .9, openCongestion: 'open' })
 });
 
-/** Class B: NFPA 68 (2018) eq. 7.2.1a with 7.2.1.1 and λ from 7.2.6.1 for gases and mists, eq. 8.2.1.1 and Table B.1.2.4 for dusts, burning velocities and maximum pressures from Tables D.1(a) and D.2; class C: the empty-room factor on λ fitted to Cooper et al. 1986 Fig. 1 and Harrison & Eyre 1987 Table II, the far-ignition factor and external peak share from Harrison & Eyre Table II, the external source radius from their §3.4, the ring from Cooper Fig. 1, vent and wall strengths, dust burning velocities, smoke gas fitted to Rosberg 2001. Doc/design/architecture-decision-9-vented-explosion.md. */
+/** Class B: NFPA 68 (2018). */
 export const ROOM_EXPLOSION = Object.freeze({
   densityKilogramsPerCubicMetre: 1.2,
   viscosityPascalSeconds: 1.8e-5,
@@ -205,11 +200,7 @@ export const ROOM_EXPLOSION = Object.freeze({
   externalDilution: 3,
   wallMetres: .25,
   wallOpenSeconds: .03,
-  /**
-   * Class C, fitted to the apartment explosions Doc/reference/audio E13 and E16: the crack of a vent or wall giving way, its loudest window a
-   * share of the breaking pulse's peak, octave levels from 250 Hz on as E13's opening, falling 20 dB over its decay; doors, panels and
-   * walls are darker by their tilt per octave above 250 Hz.
-   */
+  /** Class C: fitted to E13 and E16. */
   crack: Object.freeze({
     share: .2, decaySeconds: .3,
     spectrumHz: Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
@@ -253,10 +244,7 @@ const saturation = rows => Object.freeze(rows.map(row => Object.freeze(row)));
 export const BLEVE = Object.freeze({
   tntMegajoulesPerKilogram: 4.68,
   roarSecondsPerSixthRootKilogram: .33,
-  /**
-   * Class A, CoolProp 8.0.0: the saturated state by absolute pressure, rows [bar, °C, liquid kg/m³, vapour kg/m³, the vapour's isentropic
-   * expansion work to 1 atm in kJ/kg]; carbon dioxide class B from the Yellow Book (CPR 14E) Table 7.2; gasoline taken as n-hexane (class C).
-   */
+  /** Class A: CoolProp 8.0.0 saturated states by pressure. */
   fluids: Object.freeze({
     propane: Object.freeze({
       label: 'Propane', combustionMegajoulesPerKilogram: 46.4,
@@ -284,12 +272,7 @@ export const BLEVE = Object.freeze({
       saturation: saturation([[14.8, -28.9, 1070, 38.5, 98], [21.1, -17.8, 1020, 55, 109], [29.1, -6.7, 963, 78.4, 117]])
     })
   }),
-  /**
-   * Class B: the fireball's diameter 5.8 M^⅓ and visible duration 0.45 M^⅓, 2.6 M^⅙ from 30 t (Roberts 1982, CCPS 1994; within about 20 % of
-   * Roberts et al. 2000). Class C: its roar rises in 0.1 s or half its hold, holds for k M^⅙ or half the visible duration and dies by 30 dB
-   * over as long again, its spectrum fitted to Doc/reference/audio E9 and E11, its sound power a share of the mean heat release at the
-   * turbulent-flame end of the literature's range.
-   */
+  /** Class B: Roberts 1982, CCPS 1994; from 30 t. */
   fireball: Object.freeze({
     diameterMetresPerCubeRootKilogram: 5.8,
     secondsPerCubeRootKilogram: .45,
@@ -302,37 +285,21 @@ export const BLEVE = Object.freeze({
     acousticEfficiency: 1e-4,
     spectrumHz: Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
     spectrumDensity: Object.freeze([1, .49, .038, .012, .008, .0055, .0021, .0012, 5.9e-5]),
-    /**
-     * Class C, fitted to E9 and E11: the roar as overlapping puffs of venting and burning, each with its own onset, level, length, and
-     * colour, over three layers split at the crossovers; the high layer darkens over the hold.
-     */
+    /** Class C: fitted to E9 and E11. */
     puffs: Object.freeze({
       count: 10, onsetPower: 1.5, shortestShareOfHold: .15, longestShareOfHold: .5, attackShare: .3,
       spreadDecibels: 5, layerSpreadDecibels: 3, colourDecibels: 4, floorDecibels: -12,
       crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 16])
     }),
-    /**
-     * Class B: the growing fireball as a monopole, p r = ρ(1 − 1/σ) V̈ / 4π (Thomas & Williams 1966, Strehlow 1980), its volume
-     * 1 − e^(−kt)(1 + kt + (kt)²/2) of the sphere 5.8 M^⅓ across, reaching 90 % over the roar's hold (Johnson 1990: 1.2–2 s for 1–2 t
-     * of butane); 294 Pa against 300 Pa measured 100 m from 681 kg of LNG ignited 0.5 s after the burst (Betteridge & Phillips 2015).
-     * Class C: off by default for a fire's BLEVE, whose cloud burns as it forms; Birk et al. (2007) saw no wave from 800 kg.
-     */
+    /** Class B: the fireball as a monopole (Thomas & Williams 1966, Strehlow 1980). */
     swell: Object.freeze({ expansionRatio: 7.5, growthRate: 5.3, defaultDecibels: -60 }),
-    /**
-     * Class C: the turbulent share of the monopole, heard as one low thump, a burst at the swell's peak acceleration, (2 − √2)/k,
-     * falling 10 dB over 1.5 times as long (E11: up in 0.09 s, down in 0.31 s; E9 0.01 and 0.4 s); its octaves are E9's and E11's,
-     * its level a share of the smooth swell's peak; the burst's level and time vary with the seed. The growth's held low part is the roar's.
-     */
+    /** Class C. */
     thump: Object.freeze({
       spectrumHz: Object.freeze([31.5, 63, 125, 250, 500, 1000]), spectrumDensity: Object.freeze([1, 1, .29, .032, .004, .0005]),
       turbulentShare: .045, defaultDecibels: 0, burstSpreadDecibels: 3, burstTimeSpread: .3
     })
   }),
-  /**
-   * Class C, fitted to Birk et al. 2007 Fig. 7 (a 2000 l propane tank, 20 m): a vessel burst's second shock, the released vapour
-   * recompressing after its overexpansion, about 90 ms after the first and 0.8 of it; the Yellow Book (§7.2.1) notes strong second
-   * shocks for vessel bursts, where TNT's is weak and early. Its delay scales with the charge's cube root.
-   */
+  /** Class C: fitted to Birk et al. 2007 Fig. 7. */
   secondShock: Object.freeze({ secondsPerCubeRootKilogram: .073, share: .8 }),
   /** Class C: volume and fill as built; failure in a fire at 1.21 × a 17.24 barg relief valve (Yellow Book Table 7.1, Roberts et al. 2000), a drum's seams near 2 barg. */
   vessels: Object.freeze({
@@ -346,14 +313,10 @@ export const BLEVE = Object.freeze({
   })
 });
 
-/**
- * Class C, an authored timing (Doc/design/architecture-decision-10-bleve-tank-farm.md): the fire spreads from the first tank at a set speed;
- * a tank fails after a heating time growing with the cube root of its volume against a 2 m³ tank's; a fireball reaching a tank halves the
- * heating it has left. An opening vapour cloud explosion burns as a dense cloud of the farm's fuel.
- */
+/** Class C: an authored timing (decision 10). */
 export const TANK_FARM = Object.freeze({
   referenceCubicMetres: 2,
-  /** Class B: Birk et al. 2007 Table 3, nine 2000 l propane tanks in fire, failing at 1563–1894 kPa g (σ of the logarithm .07) with fills spread .05–.09 about their series' mean. */
+  /** Class B: Birk et al. 2007 Table 3. */
   failureSpread: .07,
   fillSpread: .07,
   dominoShare: .5,
@@ -386,10 +349,7 @@ export const FLIGHT = Object.freeze({
   }),
   /** Class C. */
   focusLimit: 5,
-  /**
-   * A followed rocket after burnout: Carlson's K_S = P √A_e,max / l^¾ l_e^¼ (TP-1122, B) for a body of revolution
-   * without lift, fineness 20 and a nose three diameters long, P 0.685 as his example's A_e,1/A_e,max of 0.29 (C).
-   */
+  /** Class B: Carlson’s K_S (NASA TP-1122). */
   coastShapeFactor: .049,
   /** Class C: the arrival time's slope is taken over this, so that a followed path's rounding makes no stationary points. */
   slopeSeconds: .25,

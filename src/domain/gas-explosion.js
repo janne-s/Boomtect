@@ -29,7 +29,6 @@ export function gasSourcePa(emitter) {
   return Math.min(strongest, Math.max(weakest, bar * BAR_PA));
 }
 
-/** The Multi-Energy strength 1–10 whose source pressure this is, between classes on a log scale. */
 export function strengthOfPa(sourcePa) {
   const pressures = GAS_EXPLOSION.strengthPressuresKpa.map(kpa => kpa * 1000);
   const upper = Math.min(pressures.length - 1, Math.max(1, pressures.findIndex(pressure => pressure >= sourcePa)));
@@ -103,7 +102,7 @@ export function positivePhaseShare(onsetShare, decay) {
   return (low + high) / 2;
 }
 
-/** Class B level and positive phase: the Multi-Energy curves at their reference scaled distance, which hold the wave's aging up to there; the level carried as 1/r and halved because the ground doubles it, aged as a weak shock only beyond. Class C shape: the pulse rises over its Friedlander duration while the wave is a pressure wave, and is a shock from strength 7. */
+/** Class B: the Multi-Energy curves at their reference scaled distance. */
 export function deflagrationPulse({ sourcePa, radiusMetres, kilograms }, air) {
   const strength = strengthOfPa(sourcePa);
   const ambientPa = air.pressureKpa * 1000;
@@ -214,11 +213,6 @@ const partOf = (emitter, share, congestion) => ({ ...emitter, cloudCubicMetres: 
 
 const partPulse = (part, air) => deflagrationPulse({ sourcePa: gasSourcePa(part), radiusMetres: cloudRadiusMetres(part.cloudCubicMetres), kilograms: gasEquivalentKilograms(part) }, air);
 
-/**
- * The open rest and the dense regions of a spark-lit cloud, each region's offset from the centre and the time its flame reaches it; none for a
- * detonation or without regions. The regions' share is split unevenly by the seed, and regions lit within one another's positive phase
- * burst as one, their energies together (Yellow Book CPR 14E §5.5.4, step 10).
- */
 export function gasRegions(emitter, air) {
   const count = emitter.ignition === 'charge' ? 0 : emitter.denseRegions;
   if (!(count > 0)) return null;

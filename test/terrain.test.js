@@ -92,7 +92,6 @@ test('a rounded ridge follows P.526 and its crest, costs more than a thin edge a
 test('the surface reproduces a plane and its normal, relative to the ground at the origin', () => {
   const surface = terrainSurface(terrain((x, y) => 120 + .05 * x - .02 * y));
   assert.ok(Math.abs(surface.datumMetres - 120) < 1e-3);
-  // Heights are stored in 16-bit steps of each patch's range.
   for (const [x, y] of [[0, 0], [700, -300], [-1500, 1200]]) assert.ok(Math.abs(surface.heightAt(x, y) - (.05 * x - .02 * y)) < 5e-3);
   const normal = surface.normalAt(300, 300);
   const length = Math.hypot(-.05, .02, 1);

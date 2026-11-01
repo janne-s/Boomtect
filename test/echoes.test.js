@@ -36,7 +36,6 @@ test('the specular point on a sloping plane gives its image path to its stored h
   assert.equal(points.length, 1);
   const [{ point, focusing }] = points;
   const path = Math.hypot(S.x - point.x, S.y - point.y, S.z - point.z) + Math.hypot(R.x - point.x, R.y - point.y, R.z - point.z);
-  // Heights are stored in 16-bit steps of each patch's range, here about 10 mm.
   assert.ok(Math.abs(path - Math.hypot(R.x - image.x, R.y - image.y, R.z - image.z)) < 5e-3, `${path}`);
   assert.ok(Math.abs(focusing - 1) < .02, `${focusing}`);
 });
@@ -52,9 +51,7 @@ test('an echo from a slope beyond level ground arrives along its image path, 2 0
   const paths = echoPaths(field, S);
   assert.ok(paths.every(path => path.kind === PATH_ECHO));
   assert.ok(paths.slice(1).every(path => path.spreadMetres > 3 * 2000));
-  // To the slope's stored heights, steps of about 70 mm over its range of 4.8 km.
   assert.ok(Math.abs(paths[0].seconds - 2000 / 340) < .03 / 340, `${paths[0].seconds * 340}`);
-  // Its spreading follows the stored surface's curvature, which the steps roughen: 0.1 % here.
   assert.ok(Math.abs(paths[0].spreadMetres / 2000 - 1) < 5e-3, `${paths[0].spreadMetres}`);
   assert.ok(Math.abs(paths[0].groundSine - Math.cos(Math.PI / 6)) < 1e-4, `${paths[0].groundSine}`);
 });
@@ -318,7 +315,6 @@ test('tracing split into parts, as on several threads, gives the paths of one th
       assert.equal(split[key].length, whole[key].length, key);
       for (let index = 0; index < whole[key].length; index += 1) {
         const [a, b] = [whole[key][index], split[key][index]];
-        // Integers match exactly; merged scattered sums add up in another order, so agree to rounding.
         if (!(whole[key] instanceof Float64Array)) assert.equal(b, a, `${parts}:${key}[${index}]`);
         else assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a)), `${parts}:${key}[${index}] ${a} ${b}`);
       }

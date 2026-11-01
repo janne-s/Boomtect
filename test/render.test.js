@@ -183,7 +183,6 @@ test('turbulence fills the grazing ground dip of a distant blast', () => {
   const turbulentScene = scene(base);
   turbulentScene.air.turbulenceStrength = 1e-6;
   const windy = render(turbulentScene);
-  // Here the dip of grass at grazing incidence lies at 1–4 kHz.
   const dip = ({ samples, sampleRate }) => [1000, 1500, 2000, 3000, 4000].reduce((sum, frequency) => {
     let re = 0;
     let im = 0;
@@ -273,7 +272,6 @@ test('the shadow response is causal, lossless at low frequencies, f^(1/3) creepi
     const peak = largest(re);
     const tail = Math.ceil(shadowTailSeconds(nepers) * rate);
     const after = largest(re.slice(tail, size / 2));
-    // The test's own zero-phase band limit spreads the arrival by a fraction of a millisecond.
     const before = largest(re.slice(size - rate / 10, size - rate / 1000));
     assert.ok(after < peak * 1e-4, `${creep} m: tail ${20 * Math.log10(after / peak)} dB`);
     assert.ok(before < peak * 1e-5, `${creep} m: before arrival ${20 * Math.log10(before / peak)} dB`);
