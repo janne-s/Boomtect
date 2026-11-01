@@ -224,7 +224,7 @@ test('a small vessel bursting at low pressure is heard as its bang, its fireball
 });
 
 test('a vessel bursts in two strong shocks, the second about 90 ms after the first for a 2000 l tank, as Birk et al. measured', () => {
-  const tank = { ...defaultBleve(), vesselCubicMetres: 2, fillShare: .85 };
+  const tank = { ...defaultBleve(), vesselCubicMetres: 2, fillShare: .65, failureBar: 18 };
   const [first, second] = emitterSources(tank, STANDARD_AIR).sources;
   assert.equal(second.pulse, 'friedlander');
   assert.ok(Math.abs(second.amplitudePaMetres / first.amplitudePaMetres - .8) < 1e-9);
