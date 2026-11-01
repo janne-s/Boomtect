@@ -492,9 +492,7 @@ B/C marks a part that combines the two.
 
 Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
 or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
-its stars' burning; a whip's swish; a gas cloud's drift and its flame's
-acceleration; a fireball's rise; and rooms bursting one after another,
-collapse and debris, and a secondary dust explosion.
+its stars' burning; and a whip's swish.
 
 Boomtect is a creative tool. Where published models exist it follows them,
 but a result is a plausible event, not a reconstruction or a measurement.
