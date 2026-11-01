@@ -143,20 +143,12 @@ const fireball = {
   entry: { unit: 'dB', get: item => item.fireballDecibels, set: (item, value) => { item.fireballDecibels = value; } }
 };
 
-const swell = {
-  label: 'Swell',
-  read: item => clamp01((item.swellDecibels - range('swellDecibels')[0]) / (range('swellDecibels')[1] - range('swellDecibels')[0])),
-  write: (item, t) => { const [low, high] = range('swellDecibels'); item.swellDecibels = Math.round(low + t * (high - low)); },
-  show: item => `${item.swellDecibels} dB`,
-  entry: { unit: 'dB', get: item => item.swellDecibels, set: (item, value) => { item.swellDecibels = value; } }
-};
-
-const growth = {
-  label: 'Growth',
-  read: item => clamp01((item.growthDecibels - range('growthDecibels')[0]) / (range('growthDecibels')[1] - range('growthDecibels')[0])),
-  write: (item, t) => { const [low, high] = range('growthDecibels'); item.growthDecibels = Math.round(low + t * (high - low)); },
-  show: item => `${item.growthDecibels} dB`,
-  entry: { unit: 'dB', get: item => item.growthDecibels, set: (item, value) => { item.growthDecibels = value; } }
+const thump = {
+  label: 'Thump',
+  read: item => clamp01((item.thumpDecibels - range('thumpDecibels')[0]) / (range('thumpDecibels')[1] - range('thumpDecibels')[0])),
+  write: (item, t) => { const [low, high] = range('thumpDecibels'); item.thumpDecibels = Math.round(low + t * (high - low)); },
+  show: item => `${item.thumpDecibels} dB`,
+  entry: { unit: 'dB', get: item => item.thumpDecibels, set: (item, value) => { item.thumpDecibels = value; } }
 };
 
 const barrageSize = {
@@ -567,8 +559,8 @@ export function macrosFor(emitter, { onset: withOnset = false } = {}) {
   if (emitter.kind === 'fireworks') return timed([barrageSize, stormDuration, fireworksShells, barrageSalvo, fireworksDiameter, fireworksCrackle, fireworksPop]);
   if (emitter.kind === 'volcano') return timed([volcanoEruption, volcanoSize, volcanoHeight, volcanoSharpness, volcanoCoda, volcanoCodaLength, volcanoThumps]);
   if (emitter.kind === 'roomExplosion') return timed([roomMaterial, roomSize, roomVent, roomVentStrength, roomStructure, roomInterior, { ...fireball, label: 'Roar' }]);
-  if (emitter.kind === 'tankFarm') return timed([farmTanks, farmVessel, bleveFluid, farmSpacing, farmSpread, farmHeating, fireball, growth, swell]);
-  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, fireball, growth, swell]);
+  if (emitter.kind === 'tankFarm') return timed([farmTanks, farmVessel, bleveFluid, farmSpacing, farmSpread, farmHeating, { ...fireball, label: 'Roar' }, thump]);
+  if (emitter.kind === 'bleve') return timed([bleveVessel, bleveFluid, bleveSize, bleveFill, bleveFailure, { ...fireball, label: 'Roar' }, thump]);
   if (emitter.kind === 'gasExplosion') return timed([gasFuel, gasCloud, gasCongestion, gasConfinement, gasIgnition, { ...fireball, label: 'Roar' }]);
   if (emitter.kind === 'barrage') return timed([barrageSize, stormDuration, barrageRounds, barrageSalvo, charge, fireball]);
   return timed([charge, blastHeight, fireball]);

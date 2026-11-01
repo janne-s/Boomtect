@@ -265,8 +265,8 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
       }),
       section('Fire', numbers(['ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread', 'openingCloudCubicMetres'])),
       section('Source', container => {
-        numberField(container, { key: 'fireballDecibels', label: 'Fireball', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
-        numbers(['growthDecibels', 'swellDecibels', 'riseTimeSeconds'])(container);
+        numberField(container, { key: 'fireballDecibels', label: 'Roar', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
+        numbers(['thumpDecibels', 'swellDecibels', 'riseTimeSeconds'])(container);
       })
     ];
   }
@@ -287,8 +287,8 @@ function detailSections(emitter, { updateEmitter, renameEmitter }) {
       }),
       section('Source', container => {
         numbers(['blastShare'])(container);
-        numberField(container, { key: 'fireballDecibels', label: 'Fireball', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
-        numbers(['growthDecibels', 'swellDecibels'])(container);
+        numberField(container, { key: 'fireballDecibels', label: 'Roar', value: emitter.fireballDecibels, onCommit: set('fireballDecibels') });
+        numbers(['thumpDecibels', 'swellDecibels'])(container);
         numberField(container, { key: 'fireballSecondsPerSixthRootKilogram', label: 'Roar length', value: emitter.fireballSecondsPerSixthRootKilogram, onCommit: set('fireballSecondsPerSixthRootKilogram') });
         numbers(['riseTimeSeconds'])(container);
       })

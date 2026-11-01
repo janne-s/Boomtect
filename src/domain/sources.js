@@ -3,7 +3,7 @@ import { emitterSourceTable } from './emitters.js';
 import { fireballSamples } from './fireball.js';
 import { combustionSamples } from './gas-explosion.js';
 import { roomNoiseSamples } from './room-explosion.js';
-import { bleveRoarSamples } from './bleve.js';
+import { bleveNoiseSamples, ownsNoise } from './bleve.js';
 import { openingExplosion, openingSeed, tankFarmTanks } from './tank-farm.js';
 import { boosterPath, flightBooms, flightMembers, whipBody, whipPath } from './flight.js';
 import { flightPath, withApproach } from '../shared/domain/trajectory.js';
@@ -44,10 +44,10 @@ export const SOURCE_KINDS = Object.freeze({
   volcano: { sources: table, noise: codaSamples },
   gasExplosion: { sources: table, noise: combustionSamples },
   roomExplosion: { sources: table, noise: roomNoiseSamples },
-  bleve: { sources: table, noise: bleveRoarSamples },
+  bleve: { sources: table, noise: bleveNoiseSamples },
   tankFarm: {
     sources: table,
-    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : bleveRoarSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm).find(tank => (seed - tank.seed) >>> 0 <= 1)))
+    noise: (seed, durationSeconds, sampleRate, farm) => ((seed - openingSeed(farm)) >>> 0 <= 1 ? combustionSamples(seed, durationSeconds, sampleRate, openingExplosion(farm)) : bleveNoiseSamples(seed, durationSeconds, sampleRate, tankFarmTanks(farm).find(tank => ownsNoise(tank, seed))))
   },
   flight: moving(flights),
   formation: moving(flights),

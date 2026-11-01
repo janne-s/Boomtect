@@ -52,7 +52,7 @@ export function tankFarmTanks(farm) {
     return {
       id: `${farm.id}:${index}`, name: `${farm.name} ${index + 1}`, kind: 'bleve', enabled: true, seed: Math.floor(random() * SEED_RANGE),
       startSeconds: farm.startSeconds + arrival + heating, positionMetres, fluid: farm.fluid, ...numbers, failureBar, fillShare, blastShare: 1,
-      fireballDecibels: farm.fireballDecibels, swellDecibels: farm.swellDecibels, growthDecibels: farm.growthDecibels, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: farm.riseTimeSeconds
+      fireballDecibels: farm.fireballDecibels, thumpDecibels: farm.thumpDecibels, swellDecibels: farm.swellDecibels, fireballSecondsPerSixthRootKilogram: BLEVE.roarSecondsPerSixthRootKilogram, riseTimeSeconds: farm.riseTimeSeconds
     };
   });
   const pending = new Set(tanks);

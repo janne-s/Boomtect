@@ -83,22 +83,24 @@ const layerWeights = puffLayerWeights(BLEVE.fireball.puffs.crossoversHz);
 
 const layerDensities = layerWeights.map(share => frequencyHz => share(frequencyHz) * roarDensity(frequencyHz));
 
-const growthDensity = tableDensity(BLEVE.fireball.growth.spectrumHz, BLEVE.fireball.growth.spectrumDensity);
+const thumpDensity = tableDensity(BLEVE.fireball.thump.spectrumHz, BLEVE.fireball.thump.spectrumDensity);
 
 const BURST_SEED = 0x2545f491;
+const THUMP_SEED = 0x6c8e9cf5;
+
+export const thumpSeed = emitter => (emitter.seed ^ THUMP_SEED) >>> 0;
 let lastEnvelopes = null;
 
 function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   const key = `${puffSeed}:${holdSeconds}:${sampleRate}:${thumping}`;
   if (lastEnvelopes?.key === key) return lastEnvelopes;
-  const { tailDecibels, puffs: config, growth } = BLEVE.fireball;
-  const { floorDecibels, darkeningDecibels, swellPeakShareOfHold, swellFloor } = config;
+  const { tailDecibels, puffs: config, thump: shaping } = BLEVE.fireball;
+  const { floorDecibels, darkeningDecibels } = config;
   const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
   const puffs = drawPuffs(createRandom(puffSeed), riseSeconds + holdSeconds, holdSeconds, config, layerWeights.length);
   const decay = tailDecibels / 20 * Math.LN10 / holdSeconds;
   const burnSeconds = riseSeconds + holdSeconds;
-  const swellPeakSeconds = swellPeakShareOfHold * holdSeconds;
   const layers = layerDensities.map(() => new Float64Array(length));
   const puffPower = puffPowers(puffs, layers.length, length, sampleRate, floorDecibels);
   const lowPower = thumping ? new Float64Array(length) : null;
@@ -109,11 +111,10 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
     const envelope = t < riseSeconds ? t / riseSeconds : t < burnSeconds ? 1 : Math.exp(-decay * (t - burnSeconds));
     plainEnergy += envelope ** 2;
     const burnt = Math.min(t, burnSeconds) / burnSeconds;
-    const swelling = t < swellPeakSeconds ? Math.max(swellFloor, t / swellPeakSeconds * Math.exp(1 - t / swellPeakSeconds)) : 1;
     for (let layer = 0; layer < layers.length; layer += 1) {
       const power = puffPowerAt(puffPower[layer], index);
       if (layer === 0 && thumping) lowPower[index] = power;
-      const tilt = (layer === 0 ? swelling : 1) * 10 ** (-darkeningDecibels[layer] * burnt / 20);
+      const tilt = 10 ** (-darkeningDecibels[layer] * burnt / 20);
       const value = envelope * tilt * Math.sqrt(power);
       layerEnergy[layer] += value ** 2;
       layers[layer][index] = value;
@@ -125,7 +126,7 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   });
   let thump = null;
   if (thumping) {
-    const { endDecibels, endSeconds, burstDecibels, burstSpreadDecibels, burstTimeSpread, puffCeiling, tiltSpreadDecibels } = growth;
+    const { endDecibels, endSeconds, burstDecibels, burstSpreadDecibels, burstTimeSpread, puffCeiling, tiltSpreadDecibels } = shaping;
     const growthEnd = endDecibels / 20 * Math.LN10 / endSeconds;
     const growing = Math.min(length, Math.round(holdSeconds * sampleRate));
     const meanPower = lowPower.subarray(0, growing).reduce((sum, value) => sum + value, 0) / Math.max(1, growing);
@@ -147,40 +148,38 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   return lastEnvelopes;
 }
 
-/**
- * Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed;
- * the growth thump, at `growthShare` of the roar's loudest window, bursts as the fireball's growth accelerates most, then follows the low
- * puffs, held under the burst, until the fireball has grown.
- */
-export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed, growthShare = 0) {
-  const { length, layers, thump: thumpEnvelope } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, growthShare > 0);
+const loudestWindow = sampleRate => Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate));
+
+/** Class C: overlapping puffs, drawn from the vessel's seed so that both noise parts share them, over noise drawn from each part's seed. */
+export function fireballRoarSamples(seed, holdSeconds, sampleRate, puffSeed = seed) {
+  const { length, layers } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, false);
   const random = createRandom(seed);
   const size = nextPowerOfTwo(length);
-  const noises = spectralNoisePair(random, size, sampleRate, layerDensities);
-  const [high, thump] = growthShare > 0 ? spectralNoisePair(random, size, sampleRate, [layerDensities[2], growthDensity]) : [spectralNoise(random, size, sampleRate, layerDensities[2]), null];
-  noises.push(high);
+  const noises = [...spectralNoisePair(random, size, sampleRate, layerDensities), spectralNoise(random, size, sampleRate, layerDensities[2])];
   const samples = new Float64Array(length);
   for (let layer = 0; layer < noises.length; layer += 1) {
     for (let index = 0; index < length; index += 1) samples[index] += layers[layer][index] * noises[layer][index];
   }
-  const window = Math.max(1, Math.round(BLAST.roar.windowSeconds * sampleRate));
-  scaleToLoudestWindow(samples, window);
-  if (!thump) return samples;
-  for (let index = 0; index < length; index += 1) thump[index] *= thumpEnvelope[index];
-  const thumping = scaleToLoudestWindow(thump.subarray(0, length), window);
-  for (let index = 0; index < length; index += 1) samples[index] += growthShare * thumping[index];
-  return samples;
+  return scaleToLoudestWindow(samples, loudestWindow(sampleRate));
 }
 
-/** The growth thump's loudest window over the roar's, as both sources are set; standard air, class C like the thump itself. */
-export function growthShareOf(emitter) {
-  const fireball = fireballOf(emitter, STANDARD_AIR);
-  if (!fireball || emitter.growthDecibels <= FIREBALL_OFF_DECIBELS) return 0;
-  const thump = BLEVE.fireball.growth.turbulentShare * fireballSwell(fireball, STANDARD_AIR).peakPaMetres;
-  return 10 ** ((emitter.growthDecibels - emitter.fireballDecibels) / 20) * thump / roarPaMetres(fireball, STANDARD_AIR);
+/** Class C: the growth thump bursts as the fireball's growth accelerates most, then follows the vessel's low puffs, held under the burst, until the fireball has grown. */
+export function fireballThumpSamples(seed, holdSeconds, sampleRate, puffSeed = seed) {
+  const { length, thump: envelope } = roarEnvelopes(puffSeed, holdSeconds, sampleRate, true);
+  const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, thumpDensity);
+  const samples = new Float64Array(length);
+  for (let index = 0; index < length; index += 1) samples[index] = envelope[index] * noise[index];
+  return scaleToLoudestWindow(samples, loudestWindow(sampleRate));
 }
 
-export const bleveRoarSamples = (seed, holdSeconds, sampleRate, emitter) => fireballRoarSamples(seed, holdSeconds, sampleRate, emitter.seed, growthShareOf(emitter));
+/** Class C like the thump itself: its loudest window, a turbulent share of the swell's peak. */
+export const thumpPaMetres = (fireball, air) => BLEVE.fireball.thump.turbulentShare * fireballSwell(fireball, air).peakPaMetres;
+
+export const ownsNoise = (emitter, seed) => [emitter.seed, thumpSeed(emitter)].some(own => (seed - own) >>> 0 <= 1);
+
+export const bleveNoiseSamples = (seed, holdSeconds, sampleRate, emitter) => ((seed - thumpSeed(emitter)) >>> 0 <= 1
+  ? fireballThumpSamples(seed, holdSeconds, sampleRate, emitter.seed)
+  : fireballRoarSamples(seed, holdSeconds, sampleRate, emitter.seed));
 
 export const fireballDiameterMetres = emitter => fireballOf(emitter, STANDARD_AIR)?.diameterMetres ?? 0;
 
@@ -219,11 +218,16 @@ function swellSource(common, swell, decibels, air) {
 
 export function fireballRoarSources(emitter, air, surface = null) {
   const fireball = fireballOf(emitter, air);
-  if (!fireball || emitter.fireballDecibels <= FIREBALL_OFF_DECIBELS) return [];
+  if (!fireball) return [];
   const vessel = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const common = { flash: 0, positionMetres: vessel, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
-  return [{
-    ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * roarPaMetres(fireball, air), pulse: 'noise', noiseSeed: emitter.seed,
+  const noise = (paMetres, noiseSeed) => ({
+    ...common, amplitudePaMetres: paMetres, pulse: 'noise', noiseSeed,
     durationSeconds: fireball.holdSeconds, decay: 0, spanSeconds: roarSpanSeconds(fireball.holdSeconds), linearRadiusMetres: 0
-  }, ...(emitter.swellDecibels > FIREBALL_OFF_DECIBELS ? [swellSource(common, fireballSwell(fireball, air), emitter.swellDecibels, air)] : [])];
+  });
+  return [
+    ...(emitter.fireballDecibels > FIREBALL_OFF_DECIBELS ? [noise(10 ** (emitter.fireballDecibels / 20) * roarPaMetres(fireball, air), emitter.seed)] : []),
+    ...(emitter.thumpDecibels > FIREBALL_OFF_DECIBELS ? [noise(10 ** (emitter.thumpDecibels / 20) * thumpPaMetres(fireball, air), thumpSeed(emitter))] : []),
+    ...(emitter.swellDecibels > FIREBALL_OFF_DECIBELS ? [swellSource(common, fireballSwell(fireball, air), emitter.swellDecibels, air)] : [])
+  ];
 }

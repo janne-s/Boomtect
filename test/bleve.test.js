@@ -4,7 +4,7 @@ import { BLEVE } from '../src/domain/constants.js';
 import { emitterSources } from '../src/domain/emitters.js';
 import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultBleve, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
-import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSamples, fireballRoarSources, fireballSwell, growthShareOf, saturation, vesselOf } from '../src/domain/bleve.js';
+import { applyVessel, bleveChargeKilograms, bleveContents, fireballOf, fireballRoarSamples, fireballRoarSources, fireballSwell, fireballThumpSamples, saturation, thumpPaMetres, thumpSeed, vesselOf } from '../src/domain/bleve.js';
 import { fft, nextPowerOfTwo } from '../src/shared/domain/fft.js';
 import { plainScene } from './plain-scene.js';
 
@@ -97,7 +97,7 @@ test('the fireball takes its size and visible duration from Roberts and the CCPS
   assert.equal(fireballOf({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR), null);
 });
 
-test('the roar starts at the vessel, follows the heat release, and goes off with its level', () => {
+test('the roar starts at the vessel, follows the heat release, and goes off with its level, the thump going on', () => {
   const [roar] = fireballRoarSources(defaultBleve(), STANDARD_AIR);
   const fireball = fireballOf(defaultBleve(), STANDARD_AIR);
   assert.equal(roar.pulse, 'noise');
@@ -105,10 +105,10 @@ test('the roar starts at the vessel, follows the heat release, and goes off with
   assert.ok(Math.abs(roar.durationSeconds - .33 * fireball.kilograms ** (1 / 6)) < 1e-9);
   const [quieter] = fireballRoarSources({ ...defaultBleve(), fireballDecibels: -6 }, STANDARD_AIR);
   assert.ok(Math.abs(20 * Math.log10(roar.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
-  assert.equal(fireballRoarSources({ ...defaultBleve(), fireballDecibels: -60 }, STANDARD_AIR).length, 0);
+  assert.deepEqual(fireballRoarSources({ ...defaultBleve(), fireballDecibels: -60 }, STANDARD_AIR).map(source => source.noiseSeed), [thumpSeed(defaultBleve())]);
   assert.equal(emitterSources({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR).sources.length, 2);
-  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 3);
-  assert.equal(fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR).length, 2);
+  assert.equal(emitterSources(defaultBleve(), STANDARD_AIR).sources.length, 4);
+  assert.equal(fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR).length, 3);
 });
 
 test('the growing fireball swells as a monopole as large as Betteridge & Phillips measured, peaking early in its growth', () => {
@@ -116,9 +116,8 @@ test('the growing fireball swells as a monopole as large as Betteridge & Phillip
   const swell = fireballSwell(lng, STANDARD_AIR);
   assert.ok(Math.abs(2 * swell.peakPaMetres / 100 / 300 - 1) < .1, `${2 * swell.peakPaMetres / 100} Pa at 100 m`);
   assert.ok(swell.onsetSeconds < swell.positiveSeconds && swell.positiveSeconds < lng.holdSeconds);
-  const [, louder] = fireballRoarSources({ ...defaultBleve(), swellDecibels: 0 }, STANDARD_AIR);
-  const [, quieter] = fireballRoarSources({ ...defaultBleve(), swellDecibels: -12 }, STANDARD_AIR);
-  assert.equal(louder.pulse, 'friedlander');
+  const swellOf = emitter => fireballRoarSources(emitter, STANDARD_AIR).find(source => source.pulse === 'friedlander');
+  const [louder, quieter] = [swellOf({ ...defaultBleve(), swellDecibels: 0 }), swellOf({ ...defaultBleve(), swellDecibels: -12 })];
   assert.ok(Math.abs(20 * Math.log10(louder.amplitudePaMetres / quieter.amplitudePaMetres) - 12) < 1e-9);
 });
 
@@ -138,15 +137,13 @@ function bandEnergy(samples, sampleRate, [lowHz, highHz], [fromSeconds, toSecond
   return sum;
 }
 
-test('the roar swells low and darkens high over its hold, its puffs shared by both noise parts', () => {
+test('the roar darkens high over its hold, its puffs shared by both noise parts', () => {
   const [sampleRate, hold] = [8000, 1.6];
-  let [swell, darkening] = [0, 0];
+  let darkening = 0;
   for (const seed of [1, 2, 3, 4]) {
     const roar = fireballRoarSamples(seed, hold, sampleRate);
-    swell += 10 * Math.log10(bandEnergy(roar, sampleRate, [20, 80], [.6, .9]) / bandEnergy(roar, sampleRate, [20, 80], [.05, .2]) / 2) / 4;
     darkening += 10 * Math.log10(bandEnergy(roar, sampleRate, [1000, 4000], [.05, .35]) / bandEnergy(roar, sampleRate, [1000, 4000], [1.3, 1.6])) / 4;
   }
-  assert.ok(swell > 6, `low band swells ${swell} dB`);
   assert.ok(darkening > 6, `high band darkens ${darkening} dB`);
   const envelope = samples => Array.from({ length: 30 }, (_, step) => Math.log(bandEnergy(samples, sampleRate, [20, 4000], [step * .08, (step + 1) * .08]) + 1e-30));
   const correlation = (a, b) => {
@@ -160,29 +157,35 @@ test('the roar swells low and darkens high over its hold, its puffs shared by bo
   assert.ok(correlation(envelope(first), envelope(second)) > .8);
 });
 
-test('the growing fireball thumps low until it has grown, at a share of its swell, and goes off with its level', () => {
+test('the roar, the thump and the swell are each their own source, at their own level and off on their own', () => {
+  const sources = emitter => fireballRoarSources(emitter, STANDARD_AIR);
+  const all = sources(defaultBleve());
+  const thump = all.find(source => source.noiseSeed === thumpSeed(defaultBleve()));
+  assert.ok(thump && Math.abs(thump.amplitudePaMetres - thumpPaMetres(fireballOf(defaultBleve(), STANDARD_AIR), STANDARD_AIR)) < 1e-9);
+  const quieter = sources({ ...defaultBleve(), thumpDecibels: -6 }).find(source => source.noiseSeed === thump.noiseSeed);
+  assert.ok(Math.abs(20 * Math.log10(thump.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
+  const roarless = sources({ ...defaultBleve(), fireballDecibels: -60, swellDecibels: 0 });
+  assert.equal(roarless.find(source => source.noiseSeed === thump.noiseSeed).amplitudePaMetres, thump.amplitudePaMetres);
+  assert.ok(roarless.some(source => source.pulse === 'friedlander'));
+  assert.equal(sources({ ...defaultBleve(), thumpDecibels: -60 }).filter(source => source.noiseSeed === thump.noiseSeed).length, 0);
+  assert.equal(sources({ ...defaultBleve(), fluid: 'water' }).length, 0);
+});
+
+test('the thump sounds low while the fireball grows and stops once it has grown', () => {
   const [sampleRate, hold] = [8000, 1.6];
-  const share = growthShareOf(defaultBleve());
-  assert.ok(share > 1, `${share}`);
-  assert.ok(Math.abs(20 * Math.log10(share / growthShareOf({ ...defaultBleve(), growthDecibels: -6 })) - 6) < 1e-9);
-  assert.equal(growthShareOf({ ...defaultBleve(), growthDecibels: -60 }), 0);
-  assert.equal(growthShareOf({ ...defaultBleve(), fluid: 'water' }), 0);
-  let [growing, after] = [0, 0];
+  let drop = 0;
   for (const seed of [1, 2, 3, 4]) {
-    const plain = fireballRoarSamples(seed, hold, sampleRate);
-    const thumping = fireballRoarSamples(seed, hold, sampleRate, seed, share);
-    growing += 10 * Math.log10(bandEnergy(thumping, sampleRate, [40, 160], [.2, 1.4]) / bandEnergy(plain, sampleRate, [40, 160], [.2, 1.4])) / 4;
-    after += 10 * Math.log10(bandEnergy(thumping, sampleRate, [40, 160], [1.8, 2.2]) / bandEnergy(plain, sampleRate, [40, 160], [1.8, 2.2])) / 4;
+    const thump = fireballThumpSamples(seed, hold, sampleRate);
+    drop += 10 * Math.log10(bandEnergy(thump, sampleRate, [40, 160], [.2, 1.4]) / bandEnergy(thump, sampleRate, [40, 160], [1.8, 2.2])) / 4;
   }
-  assert.ok(growing > 3, `${growing} dB while growing`);
-  assert.ok(after < 1, `${after} dB once grown`);
+  assert.ok(drop > 20, `${drop} dB down once grown`);
 });
 
 test('the thump bursts as the growth accelerates most, at a time and level of its seed, and its hold stays under the burst', () => {
   const [sampleRate, hold] = [8000, 1.6];
   const peaks = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
-    const thumping = fireballRoarSamples(seed, hold, sampleRate, seed, 30);
+    const thumping = fireballThumpSamples(seed, hold, sampleRate);
     const windows = Array.from({ length: 32 }, (_, step) => bandEnergy(thumping, sampleRate, [40, 160], [step * .05, (step + 1) * .05]));
     const onset = Math.max(...windows.slice(0, 10));
     peaks.push(windows.indexOf(onset));

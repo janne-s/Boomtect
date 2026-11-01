@@ -296,12 +296,12 @@ export const BLEVE = Object.freeze({
     spectrumDensity: Object.freeze([1, .49, .038, .012, .008, .0055, .0021, .0012, 5.9e-5]),
     /**
      * Class C, fitted to E9 and E11: the roar as overlapping puffs of venting and burning, each with its own onset, level, length, and
-     * colour, over three layers split at the crossovers; the high layer darkens over the hold while the low one swells to its peak.
+     * colour, over three layers split at the crossovers; the high layer darkens over the hold.
      */
     puffs: Object.freeze({
       count: 10, onsetPower: 1.5, shortestShareOfHold: .15, longestShareOfHold: .5, attackShare: .3,
       spreadDecibels: 5, layerSpreadDecibels: 3, colourDecibels: 4, floorDecibels: -12,
-      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 16]), swellPeakShareOfHold: .6, swellFloor: .1
+      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 16])
     }),
     /**
      * Class B: the growing fireball as a monopole, p r = ρ(1 − 1/σ) V̈ / 4π (Thomas & Williams 1966, Strehlow 1980), its volume
@@ -316,7 +316,7 @@ export const BLEVE = Object.freeze({
      * It opens with a burst at the swell's peak acceleration, (2 − √2)/k, falling 10 dB over 1.5 times as long (E11: up in 0.09 s,
      * down in 0.31 s; E9 0.01 and 0.4 s); the burst's level and time and the hold's tilt vary with the seed.
      */
-    growth: Object.freeze({
+    thump: Object.freeze({
       spectrumHz: Object.freeze([31.5, 63, 125, 250, 500, 1000]), spectrumDensity: Object.freeze([1, 1, .29, .032, .004, .0005]),
       turbulentShare: .045, endDecibels: 30, endSeconds: .1, defaultDecibels: 0,
       burstDecibels: 6, burstSpreadDecibels: 3, burstTimeSpread: .3, puffCeiling: 3, tiltSpreadDecibels: 3

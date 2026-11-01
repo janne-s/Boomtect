@@ -6,7 +6,7 @@ import { SOURCE_KINDS } from '../src/domain/sources.js';
 import { defaultTankFarm, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
 import { openingExplosion, openingSeed, tankFarmLayout, tankFarmRounds, tankFarmTanks } from '../src/domain/tank-farm.js';
 import { combustionSamples } from '../src/domain/gas-explosion.js';
-import { bleveRoarSamples } from '../src/domain/bleve.js';
+import { bleveNoiseSamples, thumpSeed } from '../src/domain/bleve.js';
 import { plainScene } from './plain-scene.js';
 import { BLEVE } from '../src/domain/constants.js';
 
@@ -81,13 +81,14 @@ test('an opening cloud explodes at the first tank when the farm is set and its f
   const noise = SOURCE_KINDS.tankFarm.noise;
   assert.deepEqual(noise(openingSeed(farm), .5, 8000, farm), combustionSamples(openingSeed(farm), .5, 8000, opening));
   const [first, second] = tankFarmTanks(farm);
-  assert.deepEqual(noise(first.seed + 1, .5, 8000, farm), bleveRoarSamples(first.seed + 1, .5, 8000, first));
+  assert.deepEqual(noise(first.seed + 1, .5, 8000, farm), bleveNoiseSamples(first.seed + 1, .5, 8000, first));
+  assert.deepEqual(noise(thumpSeed(first), .5, 8000, farm), bleveNoiseSamples(thumpSeed(first), .5, 8000, first));
   assert.notDeepEqual(noise(second.seed, .5, 8000, farm).slice(0, 100), noise(first.seed, .5, 8000, farm).slice(0, 100));
 });
 
-test('a small farm renders finite, its bangs, roars and swells from every tank', () => {
+test('a small farm renders finite, its bangs, roars, thumps and swells from every tank', () => {
   const farm = { ...defaultTankFarm(), tankCount: 3, spacingMetres: 40, heatingSeconds: 2, openingCloudCubicMetres: 500, swellDecibels: -12 };
-  assert.equal(emitterSources(farm, STANDARD_AIR).sources.length, 3 * 4 + 2);
+  assert.equal(emitterSources(farm, STANDARD_AIR).sources.length, 3 * 5 + 2);
   const scene = plainScene('blast');
   scene.emitters = [farm];
   scene.receivers[0].positionMetres = { x: 300, y: 0, z: 1.7 };
