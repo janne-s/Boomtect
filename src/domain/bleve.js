@@ -5,6 +5,7 @@ import { scaleToLoudestWindow, spectralNoise, spectralNoisePair, tableDensity } 
 import { speedOfSoundMetresPerSecond } from '../shared/domain/air.js';
 import { nextPowerOfTwo } from '../shared/domain/fft.js';
 import { createRandom, normalDeviate } from '../shared/domain/random.js';
+import { drawPuffs, puffLayerWeights, puffPowerAt, puffPowers } from './roar-puffs.js';
 import { onGround } from '../shared/domain/terrain.js';
 
 export const FLUID_TYPES = Object.freeze(Object.keys(BLEVE.fluids));
@@ -78,56 +79,28 @@ export const roarSpanSeconds = holdSeconds => roarRiseSeconds(holdSeconds) + hol
 
 const roarDensity = tableDensity(BLEVE.fireball.spectrumHz, BLEVE.fireball.spectrumDensity);
 
-const layerWeights = (() => {
-  const [low, high] = BLEVE.fireball.puffs.crossoversHz;
-  const lowShare = frequencyHz => 1 / (1 + (frequencyHz / low) ** 4);
-  const highShare = frequencyHz => 1 / (1 + (high / frequencyHz) ** 4);
-  return [lowShare, frequencyHz => Math.max(0, 1 - lowShare(frequencyHz) - highShare(frequencyHz)), highShare];
-})();
+const layerWeights = puffLayerWeights(BLEVE.fireball.puffs.crossoversHz);
 
 const layerDensities = layerWeights.map(share => frequencyHz => share(frequencyHz) * roarDensity(frequencyHz));
 
-function drawPuffs(random, riseSeconds, holdSeconds) {
-  const { count, onsetPower, shortestShareOfHold, longestShareOfHold, attackShare, spreadDecibels, layerSpreadDecibels, colourDecibels } = BLEVE.fireball.puffs;
-  return Array.from({ length: count }, (_, index) => {
-    const onsetSeconds = index === 0 ? 0 : (riseSeconds + holdSeconds) * random() ** onsetPower;
-    const attackSeconds = attackShare * holdSeconds * (index === 0 ? shortestShareOfHold : shortestShareOfHold + random() * (longestShareOfHold - shortestShareOfHold));
-    const decibels = index === 0 ? 0 : spreadDecibels * normalDeviate(random);
-    const colour = index === 0 ? 1 : normalDeviate(random);
-    const gains = layerWeights.map((_, layer) => 10 ** ((decibels + layerSpreadDecibels * normalDeviate(random) + colourDecibels * colour * (layer - 1)) / 20));
-    return { onsetSeconds, attackSeconds, gains };
-  });
-}
-
 const growthDensity = tableDensity(BLEVE.fireball.growth.spectrumHz, BLEVE.fireball.growth.spectrumDensity);
 
-const PUFF_STEP = 32;
 const BURST_SEED = 0x2545f491;
 let lastEnvelopes = null;
 
 function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
   const key = `${puffSeed}:${holdSeconds}:${sampleRate}:${thumping}`;
   if (lastEnvelopes?.key === key) return lastEnvelopes;
-  const { tailDecibels, puffs: { floorDecibels, darkeningDecibels, swellPeakShareOfHold, swellFloor }, growth } = BLEVE.fireball;
+  const { tailDecibels, puffs: config, growth } = BLEVE.fireball;
+  const { floorDecibels, darkeningDecibels, swellPeakShareOfHold, swellFloor } = config;
   const riseSeconds = roarRiseSeconds(holdSeconds);
   const length = Math.ceil(roarSpanSeconds(holdSeconds) * sampleRate);
-  const puffs = drawPuffs(createRandom(puffSeed), riseSeconds, holdSeconds);
+  const puffs = drawPuffs(createRandom(puffSeed), riseSeconds + holdSeconds, holdSeconds, config, layerWeights.length);
   const decay = tailDecibels / 20 * Math.LN10 / holdSeconds;
   const burnSeconds = riseSeconds + holdSeconds;
-  const floor = 10 ** (floorDecibels / 20);
   const swellPeakSeconds = swellPeakShareOfHold * holdSeconds;
   const layers = layerDensities.map(() => new Float64Array(length));
-  const steps = Math.ceil(length / PUFF_STEP) + 1;
-  const puffPower = layers.map((_, layer) => Float64Array.from({ length: steps }, (__, step) => {
-    const t = step * PUFF_STEP / sampleRate;
-    let power = floor ** 2;
-    for (const { onsetSeconds, attackSeconds, gains } of puffs) {
-      if (t <= onsetSeconds) continue;
-      const x = (t - onsetSeconds) / attackSeconds;
-      power += (gains[layer] * x * Math.exp(1 - x)) ** 2;
-    }
-    return power;
-  }));
+  const puffPower = puffPowers(puffs, layers.length, length, sampleRate, floorDecibels);
   const lowPower = thumping ? new Float64Array(length) : null;
   let plainEnergy = 0;
   const layerEnergy = new Float64Array(layers.length);
@@ -137,10 +110,8 @@ function roarEnvelopes(puffSeed, holdSeconds, sampleRate, thumping) {
     plainEnergy += envelope ** 2;
     const burnt = Math.min(t, burnSeconds) / burnSeconds;
     const swelling = t < swellPeakSeconds ? Math.max(swellFloor, t / swellPeakSeconds * Math.exp(1 - t / swellPeakSeconds)) : 1;
-    const step = Math.floor(index / PUFF_STEP);
-    const share = index / PUFF_STEP - step;
     for (let layer = 0; layer < layers.length; layer += 1) {
-      const power = puffPower[layer][step] + share * (puffPower[layer][step + 1] - puffPower[layer][step]);
+      const power = puffPowerAt(puffPower[layer], index);
       if (layer === 0 && thumping) lowPower[index] = power;
       const tilt = (layer === 0 ? swelling : 1) * 10 ** (-darkeningDecibels[layer] * burnt / 20);
       const value = envelope * tilt * Math.sqrt(power);

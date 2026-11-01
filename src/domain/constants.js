@@ -143,7 +143,13 @@ export const GAS_EXPLOSION = Object.freeze({
     referenceMetres: 4.15,
     spectrumHz: BLAST.roar.spectrumHz,
     deflagrationDensity: Object.freeze([1.3e-3, 2.3e-3, 5.3e-4, 1.7e-4, 2.4e-7, 4e-9]),
-    detonationDensity: Object.freeze([1 / 40, 1 / 141, 1 / 500, 1 / 2000, .4 / 8000, 1e-3 / 16000])
+    detonationDensity: Object.freeze([1 / 40, 1 / 141, 1 / 500, 1 / 2000, .4 / 8000, 1e-3 / 16000]),
+    /** Class C, fitted to E2 and E3: the BLEVE's puffs over the whole roar, their attacks and the high layer's darkening over the burn and a fifth of the tail. */
+    puffs: Object.freeze({
+      count: 10, onsetPower: 1.5, shortestShareOfHold: .15, longestShareOfHold: .5, attackShare: .3,
+      spreadDecibels: 5, layerSpreadDecibels: 3, colourDecibels: 4, floorDecibels: -6,
+      crossoversHz: Object.freeze([150, 800]), darkeningDecibels: Object.freeze([0, 6, 18]), activeShareOfTail: .2
+    })
   }),
   fuels: Object.freeze({
     methane: Object.freeze({ label: 'Methane', megajoulesPerCubicMetre: 3.22, burningMetresPerSecond: .40 }),
