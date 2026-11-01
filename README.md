@@ -78,32 +78,17 @@ microphone along the Mach cone.
   TNT charge that carries the same sound energy, and the roar and low thumps of the ash and gas that
   follow it. Strombolian, Vulcanian, and strong Vulcanian types set it; the
   rise time runs from a soft thump to a crack.
-- **Gas explosion** — A flammable cloud on the ground that burns as a
-  deflagration or detonates: methane, propane, gasoline vapour, ethylene, hydrogen, or the
-  propylene and ethylene oxide of fuel-air explosives. Congestion,
-  confinement, the fuel, and the cloud's size set its strength, from a soft whump that rises over the flame's
-  passage to a shock like a charge's; a burster charge detonates it. Its burning
-  roars for the flame's passage and dies away with the fireball.
-- **Room explosion** — An explosion inside a room, a building, or a silo that
-  vents through a window, a light panel, a door, or an open doorway: natural
-  gas, propane, oil mist, dust of class St1 to St3, or the smoke gas of a
-  backdraft. The vent's bang when it breaks, the burning, the mixture pushed out
-  ahead of the flame exploding outside, and the room ringing low through its
-  opening follow one another, and the vent and the walls crack as they give way;
-  an empty room is far gentler than a furnished one, and walls weaker than the
-  pressure give way.
-- **BLEVE** — A vessel of liquefied gas that bursts in a fire: an 11 or 47 kg
-  cylinder, a 200 l drum, a home tank, a road tanker, a rail tank car, or a
-  sphere, holding propane, butane, gasoline, water, or carbon dioxide. Its
-  vapour space sets the bang, a vessel burst's double shock, so a fuller vessel
-  bangs less; the fill, the failure pressure, and the share of the energy that
-  reaches the blast set it. A flammable load then roars as a fireball that grows
-  with the whole load.
-- **Tank farm** — Rows of vessels, one kind or a mix of two, that a fire spreads
-  through from a first tank: each bursts as a BLEVE once the fire has reached
-  it and it has heated, the larger the slower, and a fireball reaching its
-  neighbours hurries them, so the bangs gather pace through the farm. Each tank
-  fails at its own pressure and fill. A vapour cloud explosion at the first tank
+- **Gas explosion** — A flammable cloud on the ground, from a soft whump to a
+  sharp bang as its congestion, confinement, fuel, and size set it; a burster
+  charge detonates it, as a fuel-air explosive. Its burning roars and dies away.
+- **Room explosion** — Gas, mist, dust, or a backdraft's smoke gas exploding in
+  a room, a building, or a silo: the vent and the walls bang and crack as they
+  give way, the mixture pushed out explodes outside, and the room rings low.
+- **BLEVE** — A vessel of liquefied gas bursting in a fire, from a gas cylinder
+  to a sphere: the bang of its vapour space, then, for a flammable load, the
+  roar and low thump of its fireball.
+- **Tank farm** — Rows of vessels a fire spreads through, each bursting as a
+  BLEVE once it has heated, the bangs gathering pace; a vapour cloud explosion
   may open it.
 - **Flight** — A supersonic body: a reconnaissance aircraft, a bomber, a launch
   vehicle, or a body of its own length and shape. It climbs, accelerates, and
@@ -459,24 +444,22 @@ B/C marks a part that combines the two.
 | Turbulent boom front | the front plus 24 seeded sub-arrivals of zero sum, delayed by the rise time on average, at half its amplitude in RMS and growing with the turbulence; each part rises in a tenth of the rise time | C |
 | Boom echoes | over terrain, each boom echoes as a point source where it leaves the path, at its pressure along its ray | C |
 | Boom beyond its carpet | where the air turns the rays away before the ground, the boom creeps along the ground into the refraction shadow, as other sources' sound does, losing high frequencies first, down to the shadow floor | B/C |
-| Secondary boom | rays that turn back above the tropopause: standard-atmosphere warming above 20 km, the upper wind as a jet at 50 km, rays in the stratified effective sound speed, stationary in emission time; Carlson's boom over the ray's length with its ray-tube spreading and focusing, absorption along the ray, no shock left; no thermospheric returns | B/C |
-| Focused boom | near a fold caustic, where an accelerating or turning flight's two arrivals meet, the nonlinear Tricomi equation solved for an N-wave (Auger & Coulouvrat 2002; Wyle WR 12-21) and tabulated over its nonlinearity μ and the height above the caustic, scaled from the arrival times' third derivative and Carlson's boom; a finite flight without the fold's required source history keeps only its first-arriving shock; past a supported fold, the later arrival turned by a quarter period into a U-wave; elsewhere √ of the steady flight's arrival curvature over the actual, up to 5× | B/C |
+| Secondary boom | rays the warm upper atmosphere and its winds turn back above the tropopause, carrying Carlson's boom spread and absorbed along the way; no thermospheric returns | B/C |
+| Focused boom | where an accelerating or turning flight's arrivals meet at a fold caustic, the nonlinear Tricomi equation, solved and tabulated (Auger & Coulouvrat 2002; Wyle WR 12-21); past the fold a U-wave | B/C |
 | Whip | tip at Mach 1 to 2.19 within 45 cm, back to Mach 1 within 20 cm after the turn (Krehl & Engemann 1998); turn radius, subsonic ends | B/C |
 | Fireworks shell | burst at 1.4 m per mm of diameter (Wharton 1995), spread 20 %; flight straight up against drag, `C_D` 0.75 (Ooki et al. 2006), mass 0.4 kg at 100 mm; burst at the top of the flight | B/C |
 | Fireworks burst | TNT blast of 15 % of the shell's mass, fitted to 718 Pa below 4–6 inch shells bursting at 91 m (Maglieri & Henderson 1973); TNT's pulse, longer than their 12 ms signature | C |
-| Volcano pulse | Friedlander pulse whose sound energy equals that of a Blast of its equivalent charge (Vulcanian 5.9 t, about 300 Pa at 1 km; about 10 Pa Strombolian, 10²–10³ Pa Vulcanian; Johnson 2003, Sakurajima, Tungurahua), falling as 1/r, positive phase 0.5–3 s; linear beyond where it is 4 % of the air pressure | B/C |
+| Volcano pulse | Friedlander pulse with the sound energy of a Blast of its equivalent charge, about 10 Pa (Strombolian) to 10²–10³ Pa (Vulcanian) 1 km away (Johnson 2003), its positive phase 0.5–3 s | B/C |
 | Volcano rise | one rise time for pulse and coda, 1.5 ms (no sound above about 600 Hz, Anak Krakatau) to 40 µs (a crack, Tavurvur 2014) | C |
 | Volcano coda | seeded noise 20 dB below the pulse, flat to 0.2 kHz and about 20 dB down at 2–5 kHz, holding and then falling 30 dB by its length (Dukono, within 2 dB from 0.2 to 14 kHz); thumps 0.05–0.4 s apart (Anak Krakatau) | C |
-| Gas explosion strength | GAME correlation for a spark in the cloud's centre (Eggen 1998, HSE CRR 202/1998): `P₀ = 0.84 (VBR·L/D)^2.75 S_L^2.7 D^0.7` bar open above, `3.38 (…)^2.25` under a roof (a cloud between a floor and a ceiling, whose flame can only spread sideways), the flame's path L the cloud's radius; congestion sets the volume blockage VBR and obstacle diameter D (open 1 %, sparse 5 %, dense 10 % of 0.3 m, pipe rack 20 % of 0.43 m); the fuel its burning velocity S_L (methane 0.40, propane 0.45, ethylene 0.66 m/s as GAME used them; gasoline vapour 0.40, propylene oxide 0.82, ethylene oxide 1.08, hydrogen 2.4 m/s beyond its fit); kept within the TNO Multi-Energy range 1 kPa (strength 1) to 1 MPa (10); a burster charge detonates the cloud | B/C |
-| Gas explosion level | the TNO Multi-Energy blast curves, digitised from GAME (Eggen 1998) Figure 1, at the scaled distance R/(E/p₀)^⅓ = 24 and carried as 1/r, halved because the ground doubles it, aging as a weak shock only beyond that distance since the curves hold the aging up to it: strengths 6–10 merge into one curve, so a shock from a dense cloud, one under a roof, and a detonated one are equally loud far away; strengths 1–5 keep their source pressure to 0.7 and then fall as 0.76–0.61 of it over the scaled distance; E is 3.0–4.0 MJ/m³ of stoichiometric mixture; 0.91 kPa 1 km from a 10 m dense propane cloud of strength 7.2 (Van den Berg et al. 1991: about 1 kPa) | B/C |
-| Gas explosion shape | Friedlander pulse whose positive phase is the Multi-Energy duration at the same scaled distance, t₊c₀/(E/p₀)^⅓ = 4.94, 3.02, 2.01, 1.24, 0.70 for strengths 1–5 and 0.518 for the merged 6–10, digitised from GAME Figure 2 (10 m dense propane cloud: 63 ms 1 km away, Van den Berg et al. 1991: about 60 ms); below strength 7 the pulse rises linearly over up to its whole Friedlander duration, a pressure wave, and from 7 it is a shock; the burn time, the cloud radius over the flame speed that gives the source pressure at the flame (2ρ(1 − 1/σ)S², σ 7.5), sets the roar | B/C |
-| Gas explosion roar | noise that grows over a quarter of the burn time, holds to its end, and falls 30 dB over 0.92 s·kg^⅙ of TNT equivalent; its spectrum runs from a deflagration's low roar to flat octaves between strengths 3 and 7, and its frequencies fall in proportion to the cloud's radius from those of a 150 m³ cloud; 20 dB under the pulse; seeded puffs whose high octaves darken by 18 dB over the burn, held early or spread and merging as Puff blend sets; fitted to recordings of gas explosions 75–450 m away | C |
-| Room explosion pressure | NFPA 68 (2018): `P_red = (A_s·0.0223·λ·S_u / A_v)²` bar for gases and mists, λ the turbulent enhancement of §7.2.6.1 for the room and its vent; `A_v = 10⁻⁴(1 + 1.54 P_stat^{4/3}) K_St V^{3/4} √(P_max/P_red − 1)` for dusts, K_St 150, 250, 400 bar·m/s; these bound designs, so an empty room takes 0.24 λ (Cooper et al. 1986; Harrison & Eyre 1987); ignition far from the vent triples it; the room opens at its vent's strength (window 5, light panel 1.5, door 2.5 kPa), and walls weaker than the pressure (15 kPa) cap it | B/C |
-| Room explosion sound | the vent's bang: the stored compression V·P/(γP₀) leaving at the Bernoulli rate, a monopole ρ/(4π)·dQ/dt over the opening time (5 ms for glass); the burning: the free flame's 2ρ(1 − 1/σ)S² of a cloud of the room's volume, the room being small against the wavelength; the external explosion: the mixture pushed out ahead of the flame, (π/6)(1 − 1/σ) of the room for central ignition, diluted threefold, burning as a free cloud at half the room's pressure (Harrison & Eyre 1987: 2–5 m sources, 6–20 mbar 100 m from 30 m³); the ring: the Helmholtz frequency 1.45 c/(2π)·√(A/(V·L)) (Cooper et al.: 50 Hz), 0.4 of the room's pressure, dying in five cycles; smoke gas burns at 0.06 m/s (Rosberg 2001: a few hundred pascals); a wall failing after its vent bangs as the vent does, through the whole wall; a strong vent lets out less, × (1 − P_v/P); each opening cracks at a level from its bang, glass bright, doors and walls darker; the roar 20 dB under the explosion, its tail 0.33 s·kg^⅙, and the crack fitted to two recorded apartment gas explosions; no ring below 1 Hz | A/C |
-| BLEVE blast | the vapour space's isentropic expansion work at the failure pressure, from CoolProp 8.0.0 saturation tables (carbon dioxide from the Yellow Book, CPR 14E, Table 7.2; gasoline as n-hexane), doubled for the ground (Yellow Book A_sb = 2) and heard as a TNT charge of that energy: the flashing liquid is too slow to make a shock (Birk et al. 2007); 4.5 kPa 100 m from the BAM rail car (2.5 kPa measured, 4.5 kPa by Birk's estimate); failure in a fire at 1.21 × a 17.24 barg relief valve; the second shock timed as TNT's | A/B/C |
-| BLEVE fireball | the whole load burns as one fireball 5.8 M^⅓ m across, visible for 0.45 M^⅓ s, or 2.6 M^⅙ s from 30 t (Roberts 1982, CCPS 1994; Roberts et al. 2000 measured 41–85 m and 3–7 s for 279–1708 kg); its roar starts at the vessel, rises in 0.1 s or half its hold, holds for 0.33 M^⅙ s or half the visible duration and dies by 30 dB over as long again, as ten seeded puffs whose high octaves darken, fitted to two recordings of tank fireballs; its sound power is 10⁻⁴ of the mean heat release; Thump is the turbulent share of the growing fireball's monopole, a low thump while it grows that opens with a burst, its level its own; Swell, in the details, is the monopole itself, ρ(1 − 1/σ)V̈/4π (Thomas & Williams 1966; 294 Pa where Betteridge & Phillips 2015 measured 300 Pa 100 m from 681 kg of LNG), infrasound the low cut removes, off by default because a fire's BLEVE burns as it forms (Birk et al. 2007) | B/C |
-| Tank farm timing | authored, not a heat transfer model: the fire spreads from the first tank at a set speed; a tank fails after a heating time growing with the cube root of its volume (against a 2 m³ tank's), spread log-normally; a tank within a failing one's fireball radius has half its remaining heating, once, from the first fireball to reach it; without an opening cloud the first tank fails at the start; an opening cloud burns as a dense cloud of the farm's fuel (butane as propane) | C |
-| Tank farm vessels | each tank's failure pressure log-normal with σ 0.07 and its fill ±0.07 about its vessel's, as nine 2000 l propane tanks failed in fire (Birk et al. 2007) | B |
+| Gas explosion strength | the GAME correlation (Eggen 1998) from congestion, confinement, fuel, and cloud size, within the TNO Multi-Energy strengths 1–10; a burster charge detonates the cloud | B/C |
+| Gas explosion level and shape | TNO Multi-Energy blast curves and positive phases, digitised from GAME (Van den Berg et al. 1991: about 1 kPa and 60 ms 1 km from a 10 m dense propane cloud); a weak deflagration rises slowly, a strong one is a shock | B/C |
+| Gas explosion roar | seeded puffs of burning noise over the burn and the fireball's tail, darkening as they go, fitted to recordings of gas explosions 75–450 m away | C |
+| Room explosion pressure | NFPA 68 vent sizing for gases, mists, and dusts, lower for an empty room (Cooper et al. 1986; Harrison & Eyre 1987); the vent opens at its strength, and weaker walls give way | B/C |
+| Room explosion sound | the vent and the walls bang and crack as they open, the burning room sounds as a compact source, the mixture pushed out explodes outside (Harrison & Eyre 1987), and the room rings through its opening; crack and roar fitted to two recorded apartment gas explosions | A/C |
+| BLEVE blast | the vapour space's expansion energy at the failure pressure (CoolProp tables) as a TNT charge, doubled for the ground; the flashing liquid makes no shock (Birk et al. 2007) | A/B/C |
+| BLEVE fireball | size and duration from Roberts (1982) and the CCPS; Roar, its burning as seeded puffs, and Thump, the low swell of its growth (Thomas & Williams 1966; Betteridge & Phillips 2015), fitted to two recorded tank fireballs | B/C |
+| Tank farm | authored timing: the fire spreads from the first tank, and each fails after heating, sooner when a neighbour's fireball reaches it; failure pressures and fills spread as in Birk et al. (2007) | B/C |
 | Mortar thump | TNT blast of 1 % of a lift charge of 10 % of the shell's mass, positive phase 5 ms | C |
 | Crackling stars | stars thrown at 40 m/s, slowed by drag; pops of 0.1 mg TNT at seeded times 0.5–2 s after the burst where the star is | C |
 | Booster | fall under gravity and drag `ρv²/(2β)` to the pad; the ballistic coefficient β, 1 500 kg/m² by default, brings a Falcon 9 below Mach 1 at about 6 km (Durrant et al. 2022); start after the entry burn | A/C |
@@ -509,11 +492,9 @@ B/C marks a part that combines the two.
 
 Not modelled: buildings, whose echoes Echotect makes; the engines of a flight
 or a booster, which Rumbletect makes; a fireworks shell's whistle and hiss and
-its stars' burning; a whip's swish; a gas cloud's spreading, its flame's
-acceleration through the obstacles, and separate congested regions in one
-cloud; a fireball's rise; for a room explosion, rooms bursting one after another, the
-acoustic peak of empty steel vessels, collapse and debris, the vent's
-directivity, a secondary dust explosion, and the fire before a backdraft.
+its stars' burning; a whip's swish; a gas cloud's drift and its flame's
+acceleration; a fireball's rise; and rooms bursting one after another,
+collapse and debris, and a secondary dust explosion.
 
 Boomtect is a creative tool. Where published models exist it follows them,
 but a result is a plausible event, not a reconstruction or a measurement.
