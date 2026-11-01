@@ -1866,6 +1866,7 @@ export function startFrame(tect) {
       numberField(environment, { key: 'forestDensity', value: scene.ground.forestDensity, onCommit: value => commit(next => { next.ground.forestDensity = value; }) });
     }
     checkboxField(environment, { label: 'Surroundings', value: scene.ground.surroundings, reliability: 'C', onCommit: value => commit(next => { next.ground.surroundings = value; }) });
+    if (scene.ground.surroundings) numberField(environment, { key: 'surroundingsSeconds', value: scene.ground.surroundingsSeconds, onCommit: value => commit(next => { next.ground.surroundingsSeconds = value; }) });
     for (const control of ENVIRONMENT_CONTROLS) {
       const label = environment.querySelector(`[data-key="${control.key}"]`)?.labels?.[0];
       if (label) randomiser.lockCell(label, ENVIRONMENT, control);

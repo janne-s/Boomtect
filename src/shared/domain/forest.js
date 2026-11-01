@@ -54,17 +54,21 @@ const FOREST = Object.freeze({
   }
 });
 
-const SURROUNDINGS = Object.freeze({
-  salt: 0x5bd1e995,
-  name: 'surroundings',
-  lengthSeconds: 70 / 60 * Math.max(...GROUND.surroundings.seconds),
-  shape: band => {
-    const { seconds, buildSeconds } = GROUND.surroundings;
-    const decay = 3 * Math.LN10 / seconds[band];
-    return t => (1 - Math.exp(-t / buildSeconds)) * Math.exp(-decay * t);
-  },
-  share: band => GROUND.surroundings.energyShare * GROUND.surroundings.seconds[band] / GROUND.surroundings.seconds[5]
-});
+const surroundingsProfile = longestSeconds => {
+  const { seconds: shape, buildSeconds, energyShare } = GROUND.surroundings;
+  const seconds = shape.map(value => value * longestSeconds / Math.max(...shape));
+  return Object.freeze({
+    salt: 0x5bd1e995,
+    name: 'surroundings',
+    key: longestSeconds,
+    lengthSeconds: 70 / 60 * longestSeconds,
+    shape: band => {
+      const decay = 3 * Math.LN10 / seconds[band];
+      return t => (1 - Math.exp(-t / buildSeconds)) * Math.exp(-decay * t);
+    },
+    share: band => energyShare * seconds[band] / shape[5]
+  });
+};
 
 export function forestSeed(id) {
   let hash = 0x811c9dc5;
@@ -87,14 +91,15 @@ export function forestResponses(seed, channels, sampleRate, [first, last] = [0, 
   return cachedResponses(FOREST, seed, sampleRate, first, last);
 }
 
-export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels]) {
-  return cachedResponses(SURROUNDINGS, (seed ^ SURROUNDINGS.salt) >>> 0, sampleRate, first, last);
+export function surroundingsResponses(seed, channels, sampleRate, [first, last] = [0, channels], longestSeconds = GROUND.surroundings.defaultSeconds) {
+  const profile = surroundingsProfile(longestSeconds);
+  return cachedResponses(profile, (seed ^ profile.salt) >>> 0, sampleRate, first, last);
 }
 
 const lastResponses = new Map();
 
 function cachedResponses(profile, seed, sampleRate, first, last) {
-  const key = `${seed}:${first}:${last}:${sampleRate}`;
+  const key = `${seed}:${first}:${last}:${sampleRate}:${profile.key ?? ''}`;
   if (lastResponses.get(profile.name)?.key !== key) lastResponses.set(profile.name, { key, responses: makeResponses(profile, seed, sampleRate, first, last) });
   return lastResponses.get(profile.name).responses;
 }

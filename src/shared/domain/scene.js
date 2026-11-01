@@ -41,6 +41,7 @@ export const PARAMETERS = Object.freeze({
   tropopauseMetres: { minimum: 5000, maximum: 20000, unit: 'm', label: 'Tropopause', reliability: 'B' },
   treeHeightMetres: { minimum: 2, maximum: 50, unit: 'm', label: 'Tree height', reliability: 'C' },
   forestDensity: { minimum: .05, maximum: 1, unit: '', label: 'Forest density', reliability: 'C' },
+  surroundingsSeconds: { minimum: .5, maximum: 20, unit: 's', label: 'Surroundings tail', reliability: 'C' },
   shadowFloorDecibels: { minimum: 10, maximum: 60, unit: 'dB', label: 'Shadow floor', reliability: 'C' },
   windSpeedMetresPerSecond: { minimum: 0, maximum: 40, unit: 'm/s', label: 'Wind', reliability: null },
   windFromDegrees: { minimum: 0, maximum: 360, unit: '°', label: 'Wind from', reliability: null },
@@ -164,7 +165,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
         windSpeedMetresPerSecond: 0, windFromDegrees: 270, windShearPerSecond: 0, upperWindMetresPerSecond: 30, upperWindFromDegrees: 270, humidityScaleHeightMetres: 2000,
         groundLayerMetres: 0, groundLayerLapseKelvinPerMetre: -.02, tropopauseMetres: 11000
       },
-      ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15, forestDensity: 1, surroundings: true },
+      ground: { enabled: true, type: 'grass', forest: false, treeHeightMetres: 15, forestDensity: 1, surroundings: true, surroundingsSeconds: GROUND.surroundings.defaultSeconds },
       place: { ...DEFAULT_PLACE },
       terrain: null,
       emitters: [emitter],
@@ -287,7 +288,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
         turbulenceScaleMetres: number(air.turbulenceScaleMetres, 'turbulenceScaleMetres', 'air.turbulenceScaleMetres'),
         ...numbers(air, AIR_LAYER_NUMBERS, 'air')
       },
-      ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), forestDensity: number(ground.forestDensity, 'forestDensity', 'ground.forestDensity'), surroundings: ground.surroundings },
+      ground: { enabled: ground.enabled, type: ground.type, forest: ground.forest, treeHeightMetres: number(ground.treeHeightMetres, 'treeHeightMetres', 'ground.treeHeightMetres'), forestDensity: number(ground.forestDensity, 'forestDensity', 'ground.forestDensity'), surroundings: ground.surroundings, surroundingsSeconds: number(ground.surroundingsSeconds, 'surroundingsSeconds', 'ground.surroundingsSeconds') },
       place: place(value.place),
       terrain: terrain(value.terrain),
       emitters: value.emitters.map(emitter),

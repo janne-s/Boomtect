@@ -75,7 +75,8 @@ export const ENVIRONMENT_CONTROLS = Object.freeze([
   ...['upperWindMetresPerSecond', 'upperWindFromDegrees']
     .map(key => spanControl('air', key, AIR_SPANS[key], (scene, { upperWind }) => scene.air.refraction && upperWind)),
   groundType,
-  ...Object.entries(GROUND_SPANS).map(([key, span]) => spanControl('ground', key, span, scene => scene.ground.forest))
+  ...Object.entries(GROUND_SPANS).map(([key, span]) => spanControl('ground', key, span, scene => scene.ground.forest)),
+  spanControl('ground', 'surroundingsSeconds', { span: [1, 12], log: true }, scene => scene.ground.surroundings)
 ]);
 
 /** Whether a control applies is asked as it comes, so that a ground layer rolled above zero also rolls its lapse. */

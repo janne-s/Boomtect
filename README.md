@@ -275,7 +275,10 @@ microphone along the Mach cone.
   sound under their canopy is muffled, and the forest answers every sound with a
   reverberant tail; a sparser forest does both less.
 - **Surroundings** — Over level ground, the long rumble the land around returns
-  of a loud sound. Over terrain with echoes, the echoes take its place.
+  of a loud sound, its colour set by where the microphone and the sources
+  stand. Over terrain with echoes, the echoes take its place.
+- **Surroundings tail** — How long the rumble lasts in its lowest bands:
+  about 2 s in a town, 7–20 s over an open range.
 - **Wind**, **Wind from**, and **Wind shear** — The wind at the ground, the
   compass direction it comes from, and how much it strengthens with height.
   Downwind, sound bends down and carries; upwind, the shadow comes closer.
@@ -490,7 +493,7 @@ B/C marks a part that combines the two.
 | Forest, under the canopy | ISO 9613-2 foliage attenuation as `0.006·f^(1/3)` dB/m, up to 200 m, with a causal phase | B |
 | Forest reverberation | seeded diffuse tail at the microphone with an early and a late slope per octave, fitted to eight measured forest responses (Koli, Finland), driven by each path's way under the canopy | B/C |
 | Forest density | scales the way under the canopy, and so the foliage loss and the tail; the tail's times stay | C |
-| Surroundings | seeded diffuse tail at the microphone over level ground, falling about 9 dB/s, mostly below 250 Hz, fitted to recorded booms | C |
+| Surroundings | diffuse tail at the microphone over level ground, seeded by the positions, mostly below 250 Hz, band shape fitted to recorded booms, length set (default 4 s) | C |
 | Ground reflection, partly coherent | ground roughness of 5 cm (Rayleigh) and turbulence scatter a share of the reflection over a few milliseconds | C |
 | Repeated ground contacts | rays an inversion or a following wind bends back down, up to six contacts, over level ground | A/C |
 | Terrain shielding | thin-edge Fresnel–Kirchhoff diffraction, Deygout's edges | B |
@@ -567,6 +570,7 @@ What each change does to the sound:
 | `grass`, `soil`, `forestFloor`, `snow` | softer ground, the lows dip near it; `snow` the most muffled |
 | `ground.forest` | highs muffled on the way, a reverberant tail |
 | `ground.surroundings` | the long rumble the land around returns of a loud sound |
+| `ground.surroundingsSeconds` | a longer or shorter rumble |
 | Humid air | highs carry farther |
 | Wind toward the microphone | louder; against it, a shadow at a distance |
 | Microphone `type` `binaural` with `headingDegrees` and `pitchDegrees` | a stereo file for headphones, facing that way (compass degrees); a higher `render.ambisonicOrder` sharpens the direction |

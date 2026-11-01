@@ -1404,13 +1404,23 @@ export function hasTails(scene) {
 
 const surroundingsTail = scene => scene.ground.surroundings && !(echoesActive(scene) && !terrainSurface(scene.terrain).flat);
 
+const isPoint = value => ['x', 'y', 'z'].every(axis => Number.isFinite(value?.[axis]));
+
+/** The surroundings belong to the place: one tail for each placing of the microphone and the emitters, to the metre. */
+export function surroundingsSeed(receiver, scene) {
+  const points = [receiver.positionMetres, ...scene.emitters.filter(emitter => emitter.enabled !== false).flatMap(emitter => Object.values(emitter).filter(isPoint))];
+  let hash = 0x811c9dc5;
+  for (const point of points) for (const axis of ['x', 'y', 'z']) hash = Math.imul(hash ^ Math.round(point[axis]), 0x01000193);
+  return hash >>> 0;
+}
+
 export function tailResponses(receiver, scene, channels = [0, channelCount(scene.render.ambisonicOrder)]) {
   if (!hasTails(scene)) return null;
   const count = channelCount(scene.render.ambisonicOrder);
   const { sampleRate } = scene.render;
   return {
     forest: scene.ground.forest ? forestResponses(forestSeed(receiver.id), count, sampleRate, channels) : null,
-    surroundings: surroundingsTail(scene) ? surroundingsResponses(forestSeed(receiver.id), count, sampleRate, channels) : null
+    surroundings: surroundingsTail(scene) ? surroundingsResponses(surroundingsSeed(receiver, scene), count, sampleRate, channels, scene.ground.surroundingsSeconds) : null
   };
 }
 

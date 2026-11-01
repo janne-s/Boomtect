@@ -54,9 +54,10 @@ export const GROUND = Object.freeze({
     referenceMetres: 9,
     scatterDecibelsPerMetre: .06
   }),
-  /** Class C, fitted to Doc/reference/audio sonic1–3 and meteor1. */
+  /** Class C: band shape fitted to Doc/reference/audio sonic1–3 and meteor1, scaled to the chosen longest T60; Boomtect's explosion references give 7–21 s on test ranges, about 2 s in towns. */
   surroundings: Object.freeze({
     seconds: Object.freeze([7, 7, 6, 4.5, 3, 2, 1.5, 1, .7, .5]),
+    defaultSeconds: 4,
     energyShare: .04,
     buildSeconds: .15
   }),
