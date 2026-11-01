@@ -5,6 +5,7 @@ import { prepareScene, renderReceiver } from '../src/domain/render.js';
 import { defaultRoomExplosion, defaultScene, parseScene, readScene, serializeScene } from '../src/domain/scene.js';
 import { breakPulse, dustVentedBar, gasVentedBar, ringHz, roomExplosion, roomExplosionSources, roomPressures, roomRoarTailSeconds, turbulenceFactor } from '../src/domain/room-explosion.js';
 import { plainScene } from './plain-scene.js';
+import { fft } from '../src/shared/domain/fft.js';
 
 const STANDARD_AIR = { pressureKpa: 101.325, temperatureCelsius: 15 };
 const near = (value, expected, share) => Math.abs(value / expected - 1) < share;
@@ -103,4 +104,30 @@ test('a huge room through a tiny vent does not ring below a hertz, so its sound 
   assert.ok(explosion.ring.hz < 1 && explosion.ring.paMetres === 0);
   const noise = roomExplosionSources(room, STANDARD_AIR).find(source => source.pulse === 'noise');
   assert.ok(noise.spanSeconds < 10);
+});
+
+test('a room is heard brightest ahead of and beside its vent, darker and quieter behind it, where the low tones bend round', () => {
+  const band = (samples, sampleRate, lowHz, highHz) => {
+    const size = 2 ** Math.ceil(Math.log2(samples.length));
+    const re = new Float64Array(size);
+    re.set(samples);
+    const im = new Float64Array(size);
+    fft(re, im);
+    let sum = 0;
+    for (let bin = Math.ceil(lowHz * size / sampleRate); bin < highHz * size / sampleRate; bin += 1) sum += re[bin] ** 2 + im[bin] ** 2;
+    return 10 * Math.log10(sum);
+  };
+  const heard = degrees => {
+    const scene = plainScene('blast');
+    const angle = (90 + degrees) * Math.PI / 180;
+    scene.emitters = [defaultRoomExplosion()];
+    scene.receivers[0].positionMetres = { x: 100 * Math.sin(angle), y: 100 * Math.cos(angle), z: 1.7 };
+    const value = parseScene(scene);
+    const { samples, sampleRate } = renderReceiver(prepareScene(value), value.receivers[0], value);
+    return [band(samples, sampleRate, 40, 160), band(samples, sampleRate, 640, 2500)];
+  };
+  const [ahead, beside, behind] = [heard(0), heard(90), heard(180)];
+  assert.ok(Math.abs(beside[1] - ahead[1]) < 1);
+  assert.ok(ahead[1] - behind[1] > 10, `${ahead[1] - behind[1]} dB`);
+  assert.ok(ahead[0] - behind[0] < ahead[1] - behind[1] - 4);
 });

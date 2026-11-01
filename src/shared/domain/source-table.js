@@ -6,7 +6,8 @@ const SOURCE_COLUMNS = Object.freeze({
   secondaryDelaySeconds: Float64Array, secondaryCubeRoot: Float64Array,
   turbulentFront: Uint8Array, middleShare: Float64Array, middleRatio: Float64Array,
   durationSeconds: Float64Array, onsetSeconds: Float64Array, decay: Float64Array, spanSeconds: Float64Array, linearRadiusMetres: Float64Array, agingRadiusMetres: Float64Array,
-  relaxationRadius: Float64Array, sourcePeriodSeconds: Float64Array, limitRadii: Float64Array, shockShare: Float64Array, shockHz: Float64Array
+  relaxationRadius: Float64Array, sourcePeriodSeconds: Float64Array, limitRadii: Float64Array, shockShare: Float64Array, shockHz: Float64Array,
+  shadowX: Float64Array, shadowY: Float64Array, shadowZ: Float64Array, shadowHz: Float64Array, shadowDecibels: Float64Array
 });
 
 export function sourceTableBuilder(capacity = 1024) {
@@ -55,6 +56,14 @@ export function sourceTableBuilder(capacity = 1024) {
       columns.agingRadiusMetres[index] = source.agingRadiusMetres ?? 0;
       columns.shockShare[index] = source.shockShare ?? 0;
       columns.shockHz[index] = source.shockHz ?? 0;
+      if (source.shadow) {
+        const { facing, cornerHz, rearDecibels } = source.shadow;
+        columns.shadowX[index] = facing.x;
+        columns.shadowY[index] = facing.y;
+        columns.shadowZ[index] = facing.z;
+        columns.shadowHz[index] = cornerHz;
+        columns.shadowDecibels[index] = rearDecibels;
+      }
       if (source.weakShock) {
         columns.relaxationRadius[index] = source.weakShock.relaxationRadius;
         columns.sourcePeriodSeconds[index] = source.weakShock.sourcePeriodSeconds;

@@ -151,7 +151,7 @@ const FIREWORKS_NUMBERS = Object.freeze([
 const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'puffBlend', 'riseTimeSeconds']);
-const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'crackDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'headingDegrees', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'crackDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const TANK_FARM_NUMBERS = Object.freeze([
   'startSeconds', 'headingDegrees', 'tankCount', 'spacingMetres', 'otherShare', 'ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread',
   'openingCloudCubicMetres', 'fireballDecibels', 'thumpDecibels', 'swellDecibels', 'riseTimeSeconds'
@@ -301,6 +301,7 @@ export function defaultRoomExplosion(id = 'room-explosion-1', name = 'Room explo
     id, name, kind: 'roomExplosion', enabled: true, seed,
     startSeconds: 0,
     positionMetres: { x: 0, y: 0, z: 1.5 },
+    headingDegrees: 90,
     material: 'naturalGas',
     roomCubicMetres: 60,
     ventSquareMetres: 2,

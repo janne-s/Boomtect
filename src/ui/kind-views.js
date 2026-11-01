@@ -3,7 +3,7 @@ import { airDensityKilogramsPerCubicMetre } from '../shared/domain/air.js';
 import { emissionSeconds } from '../domain/lightning.js';
 import { createRandom } from '../shared/domain/random.js';
 import { cloudRadiusMetres } from '../domain/gas-explosion.js';
-import { roomSideMetres } from '../domain/room-explosion.js';
+import { roomSideMetres, ventFacing } from '../domain/room-explosion.js';
 import { fireballDiameterMetres } from '../domain/bleve.js';
 import { cachedFlashes, cachedRounds, cachedTracks } from './geometry-cache.js';
 import { soundSpeedAt } from '../shared/domain/trajectory.js';
@@ -401,12 +401,38 @@ export function kindViews() {
     for (const stroke of state?.strokes.get(emitter.id) ?? []) drawBurst(context, frame.project(placed(stroke.position)), stroke, colors);
   }
 
+  /** The room stands behind its vent, which sits in the middle of its front wall. */
   function roomCorners(emitter) {
     const vent = placed(emitter.positionMetres);
     const half = roomSideMetres(emitter.roomCubicMetres) / 2;
-    const base = emitter.positionMetres.z + Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ground(vent.x + sx * half, vent.y + sy * half)));
-    const ring = z => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: vent.x + sx * half, y: vent.y + sy * half, z }));
+    const { x: fx, y: fy } = ventFacing(emitter);
+    const corner = ([along, across]) => ({ x: vent.x + (along - 1) * half * fx + across * half * fy, y: vent.y + (along - 1) * half * fy - across * half * fx });
+    const footprint = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(corner);
+    const base = emitter.positionMetres.z + Math.min(...footprint.map(({ x, y }) => ground(x, y)));
+    const ring = z => footprint.map(({ x, y }) => ({ x, y, z }));
     return { floor: ring(base), roof: ring(base + 2 * half) };
+  }
+
+  const ventArrowMetres = emitter => Math.max(15, 3 * roomSideMetres(emitter.roomCubicMetres));
+
+  function ventTip(emitter) {
+    const vent = placed(emitter.positionMetres);
+    const { x, y } = ventFacing(emitter);
+    const reach = ventArrowMetres(emitter);
+    return { x: vent.x + reach * x, y: vent.y + reach * y, z: vent.z };
+  }
+
+  function drawVentArrow(context, emitter) {
+    const from = frame.project(placed(emitter.positionMetres));
+    const to = frame.project(ventTip(emitter));
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    const head = 7;
+    context.beginPath();
+    context.moveTo(from.x, from.y); context.lineTo(to.x, to.y);
+    context.moveTo(to.x - head * Math.cos(angle - .45), to.y - head * Math.sin(angle - .45));
+    context.lineTo(to.x, to.y);
+    context.lineTo(to.x - head * Math.cos(angle + .45), to.y - head * Math.sin(angle + .45));
+    context.stroke();
   }
 
   function drawRoom(context, emitter, colors, selected, state) {
@@ -424,6 +450,7 @@ export function kindViews() {
       const a = frame.project(corner); const b = frame.project(roof[index]);
       context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
     });
+    drawVentArrow(context, emitter);
     context.globalAlpha = alpha;
     drawBlast(context, emitter, colors, state);
   }
@@ -638,11 +665,22 @@ export function kindViews() {
 
   const room = {
     ...blast,
+    handles: (emitter, box, tools) => {
+      use(tools);
+      return [
+        { type: 'emitter', id: emitter.id, field: 'positionMetres', point: placed(emitter.positionMetres), role: 'source' },
+        { type: 'emitter', id: emitter.id, field: 'flightHeading', point: ventTip(emitter), role: 'end', ownPlaneOnly: true }
+      ];
+    },
     extent(emitter, { include, placed: place }) {
       const vent = place(emitter.positionMetres);
-      const half = roomSideMetres(emitter.roomCubicMetres) / 2;
-      include({ x: vent.x - half, y: vent.y - half, z: vent.z });
-      include({ x: vent.x + half, y: vent.y + half, z: vent.z + 2 * half });
+      const side = roomSideMetres(emitter.roomCubicMetres);
+      const reach = ventArrowMetres(emitter);
+      const { x: fx, y: fy } = ventFacing(emitter);
+      for (const [along, across] of [[-side, -side / 2], [-side, side / 2], [0, -side / 2], [0, side / 2], [reach, 0]]) {
+        include({ x: vent.x + along * fx + across * fy, y: vent.y + along * fy - across * fx, z: vent.z });
+      }
+      include({ x: vent.x, y: vent.y, z: vent.z + side });
     },
     draw(context, emitter, tools, { colors, selected, state }) { use(tools); drawRoom(context, emitter, colors, selected, state); }
   };

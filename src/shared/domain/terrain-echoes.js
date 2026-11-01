@@ -71,7 +71,9 @@ export function sourceCells(sources, cellMetres) {
     middleShare: new Float64Array(length),
     middleRatio: new Float64Array(length),
     shockShare: new Float64Array(length),
-    shockHz: new Float64Array(length)
+    shockHz: new Float64Array(length),
+    shadowX: new Float64Array(length), shadowY: new Float64Array(length), shadowZ: new Float64Array(length),
+    shadowHz: new Float64Array(length), shadowDecibels: new Float64Array(length)
   };
   const averaged = ['x', 'y', 'z', 'emissionSeconds', 'durationSeconds', 'onsetSeconds', 'decay', 'relaxationRadius', 'sourcePeriodSeconds', 'limitRadii'];
   members.forEach((list, cell) => {
@@ -84,7 +86,7 @@ export function sourceCells(sources, cellMetres) {
       table[key][cell] = sum;
     }
     table.amplitudePaMetres[cell] = Math.sqrt(energy);
-    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'turbulentFront', 'middleShare', 'middleRatio', 'shockShare', 'shockHz']) table[key][cell] = sources[key][list[0]];
+    for (const key of ['pulse', 'noiseSeed', 'secondaryDelaySeconds', 'secondaryCubeRoot', 'turbulentFront', 'middleShare', 'middleRatio', 'shockShare', 'shockHz', 'shadowX', 'shadowY', 'shadowZ', 'shadowHz', 'shadowDecibels']) table[key][cell] = sources[key][list[0]];
     for (const source of list) {
       table.spanSeconds[cell] = Math.max(table.spanSeconds[cell], sources.spanSeconds[source]);
       table.linearRadiusMetres[cell] = Math.max(table.linearRadiusMetres[cell], sources.linearRadiusMetres[source]);

@@ -860,6 +860,14 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
   let directivityRe = directivityStepRe;
   let directivityIm = directivityStepIm;
 
+  const rearDecibels = sources.shadowDecibels[sourceIndex];
+  const behind = rearDecibels > 0
+    ? -(sources.shadowX[sourceIndex] * paths.departure[3 * index] + sources.shadowY[sourceIndex] * paths.departure[3 * index + 1] + sources.shadowZ[sourceIndex] * paths.departure[3 * index + 2])
+    : 0;
+  const shadowed = behind > 0;
+  const shadowCorner = sources.shadowHz[sourceIndex];
+  const shadowDepth = rearDecibels * behind;
+
   const onsetStep = Math.PI * binHz * sources.onsetSeconds[sourceIndex];
   const onset = onsetStep > 1e-12;
   const onsetStepRe = Math.cos(onsetStep);
@@ -941,6 +949,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
     }
     let factor = heardGain * smoothing[bin] * Math.exp(-pathLoss(bin, (layered ? binAbsorption(plan, bin) : absorption[bin]) * absorbingMetres) - (finestForest ? foliage.loss[bin] * underCanopy : 0));
     if (grain?.levels) factor *= scintillationGain(plan.scintillationBands, grain.levels, bin);
+    if (shadowed) factor *= shadowGain(binHz * bin, shadowCorner, shadowDepth);
     if (directive) {
       factor *= directivityIm / (directivityStep * bin);
       const nextRe = directivityRe * directivityStepRe - directivityIm * directivityStepIm;
@@ -1509,6 +1518,15 @@ export function addTails(sum, from, tails) {
 const SILENT_TAIL_SHARE = 1e-6;
 
 /** The frame is a power of two long, so its end is mostly silence: kept only while some channel is within 120 dB of the loudest sample. */
+/**
+ * Class C: a source facing out of a body is shadowed behind it, nothing ahead or beside it, most straight behind; low tones bend round
+ * the body and high ones do not, the loss rising toward its full depth above the corner, where the wavelength is the body's size.
+ */
+export function shadowGain(frequencyHz, cornerHz, depthDecibels) {
+  const ratio = (frequencyHz / cornerHz) ** 2;
+  return 10 ** (-depthDecibels * ratio / (1 + ratio) / 20);
+}
+
 function heardLength(channels) {
   let loudest = 0;
   for (const samples of channels) {

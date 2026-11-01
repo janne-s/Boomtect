@@ -221,12 +221,21 @@ export function roomNoiseSamples(seed, durationSeconds, sampleRate, emitter) {
   return samples;
 }
 
+export const ventFacing = emitter => {
+  const heading = emitter.headingDegrees * Math.PI / 180;
+  return { x: Math.sin(heading), y: Math.cos(heading), z: 0 };
+};
+
+/** The external explosion burns ahead of the vent, its centre a radius out (Harrison & Eyre 1987: 2–5 m); every source is shadowed behind the room. */
 export function roomExplosionSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const explosion = roomExplosion(emitter, air);
-  const common = seconds => ({ flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds + seconds });
   const { pressures, breaking, wall, burning, external } = explosion;
-  const sources = [pulseSource(common(0), burning, air), pulseSource(common(pressures.burnSeconds), external, air)];
+  const facing = ventFacing(emitter);
+  const shadow = { facing, cornerHz: ROOM_EXPLOSION.soundMetresPerSecond / pressures.side, rearDecibels: ROOM_EXPLOSION.shadowDecibels };
+  const common = (seconds, place = positionMetres) => ({ flash: 0, positionMetres: place, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds + seconds, shadow });
+  const ahead = { x: positionMetres.x + external.radiusMetres * facing.x, y: positionMetres.y + external.radiusMetres * facing.y, z: positionMetres.z };
+  const sources = [pulseSource(common(0), burning, air), pulseSource(common(pressures.burnSeconds, ahead), external, air)];
   if (wall) sources.unshift(pulseSource(common(pressures.wallSeconds), wall, air));
   if (breaking.peakPaMetres > 0) sources.unshift(pulseSource(common(pressures.openSeconds), breaking, air));
   const layout = noiseLayout(emitter, explosion);
