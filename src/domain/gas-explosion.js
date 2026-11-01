@@ -214,7 +214,11 @@ const partOf = (emitter, share, congestion) => ({ ...emitter, cloudCubicMetres: 
 
 const partPulse = (part, air) => deflagrationPulse({ sourcePa: gasSourcePa(part), radiusMetres: cloudRadiusMetres(part.cloudCubicMetres), kilograms: gasEquivalentKilograms(part) }, air);
 
-/** The open rest and the dense regions of a spark-lit cloud, each region's offset from the centre and the time its flame reaches it; none for a detonation or without regions. */
+/**
+ * The open rest and the dense regions of a spark-lit cloud, each region's offset from the centre and the time its flame reaches it; none for a
+ * detonation or without regions. The regions' share is split unevenly by the seed, and regions lit within one another's positive phase
+ * burst as one, their energies together (Yellow Book CPR 14E §5.5.4, step 10).
+ */
 export function gasRegions(emitter, air) {
   const count = emitter.ignition === 'charge' ? 0 : emitter.denseRegions;
   if (!(count > 0)) return null;
@@ -223,13 +227,23 @@ export function gasRegions(emitter, air) {
   const openSpeed = flameMetresPerSecond(open.sourcePa, air);
   const radius = cloudRadiusMetres(emitter.cloudCubicMetres);
   const random = createRandom((emitter.seed ^ REGION_SEED) >>> 0);
-  const regions = Array.from({ length: count }, () => {
-    const pulse = partPulse(partOf(emitter, denseShare / count, emitter.congestion), air);
+  const drawn = Array.from({ length: count }, () => {
+    const weight = -Math.log(1 - random());
     const distance = radius * (nearestShareOfRadius + (farthestShareOfRadius - nearestShareOfRadius) * random());
     const angle = 2 * Math.PI * random();
-    return { pulse, offsetMetres: { x: distance * Math.cos(angle), y: distance * Math.sin(angle), z: 0 }, delaySeconds: distance / openSpeed };
+    return { weight, x: distance * Math.cos(angle), y: distance * Math.sin(angle), delaySeconds: distance / openSpeed };
   });
-  return { open, regions };
+  const total = drawn.reduce((sum, region) => sum + region.weight, 0);
+  const region = ({ share, x, y, delaySeconds }) => ({ share, x, y, delaySeconds, pulse: partPulse(partOf(emitter, share, emitter.congestion), air) });
+  const merged = [];
+  for (const next of drawn.map(item => region({ ...item, share: denseShare * item.weight / total })).sort((a, b) => a.delaySeconds - b.delaySeconds)) {
+    const last = merged.at(-1);
+    if (last && next.delaySeconds - last.delaySeconds < Math.max(last.pulse.positiveSeconds, next.pulse.positiveSeconds)) {
+      const share = last.share + next.share;
+      merged[merged.length - 1] = region({ share, x: (last.share * last.x + next.share * next.x) / share, y: (last.share * last.y + next.share * next.y) / share, delaySeconds: last.delaySeconds });
+    } else merged.push(next);
+  }
+  return { open, regions: merged.map(({ pulse, x, y, delaySeconds }) => ({ pulse, offsetMetres: { x, y, z: 0 }, delaySeconds })) };
 }
 
 export function gasExplosionSources(emitter, air, surface = null) {

@@ -158,17 +158,21 @@ test('a bigger cloud roars lower', () => {
   assert.ok(centroid(5000) < .6 * centroid(150), `${centroid(5000)} against ${centroid(150)}`);
 });
 
-test('dense regions burst one by one as the open cloud\'s slow flame reaches them, none by default or for a detonation', () => {
+test('dense regions burst one by one as the open cloud\'s slow flame reaches them, those lit together as one, none by default or for a detonation', () => {
   const sources = emitter => gasExplosionSources(emitter, STANDARD_AIR);
   assert.equal(sources(defaultGasExplosion()).length, 2);
   assert.equal(gasRegions({ ...defaultGasExplosion(), denseRegions: 3, ignition: 'charge' }, STANDARD_AIR), null);
-  const split = gasRegions({ ...defaultGasExplosion(), denseRegions: 3 }, STANDARD_AIR);
-  assert.equal(split.regions.length, 3);
+  const split = gasRegions({ ...defaultGasExplosion(), denseRegions: 5 }, STANDARD_AIR);
+  assert.ok(split.regions.length >= 1 && split.regions.length <= 5);
+  split.regions.slice(1).forEach((region, index) => {
+    const before = split.regions[index];
+    assert.ok(region.delaySeconds - before.delaySeconds >= Math.max(region.pulse.positiveSeconds, before.pulse.positiveSeconds), 'regions lit together burst as one');
+  });
   assert.ok(split.open.strength < 2 && split.regions.every(region => region.pulse.strength > split.open.strength + 2));
   assert.ok(split.regions.every(region => region.delaySeconds > 0 && region.delaySeconds < split.open.burnSeconds));
   const radius = cloudRadiusMetres(defaultGasExplosion().cloudCubicMetres);
   assert.ok(split.regions.every(({ offsetMetres: { x, y } }) => Math.hypot(x, y) <= .9 * radius + 1e-9));
-  const rendered = sources({ ...defaultGasExplosion(), denseRegions: 3 });
-  assert.equal(rendered.length, 5);
-  assert.deepEqual(rendered.slice(1, 4).map(source => source.emissionSeconds), split.regions.map(region => region.delaySeconds));
+  const rendered = sources({ ...defaultGasExplosion(), denseRegions: 5 });
+  assert.equal(rendered.length, 2 + split.regions.length);
+  assert.deepEqual(rendered.slice(1, 1 + split.regions.length).map(source => source.emissionSeconds), split.regions.map(region => region.delaySeconds));
 });
