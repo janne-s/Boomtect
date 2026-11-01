@@ -82,3 +82,17 @@ test('a kitchen\'s roar ends within the apartment recordings\' half second, not 
   const seconds = roomRoarTailSeconds(kitchen);
   assert.ok(seconds > .4 && seconds < .7, `${seconds.toFixed(2)} s`);
 });
+
+test('a vent and a wall that give way crack, louder through a bigger vent, darker through a door, and a strong vent lets less burn outside', () => {
+  const explosion = room => roomExplosion({ ...defaultRoomExplosion(), ...room }, STANDARD_AIR);
+  const window = explosion({});
+  assert.ok(window.pressures.wallBreaksLater && window.wall.peakPaMetres > 0);
+  assert.equal(window.cracks.length, 2);
+  assert.ok(explosion({ ventSquareMetres: 6 }).cracks[0].paMetres > 5 * explosion({ ventSquareMetres: .5 }).cracks[0].paMetres);
+  assert.ok(explosion({ ventStrength: 'door' }).cracks[0].tilt < window.cracks[0].tilt);
+  assert.equal(explosion({ ventStrength: 'open' }).cracks.length, 1);
+  assert.ok(explosion({ ventStrength: 'window' }).external.peakPaMetres < explosion({ ventStrength: 'open' }).external.peakPaMetres);
+  assert.equal(explosion({ crackDecibels: -60 }).cracks.length, 0);
+  const held = explosion({ structureKilopascals: 100, ventSquareMetres: 6 });
+  assert.ok(!held.pressures.wallsFail && held.wall === null);
+});

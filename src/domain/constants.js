@@ -199,12 +199,25 @@ export const ROOM_EXPLOSION = Object.freeze({
   externalDilution: 3,
   wallMetres: .25,
   wallOpenSeconds: .03,
+  /**
+   * Class C, fitted to the apartment explosions Doc/reference/audio E13 and E16: the crack of a vent or wall giving way, its loudest window a
+   * share of the breaking pulse's peak, octave levels from 250 Hz on as E13's opening, falling 20 dB over its decay; doors, panels and
+   * walls are darker by their tilt per octave above 250 Hz.
+   */
+  crack: Object.freeze({
+    share: .2, decaySeconds: .3,
+    spectrumHz: Object.freeze([63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]),
+    octaveDecibels: Object.freeze([-30, -12, 0, -5, -11, -10, -14, -15, -35]),
+    wallTiltDecibelsPerOctave: -4
+  }),
   ringSoundShare: 1.45,
   ringPressureShare: .4,
   ringCycles: 5,
   ringFloor: .05,
   /** Class C: the roar's tail per kg^⅙, fitted to the apartment explosions Doc/reference/audio E13 and E16 (−20 dB 0.4–0.7 s after the arrival). */
   roarSecondsPerSixthRootKilogram: .33,
+  /** Class C, fitted to E13 and E16: the roar's level under the Roar setting, so that 1–4 kHz sits about 20 dB under the opening's 40–160 Hz. */
+  roarDecibels: -20,
   materials: Object.freeze({
     naturalGas: Object.freeze({ label: 'Natural gas', burningMetresPerSecond: .40, megajoulesPerCubicMetre: 3.22, maximumBar: 7.1 }),
     propane: Object.freeze({ label: 'Propane', burningMetresPerSecond: .46, megajoulesPerCubicMetre: 3.48, maximumBar: 7.9 }),
@@ -216,9 +229,9 @@ export const ROOM_EXPLOSION = Object.freeze({
   }),
   vents: Object.freeze({
     open: Object.freeze({ label: 'Open', kilopascals: 0, openSeconds: .005 }),
-    window: Object.freeze({ label: 'Window', kilopascals: 5, openSeconds: .005 }),
-    panel: Object.freeze({ label: 'Light panel', kilopascals: 1.5, openSeconds: .02 }),
-    door: Object.freeze({ label: 'Door', kilopascals: 2.5, openSeconds: .03 })
+    window: Object.freeze({ label: 'Window', kilopascals: 5, openSeconds: .005, crackTiltDecibelsPerOctave: 0 }),
+    panel: Object.freeze({ label: 'Light panel', kilopascals: 1.5, openSeconds: .02, crackTiltDecibelsPerOctave: -3 }),
+    door: Object.freeze({ label: 'Door', kilopascals: 2.5, openSeconds: .03, crackTiltDecibelsPerOctave: -4 })
   }),
   interiors: Object.freeze({ empty: Object.freeze({ label: 'Empty' }), furnished: Object.freeze({ label: 'Furnished' }) }),
   ignitions: Object.freeze({ centre: Object.freeze({ label: 'Centre' }), far: Object.freeze({ label: 'Far from vent' }) })
@@ -425,6 +438,7 @@ export const VIEW = Object.freeze({
     gasCloudRange: Object.freeze([10, 1e5]),
     roomRange: Object.freeze([1, 1e5]),
     ventRange: Object.freeze([.05, 500]),
+    structureRange: Object.freeze([1, 1000]),
     vesselRange: Object.freeze([.01, 2000]),
     failureRange: Object.freeze([1, 40]),
     spacingRange: Object.freeze([2, 200]),

@@ -1,6 +1,9 @@
 import { BLAST_PULSE } from './blast-pulse.js';
 import { ROOM_EXPLOSION } from './constants.js';
+import { scaleToLoudestWindow, spectralNoise, tableDensity } from './fireball.js';
 import { deflagrationPulse, onsetAmplitude, pulseSource, roarSamples, roarSpanSeconds } from './gas-explosion.js';
+import { nextPowerOfTwo } from '../shared/domain/fft.js';
+import { createRandom } from '../shared/domain/random.js';
 import { onGround } from '../shared/domain/terrain.js';
 
 export const MATERIAL_TYPES = Object.freeze(Object.keys(ROOM_EXPLOSION.materials));
@@ -78,6 +81,8 @@ export function roomPressures(emitter) {
     breakingSquareMetres: ventPa <= structurePa ? ventSquareMetres : side * side,
     openPa, insidePa, wallsFail, flameMetresPerSecond, burnSeconds,
     openSeconds: burnSeconds * Math.min(1, Math.cbrt(openPa / (material.maximumBar * BAR_PA))),
+    wallBreaksLater: wallsFail && ventPa < structurePa,
+    wallSeconds: burnSeconds * Math.min(1, Math.cbrt(structurePa / (material.maximumBar * BAR_PA))),
     openingSeconds: ventPa <= structurePa ? vent.openSeconds : ROOM_EXPLOSION.wallOpenSeconds
   };
 }
@@ -86,7 +91,9 @@ export const roomCombustionJoules = emitter => ROOM_EXPLOSION.materials[emitter.
 
 export const roomEquivalentKilograms = emitter => roomCombustionJoules(emitter) / 4.68e6;
 
-const ejectedShare = emitter => (emitter.ignition === 'far' ? 1 : Math.PI / 6) * (1 - 1 / ROOM_EXPLOSION.expansionRatio);
+/** Class B geometry; a strong vent lets less out before it opens, × max(0, 1 − P_v/P_red) (class C, after Cooper et al. 1986). */
+const ejectedShare = (emitter, pressures) => (emitter.ignition === 'far' ? 1 : Math.PI / 6) * (1 - 1 / ROOM_EXPLOSION.expansionRatio)
+  * Math.max(0, 1 - ROOM_EXPLOSION.vents[emitter.ventStrength].kilopascals * 1000 / pressures.insidePa);
 
 /** Class A: the stored compression V·P/(γP₀) leaves through the opening at the Bernoulli rate; a monopole p·r = ρ/(4π)·dQ/dt over the opening time (class C), positive only while the flow starts. */
 export function breakPulse(emitter, pressures, air) {
@@ -112,12 +119,19 @@ export function burnPulse(emitter, pressures) {
 
 /** Class C: the mixture pushed out ahead of the flame, diluted, burns as a free cloud at half the room's pressure (Harrison & Eyre 1987). */
 export function externalPulse(emitter, pressures, air) {
-  const cubicMetres = ROOM_EXPLOSION.externalDilution * ejectedShare(emitter) * emitter.roomCubicMetres;
+  const share = ejectedShare(emitter, pressures);
+  const cubicMetres = ROOM_EXPLOSION.externalDilution * share * emitter.roomCubicMetres;
   return deflagrationPulse({
     sourcePa: ROOM_EXPLOSION.externalPressureShare * pressures.insidePa,
     radiusMetres: roomRadiusMetres(cubicMetres),
-    kilograms: ejectedShare(emitter) * roomEquivalentKilograms(emitter)
+    kilograms: share * roomEquivalentKilograms(emitter)
   }, air);
+}
+
+/** The wall giving way after its vent has opened: the stored volume at the structure's pressure leaves through the whole wall. */
+export function wallBreakPulse(emitter, pressures, air) {
+  if (!pressures.wallBreaksLater) return null;
+  return breakPulse(emitter, { ...pressures, openPa: emitter.structureKilopascals * 1000, breakingSquareMetres: pressures.side ** 2, openingSeconds: ROOM_EXPLOSION.wallOpenSeconds }, air);
 }
 
 export const roomRoarTailSeconds = emitter => emitter.fireballSecondsPerSixthRootKilogram * roomEquivalentKilograms(emitter) ** (1 / 6);
@@ -136,21 +150,47 @@ export function roomExplosion(emitter, air) {
   const breaking = breakPulse(emitter, pressures, air);
   const burning = burnPulse(emitter, pressures);
   const external = externalPulse(emitter, pressures, air);
+  const wall = wallBreakPulse(emitter, pressures, air);
   const ring = roomRing(emitter, pressures, air);
-  const roarPaMetres = emitter.fireballDecibels > OFF_DECIBELS ? 10 ** (emitter.fireballDecibels / 20) * Math.max(external.peakPaMetres, burning.peakPaMetres) : 0;
-  const peakPaMetres = Math.max(breaking.peakPaMetres, burning.peakPaMetres, external.peakPaMetres);
-  return { pressures, breaking, burning, external, ring, roarPaMetres, peakPaMetres, kilograms: roomEquivalentKilograms(emitter) };
+  const crackGain = emitter.crackDecibels > OFF_DECIBELS ? ROOM_EXPLOSION.crack.share * 10 ** (emitter.crackDecibels / 20) : 0;
+  const cracks = [
+    ...(breaking.peakPaMetres > 0 ? [{ seconds: pressures.openSeconds, paMetres: crackGain * breaking.peakPaMetres, tilt: pressures.openingSeconds === ROOM_EXPLOSION.wallOpenSeconds ? ROOM_EXPLOSION.crack.wallTiltDecibelsPerOctave : ROOM_EXPLOSION.vents[emitter.ventStrength].crackTiltDecibelsPerOctave }] : []),
+    ...(wall ? [{ seconds: pressures.wallSeconds, paMetres: crackGain * wall.peakPaMetres, tilt: ROOM_EXPLOSION.crack.wallTiltDecibelsPerOctave }] : [])
+  ].filter(crack => crack.paMetres > 0);
+  const roarPaMetres = emitter.fireballDecibels > OFF_DECIBELS ? 10 ** ((emitter.fireballDecibels + ROOM_EXPLOSION.roarDecibels) / 20) * Math.max(external.peakPaMetres, burning.peakPaMetres) : 0;
+  const peakPaMetres = Math.max(breaking.peakPaMetres, burning.peakPaMetres, external.peakPaMetres, wall?.peakPaMetres ?? 0);
+  return { pressures, breaking, wall, burning, external, ring, cracks, roarPaMetres, peakPaMetres, kilograms: roomEquivalentKilograms(emitter) };
 }
 
 function noiseLayout(emitter, explosion) {
   const burnSeconds = explosion.pressures.burnSeconds + explosion.external.burnSeconds;
   const tailSeconds = roomRoarTailSeconds(emitter);
   const ringStart = explosion.pressures.burnSeconds;
-  const spanSeconds = Math.max(roarSpanSeconds(burnSeconds, tailSeconds), ringStart + 3 * explosion.ring.seconds);
-  return { burnSeconds, tailSeconds, ringStart, spanSeconds, levelPaMetres: Math.max(explosion.roarPaMetres, explosion.ring.paMetres) };
+  const crackSeconds = crackSpanSeconds();
+  const spanSeconds = Math.max(roarSpanSeconds(burnSeconds, tailSeconds), ringStart + 3 * explosion.ring.seconds, ...explosion.cracks.map(crack => crack.seconds + crackSeconds));
+  return { burnSeconds, tailSeconds, ringStart, spanSeconds, levelPaMetres: Math.max(explosion.roarPaMetres, explosion.ring.paMetres, ...explosion.cracks.map(crack => crack.paMetres)) };
 }
 
-/** Class C: the roar of the burn inside and out, with the Helmholtz ring from when the flame reaches the opening. */
+const CRACK_SEED = 0x68e31da4;
+const CRACK_SPAN_DECIBELS = 60;
+const crackSpanSeconds = () => ROOM_EXPLOSION.crack.decaySeconds * CRACK_SPAN_DECIBELS / 20;
+
+function crackDensity(tiltDecibelsPerOctave) {
+  const { spectrumHz, octaveDecibels } = ROOM_EXPLOSION.crack;
+  return tableDensity(spectrumHz, spectrumHz.map((hz, index) => 10 ** ((octaveDecibels[index] + tiltDecibelsPerOctave * Math.max(0, Math.log2(hz / 250))) / 10) / hz));
+}
+
+/** Class C: a crack's noise at its loudest window of one, falling 20 dB over the decay. */
+export function crackSamples(seed, tiltDecibelsPerOctave, sampleRate) {
+  const length = Math.ceil(crackSpanSeconds() * sampleRate);
+  const noise = spectralNoise(createRandom(seed), nextPowerOfTwo(length), sampleRate, crackDensity(tiltDecibelsPerOctave));
+  const decay = Math.LN10 / ROOM_EXPLOSION.crack.decaySeconds;
+  const samples = new Float64Array(length);
+  for (let index = 0; index < length; index += 1) samples[index] = noise[index] * Math.exp(-decay * index / sampleRate);
+  return scaleToLoudestWindow(samples, Math.max(1, Math.round(.05 * sampleRate)));
+}
+
+/** Class C: the roar of the burn inside and out, the cracks of the vent and walls giving way, and the Helmholtz ring from when the flame reaches the opening. */
 export function roomNoiseSamples(seed, durationSeconds, sampleRate, emitter) {
   const explosion = roomExplosion(emitter, STANDARD_AIR);
   const layout = noiseLayout(emitter, explosion);
@@ -162,6 +202,12 @@ export function roomNoiseSamples(seed, durationSeconds, sampleRate, emitter) {
     const gain = explosion.roarPaMetres / layout.levelPaMetres;
     for (let index = 0; index < Math.min(length, roar.length); index += 1) samples[index] = gain * roar[index];
   }
+  explosion.cracks.forEach((crack, index) => {
+    const noise = crackSamples((seed ^ CRACK_SEED) + index >>> 0, crack.tilt, sampleRate);
+    const gain = crack.paMetres / layout.levelPaMetres;
+    const start = Math.round(crack.seconds * sampleRate);
+    for (let offset = 0; offset < noise.length && start + offset < length; offset += 1) samples[start + offset] += gain * noise[offset];
+  });
   const { hz, paMetres, seconds } = explosion.ring;
   if (paMetres > 0) {
     const gain = paMetres / layout.levelPaMetres;
@@ -178,8 +224,9 @@ export function roomExplosionSources(emitter, air, surface = null) {
   const positionMetres = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
   const explosion = roomExplosion(emitter, air);
   const common = seconds => ({ flash: 0, positionMetres, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds + seconds });
-  const { pressures, breaking, burning, external } = explosion;
+  const { pressures, breaking, wall, burning, external } = explosion;
   const sources = [pulseSource(common(0), burning, air), pulseSource(common(pressures.burnSeconds), external, air)];
+  if (wall) sources.unshift(pulseSource(common(pressures.wallSeconds), wall, air));
   if (breaking.peakPaMetres > 0) sources.unshift(pulseSource(common(pressures.openSeconds), breaking, air));
   const layout = noiseLayout(emitter, explosion);
   if (layout.levelPaMetres > 0) {

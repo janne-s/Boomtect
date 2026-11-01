@@ -94,6 +94,7 @@ const BOOMTECT_PARAMETERS = Object.freeze({
   swellDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Swell', reliability: 'C' },
   growthDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Growth', reliability: 'C' },
   puffBlend: { minimum: 0, maximum: 1, unit: '', label: 'Puff blend', reliability: 'C' },
+  crackDecibels: { minimum: -60, maximum: 12, unit: 'dB', label: 'Crack', reliability: 'C' },
   fireballSecondsPerSixthRootKilogram: { minimum: .05, maximum: 5, unit: 's/kg^⅙', label: 'Fireball duration', reliability: 'C' },
   riseTimeSeconds: { minimum: 5e-6, maximum: .01, unit: 's', label: 'Rise time', reliability: 'C' },
   equivalentChargeKilograms: { minimum: .001, maximum: 1e7, unit: 'kg TNT', label: 'Equivalent charge', reliability: 'C' },
@@ -150,7 +151,7 @@ const FIREWORKS_NUMBERS = Object.freeze([
 const VOLCANO_NUMBERS = Object.freeze(['startSeconds', ...ERUPTION_NUMBERS]);
 
 const GAS_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'cloudCubicMetres', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'puffBlend', 'riseTimeSeconds']);
-const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
+const ROOM_EXPLOSION_NUMBERS = Object.freeze(['startSeconds', 'roomCubicMetres', 'ventSquareMetres', 'structureKilopascals', 'ringDecibels', 'crackDecibels', 'fireballDecibels', 'fireballSecondsPerSixthRootKilogram', 'riseTimeSeconds']);
 const TANK_FARM_NUMBERS = Object.freeze([
   'startSeconds', 'headingDegrees', 'tankCount', 'spacingMetres', 'otherShare', 'ignitionTank', 'spreadMetresPerSecond', 'heatingSeconds', 'heatingSpread',
   'openingCloudCubicMetres', 'fireballDecibels', 'swellDecibels', 'growthDecibels', 'riseTimeSeconds'
@@ -308,6 +309,7 @@ export function defaultRoomExplosion(id = 'room-explosion-1', name = 'Room explo
     ignition: 'centre',
     structureKilopascals: 15,
     ringDecibels: 0,
+    crackDecibels: 0,
     fireballDecibels: -20,
     fireballSecondsPerSixthRootKilogram: ROOM_EXPLOSION.roarSecondsPerSixthRootKilogram,
     riseTimeSeconds: 4e-5

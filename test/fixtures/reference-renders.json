@@ -1,5 +1,5 @@
 {
-  "commit": "e514e0e+",
+  "commit": "077e23a+",
   "cases": {
     "lightning-flat": "b6b89d89a8756e79eef16a67f63c3a6b645acdffe0cbb09e1c5efae6ebde2854",
     "lightning-terrain": "f8a2555c308974e5c9d632ae6b160aa365a88f42230ad88ca88c1acda27b194d",
@@ -17,8 +17,8 @@
     "volcano-terrain": "bc0fcff7be4072dde84e327b2174de833e681e47d8caf8e737d6784bad29c7ec",
     "gasExplosion-flat": "d0dd3244515e55ec296a0f96eb3b2360f9a621abed8cd173fe5972b5c5ed12ac",
     "gasExplosion-terrain": "ceb4bc1643dbff41d1fe3da4629f76d657c38a57e89a603af43562f846c824a9",
-    "roomExplosion-flat": "2a0db07f514d2651e7e8a529c8b0960098f5e19278e10376b3b8f99ac69d75e5",
-    "roomExplosion-terrain": "5e0db1aff46f62b50eeeb0a8ed57903ce9978f16be4a5514aaeb7772d7d8e429",
+    "roomExplosion-flat": "044b751ec060e803604551baec588cd28f911b42571a5ce75609f80cb5918acc",
+    "roomExplosion-terrain": "3177ec1e76612a81c99a456325f08572f3bcd00493fe7f366dc5a7943d4d82bb",
     "bleve-flat": "94628707066afd90bbfdd9c749d3a890caf57c681fb2c3a7042c45942afc906c",
     "bleve-terrain": "e821a15e2b9b2ccef2079b0db9952d4939e6095b8479f9733027cd47c4417057",
     "tankFarm-flat": "f32db8a69931fb3405b68ab29fc4de17ebde17279d6473bc30362be29a517ad2",
