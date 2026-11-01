@@ -1144,7 +1144,10 @@ export function startFrame(tect) {
   }
 
   async function listening() {
-    const composition = await earApplied(composeListening(state.scene, state.results));
+    return levelled(await earApplied(composeListening(state.scene, state.results)));
+  }
+
+  async function levelled(composition) {
     if (!composition) return null;
     let gain = outputGainForPeak(composition.peakPa);
     if (composition.heads.length) gain *= RENDER.binauralHeadroom;
@@ -1157,7 +1160,7 @@ export function startFrame(tect) {
     return { composition, gain, playbackGain };
   }
 
-  /** Files sound as Play does, the heard peak at the target, yet no microphone's pressure passes full scale. */
+  /** Files sound as Play does without the ear model, the heard peak at the target, yet no microphone's pressure passes full scale. */
   function exportGain({ composition, playbackGain }) {
     const { levelMode, fullScalePa } = state.scene.render;
     if (levelMode === 'fixed') return 1 / fullScalePa;
@@ -1909,15 +1912,17 @@ export function startFrame(tect) {
       options: cuts.map(hz => [String(hz), hz ? `${hz} Hz` : 'Off']),
       onCommit: value => commit(next => { next.render.lowCutHz = Number(value); })
     });
-    checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
-    checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
     numberField(output, { key: 'distanceLossPercent', value: scene.render.distanceLossPercent, onCommit: value => commit(next => { next.render.distanceLossPercent = value; }) });
-    if (scene.render.earLoudness) checkboxField(output, { label: 'Cap onsets', value: scene.render.earCapOnsets, reliability: 'C', onCommit: value => commitListening(next => { next.render.earCapOnsets = value; }) });
     selectField(output, {
       label: 'Spatial', value: String(scene.render.ambisonicOrder),
       options: [['0', 'Off'], ['1', '1st order'], ['2', '2nd order'], ['3', '3rd order']],
       onCommit: value => commit(next => { next.render.ambisonicOrder = Number(value); })
     });
+    const playback = element('div', 'unit-row', 'Playback only');
+    output.append(playback);
+    checkboxField(output, { label: 'Ear reflex', value: scene.render.earReflex, reliability: 'B', onCommit: value => commitListening(next => { next.render.earReflex = value; }) });
+    checkboxField(output, { label: 'Loudness', value: scene.render.earLoudness, reliability: 'C', onCommit: value => commitListening(next => { next.render.earLoudness = value; }) });
+    if (scene.render.earLoudness) checkboxField(output, { label: 'Cap onsets', value: scene.render.earCapOnsets, reliability: 'C', onCommit: value => commitListening(next => { next.render.earCapOnsets = value; }) });
 
     const { kind, heads, omnis } = listeningKind(scene.receivers, scene.render.ambisonicOrder);
     const names = [...heads, ...omnis].map(receiver => receiver.name).join(', ');
@@ -2633,7 +2638,7 @@ export function startFrame(tect) {
       return;
     }
     if (!current) return;
-    const plan = exportPlan(state.scene, state.results, exportGain(current));
+    const plan = exportPlan(state.scene, state.results, exportGain(await levelled(composeListening(state.scene, state.results))));
     if (!plan) return;
     exportState = { plan, composition: current.composition, echoFree: echoesActive(state.scene) ? echoFreeShare(state.results) : 1 };
     const chosen = new Set(state.preferences.exportItems ?? ['scene', 'stereo']);

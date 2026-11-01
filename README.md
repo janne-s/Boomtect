@@ -222,6 +222,8 @@ microphone along the Mach cone.
   plays one channel per speaker when the output has them, and otherwise as a
   stereo preview.
 - **Spatial** — The Ambisonic order of the render, or Off.
+- **Playback only** — Ear reflex, Loudness, and Cap onsets shape what plays,
+  not the exported files.
 - **Ear reflex** — The middle-ear reflex: after a loud onset, the low
   frequencies are turned down with a short delay, and the effect fades while
   the sound continues.
