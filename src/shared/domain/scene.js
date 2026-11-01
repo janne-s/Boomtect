@@ -253,7 +253,16 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
     check(new Set(items.map(item => item.id)).size === items.length, `${path} ids must be unique.`);
   }
 
-  function parseScene(value) {
+  /** Strict unless `intoRange`, which brings each number to its nearest limit as the tolerant reader does. */
+  function parseScene(value, { intoRange = false } = {}) {
+    if (intoRange && !bringIntoRange) {
+      bringIntoRange = true;
+      try {
+        return parseScene(value);
+      } finally {
+        bringIntoRange = false;
+      }
+    }
     check(value && typeof value === 'object', 'The scene is not an object.');
     check(value.format === format, `This is not a ${name} scene.`);
     check(modes.includes(value.mode), 'The scene mode is not supported.');

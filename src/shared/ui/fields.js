@@ -55,15 +55,17 @@ export function createFields(parameters, ownDisplay = {}) {
     input.step = 'any';
     input.value = rounded(value * scale);
     input.addEventListener('change', () => {
-      const next = Number(input.value) / scale;
-      const valid = input.value !== '' && Number.isFinite(next) && next >= parameter.minimum && next <= parameter.maximum
-        && (!parameter.integer || Number.isInteger(next));
+      const typed = Number(input.value) / scale;
+      const valid = input.value !== '' && Number.isFinite(typed);
       input.setAttribute('aria-invalid', String(!valid));
       if (!valid) {
         input.title = `${rounded(parameter.minimum * scale)}–${rounded(parameter.maximum * scale)} ${unit}`;
         return;
       }
       input.removeAttribute('title');
+      const inRange = Math.min(parameter.maximum, Math.max(parameter.minimum, typed));
+      const next = parameter.integer ? Math.min(parameter.maximum, Math.max(parameter.minimum, Math.round(inRange))) : inRange;
+      if (next !== typed) input.value = rounded(next * scale);
       onCommit(next);
     });
     input.addEventListener('blur', () => {

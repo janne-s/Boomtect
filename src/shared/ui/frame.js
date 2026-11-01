@@ -344,7 +344,7 @@ export function startFrame(tect) {
     const next = structuredClone(state.scene);
     change(next);
     try {
-      state.scene = parseScene(next);
+      state.scene = parseScene(next, { intoRange: true });
     } catch (error) {
       setStatus(error.message, true);
       refreshPanel();
