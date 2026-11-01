@@ -220,8 +220,8 @@ function swellSource(common, swell, decibels, air) {
 export function fireballRoarSources(emitter, air, surface = null) {
   const fireball = fireballOf(emitter, air);
   if (!fireball || emitter.fireballDecibels <= FIREBALL_OFF_DECIBELS) return [];
-  const ground = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
-  const common = { flash: 0, positionMetres: { ...ground, z: ground.z + fireball.diameterMetres / 2 }, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
+  const vessel = surface ? onGround(surface, emitter.positionMetres) : emitter.positionMetres;
+  const common = { flash: 0, positionMetres: vessel, direction: null, elementMetres: 0, emissionSeconds: emitter.startSeconds };
   return [{
     ...common, amplitudePaMetres: 10 ** (emitter.fireballDecibels / 20) * roarPaMetres(fireball, air), pulse: 'noise', noiseSeed: emitter.seed,
     durationSeconds: fireball.holdSeconds, decay: 0, spanSeconds: roarSpanSeconds(fireball.holdSeconds), linearRadiusMetres: 0

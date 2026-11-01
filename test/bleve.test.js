@@ -97,11 +97,11 @@ test('the fireball takes its size and visible duration from Roberts and the CCPS
   assert.equal(fireballOf({ ...defaultBleve(), fluid: 'water' }, STANDARD_AIR), null);
 });
 
-test('the roar rises above the vessel to the fireball\'s centre, follows the heat release, and goes off with its level', () => {
+test('the roar starts at the vessel, follows the heat release, and goes off with its level', () => {
   const [roar] = fireballRoarSources(defaultBleve(), STANDARD_AIR);
   const fireball = fireballOf(defaultBleve(), STANDARD_AIR);
   assert.equal(roar.pulse, 'noise');
-  assert.ok(Math.abs(roar.positionMetres.z - fireball.diameterMetres / 2) < 1e-9);
+  assert.deepEqual(roar.positionMetres, defaultBleve().positionMetres);
   assert.ok(Math.abs(roar.durationSeconds - .33 * fireball.kilograms ** (1 / 6)) < 1e-9);
   const [quieter] = fireballRoarSources({ ...defaultBleve(), fireballDecibels: -6 }, STANDARD_AIR);
   assert.ok(Math.abs(20 * Math.log10(roar.amplitudePaMetres / quieter.amplitudePaMetres) - 6) < 1e-9);
