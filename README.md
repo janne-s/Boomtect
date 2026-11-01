@@ -250,6 +250,9 @@ microphone along the Mach cone.
   as a boom's front, louder than it was: the level it follows lags the onset,
   so the quiet's boost would carry into it. On at first.
 - **Level** — Normalizes to the peak, or uses a fixed full scale in pascals.
+- **Low cut** — Cuts infrasound below 20 Hz (default) or 30 Hz, as a
+  recording chain does, so the audible sound is not set by an inaudible peak;
+  Off keeps the whole field.
 - **Distance loss** — 100 % is physical; less eases how fast a source fades
   with distance beyond the microphone's nearest path, keeping air absorption
   and ground.
@@ -371,8 +374,8 @@ real relation, so a sound system can be set to play them at that level.
   quiet scene plays as loud as a loud one.
 - **Fixed** — Full scale is a pressure: at 20 Pa a sample of 1.0 is 20 Pa, and
   0 dBFS is 120 dB SPL peak. Exported files keep the same scale.
-- **To calibrate** — Choose Fixed, one omni microphone, and Ear reflex and
-  Loudness off. Play a 1 kHz sine at −20 dBFS from any tone generator and set
+- **To calibrate** — Choose Fixed, one omni microphone, and Low cut, Ear
+  reflex and Loudness off. Play a 1 kHz sine at −20 dBFS from any tone generator and set
   the speakers or headphones with a sound level meter to read the full scale's
   level less 23 dB: 97 dB SPL at 20 Pa. Leave the volume there. Binaural
   playback and mixes of several microphones are scaled down for headroom.
