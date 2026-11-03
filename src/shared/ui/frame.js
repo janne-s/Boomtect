@@ -42,7 +42,7 @@ import { createActionMenu } from './action-menu.js';
 export function startFrame(tect) {
   const {
     storage: prefix, appVersion: APP_VERSION, modelVersion: MODEL_VERSION, worker: workerUrl, kinds, views: kindViews, add: ADD_EMITTERS, modes: MODE_SETTINGS, anchor: emitterAnchor,
-    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, linkModes = {}, follower = null
+    onsetName, preferences: tectPreferences = {}, toggles: tectToggles = {}, prepareScene, prepareSceneAsync, linkModes = {}, partners, follower = null
   } = tect;
   const { MODES, PARAMETERS, defaultScene, parseScene, readScene, sceneInMode, serializeScene } = tect.scene;
   const { actionField, checkboxField, numberField, pointFields, selectField } = tect.fields;
@@ -217,6 +217,7 @@ export function startFrame(tect) {
 
   const link = createPartnerLink({
     app: appName,
+    partners,
     handlers: {
       onStatus: () => drawLink(),
       onLinked: () => { linked.sentKey = sceneKey(state.scene); sendEmitters(); sendMix(); drawLink(); },
@@ -299,6 +300,7 @@ export function startFrame(tect) {
     ghosts: () => (link.partner() ? linked.emitters : []),
     onGhost: ghost => link.send('select', { id: ghost.id }),
     clouds: () => state.preferences.clouds,
+    toggled: id => Boolean(state.preferences[id]),
     scrollPans: () => state.preferences.scrollPans
   })];
 
@@ -759,6 +761,9 @@ export function startFrame(tect) {
 
   function stopWorkers() {
     state.revision += 1;
+    state.preparation?.abort();
+    state.preparation = null;
+    state.sourceRuntime = null;
     releaseWorkers();
     clearInterval(state.watchdog);
     operation('render', null);
@@ -797,12 +802,13 @@ export function startFrame(tect) {
     const idle = state.workers.filter(entry => !entry.job);
     const preparing = message.type === 'trace' || message.type === 'render';
     const entry = (preparing && idle.find(each => each.prepared)) || idle.find(each => !each.prepared) || idle[0] || startWorker(revision);
+    const runtime = preparing && !entry.prepared ? state.sourceRuntime : undefined;
     entry.prepared ||= preparing;
     entry.job = job;
-    entry.worker.postMessage({ revision, ...message }, transfer);
+    entry.worker.postMessage({ revision, ...message, runtime }, transfer);
   }
 
-  function startRender({ full = false, variant = null } = {}) {
+  async function startRender({ full = false, variant = null } = {}) {
     stopWorkers();
     const revision = state.revision;
     setStatus('');
@@ -824,18 +830,28 @@ export function startFrame(tect) {
     let sources;
     let prepared;
     let workerCount = workerLimit();
+    const started = performance.now();
     renderMarker.phase('Preparing sources', { preview: Boolean(scene.render.preview) });
     try {
-      prepared = prepareScene(scene);
+      if (prepareSceneAsync) {
+        const controller = new AbortController();
+        state.preparation = controller;
+        operation('render', 'Preparing sources', { share: 0 });
+        const result = await prepareSceneAsync(scene, { signal: controller.signal, onProgress: share => {
+          if (revision === state.revision) operation('render', 'Preparing sources', { share });
+        } });
+        if (revision !== state.revision) return;
+        state.preparation = null;
+        prepared = result.prepared;
+        state.sourceRuntime = result.runtime;
+      } else prepared = prepareScene(scene);
       sources = prepared.reduce((sum, item) => sum + item.sources.length, 0);
       workerCount = Math.max(1, Math.min(workerLimit(), Math.floor(RENDER.sourceCopiesBudget / Math.max(1, sources))));
     } catch (error) {
-      renderMarker.phase(null);
-      setStatus(error.message, true);
-      drawResults();
+      if (revision !== state.revision) return;
+      failRender(error.message);
       return;
     }
-    const started = performance.now();
     state.heard = performance.now();
     renderMarker.phase('Tracing paths', { sources, channels: (scene.render.ambisonicOrder + 1) ** 2 });
     operation('render', 'Tracing paths', { share: 0 });
@@ -973,6 +989,7 @@ export function startFrame(tect) {
 
   function finishRender(scene, arrivals, sums, parts, info) {
     releaseWorkers();
+    state.sourceRuntime = null;
     clearInterval(state.watchdog);
     let results;
     try {

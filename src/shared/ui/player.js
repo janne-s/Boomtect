@@ -344,7 +344,8 @@ export function createPlayer({ onChange = () => {}, onInterrupted = () => {} } =
     const early = composition.firstSoundSeconds < 0;
     const leadIn = early ? composition.firstSoundSeconds : Math.max(0, composition.firstSoundSeconds);
     const skipped = previous?.skippedSeconds ?? skippedSeconds ?? (realDelay ? 0 : leadIn);
-    const origin = previous?.origin ?? at - (atSceneSeconds ?? (realDelay && early ? leadIn : skipped));
+    const opening = realDelay && !early ? 0 : leadIn;
+    const origin = previous?.origin ?? at - (atSceneSeconds ?? opening - RENDER.fadeSeconds);
     release(at);
     current = connected;
     for (const node of connected.faders) {

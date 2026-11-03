@@ -104,7 +104,7 @@ function handles(scene, box, kinds, tools) {
 }
 
 export function createCubeView(canvas, options) {
-  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [], ghosts = () => [], onGhost = null, scrollPans = () => false } = options;
+  const { onSelect, onMove, onCommit, onView, onViewChange, focus, kinds, contours = () => false, names = () => false, map = () => false, mapTiles: loadMapTiles = () => [], ghosts = () => [], onGhost = null, scrollPans = () => false, toggled = () => false } = options;
   let scene = null;
   let selection = null;
   let view = { ...VIEW.box.defaultView };
@@ -138,11 +138,12 @@ export function createCubeView(canvas, options) {
     sized: layer => sized(layer),
     mixColors: (a, b, t) => mixColors(a, b, t),
     rgb: hex => rgb(hex),
-    option: name => options[name]?.()
+    option: name => options[name]?.(),
+    toggled: id => toggled(id)
   };
 
   function sceneBox() {
-    let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0;
+    let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity; let maxZ = 0; let minZ = 0;
     const include = point => {
       minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
       minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
@@ -163,7 +164,8 @@ export function createCubeView(canvas, options) {
       include({ x: extent.minX, y: extent.minY, z: extent.maxZ });
       include({ x: extent.maxX, y: extent.maxY, z: extent.maxZ });
     };
-    const extentTools = { ...tools, include, includeExtent };
+    const includeBelowDatum = point => { include(point); minZ = Math.min(minZ, point.z); };
+    const extentTools = { ...tools, include, includeExtent, includeBelowDatum };
     for (const emitter of scene.emitters) kinds[emitter.kind].extent(emitter, extentTools);
     scene.receivers.forEach(receiver => include(placed(receiver.positionMetres)));
     for (const ghost of ghosts()) {
@@ -181,7 +183,6 @@ export function createCubeView(canvas, options) {
     };
     const [x0, x1] = grow(minX, maxX);
     const [y0, y1] = grow(minY, maxY);
-    let minZ = 0;
     if (!surface.flat) {
       const relief = groundRange(surface, x0, x1, y0, y1);
       minZ = Math.min(minZ, relief.low);
@@ -1151,6 +1152,7 @@ export function createCubeView(canvas, options) {
       context.globalAlpha = 1;
     }
     for (const emitter of scene.emitters) kinds[emitter.kind].overlay?.(context, emitter, tools, { colors, state });
+    if (scene.emitters.some(emitter => emitter.enabled && kinds[emitter.kind].animates?.(emitter, tools))) requestDraw();
     for (const point of selectedPoints()) drawProjectionLines(context, colors, point);
     for (const receiver of scene.receivers) {
       const level = state?.receivers.get(receiver.id) ?? 0;
@@ -1382,7 +1384,7 @@ export function createCubeView(canvas, options) {
       if (drag.verticalOnly && axis !== 'z') continue;
       const moved = drag.origin[axis] + solved[axis] - drag.grabbed[axis];
       if (axis === 'z') {
-        if (!drag.onGround) point.z = round(clamp(moved, RENDER.maximumHeightMetres, 0), Math.min(.1, drag.resolution));
+        if (!drag.onGround) point.z = round(clamp(moved, drag.maximumHeightMetres ?? RENDER.maximumHeightMetres, drag.minimumHeightMetres ?? 0), Math.min(.1, drag.resolution));
       } else point[axis] = round(clamp(moved, RENDER.sceneExtentMetres), drag.resolution);
     }
     drag.point = point;

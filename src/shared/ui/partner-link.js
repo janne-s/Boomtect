@@ -51,9 +51,9 @@ function namedWindow(url, name) {
   return target;
 }
 
-export function createPartnerLink({ app, handlers }) {
+export function createPartnerLink({ app, handlers, partners = Object.keys(LINKED_TECTS) }) {
   const self = instanceId();
-  const others = Object.keys(LINKED_TECTS).filter(name => name !== app);
+  const others = Object.keys(LINKED_TECTS).filter(name => name !== app && partners.includes(name));
   const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('tect.link') : null;
   const present = new Map();
   const pending = new Map();

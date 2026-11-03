@@ -105,7 +105,7 @@ function check(condition, message) {
   if (!condition) throw new SceneError(message);
 }
 
-export function createScene({ name, format, version, modelVersion, anchor, modes: modeTable, kinds, parameters: own = {} }) {
+export function createScene({ name, format, version, modelVersion, anchor, modes: modeTable, kinds, parameters: own = {}, renderDefaults = {} }) {
   const shadowed = Object.keys(own).filter(key => key in PARAMETERS);
   if (shadowed.length) throw new Error(`Shared scene parameters cannot be redefined: ${shadowed.join(', ')}.`);
   const parameters = Object.freeze({ ...PARAMETERS, ...own });
@@ -172,7 +172,7 @@ export function createScene({ name, format, version, modelVersion, anchor, modes
       terrain: null,
       emitters: [emitter],
       receivers: [receiver],
-      render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, lowCutHz: 20, distanceLossPercent: 100, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true, quality: { ...DEFAULT_QUALITY } }
+      render: { sampleRate: SAMPLE_RATE_HZ, levelMode: 'peak', fullScalePa: 20, lowCutHz: 20, distanceLossPercent: 100, ambisonicOrder: 1, earReflex: false, earLoudness: false, earCapOnsets: true, ...renderDefaults, quality: { ...DEFAULT_QUALITY, ...renderDefaults.quality } }
     };
   }
 

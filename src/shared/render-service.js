@@ -3,8 +3,8 @@ import { renderReceiverRange, tailResponses, tracePart } from './domain/render.j
 
 export function serveRenders({ parseScene, prepareScene }) {
   let held = { revision: null, prepared: null };
-  const preparedFor = (revision, scene) => {
-    if (held.revision !== revision) held = { revision, prepared: prepareScene(scene) };
+  const preparedFor = (revision, scene, runtime) => {
+    if (held.revision !== revision) held = { revision, prepared: prepareScene(scene, runtime) };
     return held.prepared;
   };
   self.addEventListener('message', ({ data }) => {
@@ -22,7 +22,7 @@ export function serveRenders({ parseScene, prepareScene }) {
         self.postMessage({ revision, type: 'result', responses }, [...buffers]);
         return;
       }
-      const prepared = preparedFor(revision, scene);
+      const prepared = preparedFor(revision, scene, data.runtime);
       if (type === 'trace') {
         const parts = data.jobs.map(({ receiver, part, parts: count }, index) => tracePart(prepared, scene.receivers[receiver], scene, {
           part,

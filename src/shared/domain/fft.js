@@ -108,6 +108,10 @@ export function overlapSize(signalLength, kernelLength) {
 export function convolveAdd(targets, signals, kernel) {
   const length = Math.max(0, ...signals.map(signal => signal.length));
   if (!length || !kernel.length) return;
+  if (kernel.length > BLOCK_KERNELS * length) {
+    convolveLongKernel(targets, signals, kernel, length);
+    return;
+  }
   const size = overlapSize(length, kernel.length);
   const block = size - kernel.length + 1;
   const kernelRe = new Float64Array(size);
@@ -132,6 +136,48 @@ export function convolveAdd(targets, signals, kernel) {
         re[bin] = productRe;
       }
       fft(re, im, true);
+      for (let index = 0, end = Math.min(size, firstTarget.length - start); index < end; index += 1) firstTarget[start + index] += re[index];
+      if (second) for (let index = 0, end = Math.min(size, secondTarget.length - start); index < end; index += 1) secondTarget[start + index] += im[index];
+    }
+  }
+}
+
+function convolveLongKernel(targets, signals, kernel, length) {
+  const size = overlapSize(kernel.length, length);
+  const block = size - length + 1;
+  const spectra = signals.map(signal => {
+    const re = new Float64Array(size);
+    const im = new Float64Array(size);
+    re.set(signal);
+    fft(re, im);
+    return { re, im };
+  });
+  const blockRe = new Float64Array(size);
+  const blockIm = new Float64Array(size);
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  for (let start = 0; start < kernel.length; start += block) {
+    if (silent(kernel, start, start + block)) continue;
+    blockRe.fill(0);
+    blockIm.fill(0);
+    blockRe.set(kernel.subarray(start, start + block));
+    fft(blockRe, blockIm);
+    for (let pair = 0; pair < signals.length; pair += 2) {
+      const first = spectra[pair];
+      const second = spectra[pair + 1];
+      for (let bin = 0; bin < size; bin += 1) {
+        const [xRe, xIm] = [blockRe[bin], blockIm[bin]];
+        let yRe = xRe * first.re[bin] - xIm * first.im[bin];
+        let yIm = xRe * first.im[bin] + xIm * first.re[bin];
+        if (second) {
+          yRe -= xRe * second.im[bin] + xIm * second.re[bin];
+          yIm += xRe * second.re[bin] - xIm * second.im[bin];
+        }
+        re[bin] = yRe;
+        im[bin] = yIm;
+      }
+      fft(re, im, true);
+      const [firstTarget, secondTarget] = [targets[pair], targets[pair + 1]];
       for (let index = 0, end = Math.min(size, firstTarget.length - start); index < end; index += 1) firstTarget[start + index] += re[index];
       if (second) for (let index = 0, end = Math.min(size, secondTarget.length - start); index < end; index += 1) secondTarget[start + index] += im[index];
     }
