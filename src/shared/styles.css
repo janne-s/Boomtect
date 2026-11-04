@@ -9,6 +9,7 @@
     "Segoe UI",
     sans-serif;
   font-variant-numeric: tabular-nums;
+  --edge: color-mix(in srgb, var(--line) 45%, var(--raised));
 }
 
 * {
@@ -32,21 +33,27 @@ select {
 }
 button,
 select {
+  --button-edge: var(--edge);
   border: 0;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--button-edge);
   padding: 5px 10px;
   cursor: pointer;
 }
 button:hover:not(:disabled),
 select:hover {
-  background: var(--line);
+  --button-edge: var(--accent);
+}
+:is(.plot-unlink, .plot-mute, .plot-tabs button, .plot-play, .link-menu button, .icon-button, .lock-button, button.macro-value, .card-actions .dice-button, .preset-tab, .preset-load, .sheet-tabs button) {
+  box-shadow: none;
 }
 button:disabled {
   cursor: not-allowed;
   opacity: .5;
 }
 button.primary {
+  --button-edge: var(--accent);
   min-width: 64px;
   background: var(--accent);
   color: var(--on-accent);
@@ -294,14 +301,17 @@ figcaption {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-height: 52px;
   padding: 8px 12px;
+  border-bottom: 1px solid var(--edge);
   background: var(--panel-dim);
 }
 .brand {
-  margin-right: 8px;
-  color: var(--accent);
-  font-weight: 600;
-  letter-spacing: .02em;
+  margin-right: 12px;
+  color: var(--ink);
+  font-size: clamp(1.15rem, 2vw, 1.4rem);
+  font-weight: 700;
+  letter-spacing: -.05em;
 }
 .github-link {
   display: inline-grid;
@@ -477,6 +487,7 @@ figcaption {
 }
 .modes button[aria-checked="true"] {
   --icon-bg: var(--accent-soft);
+  --button-edge: var(--accent);
   background: var(--icon-bg);
   color: var(--accent);
 }
@@ -750,12 +761,6 @@ button.macro-value:hover {
   flex-wrap: wrap;
   gap: 4px;
   margin: 10px 0 0;
-}
-.card-actions button {
-  background: var(--line);
-}
-.card-actions button:hover:not(:disabled) {
-  background: var(--faint);
 }
 .dice-buttons {
   display: inline-flex;

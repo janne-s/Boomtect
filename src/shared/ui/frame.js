@@ -2927,7 +2927,9 @@ export function startFrame(tect) {
     select({ type: 'receiver', id: receiver.id });
   }));
 
-  window.addEventListener('resize', () => drawResults());
+  const plotsResize = new ResizeObserver(() => drawResults());
+  plotsResize.observe($('waveform'));
+  plotsResize.observe($('arrivals'));
 
   window.addEventListener('pagehide', () => renderMarker.suspend());
   document.addEventListener('visibilitychange', () => { if (document.hidden) renderMarker.note({ hidden: true }); });

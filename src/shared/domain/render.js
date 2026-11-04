@@ -77,8 +77,8 @@ export function prepareScene(scene, kinds) {
   const echoes = echoesActive(scene) && !surface.flat;
   const prepared = scene.emitters.filter(emitter => emitter.enabled).map(emitter => {
     const kind = kinds[emitter.kind];
-    const { sources, rows, emission = null } = kind.sources(emitter, scene, surface);
-    const base = { emitter, sources, emission, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null, highestFrequencyHz: kind.highestFrequencyHz ?? null };
+    const { sources, rows, emission = null, placeKey = null } = kind.sources(emitter, scene, surface);
+    const base = { emitter, sources, emission, placeKey, turbulentFront: kind.turbulentFront ?? null, noise: kind.noise ?? null, highestFrequencyHz: kind.highestFrequencyHz ?? null };
     if (kind.tracks) {
       const { tracks, echoRows = [] } = kind.tracks(emitter, scene, surface, rows);
       return { ...base, cells: null, echoRows, tracks };
@@ -831,7 +831,7 @@ function accumulatePath(spectra, gains, plan, sources, sourceIndex, paths, index
       groundIm[point] = q[1];
     }
   }
-  const key = paths.origin ? paths.origin[index] : index;
+  const key = grain?.pathKey ?? (paths.origin ? paths.origin[index] : index);
   const reflectionScatter = scattering ? subArrivals(GROUND.scatterArrivals, GROUND.scatterSeconds, seed ^ Math.imul(key + 1, 0x165667b1), binHz) : null;
   const endCount = isEcho(kind) ? echoEnds(ends, plan, scene, sources, sourceIndex, paths, index, metres, speed) : 0;
   const spreadSeed = seed ^ Math.imul(key + 1, 0x85ebca6b);
@@ -1242,6 +1242,19 @@ function scintillationGain({ lower, share }, levels, bin) {
   return Math.exp(SCINTILLATION_NEPERS * (levels[low] + share[bin] * (levels[high] - levels[low])) - SCINTILLATION_BIAS);
 }
 
+export function placeIdentity(prepared, sourceIndex, receiver) {
+  const seed = (forestSeed(receiver.id) ^ Math.imul(prepared.emitter.seed + 1, 0x27d4eb2f)) >>> 0;
+  const place = prepared.placeKey?.(sourceIndex);
+  if (place === undefined || place === null) return { key: prepared.emitter.id, seed, placed: false };
+  return { key: `${prepared.emitter.id}:${place}`, seed: (seed ^ Math.imul(place + 1, 0x85ebca6b)) >>> 0, placed: true };
+}
+
+export function placedPathKey(paths, index) {
+  const [x, y, z] = [paths.departure[3 * index], paths.departure[3 * index + 1], paths.departure[3 * index + 2]];
+  const azimuth = Math.round(Math.atan2(y, x) / COARSE_ECHO_RADIANS), elevation = Math.round(Math.asin(Math.max(-1, Math.min(1, z))) / COARSE_ECHO_RADIANS);
+  return (Math.imul(paths.kind[index] + 1, 0x9e3779b9) ^ Math.imul(paths.bounces[index] + 1, 0x85ebca6b) ^ Math.imul(azimuth + 1024, 0xc2b2ae35) ^ Math.imul(elevation + 1024, 0x27d4eb2f)) >>> 0;
+}
+
 /** Class C scintillation of a long sound. */
 function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) {
   const departure = { x: paths.departure[3 * index], y: paths.departure[3 * index + 1], z: paths.departure[3 * index + 2] };
@@ -1249,13 +1262,14 @@ function grainSpectrum(prepared, sources, paths, index, plan, scene, receiver, s
   const shared = echoes && isEcho(paths.kind[index]) ? `${paths.emitter[index]}:${seed}:${echoDirection(paths, index)}:${plan.size}` : null;
   const spectrum = shared && echoes.key === shared ? echoes.spectrum : prepared.emission(seed, departure, plan);
   if (shared) Object.assign(echoes, { key: shared, spectrum });
-  if (!(scene.air.turbulenceStrength > 0)) return spectrum;
-  const key = prepared.emitter.id;
-  if (!scintillations.has(key)) {
-    scintillations.set(key, createScintillation({ seed: (forestSeed(receiver.id) ^ Math.imul(prepared.emitter.seed + 1, 0x27d4eb2f)) >>> 0, hopSeconds: GRAIN_HOP_SECONDS(sampleRate) }));
+  const identity = placeIdentity(prepared, paths.source[index], receiver);
+  const placed = identity.placed ? { ...spectrum, pathSeed: identity.seed, pathKey: placedPathKey(paths, index) } : spectrum;
+  if (!(scene.air.turbulenceStrength > 0)) return placed;
+  if (!scintillations.has(identity.key)) {
+    scintillations.set(identity.key, createScintillation({ seed: identity.seed, hopSeconds: GRAIN_HOP_SECONDS(sampleRate) }));
   }
   const centre = paths.seconds[index] + sources.durationSeconds[paths.source[index]];
-  return { ...spectrum, levels: scintillations.get(key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
+  return { ...placed, levels: scintillations.get(identity.key).levelsAt(Math.max(0, Math.round(centre / GRAIN_HOP_SECONDS(sampleRate)))) };
 }
 
 function echoDirection(paths, index) {
@@ -1365,13 +1379,13 @@ export function renderReceiverRange(preparedEmitters, receiver, scene, { fromSec
     while (cursor < selected.length && frameGroup(paths, selected[cursor]) === group && frameOf[selected[cursor]] === frame && slotOf[selected[cursor]] === slotIndex) {
       const index = selected[cursor];
       const sources = pathSources(preparedEmitters, paths, index);
-      const seed = (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       encodeDirection(paths.direction[3 * index], paths.direction[3 * index + 1], paths.direction[3 * index + 2], order, gains);
       if (sends) gains[channels] = forestSend(Math.min(paths.foliageMetres[index], GROUND.maximumFoliageMetres) * scene.ground.forestDensity);
       const mix = mixFactor(preparedEmitters[emitterIndex].emitter);
       if (mix !== 1) for (let lane = 0; lane < lanes; lane += 1) gains[lane] *= mix;
       const grain = sources.pulse[paths.source[index]] === PULSE_GRAIN
         ? grainSpectrum(preparedEmitters[emitterIndex], sources, paths, index, plan, scene, receiver, sampleRate, scintillations, echoes) : null;
+      const seed = grain?.pathSeed ?? (Math.imul(preparedEmitters[emitterIndex].emitter.seed ^ 0x9e3779b9, 31) + paths.source[index]) >>> 0;
       accumulatePath(spectra, gains, plan, sources, paths.source[index], paths, index, paths.seconds[index] * sampleRate - frame * plan.hop, scene, speed, groundRe, groundIm, ends, seed, receiver.positionMetres.z, receiverZ, shared, grain);
       doneWeight += weightOf(index);
       cursor += 1;
